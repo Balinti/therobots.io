@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Robots - Founders</title>
+  <link rel="stylesheet" href="styles.css"> <!-- reuse same styles if you split them -->
+  <style>
+    body {
+      font-family: 'Arial', sans-serif;
+      color: white;
+      background: linear-gradient(135deg, #2d1b69 0%, #11001c 100%);
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 100px 20px 40px;
+    }
+
+    h1 {
+      text-align: center;
+      font-size: 3rem;
+      margin-bottom: 2rem;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+    }
+
+    .founders {
+      display: flex;
+      justify-content: space-around;
+      flex-wrap: wrap;
+      gap: 2rem;
+    }
+
+    .founder-card {
+      background: rgba(0, 0, 0, 0.7);
+      border: 2px solid #4a2c7a;
+      border-radius: 20px;
+      padding: 2rem;
+      max-width: 500px;
+      text-align: center;
+      flex: 1;
+    }
+
+    .founder-card img {
+      width: 100%;
+      max-width: 250px;
+      border-radius: 50%;
+      margin-bottom: 1.5rem;
+      border: 3px solid #9d4edd;
+      box-shadow: 0 0 20px rgba(157, 78, 221, 0.5);
+    }
+
+    .founder-card h2 {
+      margin-bottom: 1rem;
+      color: #fff;
+    }
+
+    .founder-card p {
+      color: #ccc;
+      line-height: 1.5;
+    }
+
+    @media (max-width: 768px) {
+      .founders {
+        flex-direction: column;
+        align-items: center;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <nav class="container">
+      <a href="index.html" class="logo">🤖 The Robots</a>
+      <ul class="nav-links">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="services.html">Services</a></li>
+        <li><a href="founders.html">Founders</a></li>
+        <li><a href="#contact">Contact</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main class="container">
+    <h1>Meet the Founders</h1>
+
+    <div class="founders">
+      <!-- Edoe Card -->
+      <div class="founder-card">
+        <img src="images/edoe-balint.png" alt="Edoe Balint">
+        <h2>Edoe Balint</h2>
+        <p>
+          Edoe has built his career at the intersection of data, gaming, and e-commerce, serving as Head of Data at Redemption Games and later driving analytics innovation at Whatnot. He now leads Balint Analytics, helping businesses apply AI to achieve practical growth. At The Robots, he focuses on AI strategy, automation design, and real-world implementation.
+        </p>
+      </div>
+
+      <!-- Fred Card -->
+      <div class="founder-card">
+        <img src="images/fred-bin.png" alt="Fred Bin">
+        <h2>Fred Bin</h2>
+        <p>
+          Fred brings years of real estate and operations expertise as the CEO and founder of Zoom Casa, a platform transforming the way homes are listed and sold. At The Robots, he ensures AI solutions stay practical, people-focused, and results-driven, bridging the gap between advanced automation and everyday business needs.
+        </p>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <div class="container">
+      <p>&copy; 2024 The Robots. All rights reserved. | Powered by AI Innovation</p>
+    </div>
+  </footer>
+</body>
+</html>
