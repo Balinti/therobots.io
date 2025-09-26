@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>The Robots - Services</title>
+    <style>
+        /* === copied + adapted styling from index.html to match theme === */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Arial', sans-serif;
+            line-height: 1.6;
+            color: white;
+            background: linear-gradient(135deg, #2d1b69 0%, #11001c 100%);
+            min-height: 100vh;
+        }
+        .container { max-width: 1200px; margin: 0 auto; padding: 0 20px; }
+        header {
+            background: rgba(0,0,0,0.8);
+            backdrop-filter: blur(10px);
+            padding: 1rem 0;
+            position: fixed;
+            width: 100%;
+            top: 0;
+            z-index: 1000;
+            border-bottom: 2px solid #4a2c7a;
+        }
+        nav { display:flex; justify-content:space-between; align-items:center; }
+        .logo { font-size: 1.6rem; font-weight: bold; color: white; text-decoration: none; }
+        .nav-links { display:flex; list-style:none; gap: 1.25rem; }
+        .nav-links a { color: white; text-decoration:none; font-weight:500; }
+        main { margin-top: 80px; padding: 4rem 0; }
+        .hero { text-align: center; margin-bottom: 2.5rem; }
+        .hero h1 { font-size: 2.6rem; color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); }
+        .hero p { color:#cccccc; margin-top: 0.6rem; }
+
+        /* Services grid */
+        .services-section {
+            background: rgba(0,0,0,0.6);
+            border-radius: 18px;
+            padding: 2.25rem;
+            border: 2px solid #4a2c7a;
+            margin-bottom: 2.5rem;
+        }
+        .services-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.25rem;
+            margin-top: 1.5rem;
+        }
+        .service-card {
+            background: rgba(20,20,20,0.85);
+            padding: 1.25rem;
+            border-radius: 12px;
+            min-height: 180px;
+            display:flex;
+            flex-direction:column;
+            justify-content:space-between;
+            border: 1px solid rgba(77,40,120,0.25);
+        }
+        .card-title { font-size: 1.125rem; color: white; margin-bottom: 0.5rem; font-weight:600; }
+        .card-desc { color:#cfcfe1; font-size: 0.95rem; margin-bottom: 0.75rem; }
+        .card-meta { font-size: 0.85rem; color:#bfb7e1; margin-bottom: 0.75rem; }
+        .small-tag { font-size:0.78rem; color:#e9e1ff; background: linear-gradient(90deg, rgba(157,78,221,0.12), rgba(114,9,183,0.06)); padding:6px 10px; border-radius: 999px; display:inline-block; }
+
+        .cta-row { display:flex; gap: 0.5rem; align-items:center; }
+        .outline-btn {
+            background: transparent;
+            border: 1px solid #9d4edd;
+            padding: 8px 12px;
+            border-radius: 10px;
+            color: #e8dcff;
+            font-weight:600;
+            cursor:pointer;
+        }
+
+        /* Contact form */
+        .contact-section {
+            margin-top: 2rem;
+            background: rgba(0,0,0,0.7);
+            padding: 1.5rem;
+            border-radius: 12px;
+            border: 1px solid #4a2c7a;
+        }
+        .form-row { display:flex; gap: 1rem; margin-bottom: 0.75rem; }
+        .form-row input, .form-row textarea {
+            width:100%;
+            padding:10px 12px;
+            border-radius:8px;
+            border: 1px solid rgba(157,78,221,0.12);
+            background: rgba(20,20,20,0.7);
+            color: #fff;
+        }
+        .form-row textarea { min-height:100px; resize:vertical; }
+        .submit-btn {
+            background: linear-gradient(45deg, #9d4edd, #7209b7);
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 12px;
+            font-size: 1rem;
+            cursor:pointer;
+            font-weight:700;
+        }
+        footer {
+            background: rgba(0,0,0,0.9);
+            color: white;
+            text-align: center;
+            padding: 2rem 0;
+            margin-top: 2.5rem;
+            border-top: 2px solid #4a2c7a;
+        }
+
+        @media (max-width: 980px) {
+            .services-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+        @media (max-width: 640px) {
+            .services-grid { grid-template-columns: 1fr; }
+            .form-row { flex-direction: column; }
+            .hero h1 { font-size: 1.9rem; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <nav class="container">
+            <a href="index.html" class="logo">🤖 The Robots</a>
+            <ul class="nav-links">
+                <li><a href="index.html">Home</a></li>
+                <li><a href="services.html">Services</a></li>
+                <li><a href="founders.html">Founders</a></li>
+                <li><a href="#contact">Contact</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main class="container">
+        <section class="hero">
+            <h1>Services</h1>
+            <p>Practical AI solutions that save time, cut costs, and scale with your business.</p>
+        </section>
+
+        <section class="services-section">
+            <h2 style="color:white;">What we offer</h2>
+            <div class="services-grid" id="servicesGrid">
+                <!-- Service 1 -->
+                <div class="service-card">
+                    <div>
+                        <div class="card-title">AI Automation & Workflow Design</div>
+                        <div class="card-desc">Streamline repetitive processes like scheduling, outreach, and reporting with reliable automation flows.</div>
+                        <div class="card-meta">Inbound: Capture and qualify incoming leads. Outbound: Personalized follow-ups and reminders.</div>
+                        <div class="small-tag">Automated content: templates & sequencing</div>
+                    </div>
+                    <div class="cta-row">
+                        <button class="outline-btn" onclick="prefillContact('AI Automation & Workflow Design')">Request Proposal</button>
+                        <button class="outline-btn" onclick="scrollToContact()">Contact</button>
+                    </div>
+                </div>
+
+                <!-- Service 2 -->
+                <div class="service-card">
+                    <div>
+                        <div class="card-title">Conversational AI</div>
+                        <div class="card-desc">Deploy chat and voice assistants that handle inquiries, route leads, and summarize conversations.</div>
+                        <div class="card-meta">Inbound: answer questions, qualify leads. Outbound: proactive re-engagement campaigns.</div>
+                        <div class="small-tag">Automated content: dynamic replies & scripts</div>
+                    </div>
+                    <div class="cta-row">
+                        <button class="outline-btn" onclick="prefillContact('Conversational AI')">Request Proposal</button>
+                        <button class="outline-btn" onclick="scrollToContact()">Contact</button>
+                    </div>
+                </div>
+
+                <!-- Service 3 -->
+                <div class="service-card">
+                    <div>
+                        <div class="card-title">Automated Content</div>
+                        <div class="card-desc">Personalized videos, emails, and social copy generated at scale to keep audiences engaged.</div>
+                        <div class="card-meta">Inbound: instant tailored responses. Outbound: large-scale personalized campaigns.</div>
+                        <div class="small-tag">Automated content: templates & personalization</div>
+                    </div>
+                    <div class="cta-row">
+                        <button class="outline-btn" onclick="prefillContact('Automated Content')">Request Proposal</button>
+                        <button class="outline-btn" onclick="scrollToContact()">Contact</button>
+                    </div>
+                </div>
+
+                <!-- Service 4 -->
+                <div class="service-card">
+                    <div>
+                        <div class="card-title">Data & Analytics</div>
+                        <div class="card-desc">Turn raw data into dashboards, insights, and predictions that inform real decisions.</div>
+                        <div class="card-meta">Inbound: extract details from calls and emails. Outbound: proactive reporting and alerts.</div>
+                        <div class="small-tag">Automated content: summary reports</div>
+                    </div>
+                    <div class="cta-row">
+                        <button class="outline-btn" onclick="prefillContact('Data & Analytics')">Request Proposal</button>
+                        <button class="outline-btn" onclick="scrollToContact()">Contact</button>
+                    </div>
+                </div>
+
+                <!-- Service 5 -->
+                <div class="service-card">
+                    <div>
+                        <div class="card-title">AI-Enhanced Client Flows</div>
+                        <div class="card-desc">End-to-end journeys from inquiry to payment, built to your comfort level and scale.</div>
+                        <div class="card-meta">Inbound: forms, signups, document intake. Outbound: guided journeys & reminders.</div>
+                        <div class="small-tag">Automated content: onboarding sequences</div>
+                    </div>
+                    <div class="cta-row">
+                        <button class="outline-btn" onclick="prefillContact('AI-Enhanced Client Flows')">Request Proposal</button>
+                        <button class="outline-btn" onclick="scrollToContact()">Contact</button>
+                    </div>
+                </div>
+
+                <!-- Service 6 -->
+                <div class="service-card">
+                    <div>
+                        <div class="card-title">Custom Integrations & Support</div>
+                        <div class="card-desc">Connect systems, protect visibility and control, and keep automation maintainable over time.</div>
+                        <div class="card-meta">Inbound: data sync and monitoring. Outbound: alerts and scheduled updates.</div>
+                        <div class="small-tag">Automated content: integration logs & summaries</div>
+                    </div>
+                    <div class="cta-row">
+                        <button class="outline-btn" onclick="prefillContact('Custom Integrations & Support')">Request Proposal</button>
+                        <button class="outline-btn" onclick="scrollToContact()">Contact</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Contact area -->
+            <div id="contact" class="contact-section" style="margin-top:1.75rem;">
+                <h3 style="margin-bottom:0.75rem;">Get a short plan for your business</h3>
+                <p style="color:#cfcfe1; margin-bottom:1rem;">Leave your contact info and we’ll send a concise approach tailored to your answers.</p>
+
+                <form id="contactForm">
+                    <div class="form-row">
+                        <input id="name" name="name" type="text" placeholder="Your name" required />
+                        <input id="email" name="email" type="email" placeholder="Email address" required />
+                    </div>
+                    <div class="form-row">
+                        <input id="company" name="company" type="text" placeholder="Company (optional)" />
+                        <input id="phone" name="phone" type="tel" placeholder="Phone (optional)" />
+                    </div>
+                    <div style="margin-bottom:0.75rem;">
+                        <textarea id="message" name="message" placeholder="One-line summary or paste top pain points..."></textarea>
+                    </div>
+                    <!-- NOTE: Replace action below with your form endpoint (Formspree, Netlify, your server) -->
+                    <div style="display:flex; gap:10px; align-items:center;">
+                        <button type="submit" class="submit-btn">Send Request</button>
+                        <div id="formStatus" style="color:#d4d0ff; font-weight:600; margin-left:10px;"></div>
+                    </div>
+                </form>
+                <small style="display:block; color:#bfb7e1; margin-top:0.75rem;">We respect your privacy. We will only use this info to follow up about TheRobots.io services.</small>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2024 The Robots. All rights reserved. | Powered by AI Innovation</p>
+        </div>
+    </footer>
+
+    <script>
+        // Prefill helper when a user clicks "Request Proposal"
+        function prefillContact(serviceName) {
+            const message = document.getElementById('message');
+            message.value = "Interest in: " + serviceName + " — please suggest a short plan.";
+            scrollToContact();
+            document.getElementById('name').focus();
+        }
+
+        function scrollToContact() {
+            const el = document.getElementById('contact');
+            if (!el) return;
+            el.scrollIntoView({behavior:'smooth', block:'center'});
+        }
+
+        // Simple client-side handling so the form feels live.
+        // Replace this with a real POST endpoint when ready.
+        const contactForm = document.getElementById('contactForm');
+        const formStatus = document.getElementById('formStatus');
+
+        contactForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const name = document.getElementById('name').value.trim();
+            const email = document.getElementById('email').value.trim();
+            if (!name || !email) {
+                formStatus.textContent = 'Please enter name and email.';
+                return;
+            }
+            // For now we show a success message and clear fields.
+            // TODO: send to your server or Formspree by doing a fetch POST to your endpoint.
+            formStatus.textContent = 'Thanks — we will follow up soon.';
+            contactForm.reset();
+        });
+    </script>
+</body>
+</html>
