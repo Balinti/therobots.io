@@ -14,8 +14,8 @@
         body {
             font-family: 'Arial', sans-serif;
             line-height: 1.6;
-            color: #333;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            background: linear-gradient(135deg, #2d1b69 0%, #11001c 100%);
             min-height: 100vh;
         }
 
@@ -26,13 +26,14 @@
         }
 
         header {
-            background: rgba(255, 255, 255, 0.1);
+            background: rgba(0, 0, 0, 0.8);
             backdrop-filter: blur(10px);
             padding: 1rem 0;
             position: fixed;
             width: 100%;
             top: 0;
             z-index: 1000;
+            border-bottom: 2px solid #4a2c7a;
         }
 
         nav {
@@ -62,7 +63,7 @@
         }
 
         .nav-links a:hover {
-            color: #ffd700;
+            color: #9d4edd;
         }
 
         main {
@@ -79,17 +80,19 @@
         .hero h1 {
             font-size: 3.5rem;
             margin-bottom: 1rem;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            color: white;
         }
 
         .hero p {
             font-size: 1.2rem;
             margin-bottom: 2rem;
             opacity: 0.9;
+            color: white;
         }
 
         .cta-button {
-            background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+            background: linear-gradient(45deg, #9d4edd, #7209b7);
             color: white;
             padding: 15px 30px;
             border: none;
@@ -104,79 +107,78 @@
 
         .cta-button:hover {
             transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
-        }
-
-        .services-preview {
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 20px;
-            padding: 3rem;
-            margin: 3rem 0;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-        }
-
-        .services-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 2rem;
-            margin-top: 2rem;
-        }
-
-        .service-card {
-            background: white;
-            padding: 2rem;
-            border-radius: 15px;
-            text-align: center;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-            transition: transform 0.3s;
-        }
-
-        .service-card:hover {
-            transform: translateY(-5px);
-        }
-
-        .service-icon {
-            font-size: 3rem;
-            margin-bottom: 1rem;
+            box-shadow: 0 10px 20px rgba(157, 78, 221, 0.3);
         }
 
         .video-section {
-            background: rgba(255, 255, 255, 0.95);
+            background: rgba(0, 0, 0, 0.7);
             border-radius: 20px;
             padding: 3rem;
             margin: 3rem 0;
             text-align: center;
+            border: 2px solid #4a2c7a;
         }
 
-        .video-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-            gap: 2rem;
-            margin-top: 2rem;
+        .video-section h2 {
+            color: white;
+            margin-bottom: 2rem;
         }
 
-        .video-placeholder {
-            background: #f4f4f4;
-            border: 2px dashed #ccc;
-            border-radius: 10px;
-            padding: 3rem;
-            color: #666;
+        .video-container {
+            position: relative;
+            width: 100%;
+            max-width: 900px;
+            margin: 0 auto;
+            padding-bottom: 50.25%; /* 16:9 aspect ratio */
+            height: 0;
+            overflow: hidden;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+        }
+
+        .video-container iframe {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 15px;
         }
 
         .ai-agent-section {
-            background: rgba(255, 255, 255, 0.95);
+            background: rgba(0, 0, 0, 0.7);
             border-radius: 20px;
             padding: 3rem;
             margin: 3rem 0;
             text-align: center;
+            border: 2px solid #4a2c7a;
+        }
+
+        .ai-agent-section h2 {
+            color: white;
+            margin-bottom: 2rem;
+        }
+
+        .ai-agent-section p {
+            color: #cccccc;
+            margin-bottom: 2rem;
+        }
+
+        .ai-agent-placeholder {
+            background: rgba(20, 20, 20, 0.8);
+            border-radius: 15px;
+            padding: 3rem;
+            border: 2px dashed #4a2c7a;
+            color: #cccccc;
         }
 
         footer {
-            background: rgba(0, 0, 0, 0.8);
+            background: rgba(0, 0, 0, 0.9);
             color: white;
             text-align: center;
             padding: 2rem 0;
             margin-top: 4rem;
+            border-top: 2px solid #4a2c7a;
         }
 
         @media (max-width: 768px) {
@@ -189,8 +191,29 @@
                 gap: 1rem;
             }
             
-            .video-grid {
-                grid-template-columns: 1fr;
+            .video-container {
+                max-width: 100%;
+                padding-bottom: 56.25%; /* Maintain 16:9 on mobile */
+            }
+
+            .video-section,
+            .ai-agent-section {
+                padding: 2rem 1rem;
+                margin: 2rem 0;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .hero h1 {
+                font-size: 2rem;
+            }
+            
+            .hero p {
+                font-size: 1rem;
+            }
+
+            .container {
+                padding: 0 15px;
             }
         }
     </style>
@@ -215,45 +238,19 @@
             <a href="services.html" class="cta-button">Explore Our Services</a>
         </section>
 
-        <section class="services-preview">
-            <h2 style="text-align: center; margin-bottom: 2rem; color: #333;">Our AI Services</h2>
-            <div class="services-grid">
-                <div class="service-card">
-                    <div class="service-icon">🧠</div>
-                    <h3>AI Consulting</h3>
-                    <p>Strategic AI implementation for your business needs</p>
-                </div>
-                <div class="service-card">
-                    <div class="service-icon">🚀</div>
-                    <h3>Custom AI Solutions</h3>
-                    <p>Tailored AI applications built for your specific requirements</p>
-                </div>
-                <div class="service-card">
-                    <div class="service-icon">💬</div>
-                    <h3>AI Agent Development</h3>
-                    <p>Intelligent conversational agents for customer engagement</p>
-                </div>
-            </div>
-            <div style="text-align: center; margin-top: 2rem;">
-                <a href="services.html" class="cta-button">View All Services</a>
-            </div>
-        </section>
-
         <section class="video-section">
-            <h2 style="margin-bottom: 2rem; color: #333;">See Our Work in Action</h2>
-<div class="video-grid">
-    <div style="text-align: center;">
-        <iframe width="560" height="315" src="https://www.youtube.com/embed/mRtGNMQlAic" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
-    </div>
-</div>
+            <h2>See Our Work in Action</h2>
+            <div class="video-container">
+                <iframe src="https://www.youtube.com/embed/mRtGNMQlAic" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+            </div>
         </section>
 
         <section class="ai-agent-section">
-            <h2 style="margin-bottom: 2rem; color: #333;">Chat with Our AI Agent</h2>
-            <p style="margin-bottom: 2rem; color: #666;">Experience our AI technology firsthand</p>
-            <div style="background: #f9f9f9; border-radius: 10px; padding: 2rem; border: 1px solid #ddd;">
+            <h2>Chat with Our AI Agent</h2>
+            <p>Experience our AI technology firsthand</p>
+            <div class="ai-agent-placeholder">
                 <p><strong>11Labs AI Agent will be embedded here</strong></p>
-                <p style="margin-top: 1rem; color: #666;">
+                <p style="margin-top: 1rem;">
                     Replace this section with your 11Labs embed code
                 </p>
                 <!-- Replace with your 11Labs embed code -->
