@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>The Robots - AI Solutions</title>
+    <title>The Robots - AI Voice Automation Solutions</title>
     <style>
         * {
             margin: 0;
@@ -43,10 +43,28 @@
         }
 
         .logo {
-            font-size: 2rem;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            text-decoration: none;
+            transition: transform 0.3s;
+        }
+
+        .logo:hover {
+            transform: scale(1.05);
+        }
+
+        .logo-img {
+            width: 50px;
+            height: 50px;
+            object-fit: contain;
+            border-radius: 8px;
+        }
+
+        .logo-text {
+            font-size: 1.8rem;
             font-weight: bold;
             color: white;
-            text-decoration: none;
         }
 
         .nav-links {
@@ -75,6 +93,20 @@
             text-align: center;
             color: white;
             margin-bottom: 4rem;
+            padding: 3rem 2rem;
+        }
+
+        .hero-logo {
+            width: 150px;
+            height: 150px;
+            margin: 0 auto 2rem;
+            animation: float 3s ease-in-out infinite;
+            object-fit: contain;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-20px); }
         }
 
         .hero h1 {
@@ -82,6 +114,20 @@
             margin-bottom: 1rem;
             text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
             color: white;
+        }
+
+        .gradient-text {
+            background: linear-gradient(45deg, #9d4edd, #c77dff, #e0aaff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: gradientShift 3s ease infinite;
+            background-size: 200% auto;
+        }
+
+        @keyframes gradientShift {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
         }
 
         .hero p {
@@ -103,11 +149,161 @@
             text-decoration: none;
             display: inline-block;
             transition: transform 0.3s, box-shadow 0.3s;
+            box-shadow: 0 4px 15px rgba(157, 78, 221, 0.4);
         }
 
         .cta-button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 25px rgba(157, 78, 221, 0.6);
+        }
+
+        /* Statistics Section */
+        .stats-section {
+            padding: 3rem 0;
+            margin: 3rem 0;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 2rem;
+        }
+
+        .stat-card {
+            background: rgba(0, 0, 0, 0.7);
+            border: 2px solid #4a2c7a;
+            border-radius: 20px;
+            padding: 2rem;
+            text-align: center;
+            transition: transform 0.3s, border-color 0.3s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-10px);
+            border-color: #9d4edd;
+            box-shadow: 0 10px 30px rgba(157, 78, 221, 0.3);
+        }
+
+        .stat-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+
+        .stat-number {
+            font-size: 3rem;
+            font-weight: bold;
+            color: #9d4edd;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-label {
+            font-size: 1.1rem;
+            color: #cccccc;
+        }
+
+        /* ROI Calculator */
+        .roi-calculator {
+            background: rgba(0, 0, 0, 0.7);
+            border: 2px solid #4a2c7a;
+            border-radius: 20px;
+            padding: 3rem;
+            margin: 3rem 0;
+        }
+
+        .roi-calculator h2 {
+            text-align: center;
+            margin-bottom: 2rem;
+            color: white;
+        }
+
+        .calculator-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 3rem;
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        .calculator-inputs {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .input-group label {
+            margin-bottom: 0.5rem;
+            color: #cccccc;
+            font-weight: 500;
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: 12px;
+            background: rgba(157, 78, 221, 0.1);
+            border: 2px solid #4a2c7a;
+            border-radius: 10px;
+            color: white;
+            font-size: 1.1rem;
+            transition: border-color 0.3s;
+        }
+
+        .input-group input:focus {
+            outline: none;
+            border-color: #9d4edd;
+        }
+
+        .calculate-btn {
+            width: 100%;
+            background: linear-gradient(45deg, #9d4edd, #7209b7);
+            color: white;
+            padding: 15px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.3s;
+        }
+
+        .calculate-btn:hover {
             transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(157, 78, 221, 0.3);
+            box-shadow: 0 5px 15px rgba(157, 78, 221, 0.4);
+        }
+
+        .calculator-results {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .result-card {
+            background: rgba(157, 78, 221, 0.1);
+            border: 2px solid #9d4edd;
+            border-radius: 15px;
+            padding: 1.5rem;
+            text-align: center;
+            transition: transform 0.3s;
+        }
+
+        .result-card:hover {
+            transform: scale(1.05);
+        }
+
+        .result-card h3 {
+            color: #cccccc;
+            margin-bottom: 1rem;
+            font-size: 1rem;
+        }
+
+        .result-value {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #9d4edd;
         }
 
         .video-section {
@@ -129,7 +325,7 @@
             width: 100%;
             max-width: 900px;
             margin: 0 auto;
-            padding-bottom: 50.25%; /* 16:9 aspect ratio */
+            padding-bottom: 50.25%;
             height: 0;
             overflow: hidden;
             border-radius: 15px;
@@ -156,20 +352,12 @@
 
         .ai-agent-section h2 {
             color: white;
-            margin-bottom: 2rem;
+            margin-bottom: 1rem;
         }
 
         .ai-agent-section p {
             color: #cccccc;
             margin-bottom: 2rem;
-        }
-
-        .ai-agent-placeholder {
-            background: rgba(20, 20, 20, 0.8);
-            border-radius: 15px;
-            padding: 3rem;
-            border: 2px dashed #4a2c7a;
-            color: #cccccc;
         }
 
         footer {
@@ -190,30 +378,24 @@
                 flex-direction: column;
                 gap: 1rem;
             }
+
+            .calculator-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
             
             .video-container {
                 max-width: 100%;
-                padding-bottom: 56.25%; /* Maintain 16:9 on mobile */
+                padding-bottom: 56.25%;
             }
 
             .video-section,
-            .ai-agent-section {
+            .ai-agent-section,
+            .roi-calculator {
                 padding: 2rem 1rem;
-                margin: 2rem 0;
-            }
-        }
-
-        @media (max-width: 480px) {
-            .hero h1 {
-                font-size: 2rem;
-            }
-            
-            .hero p {
-                font-size: 1rem;
-            }
-
-            .container {
-                padding: 0 15px;
             }
         }
     </style>
@@ -221,7 +403,10 @@
 <body>
     <header>
         <nav class="container">
-            <a href="index.html" class="logo">🤖 The Robots</a>
+            <a href="index.html" class="logo">
+                <img src="images/bot-logo.jpg" alt="The Robots Logo" class="logo-img">
+                <span class="logo-text">The Robots</span>
+            </a>
             <ul class="nav-links">
                 <li><a href="index.html">Home</a></li>
                 <li><a href="services.html">Services</a></li>
@@ -233,9 +418,72 @@
 
     <main class="container">
         <section class="hero">
-            <h1>Welcome to The Robots</h1>
-            <p>Cutting-edge AI solutions for the modern world</p>
-            <a href="services.html" class="cta-button">Explore Our Services</a>
+            <img src="images/mark-logo.jpg" alt="The Robots TR Logo" class="hero-logo">
+            <h1>Transform Your Business with <span class="gradient-text">AI Voice Agents</span></h1>
+            <p>Automate calls, book meetings, and delight customers 24/7 with Tara</p>
+            <a href="#ai-agent" class="cta-button">🎙️ Speak with Tara Now</a>
+        </section>
+
+        <!-- Statistics Section -->
+        <section class="stats-section">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon">📞</div>
+                    <div class="stat-number" data-target="50000">0</div>
+                    <div class="stat-label">Calls Automated</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">⏱️</div>
+                    <div class="stat-number" data-target="10000">0</div>
+                    <div class="stat-label">Hours Saved</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">😊</div>
+                    <div class="stat-number" data-target="98">0</div>
+                    <div class="stat-label">% Customer Satisfaction</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">💰</div>
+                    <div class="stat-number" data-target="2000000">0</div>
+                    <div class="stat-label">$ Saved for Clients</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ROI Calculator -->
+        <section class="roi-calculator">
+            <h2>💡 Calculate Your Savings with AI Voice Automation</h2>
+            <div class="calculator-grid">
+                <div class="calculator-inputs">
+                    <div class="input-group">
+                        <label>Average calls per day</label>
+                        <input type="number" id="callsPerDay" value="50" min="1">
+                    </div>
+                    <div class="input-group">
+                        <label>Average call duration (minutes)</label>
+                        <input type="number" id="callDuration" value="5" min="1">
+                    </div>
+                    <div class="input-group">
+                        <label>Current cost per call ($)</label>
+                        <input type="number" id="costPerCall" value="3" min="0" step="0.1">
+                    </div>
+                    <button onclick="calculateROI()" class="calculate-btn">Calculate Savings</button>
+                </div>
+                <div class="calculator-results">
+                    <div class="result-card">
+                        <h3>Monthly Savings</h3>
+                        <div class="result-value" id="monthlySavings">$0</div>
+                    </div>
+                    <div class="result-card">
+                        <h3>Annual Savings</h3>
+                        <div class="result-value" id="annualSavings">$0</div>
+                    </div>
+                    <div class="result-card">
+                        <h3>Hours Saved/Month</h3>
+                        <div class="result-value" id="hoursSaved">0</div>
+                    </div>
+                </div>
+            </div>
         </section>
 
         <section class="video-section">
@@ -244,13 +492,13 @@
                 <iframe src="https://www.youtube.com/embed/mRtGNMQlAic" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
             </div>
         </section>
-</main>
+    </main>
 
-    <!-- AI Agent section at bottom of page -->
-    <section class="ai-agent-section">
+    <!-- AI Agent section -->
+    <section class="ai-agent-section" id="ai-agent">
         <div class="container">
-            <h2>Chat with Our AI Agent</h2>
-            <p>Experience our AI technology firsthand</p>
+            <h2>🎙️ Speak with Tara - Our AI Voice Agent</h2>
+            <p>Experience our AI technology firsthand - have a real conversation!</p>
             <div style="background: rgba(20, 20, 20, 0.8); border-radius: 15px; padding: 2rem; border: 2px solid #4a2c7a; margin-top: 2rem;">
                 <elevenlabs-convai agent-id="agent_0701k6238fn5ex58es31xvqvs868"></elevenlabs-convai>
                 <script src="https://unpkg.com/@elevenlabs/convai-widget-embed" async type="text/javascript"></script>
@@ -264,5 +512,84 @@
         </div>
     </footer>
 
+    <script>
+        // Animated counter for statistics
+        function animateCounter(element) {
+            const target = parseInt(element.getAttribute('data-target'));
+            const duration = 2000;
+            const increment = target / (duration / 16);
+            let current = 0;
+
+            const updateCounter = () => {
+                current += increment;
+                if (current < target) {
+                    element.textContent = Math.floor(current).toLocaleString();
+                    requestAnimationFrame(updateCounter);
+                } else {
+                    element.textContent = target.toLocaleString();
+                }
+            };
+
+            updateCounter();
+        }
+
+        // Intersection Observer to trigger animation when visible
+        const observerOptions = {
+            threshold: 0.5
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const counters = entry.target.querySelectorAll('.stat-number');
+                    counters.forEach(counter => animateCounter(counter));
+                    observer.unobserve(entry.target);
+                }
+            });
+        }, observerOptions);
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const statsSection = document.querySelector('.stats-section');
+            if (statsSection) observer.observe(statsSection);
+        });
+
+        // ROI Calculator
+        function calculateROI() {
+            const callsPerDay = parseInt(document.getElementById('callsPerDay').value);
+            const callDuration = parseInt(document.getElementById('callDuration').value);
+            const costPerCall = parseFloat(document.getElementById('costPerCall').value);
+            
+            // Assuming AI reduces costs by 70%
+            const savingsPerCall = costPerCall * 0.7;
+            const dailySavings = callsPerDay * savingsPerCall;
+            const monthlySavings = dailySavings * 30;
+            const annualSavings = monthlySavings * 12;
+            const hoursSaved = (callsPerDay * callDuration * 30) / 60;
+            
+            // Animate the results
+            animateValue('monthlySavings', 0, monthlySavings, 1000, true);
+            animateValue('annualSavings', 0, annualSavings, 1000, true);
+            animateValue('hoursSaved', 0, hoursSaved, 1000, false);
+        }
+
+        function animateValue(id, start, end, duration, isCurrency) {
+            const element = document.getElementById(id);
+            const range = end - start;
+            const increment = range / (duration / 16);
+            let current = start;
+            
+            const timer = setInterval(() => {
+                current += increment;
+                if (current >= end) {
+                    current = end;
+                    clearInterval(timer);
+                }
+                const displayValue = isCurrency ? 
+                    `$${Math.floor(current).toLocaleString()}` : 
+                    Math.floor(current).toLocaleString();
+                element.textContent = displayValue;
+            }, 16);
+        }
+    </script>
 </body>
 </html>
