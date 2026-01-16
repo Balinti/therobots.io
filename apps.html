@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Apps Directory - The Robots</title>
+    <meta name="robots" content="noindex, nofollow">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', 'Arial', sans-serif;
+            line-height: 1.6;
+            color: white;
+            background: linear-gradient(135deg, #2d1b69 0%, #11001c 100%);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        header {
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(10px);
+            padding: 1rem 0;
+            position: fixed;
+            width: 100%;
+            top: 0;
+            z-index: 1000;
+            border-bottom: 2px solid #4a2c7a;
+        }
+
+        nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            text-decoration: none;
+            transition: transform 0.3s;
+        }
+
+        .logo:hover {
+            transform: scale(1.05);
+        }
+
+        .logo-img {
+            width: 50px;
+            height: 50px;
+            object-fit: contain;
+            border-radius: 8px;
+        }
+
+        .logo-text {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: white;
+        }
+
+        .back-link {
+            color: #9d4edd;
+            text-decoration: none;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: color 0.3s;
+        }
+
+        .back-link:hover {
+            color: #c77dff;
+        }
+
+        main {
+            margin-top: 100px;
+            padding: 2rem 0 4rem;
+        }
+
+        .page-header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+
+        .page-header h1 {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            background: linear-gradient(45deg, #9d4edd, #c77dff, #e0aaff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .page-header p {
+            font-size: 1.2rem;
+            color: #cfcfe1;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .filter-bar {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .filter-btn {
+            background: rgba(157, 78, 221, 0.2);
+            border: 1px solid #9d4edd;
+            color: white;
+            padding: 8px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 0.9rem;
+        }
+
+        .filter-btn:hover,
+        .filter-btn.active {
+            background: linear-gradient(45deg, #9d4edd, #7209b7);
+            border-color: transparent;
+        }
+
+        .search-container {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 3rem;
+        }
+
+        .search-input {
+            width: 100%;
+            max-width: 500px;
+            padding: 15px 25px;
+            border: 2px solid #4a2c7a;
+            border-radius: 50px;
+            background: rgba(0, 0, 0, 0.3);
+            color: white;
+            font-size: 1rem;
+            transition: border-color 0.3s, box-shadow 0.3s;
+        }
+
+        .search-input::placeholder {
+            color: #888;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: #9d4edd;
+            box-shadow: 0 0 20px rgba(157, 78, 221, 0.3);
+        }
+
+        .apps-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 2rem;
+        }
+
+        .app-card {
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid #4a2c7a;
+            border-radius: 20px;
+            padding: 1.5rem;
+            transition: all 0.3s ease;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .app-card:hover {
+            transform: translateY(-5px);
+            border-color: #9d4edd;
+            box-shadow: 0 20px 40px rgba(157, 78, 221, 0.2);
+        }
+
+        .app-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 1rem;
+        }
+
+        .app-info {
+            flex: 1;
+        }
+
+        .app-name {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: white;
+            margin-bottom: 0.5rem;
+        }
+
+        .app-category {
+            display: inline-block;
+            background: linear-gradient(45deg, #9d4edd, #7209b7);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 15px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .app-qr {
+            width: 80px;
+            height: 80px;
+            background: white;
+            border-radius: 10px;
+            padding: 5px;
+            flex-shrink: 0;
+            cursor: pointer;
+            transition: transform 0.3s;
+        }
+
+        .app-qr:hover {
+            transform: scale(1.1);
+        }
+
+        .app-qr img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .app-description {
+            color: #cfcfe1;
+            font-size: 0.95rem;
+            line-height: 1.6;
+            margin-bottom: 1.5rem;
+            flex: 1;
+        }
+
+        .app-actions {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .app-btn {
+            flex: 1;
+            padding: 12px 20px;
+            border-radius: 10px;
+            text-decoration: none;
+            font-weight: 500;
+            text-align: center;
+            transition: all 0.3s;
+            font-size: 0.9rem;
+        }
+
+        .app-btn-primary {
+            background: linear-gradient(45deg, #9d4edd, #7209b7);
+            color: white;
+            border: none;
+        }
+
+        .app-btn-primary:hover {
+            box-shadow: 0 5px 20px rgba(157, 78, 221, 0.4);
+            transform: translateY(-2px);
+        }
+
+        .app-btn-secondary {
+            background: transparent;
+            color: #9d4edd;
+            border: 1px solid #9d4edd;
+        }
+
+        .app-btn-secondary:hover {
+            background: rgba(157, 78, 221, 0.1);
+        }
+
+        .stats-bar {
+            display: flex;
+            justify-content: center;
+            gap: 3rem;
+            margin-bottom: 3rem;
+            flex-wrap: wrap;
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 2.5rem;
+            font-weight: bold;
+            background: linear-gradient(45deg, #9d4edd, #c77dff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .stat-label {
+            color: #cfcfe1;
+            font-size: 0.9rem;
+        }
+
+        /* QR Modal */
+        .qr-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .qr-modal.active {
+            display: flex;
+        }
+
+        .qr-modal-content {
+            background: rgba(45, 27, 105, 0.95);
+            border: 2px solid #9d4edd;
+            border-radius: 20px;
+            padding: 2rem;
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+        }
+
+        .qr-modal-content h3 {
+            margin-bottom: 1rem;
+            color: white;
+        }
+
+        .qr-modal-content img {
+            width: 250px;
+            height: 250px;
+            background: white;
+            border-radius: 15px;
+            padding: 15px;
+            margin-bottom: 1rem;
+        }
+
+        .qr-modal-content p {
+            color: #cfcfe1;
+            font-size: 0.9rem;
+            margin-bottom: 1.5rem;
+            word-break: break-all;
+        }
+
+        .qr-close-btn {
+            background: linear-gradient(45deg, #9d4edd, #7209b7);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.3s;
+        }
+
+        .qr-close-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 20px rgba(157, 78, 221, 0.4);
+        }
+
+        footer {
+            background: rgba(0, 0, 0, 0.5);
+            padding: 2rem 0;
+            text-align: center;
+            border-top: 1px solid #4a2c7a;
+        }
+
+        footer p {
+            color: #888;
+            font-size: 0.9rem;
+        }
+
+        .no-results {
+            text-align: center;
+            padding: 4rem 2rem;
+            color: #cfcfe1;
+            display: none;
+        }
+
+        .no-results.active {
+            display: block;
+        }
+
+        .no-results h3 {
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+            color: white;
+        }
+
+        @media (max-width: 768px) {
+            .page-header h1 {
+                font-size: 2rem;
+            }
+
+            .apps-grid {
+                grid-template-columns: 1fr;
+                gap: 1.5rem;
+            }
+
+            .stats-bar {
+                gap: 1.5rem;
+            }
+
+            .stat-number {
+                font-size: 2rem;
+            }
+
+            .app-header {
+                flex-direction: column;
+                gap: 1rem;
+            }
+
+            .app-qr {
+                align-self: center;
+                width: 100px;
+                height: 100px;
+            }
+
+            .app-actions {
+                flex-direction: column;
+            }
+
+            .filter-bar {
+                gap: 0.5rem;
+            }
+
+            .filter-btn {
+                padding: 6px 14px;
+                font-size: 0.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <nav>
+                <a href="index.html" class="logo">
+                    <img src="images/bot-logo.png" alt="The Robots Logo" class="logo-img">
+                    <span class="logo-text">The Robots</span>
+                </a>
+                <a href="index.html" class="back-link">
+                    <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path d="M19 12H5M12 19l-7-7 7-7"/>
+                    </svg>
+                    Back to Home
+                </a>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <div class="container">
+            <div class="page-header">
+                <h1>Apps Directory</h1>
+                <p>Explore our collection of innovative web applications built to enhance productivity, learning, and everyday life.</p>
+            </div>
+
+            <div class="stats-bar">
+                <div class="stat-item">
+                    <div class="stat-number">36</div>
+                    <div class="stat-label">Total Apps</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">8</div>
+                    <div class="stat-label">Categories</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">100%</div>
+                    <div class="stat-label">Free to Use</div>
+                </div>
+            </div>
+
+            <div class="search-container">
+                <input type="text" class="search-input" id="searchInput" placeholder="Search apps by name or description...">
+            </div>
+
+            <div class="filter-bar">
+                <button class="filter-btn active" data-category="all">All Apps</button>
+                <button class="filter-btn" data-category="productivity">Productivity</button>
+                <button class="filter-btn" data-category="education">Education</button>
+                <button class="filter-btn" data-category="finance">Finance</button>
+                <button class="filter-btn" data-category="wellness">Wellness</button>
+                <button class="filter-btn" data-category="games">Games</button>
+                <button class="filter-btn" data-category="ai">AI Tools</button>
+                <button class="filter-btn" data-category="social">Social</button>
+            </div>
+
+            <div class="apps-grid" id="appsGrid">
+                <!-- Apps will be dynamically inserted here -->
+            </div>
+
+            <div class="no-results" id="noResults">
+                <h3>No apps found</h3>
+                <p>Try adjusting your search or filter criteria.</p>
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>This page is unlisted and accessible only via direct link.</p>
+        </div>
+    </footer>
+
+    <!-- QR Modal -->
+    <div class="qr-modal" id="qrModal">
+        <div class="qr-modal-content">
+            <h3 id="modalAppName">App Name</h3>
+            <img id="modalQrImage" src="" alt="QR Code">
+            <p id="modalAppUrl">https://example.com</p>
+            <button class="qr-close-btn" onclick="closeQrModal()">Close</button>
+        </div>
+    </div>
+
+    <script>
+        const apps = [
+            {
+                name: "Flowchart Flow",
+                url: "https://flowchart-flow.vercel.app",
+                description: "Create beautiful flowcharts and diagrams with an intuitive drag-and-drop interface. Perfect for visualizing processes, workflows, and system architectures.",
+                category: "productivity"
+            },
+            {
+                name: "Freelance Wellness Coaching",
+                url: "https://freelance-wellness-coaching-platform.vercel.app",
+                description: "Connect freelance wellness coaches with clients seeking personalized health and fitness guidance. Book sessions and track your wellness journey.",
+                category: "wellness"
+            },
+            {
+                name: "Budget Battle Arena",
+                url: "https://budget-battle-arena.vercel.app",
+                description: "Gamify your budgeting experience! Compete with friends to achieve savings goals and earn rewards for smart financial decisions.",
+                category: "finance"
+            },
+            {
+                name: "Midnight Memrise",
+                url: "https://midnight-memrise.vercel.app",
+                description: "A nighttime-optimized flashcard app with dark mode and spaced repetition. Perfect for late-night study sessions and memory training.",
+                category: "education"
+            },
+            {
+                name: "Blackbox Mind Teasers",
+                url: "https://blackbox-mind-teasers.vercel.app",
+                description: "Challenge your logical thinking with cryptic puzzles where you must figure out the hidden rules. Test your deductive reasoning skills.",
+                category: "games"
+            },
+            {
+                name: "Drops Vibe Vocab",
+                url: "https://drops-vibe-vocab.vercel.app",
+                description: "Learn new vocabulary through immersive, vibe-based word associations. A fresh approach to expanding your language skills.",
+                category: "education"
+            },
+            {
+                name: "Focus Writer Daily",
+                url: "https://focus-writer-daily.vercel.app",
+                description: "A distraction-free writing environment with daily prompts and goals. Build your writing habit one day at a time.",
+                category: "productivity"
+            },
+            {
+                name: "Finance Tycoon",
+                url: "https://finance-tycoon.vercel.app",
+                description: "Simulation game where you build your financial empire. Learn investment strategies while managing virtual portfolios.",
+                category: "finance"
+            },
+            {
+                name: "Habit Streak Tracker",
+                url: "https://habit-streak-tracker.vercel.app",
+                description: "Track and maintain your daily habits with streak counters and motivational reminders. Build lasting positive routines.",
+                category: "productivity"
+            },
+            {
+                name: "Focus Mind Sync",
+                url: "https://focus-mind-sync.vercel.app",
+                description: "Synchronize your focus sessions with ambient sounds and Pomodoro timers. Optimize your concentration and productivity.",
+                category: "productivity"
+            },
+            {
+                name: "Tutoring Marketplace Lite",
+                url: "https://tutoring-marketplace-lite.vercel.app",
+                description: "Connect students with tutors across various subjects. Schedule sessions, track progress, and achieve academic goals.",
+                category: "education"
+            },
+            {
+                name: "Serialized Story Platform",
+                url: "https://serialized-story-platform.vercel.app",
+                description: "Read and write serialized stories chapter by chapter. Engage with episodic content and build a community of storytellers.",
+                category: "social"
+            },
+            {
+                name: "AI Creator Arena",
+                url: "https://ai-creator-arena.vercel.app",
+                description: "Compete in AI-powered creative challenges. Generate art, write stories, and showcase your prompting skills against others.",
+                category: "ai"
+            },
+            {
+                name: "Indie Sample Finder",
+                url: "https://indie-sample-finder.vercel.app",
+                description: "Discover royalty-free samples and loops for your music productions. Find the perfect sounds for your indie projects.",
+                category: "productivity"
+            },
+            {
+                name: "Social Anxiety Practice Lab",
+                url: "https://social-anxiety-practice-lab.vercel.app",
+                description: "Safe space to practice social interactions through simulated scenarios. Build confidence at your own pace with guided exercises.",
+                category: "wellness"
+            },
+            {
+                name: "Sunrise Idea Composer",
+                url: "https://sunrise-idea-composer.vercel.app",
+                description: "Capture and develop your morning ideas with structured brainstorming tools. Turn early inspiration into actionable plans.",
+                category: "productivity"
+            },
+            {
+                name: "Wellness App",
+                url: "https://wellness-app.vercel.app",
+                description: "Comprehensive wellness companion for tracking mood, sleep, exercise, and nutrition. Achieve holistic health goals.",
+                category: "wellness"
+            },
+            {
+                name: "GenZ Run Club",
+                url: "https://genz-run-club.vercel.app",
+                description: "Running community app designed for the next generation. Track runs, join challenges, and connect with fellow runners.",
+                category: "wellness"
+            },
+            {
+                name: "Lecture Summarizer",
+                url: "https://lecture-summarizer.vercel.app",
+                description: "Upload lecture recordings and get AI-powered summaries. Extract key points and create study notes automatically.",
+                category: "ai"
+            },
+            {
+                name: "Transit Chat",
+                url: "https://transit-chat.vercel.app",
+                description: "Chat with fellow commuters on your route. Share updates, make connections, and improve your daily transit experience.",
+                category: "social"
+            },
+            {
+                name: "Finch Care",
+                url: "https://finch-care.vercel.app",
+                description: "Self-care companion that gamifies your wellness journey. Grow your virtual pet while building healthy habits.",
+                category: "wellness"
+            },
+            {
+                name: "Conversation Tutor AI",
+                url: "https://conversation-tutor-ai.vercel.app",
+                description: "Practice conversations with an AI tutor. Improve communication skills, learn languages, or prep for interviews.",
+                category: "ai"
+            },
+            {
+                name: "Transit Mindful",
+                url: "https://transit-mindful.vercel.app",
+                description: "Transform your commute with guided meditation and mindfulness exercises timed to your journey.",
+                category: "wellness"
+            },
+            {
+                name: "Lecture Voice Notes",
+                url: "https://lecture-voice-notes.vercel.app",
+                description: "Record, transcribe, and organize lecture notes with voice input. Never miss important information in class.",
+                category: "education"
+            },
+            {
+                name: "Automated Visual Generator",
+                url: "https://automated-visual-generator.vercel.app",
+                description: "Create stunning visuals automatically using AI. Generate social media graphics, presentations, and marketing materials.",
+                category: "ai"
+            },
+            {
+                name: "Streak Vault",
+                url: "https://streak-vault.vercel.app",
+                description: "Secure storage for all your habit streaks and achievements. Track multiple goals and celebrate your consistency.",
+                category: "productivity"
+            },
+            {
+                name: "Color Block Jam",
+                url: "https://color-block-jam.vercel.app",
+                description: "Addictive puzzle game where you match and clear colored blocks. Test your pattern recognition and strategy skills.",
+                category: "games"
+            },
+            {
+                name: "ADHD Body Doubling Buddy",
+                url: "https://adhd-body-doubling-buddy.vercel.app",
+                description: "Virtual body doubling companion for focus and accountability. Work alongside others to boost productivity with ADHD-friendly features.",
+                category: "wellness"
+            },
+            {
+                name: "AI Tutor Kids",
+                url: "https://ai-tutor-kids.vercel.app",
+                description: "Child-friendly AI tutor that makes learning fun. Interactive lessons, quizzes, and adaptive content for young learners.",
+                category: "ai"
+            },
+            {
+                name: "Micro Decision Trainer",
+                url: "https://micro-decision-trainer.vercel.app",
+                description: "Improve decision-making skills through quick micro-scenarios. Build confidence in making choices under pressure.",
+                category: "productivity"
+            },
+            {
+                name: "Daily Logic Puzzle",
+                url: "https://daily-logic-puzzle.vercel.app",
+                description: "Fresh logic puzzles every day to sharpen your mind. From sudoku variations to unique brain teasers.",
+                category: "games"
+            },
+            {
+                name: "Theme Budget Planner",
+                url: "https://theme-budget-planner.vercel.app",
+                description: "Customizable budget planner with beautiful themes. Track expenses, set goals, and visualize your financial health.",
+                category: "finance"
+            },
+            {
+                name: "AI Budget Analyzer",
+                url: "https://ai-budget-analyzer.vercel.app",
+                description: "Let AI analyze your spending patterns and provide personalized savings recommendations. Smart insights for better finances.",
+                category: "ai"
+            },
+            {
+                name: "Knit Community Hub",
+                url: "https://knit-community-hub.vercel.app",
+                description: "Connect with fellow knitting enthusiasts. Share patterns, get tips, and join virtual knitting circles.",
+                category: "social"
+            },
+            {
+                name: "Pattern Memory Challenge",
+                url: "https://pattern-memory-challenge.vercel.app",
+                description: "Test and improve your visual memory with increasingly complex pattern sequences. Train your brain daily.",
+                category: "games"
+            },
+            {
+                name: "Site GPT Chatbot",
+                url: "https://site-gpt-chatbot.vercel.app",
+                description: "Deploy intelligent chatbots for any website. Train on your content and provide instant visitor support powered by AI.",
+                category: "ai"
+            }
+        ];
+
+        function generateQRUrl(url) {
+            return `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(url)}`;
+        }
+
+        function formatName(name) {
+            return name.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+        }
+
+        function getCategoryLabel(category) {
+            const labels = {
+                productivity: 'Productivity',
+                education: 'Education',
+                finance: 'Finance',
+                wellness: 'Wellness',
+                games: 'Games',
+                ai: 'AI Tools',
+                social: 'Social'
+            };
+            return labels[category] || category;
+        }
+
+        function renderApps(filteredApps) {
+            const grid = document.getElementById('appsGrid');
+            const noResults = document.getElementById('noResults');
+
+            if (filteredApps.length === 0) {
+                grid.innerHTML = '';
+                noResults.classList.add('active');
+                return;
+            }
+
+            noResults.classList.remove('active');
+            grid.innerHTML = filteredApps.map(app => `
+                <div class="app-card" data-category="${app.category}">
+                    <div class="app-header">
+                        <div class="app-info">
+                            <h3 class="app-name">${app.name}</h3>
+                            <span class="app-category">${getCategoryLabel(app.category)}</span>
+                        </div>
+                        <div class="app-qr" onclick="openQrModal('${app.name}', '${app.url}')">
+                            <img src="${generateQRUrl(app.url)}" alt="QR Code for ${app.name}" loading="lazy">
+                        </div>
+                    </div>
+                    <p class="app-description">${app.description}</p>
+                    <div class="app-actions">
+                        <a href="${app.url}" target="_blank" rel="noopener noreferrer" class="app-btn app-btn-primary">Open App</a>
+                        <button onclick="copyLink('${app.url}')" class="app-btn app-btn-secondary">Copy Link</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function openQrModal(name, url) {
+            document.getElementById('modalAppName').textContent = name;
+            document.getElementById('modalQrImage').src = generateQRUrl(url);
+            document.getElementById('modalAppUrl').textContent = url;
+            document.getElementById('qrModal').classList.add('active');
+        }
+
+        function closeQrModal() {
+            document.getElementById('qrModal').classList.remove('active');
+        }
+
+        function copyLink(url) {
+            navigator.clipboard.writeText(url).then(() => {
+                const btn = event.target;
+                const originalText = btn.textContent;
+                btn.textContent = 'Copied!';
+                btn.style.background = 'rgba(157, 78, 221, 0.3)';
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.style.background = '';
+                }, 2000);
+            });
+        }
+
+        // Search functionality
+        const searchInput = document.getElementById('searchInput');
+        searchInput.addEventListener('input', (e) => {
+            const query = e.target.value.toLowerCase();
+            const activeCategory = document.querySelector('.filter-btn.active').dataset.category;
+
+            let filtered = apps;
+
+            if (activeCategory !== 'all') {
+                filtered = filtered.filter(app => app.category === activeCategory);
+            }
+
+            if (query) {
+                filtered = filtered.filter(app =>
+                    app.name.toLowerCase().includes(query) ||
+                    app.description.toLowerCase().includes(query)
+                );
+            }
+
+            renderApps(filtered);
+        });
+
+        // Filter functionality
+        const filterBtns = document.querySelectorAll('.filter-btn');
+        filterBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                filterBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+
+                const category = btn.dataset.category;
+                const query = searchInput.value.toLowerCase();
+
+                let filtered = category === 'all' ? apps : apps.filter(app => app.category === category);
+
+                if (query) {
+                    filtered = filtered.filter(app =>
+                        app.name.toLowerCase().includes(query) ||
+                        app.description.toLowerCase().includes(query)
+                    );
+                }
+
+                renderApps(filtered);
+            });
+        });
+
+        // Close modal on outside click
+        document.getElementById('qrModal').addEventListener('click', (e) => {
+            if (e.target === document.getElementById('qrModal')) {
+                closeQrModal();
+            }
+        });
+
+        // Close modal on Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeQrModal();
+            }
+        });
+
+        // Initial render
+        renderApps(apps);
+    </script>
+</body>
+</html>
