@@ -944,206 +944,7 @@
     </div>
 
     <script>
-        // Supabase Configuration
-        const SUPABASE_URL = 'https://api.srv936332.hstgr.cloud';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE';
-
-        // Initialize Supabase client (with error handling)
-        let supabase = null;
-        try {
-            if (window.supabase && window.supabase.createClient) {
-                supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-            } else {
-                console.warn('Supabase library not loaded');
-            }
-        } catch (error) {
-            console.error('Failed to initialize Supabase:', error);
-        }
-
-        // Auth state
-        let currentUser = null;
-        let authMode = 'signin'; // 'signin' or 'signup'
-
-        // Initialize auth state on page load
-        async function initAuth() {
-            if (!supabase) {
-                console.warn('Supabase not available, skipping auth init');
-                return;
-            }
-            try {
-                const { data: { session } } = await supabase.auth.getSession();
-                if (session) {
-                    currentUser = session.user;
-                    updateAuthUI();
-                }
-
-                // Listen for auth changes
-                supabase.auth.onAuthStateChange((event, session) => {
-                    currentUser = session?.user || null;
-                    updateAuthUI();
-                });
-            } catch (error) {
-                console.error('Auth initialization error:', error);
-            }
-        }
-
-        // Update UI based on auth state
-        function updateAuthUI() {
-            const loginBtn = document.getElementById('loginBtn');
-            const userMenu = document.getElementById('userMenu');
-            const userEmail = document.getElementById('userEmail');
-
-            if (currentUser) {
-                loginBtn.style.display = 'none';
-                userMenu.style.display = 'flex';
-                userEmail.textContent = currentUser.email;
-            } else {
-                loginBtn.style.display = 'block';
-                userMenu.style.display = 'none';
-                userEmail.textContent = '';
-            }
-        }
-
-        // Open auth modal
-        function openAuthModal(mode = 'signin') {
-            if (!supabase) {
-                alert('Authentication service is not available. Please try again later.');
-                return;
-            }
-            authMode = mode;
-            updateAuthModalUI();
-            document.getElementById('authEmail').value = '';
-            document.getElementById('authPassword').value = '';
-            document.getElementById('authStatus').className = 'auth-status';
-            document.getElementById('authStatus').textContent = '';
-            document.getElementById('authSubmitBtn').disabled = false;
-            document.getElementById('authModal').classList.add('active');
-            document.getElementById('authEmail').focus();
-        }
-
-        // Close auth modal
-        function closeAuthModal() {
-            document.getElementById('authModal').classList.remove('active');
-        }
-
-        // Toggle between sign in and sign up
-        function toggleAuthMode() {
-            authMode = authMode === 'signin' ? 'signup' : 'signin';
-            updateAuthModalUI();
-        }
-
-        // Update auth modal UI based on mode
-        function updateAuthModalUI() {
-            const title = document.getElementById('authModalTitle');
-            const subtitle = document.getElementById('authModalSubtitle');
-            const submitBtn = document.getElementById('authSubmitBtn');
-            const toggle = document.getElementById('authToggle');
-
-            if (authMode === 'signin') {
-                title.textContent = 'Sign In';
-                subtitle.textContent = 'Welcome back! Sign in to submit feedback.';
-                submitBtn.textContent = 'Sign In';
-                toggle.innerHTML = 'Don\'t have an account? <span class="auth-toggle-link" onclick="toggleAuthMode()">Sign up</span>';
-            } else {
-                title.textContent = 'Sign Up';
-                subtitle.textContent = 'Create an account to submit feedback.';
-                submitBtn.textContent = 'Sign Up';
-                toggle.innerHTML = 'Already have an account? <span class="auth-toggle-link" onclick="toggleAuthMode()">Sign in</span>';
-            }
-        }
-
-        // Handle auth (sign in or sign up)
-        async function handleAuth() {
-            const email = document.getElementById('authEmail').value.trim();
-            const password = document.getElementById('authPassword').value;
-            const submitBtn = document.getElementById('authSubmitBtn');
-            const statusDiv = document.getElementById('authStatus');
-
-            // Check if Supabase is available
-            if (!supabase) {
-                statusDiv.className = 'auth-status error';
-                statusDiv.textContent = 'Authentication service unavailable. Please try again later.';
-                return;
-            }
-
-            // Validation
-            if (!email || !password) {
-                statusDiv.className = 'auth-status error';
-                statusDiv.textContent = 'Please enter both email and password.';
-                return;
-            }
-
-            if (password.length < 6) {
-                statusDiv.className = 'auth-status error';
-                statusDiv.textContent = 'Password must be at least 6 characters.';
-                return;
-            }
-
-            submitBtn.disabled = true;
-            submitBtn.textContent = authMode === 'signin' ? 'Signing in...' : 'Signing up...';
-            statusDiv.className = 'auth-status';
-            statusDiv.textContent = '';
-
-            try {
-                let result;
-                if (authMode === 'signin') {
-                    result = await supabase.auth.signInWithPassword({ email, password });
-                } else {
-                    result = await supabase.auth.signUp({ email, password });
-                }
-
-                if (result.error) {
-                    throw result.error;
-                }
-
-                if (authMode === 'signup' && result.data.user && !result.data.session) {
-                    // Email confirmation required
-                    statusDiv.className = 'auth-status success';
-                    statusDiv.textContent = 'Check your email to confirm your account!';
-                    submitBtn.disabled = false;
-                    submitBtn.textContent = 'Sign Up';
-                } else {
-                    // Success - close modal
-                    statusDiv.className = 'auth-status success';
-                    statusDiv.textContent = authMode === 'signin' ? 'Signed in successfully!' : 'Account created!';
-                    setTimeout(() => {
-                        closeAuthModal();
-                    }, 1000);
-                }
-            } catch (error) {
-                statusDiv.className = 'auth-status error';
-                statusDiv.textContent = error.message || 'Authentication failed. Please try again.';
-                submitBtn.disabled = false;
-                submitBtn.textContent = authMode === 'signin' ? 'Sign In' : 'Sign Up';
-            }
-        }
-
-        // Handle logout
-        async function handleLogout() {
-            if (!supabase) return;
-            try {
-                await supabase.auth.signOut();
-                currentUser = null;
-                updateAuthUI();
-            } catch (error) {
-                console.error('Logout error:', error);
-            }
-        }
-
-        // Close auth modal on outside click (wrapped in try-catch to not break app rendering)
-        try {
-            document.getElementById('authModal').addEventListener('click', (e) => {
-                if (e.target === document.getElementById('authModal')) {
-                    closeAuthModal();
-                }
-            });
-        } catch (e) {
-            console.error('Auth modal event listener error:', e);
-        }
-
-        // Initialize auth on page load (async, won't block rendering)
-        initAuth();
-
+        // ========== RENDER APPS FIRST (before any auth code) ==========
         const apps = [
             {
                 name: "Flowchart Flow",
@@ -1608,6 +1409,125 @@
                 closeAuthModal();
             }
         });
+
+        // ========== SUPABASE AUTH (runs after apps are rendered) ==========
+        const SUPABASE_URL = 'https://api.srv936332.hstgr.cloud';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE';
+
+        let supabase = null;
+        let currentUser = null;
+        let authMode = 'signin';
+
+        try {
+            if (window.supabase && window.supabase.createClient) {
+                supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            }
+        } catch (e) {
+            console.error('Supabase init error:', e);
+        }
+
+        function updateAuthUI() {
+            const loginBtn = document.getElementById('loginBtn');
+            const userMenu = document.getElementById('userMenu');
+            const userEmail = document.getElementById('userEmail');
+            if (currentUser) {
+                loginBtn.style.display = 'none';
+                userMenu.style.display = 'flex';
+                userEmail.textContent = currentUser.email;
+            } else {
+                loginBtn.style.display = 'block';
+                userMenu.style.display = 'none';
+            }
+        }
+
+        function openAuthModal(mode = 'signin') {
+            if (!supabase) {
+                alert('Authentication service not available. Please try again later.');
+                return;
+            }
+            authMode = mode;
+            document.getElementById('authModalTitle').textContent = mode === 'signin' ? 'Sign In' : 'Sign Up';
+            document.getElementById('authModalSubtitle').textContent = mode === 'signin' ? 'Welcome back! Sign in to submit feedback.' : 'Create an account to submit feedback.';
+            document.getElementById('authSubmitBtn').textContent = mode === 'signin' ? 'Sign In' : 'Sign Up';
+            document.getElementById('authEmail').value = '';
+            document.getElementById('authPassword').value = '';
+            document.getElementById('authStatus').className = 'auth-status';
+            document.getElementById('authModal').classList.add('active');
+        }
+
+        function closeAuthModal() {
+            document.getElementById('authModal').classList.remove('active');
+        }
+
+        function toggleAuthMode() {
+            authMode = authMode === 'signin' ? 'signup' : 'signin';
+            document.getElementById('authModalTitle').textContent = authMode === 'signin' ? 'Sign In' : 'Sign Up';
+            document.getElementById('authModalSubtitle').textContent = authMode === 'signin' ? 'Welcome back! Sign in to submit feedback.' : 'Create an account to submit feedback.';
+            document.getElementById('authSubmitBtn').textContent = authMode === 'signin' ? 'Sign In' : 'Sign Up';
+            document.getElementById('authToggle').innerHTML = authMode === 'signin'
+                ? 'Don\'t have an account? <span class="auth-toggle-link" onclick="toggleAuthMode()">Sign up</span>'
+                : 'Already have an account? <span class="auth-toggle-link" onclick="toggleAuthMode()">Sign in</span>';
+        }
+
+        async function handleAuth() {
+            if (!supabase) return;
+            const email = document.getElementById('authEmail').value.trim();
+            const password = document.getElementById('authPassword').value;
+            const statusDiv = document.getElementById('authStatus');
+            const submitBtn = document.getElementById('authSubmitBtn');
+
+            if (!email || !password) {
+                statusDiv.className = 'auth-status error';
+                statusDiv.textContent = 'Please enter email and password.';
+                return;
+            }
+
+            submitBtn.disabled = true;
+            try {
+                const result = authMode === 'signin'
+                    ? await supabase.auth.signInWithPassword({ email, password })
+                    : await supabase.auth.signUp({ email, password });
+
+                if (result.error) throw result.error;
+
+                statusDiv.className = 'auth-status success';
+                statusDiv.textContent = authMode === 'signin' ? 'Signed in!' : 'Check your email to confirm!';
+                if (result.data.session) {
+                    currentUser = result.data.user;
+                    updateAuthUI();
+                    setTimeout(closeAuthModal, 1000);
+                }
+            } catch (err) {
+                statusDiv.className = 'auth-status error';
+                statusDiv.textContent = err.message || 'Authentication failed.';
+            }
+            submitBtn.disabled = false;
+        }
+
+        async function handleLogout() {
+            if (!supabase) return;
+            await supabase.auth.signOut();
+            currentUser = null;
+            updateAuthUI();
+        }
+
+        // Initialize auth
+        (async function() {
+            if (!supabase) return;
+            try {
+                const { data: { session } } = await supabase.auth.getSession();
+                if (session) {
+                    currentUser = session.user;
+                    updateAuthUI();
+                }
+                supabase.auth.onAuthStateChange((event, session) => {
+                    currentUser = session?.user || null;
+                    updateAuthUI();
+                });
+            } catch (e) {
+                console.error('Auth init error:', e);
+            }
+        })();
     </script>
 </body>
 </html>
