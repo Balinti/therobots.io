@@ -1415,7 +1415,7 @@
         const SUPABASE_URL = 'https://api.srv936332.hstgr.cloud';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE';
 
-        let supabase = null;
+        let supabaseClient = null;
         let authMode = 'signin';
 
         // Load Supabase dynamically (won't block apps)
@@ -1425,7 +1425,7 @@
             try {
                 // CDN exposes supabase.createClient directly
                 if (typeof window.supabase !== 'undefined') {
-                    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
                     console.log('Supabase initialized successfully');
                     initSupabaseAuth();
                 } else {
@@ -1441,15 +1441,15 @@
         document.head.appendChild(supabaseScript);
 
         function initSupabaseAuth() {
-            if (!supabase) return;
-            supabase.auth.getSession().then(({ data: { session } }) => {
+            if (!supabaseClient) return;
+            supabaseClient.auth.getSession().then(({ data: { session } }) => {
                 if (session) {
                     currentUser = session.user;
                     updateAuthUI();
                 }
             }).catch(e => console.error('Auth session error:', e));
 
-            supabase.auth.onAuthStateChange((event, session) => {
+            supabaseClient.auth.onAuthStateChange((event, session) => {
                 currentUser = session?.user || null;
                 updateAuthUI();
             });
@@ -1470,7 +1470,7 @@
         }
 
         function openAuthModal(mode = 'signin') {
-            if (!supabase) {
+            if (!supabaseClient) {
                 alert('Authentication is still loading. Please wait a moment and try again.');
                 return;
             }
@@ -1499,7 +1499,7 @@
         }
 
         async function handleAuth() {
-            if (!supabase) return;
+            if (!supabaseClient) return;
             const email = document.getElementById('authEmail').value.trim();
             const password = document.getElementById('authPassword').value;
             const statusDiv = document.getElementById('authStatus');
@@ -1514,8 +1514,8 @@
             submitBtn.disabled = true;
             try {
                 const result = authMode === 'signin'
-                    ? await supabase.auth.signInWithPassword({ email, password })
-                    : await supabase.auth.signUp({ email, password });
+                    ? await supabaseClient.auth.signInWithPassword({ email, password })
+                    : await supabaseClient.auth.signUp({ email, password });
 
                 if (result.error) throw result.error;
 
@@ -1534,8 +1534,8 @@
         }
 
         async function handleLogout() {
-            if (!supabase) return;
-            await supabase.auth.signOut();
+            if (!supabaseClient) return;
+            await supabaseClient.auth.signOut();
             currentUser = null;
             updateAuthUI();
         }
