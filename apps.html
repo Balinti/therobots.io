@@ -1415,6 +1415,9 @@
             `).join('');
         }
 
+        // RENDER APPS IMMEDIATELY (before event listeners that might fail)
+        renderApps(apps);
+
         function openQrModal(name, url) {
             document.getElementById('modalAppName').textContent = name;
             document.getElementById('modalQrImage').src = generateQRUrl(url);
@@ -1605,9 +1608,6 @@
                 closeAuthModal();
             }
         });
-
-        // Initial render
-        renderApps(apps);
     </script>
 </body>
 </html>
