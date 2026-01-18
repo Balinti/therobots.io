@@ -1130,14 +1130,18 @@
             }
         }
 
-        // Close auth modal on outside click
-        document.getElementById('authModal').addEventListener('click', (e) => {
-            if (e.target === document.getElementById('authModal')) {
-                closeAuthModal();
-            }
-        });
+        // Close auth modal on outside click (wrapped in try-catch to not break app rendering)
+        try {
+            document.getElementById('authModal').addEventListener('click', (e) => {
+                if (e.target === document.getElementById('authModal')) {
+                    closeAuthModal();
+                }
+            });
+        } catch (e) {
+            console.error('Auth modal event listener error:', e);
+        }
 
-        // Initialize auth on page load
+        // Initialize auth on page load (async, won't block rendering)
         initAuth();
 
         const apps = [
