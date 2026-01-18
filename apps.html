@@ -1266,15 +1266,15 @@
             const submitBtn = document.getElementById('feedbackSubmitBtn');
 
             if (!currentUser) {
-                // Not logged in - show login message, hide form elements
-                loginMsg.style.display = 'block';
-                textarea.style.display = 'none';
-                submitBtn.style.display = 'none';
+                // Not logged in - show login message, HIDE form elements with !important
+                loginMsg.style.cssText = 'display: block !important';
+                textarea.style.cssText = 'display: none !important';
+                submitBtn.style.cssText = 'display: none !important';
             } else {
                 // Logged in - show form, hide login message
-                loginMsg.style.display = 'none';
-                textarea.style.display = 'block';
-                submitBtn.style.display = 'block';
+                loginMsg.style.cssText = 'display: none';
+                textarea.style.cssText = '';
+                submitBtn.style.cssText = '';
             }
 
             document.getElementById('feedbackModal').classList.add('active');
@@ -1467,7 +1467,7 @@
 
         function openAuthModal(mode = 'signin') {
             if (!supabase) {
-                alert('Authentication service not available. Please try again later.');
+                alert('Authentication is still loading. Please wait a moment and try again.');
                 return;
             }
             authMode = mode;
