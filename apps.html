@@ -5,8 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Apps Directory - The Robots</title>
     <meta name="robots" content="noindex, nofollow">
-    <!-- Supabase JS Client -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         * {
             margin: 0;
@@ -1413,19 +1411,44 @@
             }
         });
 
-        // ========== SUPABASE AUTH (runs after apps are rendered) ==========
+        // ========== SUPABASE AUTH (loads dynamically after apps render) ==========
         const SUPABASE_URL = 'https://api.srv936332.hstgr.cloud';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE';
 
         let supabase = null;
         let authMode = 'signin';
 
-        try {
-            if (window.supabase && window.supabase.createClient) {
-                supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        // Load Supabase dynamically (won't block apps)
+        const supabaseScript = document.createElement('script');
+        supabaseScript.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+        supabaseScript.onload = function() {
+            try {
+                if (window.supabase && window.supabase.createClient) {
+                    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                    initSupabaseAuth();
+                }
+            } catch (e) {
+                console.error('Supabase init error:', e);
             }
-        } catch (e) {
-            console.error('Supabase init error:', e);
+        };
+        supabaseScript.onerror = function() {
+            console.error('Failed to load Supabase library');
+        };
+        document.head.appendChild(supabaseScript);
+
+        function initSupabaseAuth() {
+            if (!supabase) return;
+            supabase.auth.getSession().then(({ data: { session } }) => {
+                if (session) {
+                    currentUser = session.user;
+                    updateAuthUI();
+                }
+            }).catch(e => console.error('Auth session error:', e));
+
+            supabase.auth.onAuthStateChange((event, session) => {
+                currentUser = session?.user || null;
+                updateAuthUI();
+            });
         }
 
         function updateAuthUI() {
@@ -1513,23 +1536,6 @@
             updateAuthUI();
         }
 
-        // Initialize auth
-        (async function() {
-            if (!supabase) return;
-            try {
-                const { data: { session } } = await supabase.auth.getSession();
-                if (session) {
-                    currentUser = session.user;
-                    updateAuthUI();
-                }
-                supabase.auth.onAuthStateChange((event, session) => {
-                    currentUser = session?.user || null;
-                    updateAuthUI();
-                });
-            } catch (e) {
-                console.error('Auth init error:', e);
-            }
-        })();
     </script>
 </body>
 </html>
