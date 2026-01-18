@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Apps Directory - The Robots</title>
     <meta name="robots" content="noindex, nofollow">
+    <!-- Supabase JS Client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         * {
             margin: 0;
@@ -583,6 +585,234 @@
                 font-size: 0.8rem;
             }
         }
+
+        /* Auth UI Styles */
+        .auth-container {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .auth-btn {
+            background: linear-gradient(45deg, #9d4edd, #7209b7);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+
+        .auth-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(157, 78, 221, 0.4);
+        }
+
+        .user-menu {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .user-email {
+            color: #c77dff;
+            font-size: 0.9rem;
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .logout-btn {
+            background: transparent;
+            color: #cfcfe1;
+            border: 1px solid #4a2c7a;
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.3s;
+        }
+
+        .logout-btn:hover {
+            border-color: #9d4edd;
+            color: white;
+        }
+
+        /* Auth Modal */
+        .auth-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .auth-modal.active {
+            display: flex;
+        }
+
+        .auth-modal-content {
+            background: rgba(45, 27, 105, 0.98);
+            border: 2px solid #9d4edd;
+            border-radius: 20px;
+            padding: 2rem;
+            max-width: 420px;
+            width: 90%;
+        }
+
+        .auth-modal-content h3 {
+            margin-bottom: 0.5rem;
+            color: white;
+            font-size: 1.5rem;
+            text-align: center;
+        }
+
+        .auth-modal-subtitle {
+            color: #cfcfe1;
+            text-align: center;
+            margin-bottom: 1.5rem;
+            font-size: 0.95rem;
+        }
+
+        .auth-input {
+            width: 100%;
+            padding: 14px 18px;
+            border: 2px solid #4a2c7a;
+            border-radius: 12px;
+            background: rgba(0, 0, 0, 0.3);
+            color: white;
+            font-size: 1rem;
+            margin-bottom: 1rem;
+            transition: border-color 0.3s;
+        }
+
+        .auth-input::placeholder {
+            color: #888;
+        }
+
+        .auth-input:focus {
+            outline: none;
+            border-color: #9d4edd;
+        }
+
+        .auth-submit-btn {
+            width: 100%;
+            background: linear-gradient(45deg, #9d4edd, #7209b7);
+            color: white;
+            border: none;
+            padding: 14px 24px;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 500;
+            transition: all 0.3s;
+            margin-bottom: 1rem;
+        }
+
+        .auth-submit-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(157, 78, 221, 0.4);
+        }
+
+        .auth-submit-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .auth-toggle {
+            text-align: center;
+            color: #cfcfe1;
+            font-size: 0.9rem;
+        }
+
+        .auth-toggle-link {
+            color: #c77dff;
+            cursor: pointer;
+            text-decoration: underline;
+        }
+
+        .auth-toggle-link:hover {
+            color: #e0aaff;
+        }
+
+        .auth-status {
+            text-align: center;
+            padding: 1rem;
+            border-radius: 10px;
+            margin-bottom: 1rem;
+            display: none;
+        }
+
+        .auth-status.success {
+            display: block;
+            background: rgba(34, 197, 94, 0.2);
+            border: 1px solid #22c55e;
+            color: #22c55e;
+        }
+
+        .auth-status.error {
+            display: block;
+            background: rgba(239, 68, 68, 0.2);
+            border: 1px solid #ef4444;
+            color: #ef4444;
+        }
+
+        .auth-close-btn {
+            position: absolute;
+            top: 15px;
+            right: 20px;
+            background: transparent;
+            border: none;
+            color: #cfcfe1;
+            font-size: 1.5rem;
+            cursor: pointer;
+            transition: color 0.3s;
+        }
+
+        .auth-close-btn:hover {
+            color: white;
+        }
+
+        .auth-modal-wrapper {
+            position: relative;
+        }
+
+        /* Login required message for feedback */
+        .login-required-msg {
+            color: #c77dff;
+            font-size: 0.85rem;
+            text-align: center;
+            margin-bottom: 1rem;
+        }
+
+        .login-required-msg a {
+            color: #e0aaff;
+            cursor: pointer;
+            text-decoration: underline;
+        }
+
+        @media (max-width: 768px) {
+            .auth-container {
+                gap: 0.5rem;
+            }
+
+            .user-email {
+                display: none;
+            }
+
+            .auth-btn {
+                padding: 8px 16px;
+                font-size: 0.85rem;
+            }
+        }
     </style>
 </head>
 <body>
@@ -593,12 +823,21 @@
                     <img src="images/bot-logo.png" alt="The Robots Logo" class="logo-img">
                     <span class="logo-text">The Robots</span>
                 </a>
-                <a href="index.html" class="back-link">
-                    <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                        <path d="M19 12H5M12 19l-7-7 7-7"/>
-                    </svg>
-                    Back to Home
-                </a>
+                <div class="auth-container">
+                    <a href="index.html" class="back-link">
+                        <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path d="M19 12H5M12 19l-7-7 7-7"/>
+                        </svg>
+                        Back to Home
+                    </a>
+                    <!-- Auth UI - shown when logged out -->
+                    <button class="auth-btn" id="loginBtn" onclick="openAuthModal('signin')">Sign In</button>
+                    <!-- User menu - shown when logged in -->
+                    <div class="user-menu" id="userMenu" style="display: none;">
+                        <span class="user-email" id="userEmail"></span>
+                        <button class="logout-btn" onclick="handleLogout()">Sign Out</button>
+                    </div>
+                </div>
             </nav>
         </div>
     </header>
@@ -673,6 +912,10 @@
             <h3>Submit Feedback</h3>
             <p class="feedback-app-name" id="feedbackAppName">App Name</p>
             <div class="feedback-status" id="feedbackStatus"></div>
+            <!-- Login required message (shown when not logged in) -->
+            <div class="login-required-msg" id="feedbackLoginMsg" style="display: none;">
+                Please <a onclick="closeFeedbackModal(); openAuthModal('signin');">sign in</a> to submit feedback.
+            </div>
             <textarea class="feedback-textarea" id="feedbackText" placeholder="Share your thoughts, suggestions, or report issues with this app..."></textarea>
             <input type="hidden" id="feedbackAppSlug">
             <div class="feedback-actions">
@@ -682,7 +925,196 @@
         </div>
     </div>
 
+    <!-- Auth Modal -->
+    <div class="auth-modal" id="authModal">
+        <div class="auth-modal-wrapper">
+            <button class="auth-close-btn" onclick="closeAuthModal()">&times;</button>
+            <div class="auth-modal-content">
+                <h3 id="authModalTitle">Sign In</h3>
+                <p class="auth-modal-subtitle" id="authModalSubtitle">Welcome back! Sign in to submit feedback.</p>
+                <div class="auth-status" id="authStatus"></div>
+                <input type="email" class="auth-input" id="authEmail" placeholder="Email address">
+                <input type="password" class="auth-input" id="authPassword" placeholder="Password">
+                <button class="auth-submit-btn" id="authSubmitBtn" onclick="handleAuth()">Sign In</button>
+                <p class="auth-toggle" id="authToggle">
+                    Don't have an account? <span class="auth-toggle-link" onclick="toggleAuthMode()">Sign up</span>
+                </p>
+            </div>
+        </div>
+    </div>
+
     <script>
+        // Supabase Configuration
+        const SUPABASE_URL = 'https://api.srv936332.hstgr.cloud';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE';
+
+        // Initialize Supabase client
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // Auth state
+        let currentUser = null;
+        let authMode = 'signin'; // 'signin' or 'signup'
+
+        // Initialize auth state on page load
+        async function initAuth() {
+            try {
+                const { data: { session } } = await supabase.auth.getSession();
+                if (session) {
+                    currentUser = session.user;
+                    updateAuthUI();
+                }
+
+                // Listen for auth changes
+                supabase.auth.onAuthStateChange((event, session) => {
+                    currentUser = session?.user || null;
+                    updateAuthUI();
+                });
+            } catch (error) {
+                console.error('Auth initialization error:', error);
+            }
+        }
+
+        // Update UI based on auth state
+        function updateAuthUI() {
+            const loginBtn = document.getElementById('loginBtn');
+            const userMenu = document.getElementById('userMenu');
+            const userEmail = document.getElementById('userEmail');
+
+            if (currentUser) {
+                loginBtn.style.display = 'none';
+                userMenu.style.display = 'flex';
+                userEmail.textContent = currentUser.email;
+            } else {
+                loginBtn.style.display = 'block';
+                userMenu.style.display = 'none';
+                userEmail.textContent = '';
+            }
+        }
+
+        // Open auth modal
+        function openAuthModal(mode = 'signin') {
+            authMode = mode;
+            updateAuthModalUI();
+            document.getElementById('authEmail').value = '';
+            document.getElementById('authPassword').value = '';
+            document.getElementById('authStatus').className = 'auth-status';
+            document.getElementById('authStatus').textContent = '';
+            document.getElementById('authSubmitBtn').disabled = false;
+            document.getElementById('authModal').classList.add('active');
+            document.getElementById('authEmail').focus();
+        }
+
+        // Close auth modal
+        function closeAuthModal() {
+            document.getElementById('authModal').classList.remove('active');
+        }
+
+        // Toggle between sign in and sign up
+        function toggleAuthMode() {
+            authMode = authMode === 'signin' ? 'signup' : 'signin';
+            updateAuthModalUI();
+        }
+
+        // Update auth modal UI based on mode
+        function updateAuthModalUI() {
+            const title = document.getElementById('authModalTitle');
+            const subtitle = document.getElementById('authModalSubtitle');
+            const submitBtn = document.getElementById('authSubmitBtn');
+            const toggle = document.getElementById('authToggle');
+
+            if (authMode === 'signin') {
+                title.textContent = 'Sign In';
+                subtitle.textContent = 'Welcome back! Sign in to submit feedback.';
+                submitBtn.textContent = 'Sign In';
+                toggle.innerHTML = 'Don\'t have an account? <span class="auth-toggle-link" onclick="toggleAuthMode()">Sign up</span>';
+            } else {
+                title.textContent = 'Sign Up';
+                subtitle.textContent = 'Create an account to submit feedback.';
+                submitBtn.textContent = 'Sign Up';
+                toggle.innerHTML = 'Already have an account? <span class="auth-toggle-link" onclick="toggleAuthMode()">Sign in</span>';
+            }
+        }
+
+        // Handle auth (sign in or sign up)
+        async function handleAuth() {
+            const email = document.getElementById('authEmail').value.trim();
+            const password = document.getElementById('authPassword').value;
+            const submitBtn = document.getElementById('authSubmitBtn');
+            const statusDiv = document.getElementById('authStatus');
+
+            // Validation
+            if (!email || !password) {
+                statusDiv.className = 'auth-status error';
+                statusDiv.textContent = 'Please enter both email and password.';
+                return;
+            }
+
+            if (password.length < 6) {
+                statusDiv.className = 'auth-status error';
+                statusDiv.textContent = 'Password must be at least 6 characters.';
+                return;
+            }
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = authMode === 'signin' ? 'Signing in...' : 'Signing up...';
+            statusDiv.className = 'auth-status';
+            statusDiv.textContent = '';
+
+            try {
+                let result;
+                if (authMode === 'signin') {
+                    result = await supabase.auth.signInWithPassword({ email, password });
+                } else {
+                    result = await supabase.auth.signUp({ email, password });
+                }
+
+                if (result.error) {
+                    throw result.error;
+                }
+
+                if (authMode === 'signup' && result.data.user && !result.data.session) {
+                    // Email confirmation required
+                    statusDiv.className = 'auth-status success';
+                    statusDiv.textContent = 'Check your email to confirm your account!';
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Sign Up';
+                } else {
+                    // Success - close modal
+                    statusDiv.className = 'auth-status success';
+                    statusDiv.textContent = authMode === 'signin' ? 'Signed in successfully!' : 'Account created!';
+                    setTimeout(() => {
+                        closeAuthModal();
+                    }, 1000);
+                }
+            } catch (error) {
+                statusDiv.className = 'auth-status error';
+                statusDiv.textContent = error.message || 'Authentication failed. Please try again.';
+                submitBtn.disabled = false;
+                submitBtn.textContent = authMode === 'signin' ? 'Sign In' : 'Sign Up';
+            }
+        }
+
+        // Handle logout
+        async function handleLogout() {
+            try {
+                await supabase.auth.signOut();
+                currentUser = null;
+                updateAuthUI();
+            } catch (error) {
+                console.error('Logout error:', error);
+            }
+        }
+
+        // Close auth modal on outside click
+        document.getElementById('authModal').addEventListener('click', (e) => {
+            if (e.target === document.getElementById('authModal')) {
+                closeAuthModal();
+            }
+        });
+
+        // Initialize auth on page load
+        initAuth();
+
         const apps = [
             {
                 name: "Flowchart Flow",
@@ -993,8 +1425,28 @@
             document.getElementById('feedbackStatus').textContent = '';
             document.getElementById('feedbackSubmitBtn').disabled = false;
             document.getElementById('feedbackSubmitBtn').textContent = 'Submit Feedback';
+
+            // Check if user is logged in
+            const loginMsg = document.getElementById('feedbackLoginMsg');
+            const textarea = document.getElementById('feedbackText');
+            const submitBtn = document.getElementById('feedbackSubmitBtn');
+
+            if (!currentUser) {
+                // Not logged in - show login message, hide form elements
+                loginMsg.style.display = 'block';
+                textarea.style.display = 'none';
+                submitBtn.style.display = 'none';
+            } else {
+                // Logged in - show form, hide login message
+                loginMsg.style.display = 'none';
+                textarea.style.display = 'block';
+                submitBtn.style.display = 'block';
+            }
+
             document.getElementById('feedbackModal').classList.add('active');
-            document.getElementById('feedbackText').focus();
+            if (currentUser) {
+                document.getElementById('feedbackText').focus();
+            }
         }
 
         function closeFeedbackModal() {
@@ -1006,6 +1458,13 @@
             const feedbackText = document.getElementById('feedbackText').value.trim();
             const submitBtn = document.getElementById('feedbackSubmitBtn');
             const statusDiv = document.getElementById('feedbackStatus');
+
+            // Double-check authentication
+            if (!currentUser) {
+                statusDiv.className = 'feedback-status error';
+                statusDiv.textContent = 'Please sign in to submit feedback.';
+                return;
+            }
 
             if (!feedbackText) {
                 statusDiv.className = 'feedback-status error';
@@ -1026,7 +1485,9 @@
                     },
                     body: JSON.stringify({
                         app_slug: appSlug,
-                        feedback_text: feedbackText
+                        feedback_text: feedbackText,
+                        user_email: currentUser.email,
+                        user_id: currentUser.id
                     })
                 });
 
@@ -1112,6 +1573,7 @@
             if (e.key === 'Escape') {
                 closeQrModal();
                 closeFeedbackModal();
+                closeAuthModal();
             }
         });
 
