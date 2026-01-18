@@ -948,8 +948,17 @@
         const SUPABASE_URL = 'https://api.srv936332.hstgr.cloud';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE';
 
-        // Initialize Supabase client
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        // Initialize Supabase client (with error handling)
+        let supabase = null;
+        try {
+            if (window.supabase && window.supabase.createClient) {
+                supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            } else {
+                console.warn('Supabase library not loaded');
+            }
+        } catch (error) {
+            console.error('Failed to initialize Supabase:', error);
+        }
 
         // Auth state
         let currentUser = null;
@@ -957,6 +966,10 @@
 
         // Initialize auth state on page load
         async function initAuth() {
+            if (!supabase) {
+                console.warn('Supabase not available, skipping auth init');
+                return;
+            }
             try {
                 const { data: { session } } = await supabase.auth.getSession();
                 if (session) {
@@ -993,6 +1006,10 @@
 
         // Open auth modal
         function openAuthModal(mode = 'signin') {
+            if (!supabase) {
+                alert('Authentication service is not available. Please try again later.');
+                return;
+            }
             authMode = mode;
             updateAuthModalUI();
             document.getElementById('authEmail').value = '';
@@ -1041,6 +1058,13 @@
             const password = document.getElementById('authPassword').value;
             const submitBtn = document.getElementById('authSubmitBtn');
             const statusDiv = document.getElementById('authStatus');
+
+            // Check if Supabase is available
+            if (!supabase) {
+                statusDiv.className = 'auth-status error';
+                statusDiv.textContent = 'Authentication service unavailable. Please try again later.';
+                return;
+            }
 
             // Validation
             if (!email || !password) {
@@ -1096,6 +1120,7 @@
 
         // Handle logout
         async function handleLogout() {
+            if (!supabase) return;
             try {
                 await supabase.auth.signOut();
                 currentUser = null;
