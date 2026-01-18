@@ -1423,16 +1423,20 @@
         supabaseScript.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
         supabaseScript.onload = function() {
             try {
-                if (window.supabase && window.supabase.createClient) {
+                // CDN exposes supabase.createClient directly
+                if (typeof window.supabase !== 'undefined') {
                     supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                    console.log('Supabase initialized successfully');
                     initSupabaseAuth();
+                } else {
+                    console.error('Supabase library not found on window');
                 }
             } catch (e) {
                 console.error('Supabase init error:', e);
             }
         };
         supabaseScript.onerror = function() {
-            console.error('Failed to load Supabase library');
+            console.error('Failed to load Supabase library from CDN');
         };
         document.head.appendChild(supabaseScript);
 
