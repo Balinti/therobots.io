@@ -1811,23 +1811,43 @@
 
         async function rateApp(slug, rating) {
             if (!currentUser) {
-                signInWithGoogle();
+                // Show sign-in prompt instead of direct redirect
+                if (confirm('Please sign in with Google to rate this app. Sign in now?')) {
+                    signInWithGoogle();
+                }
                 return;
             }
 
             if (!supabaseClient) return;
 
             try {
-                // Upsert rating
-                const { error } = await supabaseClient
+                // Check if user already rated this app
+                const { data: existing } = await supabaseClient
                     .from('app_ratings')
-                    .upsert({
-                        user_id: currentUser.id,
-                        app_slug: slug,
-                        rating: rating
-                    }, { onConflict: 'user_id,app_slug' });
+                    .select('id')
+                    .eq('user_id', currentUser.id)
+                    .eq('app_slug', slug)
+                    .single();
 
-                if (error) throw error;
+                if (existing) {
+                    // Update existing rating
+                    const { error } = await supabaseClient
+                        .from('app_ratings')
+                        .update({ rating: rating })
+                        .eq('user_id', currentUser.id)
+                        .eq('app_slug', slug);
+                    if (error) throw error;
+                } else {
+                    // Insert new rating
+                    const { error } = await supabaseClient
+                        .from('app_ratings')
+                        .insert({
+                            user_id: currentUser.id,
+                            app_slug: slug,
+                            rating: rating
+                        });
+                    if (error) throw error;
+                }
 
                 userRatings[slug] = rating;
                 highlightUserRating(slug, rating);
