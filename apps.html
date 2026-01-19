@@ -1566,10 +1566,15 @@
 
         function initSupabaseAuth() {
             if (!supabaseClient) return;
+
+            // Load ratings for everyone (including non-logged users)
+            loadAllRatings();
+
             supabaseClient.auth.getSession().then(({ data: { session } }) => {
                 if (session) {
                     currentUser = session.user;
                     updateAuthUI();
+                    loadUserRatings();
                 }
             }).catch(e => console.error('Auth session error:', e));
 
@@ -1580,6 +1585,8 @@
                     trackUserLogin(session.user, 'therobots');
                     loadUserRatings();
                 }
+                // Reload ratings when auth state changes (sign in/out)
+                loadAllRatings();
             });
         }
 
