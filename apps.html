@@ -292,6 +292,49 @@
             color: #e0aaff;
         }
 
+        /* Star Rating Styles */
+        .app-rating {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 1rem;
+        }
+
+        .star-container {
+            display: flex;
+            gap: 2px;
+        }
+
+        .star {
+            cursor: pointer;
+            font-size: 1.2rem;
+            color: #4a2c7a;
+            transition: color 0.2s, transform 0.2s;
+        }
+
+        .star:hover,
+        .star.hovered {
+            transform: scale(1.2);
+        }
+
+        .star.filled {
+            color: #fbbf24;
+        }
+
+        .star.user-rated {
+            color: #f59e0b;
+        }
+
+        .rating-info {
+            font-size: 0.8rem;
+            color: #9ca3af;
+        }
+
+        .rating-avg {
+            color: #fbbf24;
+            font-weight: 600;
+        }
+
         .stats-bar {
             display: flex;
             justify-content: center;
@@ -1283,12 +1326,19 @@
                         </div>
                     </div>
                     <p class="app-description">${app.description}</p>
+                    <div class="app-rating" data-app-slug="${getAppSlug(app.url)}">
+                        <div class="star-container">
+                            ${[1,2,3,4,5].map(star => `<span class="star" data-rating="${star}" onclick="rateApp('${getAppSlug(app.url)}', ${star})" onmouseover="hoverStars(this)" onmouseout="unhoverStars(this)">★</span>`).join('')}
+                        </div>
+                        <span class="rating-info"><span class="rating-avg" data-avg="${getAppSlug(app.url)}">-</span> (<span data-count="${getAppSlug(app.url)}">0</span>)</span>
+                    </div>
                     <div class="app-actions">
                         <a href="${app.url}" target="_blank" rel="noopener noreferrer" class="app-btn app-btn-primary">Open App</a>
                         <button onclick="openFeedbackModal('${app.name}', '${getAppSlug(app.url)}')" class="app-btn app-btn-feedback">Feedback</button>
                     </div>
                 </div>
             `).join('');
+            loadAllRatings();
         }
 
         // RENDER APPS IMMEDIATELY (before event listeners that might fail)
@@ -1528,6 +1578,7 @@
                 updateAuthUI();
                 if (event === 'SIGNED_IN' && session?.user) {
                     trackUserLogin(session.user, 'therobots');
+                    loadUserRatings();
                 }
             });
         }
@@ -1669,6 +1720,139 @@
             } catch (e) {
                 console.error('Error tracking user login:', e);
             }
+        }
+
+        // ========== STAR RATING FUNCTIONS ==========
+        let appRatings = {}; // Cache for ratings
+        let userRatings = {}; // Cache for user's own ratings
+
+        async function loadAllRatings() {
+            if (!supabaseClient) {
+                setTimeout(loadAllRatings, 500);
+                return;
+            }
+
+            try {
+                // Get all ratings with averages
+                const { data: ratings } = await supabaseClient
+                    .from('app_ratings')
+                    .select('app_slug, rating');
+
+                // Calculate averages
+                const ratingsByApp = {};
+                ratings?.forEach(r => {
+                    if (!ratingsByApp[r.app_slug]) {
+                        ratingsByApp[r.app_slug] = { total: 0, count: 0 };
+                    }
+                    ratingsByApp[r.app_slug].total += r.rating;
+                    ratingsByApp[r.app_slug].count++;
+                });
+
+                // Store and display
+                Object.keys(ratingsByApp).forEach(slug => {
+                    const avg = (ratingsByApp[slug].total / ratingsByApp[slug].count).toFixed(1);
+                    appRatings[slug] = { avg, count: ratingsByApp[slug].count };
+                    updateRatingDisplay(slug, avg, ratingsByApp[slug].count);
+                });
+
+                // Load user's ratings if logged in
+                if (currentUser) {
+                    loadUserRatings();
+                }
+            } catch (e) {
+                console.error('Error loading ratings:', e);
+            }
+        }
+
+        async function loadUserRatings() {
+            if (!supabaseClient || !currentUser) return;
+
+            try {
+                const { data: ratings } = await supabaseClient
+                    .from('app_ratings')
+                    .select('app_slug, rating')
+                    .eq('user_id', currentUser.id);
+
+                ratings?.forEach(r => {
+                    userRatings[r.app_slug] = r.rating;
+                    highlightUserRating(r.app_slug, r.rating);
+                });
+            } catch (e) {
+                console.error('Error loading user ratings:', e);
+            }
+        }
+
+        function updateRatingDisplay(slug, avg, count) {
+            const avgEl = document.querySelector(`[data-avg="${slug}"]`);
+            const countEl = document.querySelector(`[data-count="${slug}"]`);
+            if (avgEl) avgEl.textContent = avg;
+            if (countEl) countEl.textContent = count;
+
+            // Update star display
+            const container = document.querySelector(`[data-app-slug="${slug}"] .star-container`);
+            if (container) {
+                const stars = container.querySelectorAll('.star');
+                const avgNum = parseFloat(avg);
+                stars.forEach((star, i) => {
+                    star.classList.toggle('filled', i < Math.round(avgNum));
+                });
+            }
+        }
+
+        function highlightUserRating(slug, rating) {
+            const container = document.querySelector(`[data-app-slug="${slug}"] .star-container`);
+            if (container) {
+                const stars = container.querySelectorAll('.star');
+                stars.forEach((star, i) => {
+                    star.classList.toggle('user-rated', i < rating);
+                });
+            }
+        }
+
+        async function rateApp(slug, rating) {
+            if (!currentUser) {
+                signInWithGoogle();
+                return;
+            }
+
+            if (!supabaseClient) return;
+
+            try {
+                // Upsert rating
+                const { error } = await supabaseClient
+                    .from('app_ratings')
+                    .upsert({
+                        user_id: currentUser.id,
+                        app_slug: slug,
+                        rating: rating
+                    }, { onConflict: 'user_id,app_slug' });
+
+                if (error) throw error;
+
+                userRatings[slug] = rating;
+                highlightUserRating(slug, rating);
+
+                // Reload ratings to get new average
+                loadAllRatings();
+            } catch (e) {
+                console.error('Error rating app:', e);
+                alert('Failed to save rating. Please try again.');
+            }
+        }
+
+        function hoverStars(star) {
+            const container = star.parentElement;
+            const rating = parseInt(star.dataset.rating);
+            const stars = container.querySelectorAll('.star');
+            stars.forEach((s, i) => {
+                s.classList.toggle('hovered', i < rating);
+            });
+        }
+
+        function unhoverStars(star) {
+            const container = star.parentElement;
+            const stars = container.querySelectorAll('.star');
+            stars.forEach(s => s.classList.remove('hovered'));
         }
 
     </script>
