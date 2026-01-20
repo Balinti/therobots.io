@@ -1543,6 +1543,8 @@
         const SUPABASE_URL = 'https://api.srv936332.hstgr.cloud';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE';
 
+        // Track current auth token (updated by auth state listener)
+        let currentAuthToken = SUPABASE_ANON_KEY;
 
         // Load Supabase dynamically (won't block apps)
         const supabaseScript = document.createElement('script');
@@ -1551,12 +1553,26 @@
             try {
                 // CDN exposes supabase.createClient directly
                 if (typeof window.supabase !== 'undefined') {
+                    // Custom fetch wrapper to guarantee headers on every request
+                    const customFetch = (url, options = {}) => {
+                        const headers = new Headers(options.headers || {});
+
+                        // Always set apikey
+                        if (!headers.has('apikey')) {
+                            headers.set('apikey', SUPABASE_ANON_KEY);
+                        }
+
+                        // Use tracked auth token (anon key or user JWT)
+                        if (!headers.has('Authorization')) {
+                            headers.set('Authorization', 'Bearer ' + currentAuthToken);
+                        }
+
+                        return fetch(url, { ...options, headers });
+                    };
+
                     supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
                         global: {
-                            headers: {
-                                'apikey': SUPABASE_ANON_KEY,
-                                'Authorization': 'Bearer ' + SUPABASE_ANON_KEY
-                            }
+                            fetch: customFetch
                         }
                     });
                     console.log('Supabase initialized successfully');
@@ -1582,6 +1598,7 @@
             supabaseClient.auth.getSession().then(({ data: { session } }) => {
                 if (session) {
                     currentUser = session.user;
+                    currentAuthToken = session.access_token || SUPABASE_ANON_KEY;
                     updateAuthUI();
                     loadUserRatings();
                 }
@@ -1589,6 +1606,8 @@
 
             supabaseClient.auth.onAuthStateChange((event, session) => {
                 currentUser = session?.user || null;
+                // Update auth token for fetch wrapper
+                currentAuthToken = session?.access_token || SUPABASE_ANON_KEY;
                 updateAuthUI();
                 if (event === 'SIGNED_IN' && session?.user) {
                     trackUserLogin(session.user, 'therobots');
