@@ -1551,7 +1551,14 @@
             try {
                 // CDN exposes supabase.createClient directly
                 if (typeof window.supabase !== 'undefined') {
-                    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+                        global: {
+                            headers: {
+                                'apikey': SUPABASE_ANON_KEY,
+                                'Authorization': 'Bearer ' + SUPABASE_ANON_KEY
+                            }
+                        }
+                    });
                     console.log('Supabase initialized successfully');
                     initSupabaseAuth();
                 } else {
