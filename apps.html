@@ -1847,13 +1847,16 @@
             if (!supabaseClient) return;
 
             try {
-                // Check if user already rated this app
-                const { data: existing } = await supabaseClient
+                // Check if user already rated this app - use maybeSingle() to avoid error when no row exists
+                const { data: existing, error: fetchError } = await supabaseClient
                     .from('app_ratings')
                     .select('id')
                     .eq('user_id', currentUser.id)
                     .eq('app_slug', slug)
-                    .single();
+                    .maybeSingle();
+
+                // Only throw if there's a real error (not just "no rows found")
+                if (fetchError) throw fetchError;
 
                 if (existing) {
                     // Update existing rating
