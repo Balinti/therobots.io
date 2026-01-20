@@ -1338,11 +1338,7 @@
                     </div>
                 </div>
             `).join('');
-
-            // Re-display cached ratings after rendering (if available)
-            if (typeof displayCachedRatings === 'function') {
-                displayCachedRatings();
-            }
+            loadAllRatings();
         }
 
         // RENDER APPS IMMEDIATELY (before event listeners that might fail)
@@ -1551,12 +1547,10 @@
         supabaseScript.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
         supabaseScript.onload = function() {
             try {
-                console.log('Supabase JS library loaded from CDN');
                 // CDN exposes supabase.createClient directly
                 if (typeof window.supabase !== 'undefined') {
-                    console.log('Creating Supabase client for:', SUPABASE_URL);
                     supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-                    console.log('Supabase client created successfully');
+                    console.log('Supabase initialized successfully');
                     initSupabaseAuth();
                 } else {
                     console.error('Supabase library not found on window');
@@ -1572,13 +1566,11 @@
 
         function initSupabaseAuth() {
             if (!supabaseClient) return;
-            console.log('Initializing Supabase auth...');
 
-            // Load ratings for everyone (including non-logged users)
+            // Load ratings for everyone (logged in or not)
             loadAllRatings();
 
             supabaseClient.auth.getSession().then(({ data: { session } }) => {
-                console.log('Got session:', session ? 'logged in as ' + session.user.email : 'not logged in');
                 if (session) {
                     currentUser = session.user;
                     updateAuthUI();
@@ -1587,15 +1579,12 @@
             }).catch(e => console.error('Auth session error:', e));
 
             supabaseClient.auth.onAuthStateChange((event, session) => {
-                console.log('Auth state changed:', event);
                 currentUser = session?.user || null;
                 updateAuthUI();
                 if (event === 'SIGNED_IN' && session?.user) {
                     trackUserLogin(session.user, 'therobots');
                     loadUserRatings();
                 }
-                // Reload ratings when auth state changes (sign in/out)
-                loadAllRatings();
             });
         }
 
@@ -1689,25 +1678,15 @@
                 alert('Authentication is still loading. Please wait a moment.');
                 return;
             }
-            console.log('Starting Google OAuth sign-in...');
-            console.log('Redirect URL:', window.location.origin + '/apps.html');
-            try {
-                const { data, error } = await supabaseClient.auth.signInWithOAuth({
-                    provider: 'google',
-                    options: {
-                        redirectTo: window.location.origin + '/apps.html'
-                    }
-                });
-                if (error) {
-                    console.error('OAuth error:', error);
-                    document.getElementById('authStatus').className = 'auth-status error';
-                    document.getElementById('authStatus').textContent = error.message;
-                } else {
-                    console.log('OAuth initiated, redirecting...', data);
+            const { error } = await supabaseClient.auth.signInWithOAuth({
+                provider: 'google',
+                options: {
+                    redirectTo: window.location.origin + '/apps.html'
                 }
-            } catch (e) {
-                console.error('Sign-in exception:', e);
-                alert('Sign-in failed: ' + e.message);
+            });
+            if (error) {
+                document.getElementById('authStatus').className = 'auth-status error';
+                document.getElementById('authStatus').textContent = error.message;
             }
         }
 
@@ -1754,24 +1733,15 @@
 
         async function loadAllRatings() {
             if (!supabaseClient) {
-                console.log('Supabase not ready, retrying in 500ms...');
                 setTimeout(loadAllRatings, 500);
                 return;
             }
 
             try {
-                console.log('Loading all ratings...');
                 // Get all ratings with averages
-                const { data: ratings, error } = await supabaseClient
+                const { data: ratings } = await supabaseClient
                     .from('app_ratings')
                     .select('app_slug, rating');
-
-                if (error) {
-                    console.error('Supabase error loading ratings:', error);
-                    return;
-                }
-
-                console.log('Ratings loaded:', ratings?.length || 0, 'records');
 
                 // Calculate averages
                 const ratingsByApp = {};
@@ -1789,8 +1759,6 @@
                     appRatings[slug] = { avg, count: ratingsByApp[slug].count };
                     updateRatingDisplay(slug, avg, ratingsByApp[slug].count);
                 });
-
-                console.log('Ratings displayed for', Object.keys(ratingsByApp).length, 'apps');
 
                 // Load user's ratings if logged in
                 if (currentUser) {
@@ -1816,22 +1784,6 @@
                 });
             } catch (e) {
                 console.error('Error loading user ratings:', e);
-            }
-        }
-
-        // Display cached ratings without database query (used after renderApps)
-        function displayCachedRatings() {
-            // Display average ratings from cache
-            Object.keys(appRatings).forEach(slug => {
-                const { avg, count } = appRatings[slug];
-                updateRatingDisplay(slug, avg, count);
-            });
-
-            // Display user's own ratings from cache
-            if (currentUser) {
-                Object.keys(userRatings).forEach(slug => {
-                    highlightUserRating(slug, userRatings[slug]);
-                });
             }
         }
 
