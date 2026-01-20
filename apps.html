@@ -1338,11 +1338,7 @@
                     </div>
                 </div>
             `).join('');
-
-            // Re-display cached ratings after rendering (if available)
-            if (typeof displayCachedRatings === 'function') {
-                displayCachedRatings();
-            }
+            loadAllRatings();
         }
 
         // RENDER APPS IMMEDIATELY (before event listeners that might fail)
@@ -1571,7 +1567,7 @@
         function initSupabaseAuth() {
             if (!supabaseClient) return;
 
-            // Load ratings for everyone (including non-logged users)
+            // Load ratings for everyone (logged in or not)
             loadAllRatings();
 
             supabaseClient.auth.getSession().then(({ data: { session } }) => {
@@ -1589,8 +1585,6 @@
                     trackUserLogin(session.user, 'therobots');
                     loadUserRatings();
                 }
-                // Reload ratings when auth state changes (sign in/out)
-                loadAllRatings();
             });
         }
 
@@ -1790,22 +1784,6 @@
                 });
             } catch (e) {
                 console.error('Error loading user ratings:', e);
-            }
-        }
-
-        // Display cached ratings without database query (used after renderApps)
-        function displayCachedRatings() {
-            // Display average ratings from cache
-            Object.keys(appRatings).forEach(slug => {
-                const { avg, count } = appRatings[slug];
-                updateRatingDisplay(slug, avg, count);
-            });
-
-            // Display user's own ratings from cache
-            if (currentUser) {
-                Object.keys(userRatings).forEach(slug => {
-                    highlightUserRating(slug, userRatings[slug]);
-                });
             }
         }
 
