@@ -987,8 +987,12 @@
     </div>
 
     <script>
-        // ========== GLOBAL VARIABLES ==========
+        // ========== GLOBAL VARIABLES (must be at top) ==========
         let currentUser = null;
+        let supabaseClient = null;
+        let appRatings = {};
+        let userRatings = {};
+        let authMode = 'signin';
 
         // ========== RENDER APPS FIRST (before any auth code) ==========
         const apps = [
@@ -1539,8 +1543,6 @@
         const SUPABASE_URL = 'https://api.srv936332.hstgr.cloud';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE';
 
-        let supabaseClient = null;
-        let authMode = 'signin';
 
         // Load Supabase dynamically (won't block apps)
         const supabaseScript = document.createElement('script');
@@ -1728,8 +1730,6 @@
         }
 
         // ========== STAR RATING FUNCTIONS ==========
-        let appRatings = {}; // Cache for ratings
-        let userRatings = {}; // Cache for user's own ratings
 
         async function loadAllRatings() {
             if (!supabaseClient) {
