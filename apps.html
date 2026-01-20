@@ -1543,9 +1543,6 @@
         const SUPABASE_URL = 'https://api.srv936332.hstgr.cloud';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE';
 
-        // Track current auth token (updated by auth state listener)
-        let currentAuthToken = SUPABASE_ANON_KEY;
-
         // Load Supabase dynamically (won't block apps)
         const supabaseScript = document.createElement('script');
         supabaseScript.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
@@ -1553,33 +1550,13 @@
             try {
                 // CDN exposes supabase.createClient directly
                 if (typeof window.supabase !== 'undefined') {
-                    // Custom fetch wrapper to guarantee headers on every request
-                    const customFetch = (url, options = {}) => {
-                        // Build headers object, preserving existing ones
-                        const existingHeaders = options.headers || {};
-                        const headers = {};
-
-                        // Copy existing headers (handle both Headers object and plain object)
-                        if (existingHeaders instanceof Headers) {
-                            existingHeaders.forEach((value, key) => {
-                                headers[key] = value;
-                            });
-                        } else {
-                            Object.assign(headers, existingHeaders);
-                        }
-
-                        // Always ensure apikey is set (PostgREST requires this)
-                        headers['apikey'] = SUPABASE_ANON_KEY;
-
-                        // Set Authorization - use JWT if available, otherwise anon key
-                        headers['Authorization'] = 'Bearer ' + currentAuthToken;
-
-                        return fetch(url, { ...options, headers });
-                    };
-
+                    // Let Supabase handle auth headers automatically
+                    // Only set apikey in global headers - Supabase manages Authorization
                     supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
                         global: {
-                            fetch: customFetch
+                            headers: {
+                                'apikey': SUPABASE_ANON_KEY
+                            }
                         }
                     });
                     console.log('Supabase initialized successfully');
@@ -1605,7 +1582,6 @@
             supabaseClient.auth.getSession().then(({ data: { session } }) => {
                 if (session) {
                     currentUser = session.user;
-                    currentAuthToken = session.access_token || SUPABASE_ANON_KEY;
                     updateAuthUI();
                     loadUserRatings();
                 }
@@ -1613,8 +1589,6 @@
 
             supabaseClient.auth.onAuthStateChange((event, session) => {
                 currentUser = session?.user || null;
-                // Update auth token for fetch wrapper
-                currentAuthToken = session?.access_token || SUPABASE_ANON_KEY;
                 updateAuthUI();
                 if (event === 'SIGNED_IN' && session?.user) {
                     trackUserLogin(session.user, 'therobots');
