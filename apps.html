@@ -1731,6 +1731,12 @@
         // ========== STAR RATING FUNCTIONS ==========
 
         async function loadAllRatings() {
+            // Wait for SUPABASE_URL to be defined
+            if (typeof SUPABASE_URL === 'undefined') {
+                setTimeout(loadAllRatings, 500);
+                return;
+            }
+
             // Try multiple approaches to fetch public ratings
             const attempts = [
                 // Attempt 1: Standard Supabase headers
