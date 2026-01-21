@@ -1741,30 +1741,48 @@
                         'Authorization': 'Bearer ' + SUPABASE_ANON_KEY
                     }
                 },
-                // Attempt 2: apikey only (no Authorization)
+                // Attempt 2: With X-Client-Info (Supabase client sends this)
+                {
+                    url: SUPABASE_URL + '/rest/v1/app_ratings?select=app_slug,rating',
+                    headers: {
+                        'apikey': SUPABASE_ANON_KEY,
+                        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+                        'X-Client-Info': 'supabase-js/2.0.0'
+                    }
+                },
+                // Attempt 3: apikey only (no Authorization)
                 {
                     url: SUPABASE_URL + '/rest/v1/app_ratings?select=app_slug,rating',
                     headers: {
                         'apikey': SUPABASE_ANON_KEY
                     }
                 },
-                // Attempt 3: apikey as URL param
+                // Attempt 4: Different Authorization format (without Bearer)
                 {
-                    url: SUPABASE_URL + '/rest/v1/app_ratings?select=app_slug,rating&apikey=' + SUPABASE_ANON_KEY,
-                    headers: {
-                        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY
-                    }
-                },
-                // Attempt 4: Both in URL and header
-                {
-                    url: SUPABASE_URL + '/rest/v1/app_ratings?select=app_slug,rating&apikey=' + SUPABASE_ANON_KEY,
+                    url: SUPABASE_URL + '/rest/v1/app_ratings?select=app_slug,rating',
                     headers: {
                         'apikey': SUPABASE_ANON_KEY,
-                        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY
+                        'Authorization': SUPABASE_ANON_KEY
+                    }
+                },
+                // Attempt 5: apikey as URL param only
+                {
+                    url: SUPABASE_URL + '/rest/v1/app_ratings?select=app_slug,rating&apikey=' + SUPABASE_ANON_KEY,
+                    headers: {}
+                },
+                // Attempt 6: With Content-Type and Accept headers
+                {
+                    url: SUPABASE_URL + '/rest/v1/app_ratings?select=app_slug,rating',
+                    headers: {
+                        'apikey': SUPABASE_ANON_KEY,
+                        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
                     }
                 }
             ];
 
+            // First try direct fetch attempts
             for (let i = 0; i < attempts.length; i++) {
                 try {
                     const response = await fetch(attempts[i].url, {
@@ -1774,7 +1792,7 @@
 
                     if (response.ok) {
                         const ratings = await response.json();
-                        console.log('Ratings loaded successfully with attempt', i + 1);
+                        console.log('Ratings loaded with attempt', i + 1);
                         displayRatings(ratings);
                         return;
                     }
@@ -1783,6 +1801,26 @@
                     console.log('Attempt', i + 1, 'error:', e.message);
                 }
             }
+
+            // Final fallback: try Supabase client (might work if session exists)
+            if (supabaseClient) {
+                try {
+                    console.log('Trying Supabase client as fallback...');
+                    const { data: ratings, error } = await supabaseClient
+                        .from('app_ratings')
+                        .select('app_slug, rating');
+
+                    if (!error && ratings) {
+                        console.log('Supabase client fallback succeeded');
+                        displayRatings(ratings);
+                        return;
+                    }
+                    console.log('Supabase client failed:', error?.message);
+                } catch (e) {
+                    console.log('Supabase client error:', e.message);
+                }
+            }
+
             console.error('All rating fetch attempts failed');
         }
 
