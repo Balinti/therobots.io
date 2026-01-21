@@ -1553,9 +1553,16 @@
             try {
                 // CDN exposes supabase.createClient directly
                 if (typeof window.supabase !== 'undefined') {
-                    // Custom fetch to ensure correct auth headers on every request
+                    // Custom fetch to add auth headers only for PostgREST data calls
                     const customFetch = (url, options = {}) => {
-                        // Get content-type and other non-auth headers from options
+                        const urlStr = url.toString();
+
+                        // Only add custom headers for REST API calls, not auth calls
+                        if (!urlStr.includes('/rest/v1/')) {
+                            return fetch(url, options);
+                        }
+
+                        // For REST API: set auth headers
                         const newHeaders = {};
                         const existingHeaders = options.headers || {};
 
@@ -1576,7 +1583,6 @@
                             });
                         }
 
-                        // Set auth headers (always fresh, never copied)
                         newHeaders['apikey'] = SUPABASE_ANON_KEY;
                         newHeaders['Authorization'] = 'Bearer ' + currentAuthToken;
 
