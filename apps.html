@@ -1732,26 +1732,20 @@
         // ========== STAR RATING FUNCTIONS ==========
 
         async function loadAllRatings() {
-            // Wait for Supabase client to be initialized (handles CORS properly)
-            if (!supabaseClient) {
-                setTimeout(loadAllRatings, 500);
-                return;
-            }
-
-            // Use Supabase client - handles CORS and auth properly
+            // Fetch ratings from n8n webhook (no auth needed, CORS works)
             try {
-                const { data: ratings, error } = await supabaseClient
-                    .from('app_ratings')
-                    .select('app_slug, rating');
-
-                if (!error && ratings) {
-                    console.log('Ratings loaded via Supabase client');
+                const response = await fetch('https://n8n.srv936332.hstgr.cloud/webhook/therobotsratings');
+                if (response.ok) {
+                    const data = await response.json();
+                    // n8n returns { ratings: [[...]] } - ratings is wrapped in double array
+                    const ratings = data.ratings?.[0] || data.ratings || [];
+                    console.log('Ratings loaded via n8n webhook:', ratings.length);
                     displayRatings(ratings);
                     return;
                 }
-                console.log('Supabase client error:', error?.message);
+                console.log('n8n webhook error:', response.status);
             } catch (e) {
-                console.log('Supabase client exception:', e.message);
+                console.log('n8n webhook exception:', e.message);
             }
 
             console.error('Failed to load ratings');
