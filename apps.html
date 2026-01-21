@@ -1541,7 +1541,7 @@
 
         // ========== SUPABASE AUTH (loads dynamically after apps render) ==========
         const SUPABASE_URL = 'https://api.srv936332.hstgr.cloud';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiZXhwIjoyMDAwMDAwMDAwfQ.tHSYynNDP7ztszA_LVHm2NPl1xD1PI0FnZXnQbaqU-o';
 
         // Load Supabase dynamically (won't block apps)
         const supabaseScript = document.createElement('script');
@@ -1549,14 +1549,8 @@
         supabaseScript.onload = function() {
             try {
                 if (typeof window.supabase !== 'undefined') {
-                    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-                        global: {
-                            headers: {
-                                'apikey': SUPABASE_ANON_KEY,
-                                'Authorization': 'Bearer ' + SUPABASE_ANON_KEY
-                            }
-                        }
-                    });
+                    // Simple client init - login worked with this config at commit 8800dd8
+                    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
                     console.log('Supabase initialized successfully');
                     initSupabaseAuth();
                 } else {
@@ -1737,45 +1731,120 @@
         // ========== STAR RATING FUNCTIONS ==========
 
         async function loadAllRatings() {
-            if (!supabaseClient) {
-                setTimeout(loadAllRatings, 500);
-                return;
+            // Try multiple approaches to fetch public ratings
+            const attempts = [
+                // Attempt 1: Standard Supabase headers
+                {
+                    url: SUPABASE_URL + '/rest/v1/app_ratings?select=app_slug,rating',
+                    headers: {
+                        'apikey': SUPABASE_ANON_KEY,
+                        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY
+                    }
+                },
+                // Attempt 2: With X-Client-Info (Supabase client sends this)
+                {
+                    url: SUPABASE_URL + '/rest/v1/app_ratings?select=app_slug,rating',
+                    headers: {
+                        'apikey': SUPABASE_ANON_KEY,
+                        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+                        'X-Client-Info': 'supabase-js/2.0.0'
+                    }
+                },
+                // Attempt 3: apikey only (no Authorization)
+                {
+                    url: SUPABASE_URL + '/rest/v1/app_ratings?select=app_slug,rating',
+                    headers: {
+                        'apikey': SUPABASE_ANON_KEY
+                    }
+                },
+                // Attempt 4: Different Authorization format (without Bearer)
+                {
+                    url: SUPABASE_URL + '/rest/v1/app_ratings?select=app_slug,rating',
+                    headers: {
+                        'apikey': SUPABASE_ANON_KEY,
+                        'Authorization': SUPABASE_ANON_KEY
+                    }
+                },
+                // Attempt 5: apikey as URL param only
+                {
+                    url: SUPABASE_URL + '/rest/v1/app_ratings?select=app_slug,rating&apikey=' + SUPABASE_ANON_KEY,
+                    headers: {}
+                },
+                // Attempt 6: With Content-Type and Accept headers
+                {
+                    url: SUPABASE_URL + '/rest/v1/app_ratings?select=app_slug,rating',
+                    headers: {
+                        'apikey': SUPABASE_ANON_KEY,
+                        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    }
+                }
+            ];
+
+            // First try direct fetch attempts
+            for (let i = 0; i < attempts.length; i++) {
+                try {
+                    const response = await fetch(attempts[i].url, {
+                        method: 'GET',
+                        headers: attempts[i].headers
+                    });
+
+                    if (response.ok) {
+                        const ratings = await response.json();
+                        console.log('Ratings loaded with attempt', i + 1);
+                        displayRatings(ratings);
+                        return;
+                    }
+                    console.log('Attempt', i + 1, 'failed:', response.status);
+                } catch (e) {
+                    console.log('Attempt', i + 1, 'error:', e.message);
+                }
             }
 
-            try {
-                // Get all ratings with averages
-                const { data: ratings, error } = await supabaseClient
-                    .from('app_ratings')
-                    .select('app_slug, rating');
+            // Final fallback: try Supabase client (might work if session exists)
+            if (supabaseClient) {
+                try {
+                    console.log('Trying Supabase client as fallback...');
+                    const { data: ratings, error } = await supabaseClient
+                        .from('app_ratings')
+                        .select('app_slug, rating');
 
-                if (error) {
-                    console.error('Supabase error loading ratings:', error.message, error.code);
-                    return;
-                }
-
-                // Calculate averages
-                const ratingsByApp = {};
-                (ratings || []).forEach(r => {
-                    if (!ratingsByApp[r.app_slug]) {
-                        ratingsByApp[r.app_slug] = { total: 0, count: 0 };
+                    if (!error && ratings) {
+                        console.log('Supabase client fallback succeeded');
+                        displayRatings(ratings);
+                        return;
                     }
-                    ratingsByApp[r.app_slug].total += r.rating;
-                    ratingsByApp[r.app_slug].count++;
-                });
-
-                // Store and display
-                Object.keys(ratingsByApp).forEach(slug => {
-                    const avg = (ratingsByApp[slug].total / ratingsByApp[slug].count).toFixed(1);
-                    appRatings[slug] = { avg, count: ratingsByApp[slug].count };
-                    updateRatingDisplay(slug, avg, ratingsByApp[slug].count);
-                });
-
-                // Load user's ratings if logged in
-                if (currentUser) {
-                    loadUserRatings();
+                    console.log('Supabase client failed:', error?.message);
+                } catch (e) {
+                    console.log('Supabase client error:', e.message);
                 }
-            } catch (e) {
-                console.error('Error loading ratings:', e);
+            }
+
+            console.error('All rating fetch attempts failed');
+        }
+
+        function displayRatings(ratings) {
+            // Calculate averages
+            const ratingsByApp = {};
+            (ratings || []).forEach(r => {
+                if (!ratingsByApp[r.app_slug]) {
+                    ratingsByApp[r.app_slug] = { total: 0, count: 0 };
+                }
+                ratingsByApp[r.app_slug].total += r.rating;
+                ratingsByApp[r.app_slug].count++;
+            });
+
+            // Store and display
+            Object.keys(ratingsByApp).forEach(slug => {
+                const avg = (ratingsByApp[slug].total / ratingsByApp[slug].count).toFixed(1);
+                appRatings[slug] = { avg, count: ratingsByApp[slug].count };
+                updateRatingDisplay(slug, avg, ratingsByApp[slug].count);
+            });
+
+            // Load user's ratings if logged in
+            if (currentUser) {
+                loadUserRatings();
             }
         }
 
