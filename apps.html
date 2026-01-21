@@ -1737,21 +1737,21 @@
         // ========== STAR RATING FUNCTIONS ==========
 
         async function loadAllRatings() {
-            if (!supabaseClient) {
-                setTimeout(loadAllRatings, 500);
-                return;
-            }
-
+            // Use direct fetch for public ratings - bypasses Supabase client auth issues
             try {
-                // Get all ratings with averages
-                const { data: ratings, error } = await supabaseClient
-                    .from('app_ratings')
-                    .select('app_slug, rating');
+                const response = await fetch(SUPABASE_URL + '/rest/v1/app_ratings?select=app_slug,rating', {
+                    headers: {
+                        'apikey': SUPABASE_ANON_KEY,
+                        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY
+                    }
+                });
 
-                if (error) {
-                    console.error('Supabase error loading ratings:', error.message, error.code);
+                if (!response.ok) {
+                    console.error('Error loading ratings:', response.status, await response.text());
                     return;
                 }
+
+                const ratings = await response.json();
 
                 // Calculate averages
                 const ratingsByApp = {};
