@@ -1676,23 +1676,19 @@
         }
 
         async function signInWithGoogle() {
-            console.log('signInWithGoogle called, supabaseClient:', !!supabaseClient);
             if (!supabaseClient) {
                 alert('Authentication is still loading. Please wait a moment.');
                 return;
             }
-            try {
-                // Simple OAuth call - let Supabase handle redirect
-                const { error } = await supabaseClient.auth.signInWithOAuth({
-                    provider: 'google'
-                });
-                if (error) {
-                    console.error('OAuth error:', error);
-                    alert('Sign in error: ' + error.message);
+            const { error } = await supabaseClient.auth.signInWithOAuth({
+                provider: 'google',
+                options: {
+                    redirectTo: window.location.origin + '/apps.html'
                 }
-            } catch (e) {
-                console.error('OAuth exception:', e);
-                alert('Sign in failed: ' + e.message);
+            });
+            if (error) {
+                document.getElementById('authStatus').className = 'auth-status error';
+                document.getElementById('authStatus').textContent = error.message;
             }
         }
 
