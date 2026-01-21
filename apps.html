@@ -1686,12 +1686,17 @@
                 const { data, error } = await supabaseClient.auth.signInWithOAuth({
                     provider: 'google',
                     options: {
-                        redirectTo: window.location.origin + '/apps.html'
+                        redirectTo: window.location.origin + '/apps.html',
+                        skipBrowserRedirect: false
                     }
                 });
                 console.log('OAuth result:', { data, error });
                 if (error) {
                     alert('Sign in error: ' + error.message);
+                } else if (data?.url) {
+                    // Manual redirect fallback if auto-redirect didn't happen
+                    console.log('Redirecting to:', data.url);
+                    window.location.href = data.url;
                 }
             } catch (e) {
                 console.error('OAuth exception:', e);
