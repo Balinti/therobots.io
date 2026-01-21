@@ -161,6 +161,27 @@
             box-shadow: 0 0 20px rgba(157, 78, 221, 0.3);
         }
 
+        /* React Native-like Animations */
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(30px) scale(0.95); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+        }
+
+        @keyframes glow {
+            0%, 100% { box-shadow: 0 0 5px rgba(157, 78, 221, 0.3); }
+            50% { box-shadow: 0 0 20px rgba(157, 78, 221, 0.6); }
+        }
+
         .apps-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
@@ -172,15 +193,61 @@
             border: 1px solid #4a2c7a;
             border-radius: 20px;
             padding: 1.5rem;
-            transition: all 0.3s ease;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
             display: flex;
             flex-direction: column;
+            animation: fadeInUp 0.6s ease-out backwards;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .app-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(157, 78, 221, 0.1), transparent);
+            transition: left 0.5s;
+        }
+
+        .app-card:hover::before {
+            left: 100%;
         }
 
         .app-card:hover {
-            transform: translateY(-5px);
+            transform: translateY(-10px) scale(1.02);
             border-color: #9d4edd;
-            box-shadow: 0 20px 40px rgba(157, 78, 221, 0.2);
+            box-shadow: 0 25px 50px rgba(157, 78, 221, 0.3), 0 0 30px rgba(157, 78, 221, 0.15);
+        }
+
+        .app-card:active {
+            transform: translateY(-5px) scale(0.98);
+            transition: all 0.1s ease;
+        }
+
+        .app-thumbnail {
+            width: 100%;
+            height: 160px;
+            border-radius: 12px;
+            overflow: hidden;
+            margin-bottom: 1rem;
+            cursor: pointer;
+            background: linear-gradient(135deg, #2d1b69 0%, #11001c 100%);
+        }
+
+        .app-thumbnail img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.4s ease, opacity 0.3s;
+            opacity: 0.9;
+        }
+
+        .app-thumbnail:hover img {
+            transform: scale(1.05);
+            opacity: 1;
         }
 
         .app-header {
@@ -262,11 +329,36 @@
             background: linear-gradient(45deg, #9d4edd, #7209b7);
             color: white;
             border: none;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .app-btn-primary::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            transition: width 0.6s, height 0.6s;
+        }
+
+        .app-btn-primary:hover::after {
+            width: 300px;
+            height: 300px;
         }
 
         .app-btn-primary:hover {
-            box-shadow: 0 5px 20px rgba(157, 78, 221, 0.4);
-            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(157, 78, 221, 0.5);
+            transform: translateY(-3px);
+        }
+
+        .app-btn-primary:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 10px rgba(157, 78, 221, 0.3);
         }
 
         .app-btn-secondary {
@@ -345,20 +437,32 @@
 
         .stat-item {
             text-align: center;
+            animation: fadeInUp 0.8s ease-out backwards;
         }
+
+        .stat-item:nth-child(1) { animation-delay: 0.1s; }
+        .stat-item:nth-child(2) { animation-delay: 0.2s; }
+        .stat-item:nth-child(3) { animation-delay: 0.3s; }
 
         .stat-number {
             font-size: 2.5rem;
             font-weight: bold;
-            background: linear-gradient(45deg, #9d4edd, #c77dff);
+            background: linear-gradient(45deg, #9d4edd, #c77dff, #e0aaff);
+            background-size: 200% 200%;
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
+            animation: shimmer 3s ease infinite;
         }
 
         .stat-label {
             color: #cfcfe1;
             font-size: 0.9rem;
+            transition: color 0.3s;
+        }
+
+        .stat-item:hover .stat-label {
+            color: #e0aaff;
         }
 
         /* QR Modal */
@@ -892,7 +996,7 @@
 
             <div class="stats-bar">
                 <div class="stat-item">
-                    <div class="stat-number">48</div>
+                    <div class="stat-number">66</div>
                     <div class="stat-label">Total Apps</div>
                 </div>
                 <div class="stat-item">
@@ -996,294 +1100,72 @@
 
         // ========== RENDER APPS FIRST (before any auth code) ==========
         const apps = [
-            {
-                name: "Flowchart Flow",
-                url: "https://flowchart-flow.vercel.app",
-                description: "Create beautiful flowcharts and diagrams with an intuitive drag-and-drop interface. Perfect for visualizing processes, workflows, and system architectures.",
-                category: "productivity"
-            },
-            {
-                name: "Freelance Wellness Coaching",
-                url: "https://freelance-wellness-coaching-platform.vercel.app",
-                description: "Connect freelance wellness coaches with clients seeking personalized health and fitness guidance. Book sessions and track your wellness journey.",
-                category: "wellness"
-            },
-            {
-                name: "Budget Battle Arena",
-                url: "https://budget-battle-arena.vercel.app",
-                description: "Gamify your budgeting experience! Compete with friends to achieve savings goals and earn rewards for smart financial decisions.",
-                category: "finance"
-            },
-            {
-                name: "Midnight Memrise",
-                url: "https://midnight-memrise.vercel.app",
-                description: "A nighttime-optimized flashcard app with dark mode and spaced repetition. Perfect for late-night study sessions and memory training.",
-                category: "education"
-            },
-            {
-                name: "Blackbox Mind Teasers",
-                url: "https://blackbox-mind-teasers.vercel.app",
-                description: "Challenge your logical thinking with cryptic puzzles where you must figure out the hidden rules. Test your deductive reasoning skills.",
-                category: "games"
-            },
-            {
-                name: "Drops Vibe Vocab",
-                url: "https://drops-vibe-vocab.vercel.app",
-                description: "Learn new vocabulary through immersive, vibe-based word associations. A fresh approach to expanding your language skills.",
-                category: "education"
-            },
-            {
-                name: "Focus Writer Daily",
-                url: "https://focus-writer-daily.vercel.app",
-                description: "A distraction-free writing environment with daily prompts and goals. Build your writing habit one day at a time.",
-                category: "productivity"
-            },
-            {
-                name: "Finance Tycoon",
-                url: "https://finance-tycoon.vercel.app",
-                description: "Simulation game where you build your financial empire. Learn investment strategies while managing virtual portfolios.",
-                category: "finance"
-            },
-            {
-                name: "Habit Streak Tracker",
-                url: "https://habit-streak-tracker.vercel.app",
-                description: "Track and maintain your daily habits with streak counters and motivational reminders. Build lasting positive routines.",
-                category: "productivity"
-            },
-            {
-                name: "Focus Mind Sync",
-                url: "https://focus-mind-sync.vercel.app",
-                description: "Synchronize your focus sessions with ambient sounds and Pomodoro timers. Optimize your concentration and productivity.",
-                category: "productivity"
-            },
-            {
-                name: "Tutoring Marketplace Lite",
-                url: "https://tutoring-marketplace-lite.vercel.app",
-                description: "Connect students with tutors across various subjects. Schedule sessions, track progress, and achieve academic goals.",
-                category: "education"
-            },
-            {
-                name: "Serialized Story Platform",
-                url: "https://serialized-story-platform.vercel.app",
-                description: "Read and write serialized stories chapter by chapter. Engage with episodic content and build a community of storytellers.",
-                category: "social"
-            },
-            {
-                name: "AI Creator Arena",
-                url: "https://ai-creator-arena.vercel.app",
-                description: "Compete in AI-powered creative challenges. Generate art, write stories, and showcase your prompting skills against others.",
-                category: "ai"
-            },
-            {
-                name: "Indie Sample Finder",
-                url: "https://indie-sample-finder.vercel.app",
-                description: "Discover royalty-free samples and loops for your music productions. Find the perfect sounds for your indie projects.",
-                category: "productivity"
-            },
-            {
-                name: "Social Anxiety Practice Lab",
-                url: "https://social-anxiety-practice-lab.vercel.app",
-                description: "Safe space to practice social interactions through simulated scenarios. Build confidence at your own pace with guided exercises.",
-                category: "wellness"
-            },
-            {
-                name: "Sunrise Idea Composer",
-                url: "https://sunrise-idea-composer.vercel.app",
-                description: "Capture and develop your morning ideas with structured brainstorming tools. Turn early inspiration into actionable plans.",
-                category: "productivity"
-            },
-            {
-                name: "Wellness App",
-                url: "https://wellness-app.vercel.app",
-                description: "Comprehensive wellness companion for tracking mood, sleep, exercise, and nutrition. Achieve holistic health goals.",
-                category: "wellness"
-            },
-            {
-                name: "GenZ Run Club",
-                url: "https://genz-run-club.vercel.app",
-                description: "Running community app designed for the next generation. Track runs, join challenges, and connect with fellow runners.",
-                category: "wellness"
-            },
-            {
-                name: "Lecture Summarizer",
-                url: "https://lecture-summarizer.vercel.app",
-                description: "Upload lecture recordings and get AI-powered summaries. Extract key points and create study notes automatically.",
-                category: "ai"
-            },
-            {
-                name: "Transit Chat",
-                url: "https://transit-chat.vercel.app",
-                description: "Chat with fellow commuters on your route. Share updates, make connections, and improve your daily transit experience.",
-                category: "social"
-            },
-            {
-                name: "Finch Care",
-                url: "https://finch-care.vercel.app",
-                description: "Self-care companion that gamifies your wellness journey. Grow your virtual pet while building healthy habits.",
-                category: "wellness"
-            },
-            {
-                name: "Conversation Tutor AI",
-                url: "https://conversation-tutor-ai.vercel.app",
-                description: "Practice conversations with an AI tutor. Improve communication skills, learn languages, or prep for interviews.",
-                category: "ai"
-            },
-            {
-                name: "Transit Mindful",
-                url: "https://transit-mindful.vercel.app",
-                description: "Transform your commute with guided meditation and mindfulness exercises timed to your journey.",
-                category: "wellness"
-            },
-            {
-                name: "Lecture Voice Notes",
-                url: "https://lecture-voice-notes.vercel.app",
-                description: "Record, transcribe, and organize lecture notes with voice input. Never miss important information in class.",
-                category: "education"
-            },
-            {
-                name: "Automated Visual Generator",
-                url: "https://automated-visual-generator.vercel.app",
-                description: "Create stunning visuals automatically using AI. Generate social media graphics, presentations, and marketing materials.",
-                category: "ai"
-            },
-            {
-                name: "Streak Vault",
-                url: "https://streak-vault.vercel.app",
-                description: "Secure storage for all your habit streaks and achievements. Track multiple goals and celebrate your consistency.",
-                category: "productivity"
-            },
-            {
-                name: "Color Block Jam",
-                url: "https://color-block-jam.vercel.app",
-                description: "Addictive puzzle game where you match and clear colored blocks. Test your pattern recognition and strategy skills.",
-                category: "games"
-            },
-            {
-                name: "ADHD Body Doubling Buddy",
-                url: "https://adhd-body-doubling-buddy.vercel.app",
-                description: "Virtual body doubling companion for focus and accountability. Work alongside others to boost productivity with ADHD-friendly features.",
-                category: "wellness"
-            },
-            {
-                name: "AI Tutor Kids",
-                url: "https://ai-tutor-kids.vercel.app",
-                description: "Child-friendly AI tutor that makes learning fun. Interactive lessons, quizzes, and adaptive content for young learners.",
-                category: "ai"
-            },
-            {
-                name: "Micro Decision Trainer",
-                url: "https://micro-decision-trainer.vercel.app",
-                description: "Improve decision-making skills through quick micro-scenarios. Build confidence in making choices under pressure.",
-                category: "productivity"
-            },
-            {
-                name: "Daily Logic Puzzle",
-                url: "https://daily-logic-puzzle.vercel.app",
-                description: "Fresh logic puzzles every day to sharpen your mind. From sudoku variations to unique brain teasers.",
-                category: "games"
-            },
-            {
-                name: "Theme Budget Planner",
-                url: "https://theme-budget-planner.vercel.app",
-                description: "Customizable budget planner with beautiful themes. Track expenses, set goals, and visualize your financial health.",
-                category: "finance"
-            },
-            {
-                name: "AI Budget Analyzer",
-                url: "https://ai-budget-analyzer.vercel.app",
-                description: "Let AI analyze your spending patterns and provide personalized savings recommendations. Smart insights for better finances.",
-                category: "ai"
-            },
-            {
-                name: "Knit Community Hub",
-                url: "https://knit-community-hub.vercel.app",
-                description: "Connect with fellow knitting enthusiasts. Share patterns, get tips, and join virtual knitting circles.",
-                category: "social"
-            },
-            {
-                name: "Pattern Memory Challenge",
-                url: "https://pattern-memory-challenge.vercel.app",
-                description: "Test and improve your visual memory with increasingly complex pattern sequences. Train your brain daily.",
-                category: "games"
-            },
-            {
-                name: "Site GPT Chatbot",
-                url: "https://site-gpt-chatbot.vercel.app",
-                description: "Deploy intelligent chatbots for any website. Train on your content and provide instant visitor support powered by AI.",
-                category: "ai"
-            },
-            {
-                name: "Dawn Meditate",
-                url: "https://dawn-meditate.vercel.app",
-                description: "Start your day with guided morning meditations. Calm your mind and set positive intentions for the day ahead.",
-                category: "wellness"
-            },
-            {
-                name: "Photo Reality Puzzler",
-                url: "https://photo-reality-puzzler.vercel.app",
-                description: "Challenge yourself to spot the real photo among AI-generated images. Train your eye to detect AI art.",
-                category: "games"
-            },
-            {
-                name: "Route Canvas AR",
-                url: "https://route-canvas-ar.vercel.app",
-                description: "Plan and visualize routes with augmented reality overlays. Perfect for hiking, cycling, and urban exploration.",
-                category: "productivity"
-            },
-            {
-                name: "Immersive Subs Lite",
-                url: "https://immersive-subs-lite.vercel.app",
-                description: "Learn languages through immersive subtitle experiences. Watch content with smart, contextual translations.",
-                category: "education"
-            },
-            {
-                name: "Study Fizz",
-                url: "https://study-fizz.vercel.app",
-                description: "Make studying fun with gamified learning sessions. Earn rewards and track your academic progress.",
-                category: "education"
-            },
-            {
-                name: "Stakes Goal Tracker",
-                url: "https://stakes-goal-tracker.vercel.app",
-                description: "Set goals with real stakes and accountability. Put something on the line to boost your motivation.",
-                category: "productivity"
-            },
-            {
-                name: "Karma Task RPG",
-                url: "https://karma-task-rpg.vercel.app",
-                description: "Turn your to-do list into an RPG adventure. Complete tasks, earn karma points, and level up your character.",
-                category: "games"
-            },
-            {
-                name: "Notes Flash Spaced",
-                url: "https://notes-flash-spaced.vercel.app",
-                description: "Convert your notes into flashcards with spaced repetition. Optimize your learning with science-backed techniques.",
-                category: "education"
-            },
-            {
-                name: "Brain Boost Daily",
-                url: "https://brain-boost-daily.vercel.app",
-                description: "Daily brain training exercises to keep your mind sharp. Track cognitive improvements over time.",
-                category: "games"
-            },
-            {
-                name: "Color Block Jam Fresh",
-                url: "https://color-block-jam-fresh.vercel.app",
-                description: "Fresh take on the classic block puzzle. Match colors and clear the board with new game modes.",
-                category: "games"
-            },
-            {
-                name: "ADHD Body Doubling Buddy New",
-                url: "https://adhd-body-doubling-buddy-new.vercel.app",
-                description: "Enhanced virtual body doubling with new features. Better focus and accountability for ADHD minds.",
-                category: "wellness"
-            },
-            {
-                name: "Pattern Memory Temp",
-                url: "https://pattern-memory-temp.vercel.app",
-                description: "Temporary pattern memory challenges with time-limited sessions. Quick brain training on the go.",
-                category: "games"
-            }
+            { name: "AI Tutor Kids", url: "https://ai-tutor-kids.vercel.app", description: "Child-friendly AI tutor that makes learning fun. Interactive lessons, quizzes, and adaptive content for young learners.", category: "ai" },
+            { name: "AI Chatbot Builder", url: "https://ai-chatbot-builder.vercel.app", description: "Build and deploy custom AI chatbots with no code. Perfect for businesses and personal projects.", category: "ai" },
+            { name: "Streak Vault", url: "https://streak-vault.vercel.app", description: "Secure storage for all your habit streaks and achievements. Track multiple goals and celebrate your consistency.", category: "productivity" },
+            { name: "Social Anxiety Practice Lab", url: "https://social-anxiety-practice-lab.vercel.app", description: "Safe space to practice social interactions through simulated scenarios. Build confidence at your own pace.", category: "wellness" },
+            { name: "Knit Community Hub", url: "https://knit-community-hub.vercel.app", description: "Connect with fellow knitting enthusiasts. Share patterns, get tips, and join virtual knitting circles.", category: "social" },
+            { name: "Transit Vocab Builder", url: "https://transit-vocab-builder.vercel.app", description: "Learn vocabulary during your commute with bite-sized lessons optimized for transit time.", category: "education" },
+            { name: "Habit Streak Tracker", url: "https://habit-streak-tracker.vercel.app", description: "Track and maintain your daily habits with streak counters and motivational reminders.", category: "productivity" },
+            { name: "Focus Writer Daily", url: "https://focus-writer-daily.vercel.app", description: "A distraction-free writing environment with daily prompts and goals. Build your writing habit.", category: "productivity" },
+            { name: "GenZ Run Club", url: "https://genz-run-club.vercel.app", description: "Running community app designed for the next generation. Track runs, join challenges, connect with runners.", category: "wellness" },
+            { name: "RiseVocab", url: "https://risevocab.vercel.app", description: "Level up your vocabulary with daily challenges and progress tracking. Learn words that matter.", category: "education" },
+            { name: "Budget Battle Arena", url: "https://budget-battle-arena.vercel.app", description: "Gamify your budgeting! Compete with friends to achieve savings goals and earn rewards.", category: "finance" },
+            { name: "Disposable Income Calculator", url: "https://disposable-income-calculator.vercel.app", description: "Calculate your true disposable income after all expenses. Make smarter financial decisions.", category: "finance" },
+            { name: "Habit Time Insights", url: "https://habit-time-insights.vercel.app", description: "Analyze when you're most productive and optimize your habit scheduling with data-driven insights.", category: "productivity" },
+            { name: "Indie Sample Finder", url: "https://indie-sample-finder.vercel.app", description: "Discover royalty-free samples and loops for your music productions.", category: "productivity" },
+            { name: "Drops Vibe Vocab", url: "https://drops-vibe-vocab.vercel.app", description: "Learn new vocabulary through immersive, vibe-based word associations.", category: "education" },
+            { name: "Focus Timer App", url: "https://focus-timer-app.vercel.app", description: "Simple yet powerful focus timer with Pomodoro and custom intervals. Stay productive.", category: "productivity" },
+            { name: "Bannerbear Visual Generator", url: "https://bannerbear-visual-generator.vercel.app", description: "Generate stunning marketing visuals automatically. Create social media graphics at scale.", category: "ai" },
+            { name: "Mood Tracker for Students", url: "https://mood-tracker-for-students.vercel.app", description: "Track your emotional wellbeing through the academic year. Identify patterns and manage stress.", category: "wellness" },
+            { name: "Streak Commute Lingo", url: "https://streak-commute-lingo.vercel.app", description: "Master a new language during your daily commute with streak-based learning.", category: "education" },
+            { name: "Parent Pocket Watch", url: "https://parent-pocket-watch.vercel.app", description: "Family time management app helping parents track activities and quality time with kids.", category: "productivity" },
+            { name: "Remote Lingo Break", url: "https://remote-lingo-break.vercel.app", description: "Quick language learning breaks for remote workers. Learn during your work breaks.", category: "education" },
+            { name: "GenZ Streak Habit", url: "https://genz-streak-habit.vercel.app", description: "Habit tracker designed for Gen Z with social features and modern aesthetics.", category: "productivity" },
+            { name: "Mood Meditate AI", url: "https://mood-meditate-ai.vercel.app", description: "AI-powered meditation that adapts to your current mood and emotional state.", category: "wellness" },
+            { name: "Beat Battle Arena", url: "https://beat-battle-arena.vercel.app", description: "Compete in rhythm-based music battles. Create beats and challenge other producers.", category: "games" },
+            { name: "Zen Block Adventure", url: "https://zen-block-adventure.vercel.app", description: "Relaxing puzzle game combining block-matching with peaceful zen aesthetics.", category: "games" },
+            { name: "Remote Expense Tracker", url: "https://remote-expense-tracker.vercel.app", description: "Track work-from-home expenses easily. Perfect for remote workers and freelancers.", category: "finance" },
+            { name: "Daily Journal App", url: "https://daily-journal-app.vercel.app", description: "Beautiful daily journaling with prompts, mood tracking, and reflection insights.", category: "wellness" },
+            { name: "Site GPT Chatbot", url: "https://site-gpt-chatbot.vercel.app", description: "Deploy intelligent chatbots for any website. Train on your content for instant support.", category: "ai" },
+            { name: "Freelance Wellness Coaching", url: "https://freelance-wellness-coaching-platform.vercel.app", description: "Connect wellness coaches with clients. Book sessions and track your wellness journey.", category: "wellness" },
+            { name: "Word Unwind Daily", url: "https://word-unwind-daily.vercel.app", description: "Relaxing word puzzles to unwind after a long day. Build vocabulary while destressing.", category: "games" },
+            { name: "Theme Budget Planner", url: "https://theme-budget-planner.vercel.app", description: "Customizable budget planner with beautiful themes. Visualize your financial health.", category: "finance" },
+            { name: "Pattern Memory Challenge", url: "https://pattern-memory-challenge.vercel.app", description: "Test and improve your visual memory with increasingly complex pattern sequences.", category: "games" },
+            { name: "Finch Care", url: "https://finch-care.vercel.app", description: "Self-care companion that gamifies your wellness journey. Grow your virtual pet.", category: "wellness" },
+            { name: "Streak Battle Arena", url: "https://streak-battle-arena.vercel.app", description: "Compete with friends to maintain the longest habit streaks. Social accountability.", category: "productivity" },
+            { name: "Notes Flash Spaced", url: "https://notes-flash-spaced.vercel.app", description: "Convert notes into flashcards with spaced repetition. Science-backed learning.", category: "education" },
+            { name: "Stakes Goal Tracker", url: "https://stakes-goal-tracker.vercel.app", description: "Set goals with real stakes and accountability. Put something on the line.", category: "productivity" },
+            { name: "Minimal Mood Log", url: "https://minimal-mood-log.vercel.app", description: "Simple, beautiful mood tracking. Log your emotions with minimal effort.", category: "wellness" },
+            { name: "Study Fizz", url: "https://study-fizz.vercel.app", description: "Make studying fun with gamified learning sessions. Earn rewards and track progress.", category: "education" },
+            { name: "Dawn Meditate", url: "https://dawn-meditate.vercel.app", description: "Start your day with guided morning meditations. Set positive intentions.", category: "wellness" },
+            { name: "Automated Visual Generator", url: "https://automated-visual-generator.vercel.app", description: "Create stunning visuals automatically using AI. Generate marketing materials.", category: "ai" },
+            { name: "Conversation Tutor AI", url: "https://conversation-tutor-ai.vercel.app", description: "Practice conversations with an AI tutor. Improve communication skills.", category: "ai" },
+            { name: "Wellness App", url: "https://wellness-app.vercel.app", description: "Comprehensive wellness companion for tracking mood, sleep, exercise, and nutrition.", category: "wellness" },
+            { name: "Sunrise Idea Composer", url: "https://sunrise-idea-composer.vercel.app", description: "Capture and develop your morning ideas with structured brainstorming tools.", category: "productivity" },
+            { name: "Lecture Summarizer", url: "https://lecture-summarizer.vercel.app", description: "Upload lecture recordings and get AI-powered summaries. Extract key points.", category: "ai" },
+            { name: "Lecture Voice Notes", url: "https://lecture-voice-notes.vercel.app", description: "Record, transcribe, and organize lecture notes with voice input.", category: "education" },
+            { name: "AI Creator Arena", url: "https://ai-creator-arena.vercel.app", description: "Compete in AI-powered creative challenges. Showcase your prompting skills.", category: "ai" },
+            { name: "Tutoring Marketplace Lite", url: "https://tutoring-marketplace-lite.vercel.app", description: "Connect students with tutors. Schedule sessions and track progress.", category: "education" },
+            { name: "Gig Flow Budget", url: "https://gig-flow-budget.vercel.app", description: "Budget management designed for gig workers with irregular income.", category: "finance" },
+            { name: "Flowchart Flow", url: "https://flowchart-flow.vercel.app", description: "Create beautiful flowcharts and diagrams with intuitive drag-and-drop.", category: "productivity" },
+            { name: "Finance Tycoon", url: "https://finance-tycoon.vercel.app", description: "Simulation game where you build your financial empire. Learn investing.", category: "finance" },
+            { name: "Photo Reality Puzzler", url: "https://photo-reality-puzzler.vercel.app", description: "Spot the real photo among AI-generated images. Train your eye.", category: "games" },
+            { name: "Blackbox Mind Teasers", url: "https://blackbox-mind-teasers.vercel.app", description: "Challenge your logical thinking with cryptic puzzles. Deductive reasoning.", category: "games" },
+            { name: "AI Budget Analyzer", url: "https://ai-budget-analyzer.vercel.app", description: "Let AI analyze your spending patterns. Get personalized savings tips.", category: "ai" },
+            { name: "Route Canvas AR", url: "https://route-canvas-ar.vercel.app", description: "Plan and visualize routes with AR overlays. Perfect for exploration.", category: "productivity" },
+            { name: "Transit Chat", url: "https://transit-chat.vercel.app", description: "Chat with fellow commuters on your route. Share updates and connect.", category: "social" },
+            { name: "Immersive Subs Lite", url: "https://immersive-subs-lite.vercel.app", description: "Learn languages through immersive subtitle experiences.", category: "education" },
+            { name: "Micro Decision Trainer", url: "https://micro-decision-trainer.vercel.app", description: "Improve decision-making through quick micro-scenarios.", category: "productivity" },
+            { name: "Karma Task RPG", url: "https://karma-task-rpg.vercel.app", description: "Turn your to-do list into an RPG adventure. Earn karma points.", category: "games" },
+            { name: "Brain Boost Daily", url: "https://brain-boost-daily.vercel.app", description: "Daily brain training exercises to keep your mind sharp.", category: "games" },
+            { name: "Midnight Memrise", url: "https://midnight-memrise.vercel.app", description: "Nighttime-optimized flashcard app with dark mode and spaced repetition.", category: "education" },
+            { name: "Serialized Story Platform", url: "https://serialized-story-platform.vercel.app", description: "Read and write serialized stories chapter by chapter.", category: "social" },
+            { name: "Color Block Jam", url: "https://color-block-jam.vercel.app", description: "Addictive puzzle game where you match and clear colored blocks.", category: "games" },
+            { name: "Transit Mindful", url: "https://transit-mindful.vercel.app", description: "Transform your commute with guided meditation and mindfulness.", category: "wellness" },
+            { name: "ADHD Body Doubling Buddy", url: "https://adhd-body-doubling-buddy.vercel.app", description: "Virtual body doubling companion for focus and accountability.", category: "wellness" },
+            { name: "Daily Logic Puzzle", url: "https://daily-logic-puzzle.vercel.app", description: "Fresh logic puzzles every day to sharpen your mind.", category: "games" },
+            { name: "Focus Mind Sync", url: "https://focus-mind-sync.vercel.app", description: "Synchronize focus sessions with ambient sounds and Pomodoro timers.", category: "productivity" }
         ];
 
         function generateQRUrl(url) {
@@ -1318,8 +1200,11 @@
             }
 
             noResults.classList.remove('active');
-            grid.innerHTML = filteredApps.map(app => `
-                <div class="app-card" data-category="${app.category}">
+            grid.innerHTML = filteredApps.map((app, index) => `
+                <div class="app-card" data-category="${app.category}" style="animation-delay: ${Math.min(index * 0.05, 0.5)}s">
+                    <div class="app-thumbnail" onclick="window.open('${app.url}', '_blank')">
+                        <img src="https://image.thum.io/get/width/400/crop/600/${app.url}" alt="${app.name} preview" loading="lazy">
+                    </div>
                     <div class="app-header">
                         <div class="app-info">
                             <h3 class="app-name">${app.name}</h3>
