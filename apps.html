@@ -1543,57 +1543,13 @@
         const SUPABASE_URL = 'https://api.srv936332.hstgr.cloud';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE';
 
-        // Track current auth token (anon key or user JWT)
-        let currentAuthToken = SUPABASE_ANON_KEY;
-
         // Load Supabase dynamically (won't block apps)
         const supabaseScript = document.createElement('script');
         supabaseScript.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
         supabaseScript.onload = function() {
             try {
-                // CDN exposes supabase.createClient directly
                 if (typeof window.supabase !== 'undefined') {
-                    // Custom fetch to add auth headers only for PostgREST data calls
-                    const customFetch = (url, options = {}) => {
-                        const urlStr = url.toString();
-
-                        // Only add custom headers for REST API calls, not auth calls
-                        if (!urlStr.includes('/rest/v1/')) {
-                            return fetch(url, options);
-                        }
-
-                        // For REST API: set auth headers
-                        const newHeaders = {};
-                        const existingHeaders = options.headers || {};
-
-                        // Copy non-auth headers
-                        if (existingHeaders instanceof Headers) {
-                            existingHeaders.forEach((value, key) => {
-                                const lowerKey = key.toLowerCase();
-                                if (lowerKey !== 'apikey' && lowerKey !== 'authorization') {
-                                    newHeaders[key] = value;
-                                }
-                            });
-                        } else {
-                            Object.keys(existingHeaders).forEach(key => {
-                                const lowerKey = key.toLowerCase();
-                                if (lowerKey !== 'apikey' && lowerKey !== 'authorization') {
-                                    newHeaders[key] = existingHeaders[key];
-                                }
-                            });
-                        }
-
-                        newHeaders['apikey'] = SUPABASE_ANON_KEY;
-                        newHeaders['Authorization'] = 'Bearer ' + currentAuthToken;
-
-                        return fetch(url, { ...options, headers: newHeaders });
-                    };
-
-                    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-                        global: {
-                            fetch: customFetch
-                        }
-                    });
+                    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
                     console.log('Supabase initialized successfully');
                     initSupabaseAuth();
                 } else {
@@ -1617,7 +1573,6 @@
             supabaseClient.auth.getSession().then(({ data: { session } }) => {
                 if (session) {
                     currentUser = session.user;
-                    currentAuthToken = session.access_token;
                     updateAuthUI();
                     loadUserRatings();
                 }
@@ -1625,7 +1580,6 @@
 
             supabaseClient.auth.onAuthStateChange((event, session) => {
                 currentUser = session?.user || null;
-                currentAuthToken = session?.access_token || SUPABASE_ANON_KEY;
                 updateAuthUI();
                 if (event === 'SIGNED_IN' && session?.user) {
                     trackUserLogin(session.user, 'therobots');
