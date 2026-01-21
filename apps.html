@@ -1548,10 +1548,29 @@
         const supabaseScript = document.createElement('script');
         supabaseScript.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
         supabaseScript.onload = function() {
-            console.log('Supabase script loaded, window.supabase:', typeof window.supabase);
             try {
                 if (typeof window.supabase !== 'undefined') {
-                    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                    // Custom fetch wrapper to ensure headers are always sent
+                    const customFetch = (url, options = {}) => {
+                        const headers = new Headers(options.headers || {});
+                        if (!headers.has('apikey')) {
+                            headers.set('apikey', SUPABASE_ANON_KEY);
+                        }
+                        if (!headers.has('Authorization')) {
+                            headers.set('Authorization', 'Bearer ' + SUPABASE_ANON_KEY);
+                        }
+                        return fetch(url, { ...options, headers });
+                    };
+
+                    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+                        global: {
+                            fetch: customFetch,
+                            headers: {
+                                'apikey': SUPABASE_ANON_KEY,
+                                'Authorization': 'Bearer ' + SUPABASE_ANON_KEY
+                            }
+                        }
+                    });
                     console.log('Supabase client created successfully');
                     initSupabaseAuth();
                 } else {
@@ -1676,31 +1695,19 @@
         }
 
         async function signInWithGoogle() {
-            console.log('signInWithGoogle called, supabaseClient:', !!supabaseClient);
             if (!supabaseClient) {
                 alert('Authentication is still loading. Please wait a moment.');
                 return;
             }
-            try {
-                console.log('Calling signInWithOAuth...');
-                const { data, error } = await supabaseClient.auth.signInWithOAuth({
-                    provider: 'google',
-                    options: {
-                        redirectTo: window.location.origin + '/apps.html',
-                        skipBrowserRedirect: false
-                    }
-                });
-                console.log('OAuth result:', { data, error });
-                if (error) {
-                    alert('Sign in error: ' + error.message);
-                } else if (data?.url) {
-                    // Manual redirect fallback if auto-redirect didn't happen
-                    console.log('Redirecting to:', data.url);
-                    window.location.href = data.url;
+            const { error } = await supabaseClient.auth.signInWithOAuth({
+                provider: 'google',
+                options: {
+                    redirectTo: window.location.origin + '/apps.html'
                 }
-            } catch (e) {
-                console.error('OAuth exception:', e);
-                alert('Sign in failed: ' + e.message);
+            });
+            if (error) {
+                document.getElementById('authStatus').className = 'auth-status error';
+                document.getElementById('authStatus').textContent = error.message;
             }
         }
 
