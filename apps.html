@@ -1549,14 +1549,8 @@
         supabaseScript.onload = function() {
             try {
                 if (typeof window.supabase !== 'undefined') {
-                    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-                        global: {
-                            headers: {
-                                'apikey': SUPABASE_ANON_KEY,
-                                'Authorization': 'Bearer ' + SUPABASE_ANON_KEY
-                            }
-                        }
-                    });
+                    // Simple client init - login worked with this config at commit 8800dd8
+                    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
                     console.log('Supabase initialized successfully');
                     initSupabaseAuth();
                 } else {
@@ -1737,48 +1731,59 @@
         // ========== STAR RATING FUNCTIONS ==========
 
         async function loadAllRatings() {
-            // Use direct fetch for public ratings
-            try {
-                const response = await fetch(SUPABASE_URL + '/rest/v1/app_ratings?select=app_slug,rating', {
-                    method: 'GET',
+            // Try multiple approaches to fetch public ratings
+            const attempts = [
+                // Attempt 1: Standard Supabase headers
+                {
+                    url: SUPABASE_URL + '/rest/v1/app_ratings?select=app_slug,rating',
                     headers: {
                         'apikey': SUPABASE_ANON_KEY,
-                        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                        'Prefer': 'return=representation'
+                        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY
                     }
-                });
+                },
+                // Attempt 2: apikey only (no Authorization)
+                {
+                    url: SUPABASE_URL + '/rest/v1/app_ratings?select=app_slug,rating',
+                    headers: {
+                        'apikey': SUPABASE_ANON_KEY
+                    }
+                },
+                // Attempt 3: apikey as URL param
+                {
+                    url: SUPABASE_URL + '/rest/v1/app_ratings?select=app_slug,rating&apikey=' + SUPABASE_ANON_KEY,
+                    headers: {
+                        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY
+                    }
+                },
+                // Attempt 4: Both in URL and header
+                {
+                    url: SUPABASE_URL + '/rest/v1/app_ratings?select=app_slug,rating&apikey=' + SUPABASE_ANON_KEY,
+                    headers: {
+                        'apikey': SUPABASE_ANON_KEY,
+                        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY
+                    }
+                }
+            ];
 
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    console.error('Error loading ratings:', response.status, errorText);
-
-                    // Try alternate header format if first attempt fails
-                    const retryResponse = await fetch(SUPABASE_URL + '/rest/v1/app_ratings?select=app_slug,rating', {
+            for (let i = 0; i < attempts.length; i++) {
+                try {
+                    const response = await fetch(attempts[i].url, {
                         method: 'GET',
-                        headers: {
-                            'ApiKey': SUPABASE_ANON_KEY,
-                            'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
-                            'Content-Type': 'application/json'
-                        }
+                        headers: attempts[i].headers
                     });
 
-                    if (!retryResponse.ok) {
-                        console.error('Retry also failed:', retryResponse.status);
+                    if (response.ok) {
+                        const ratings = await response.json();
+                        console.log('Ratings loaded successfully with attempt', i + 1);
+                        displayRatings(ratings);
                         return;
                     }
-
-                    const ratings = await retryResponse.json();
-                    displayRatings(ratings);
-                    return;
+                    console.log('Attempt', i + 1, 'failed:', response.status);
+                } catch (e) {
+                    console.log('Attempt', i + 1, 'error:', e.message);
                 }
-
-                const ratings = await response.json();
-                displayRatings(ratings);
-            } catch (e) {
-                console.error('Error loading ratings:', e);
             }
+            console.error('All rating fetch attempts failed');
         }
 
         function displayRatings(ratings) {
