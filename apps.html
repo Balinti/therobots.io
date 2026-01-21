@@ -1737,45 +1737,71 @@
         // ========== STAR RATING FUNCTIONS ==========
 
         async function loadAllRatings() {
-            // Use direct fetch for public ratings - bypasses Supabase client auth issues
+            // Use direct fetch for public ratings
             try {
                 const response = await fetch(SUPABASE_URL + '/rest/v1/app_ratings?select=app_slug,rating', {
+                    method: 'GET',
                     headers: {
                         'apikey': SUPABASE_ANON_KEY,
-                        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY
+                        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'Prefer': 'return=representation'
                     }
                 });
 
                 if (!response.ok) {
-                    console.error('Error loading ratings:', response.status, await response.text());
+                    const errorText = await response.text();
+                    console.error('Error loading ratings:', response.status, errorText);
+
+                    // Try alternate header format if first attempt fails
+                    const retryResponse = await fetch(SUPABASE_URL + '/rest/v1/app_ratings?select=app_slug,rating', {
+                        method: 'GET',
+                        headers: {
+                            'ApiKey': SUPABASE_ANON_KEY,
+                            'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+                            'Content-Type': 'application/json'
+                        }
+                    });
+
+                    if (!retryResponse.ok) {
+                        console.error('Retry also failed:', retryResponse.status);
+                        return;
+                    }
+
+                    const ratings = await retryResponse.json();
+                    displayRatings(ratings);
                     return;
                 }
 
                 const ratings = await response.json();
-
-                // Calculate averages
-                const ratingsByApp = {};
-                (ratings || []).forEach(r => {
-                    if (!ratingsByApp[r.app_slug]) {
-                        ratingsByApp[r.app_slug] = { total: 0, count: 0 };
-                    }
-                    ratingsByApp[r.app_slug].total += r.rating;
-                    ratingsByApp[r.app_slug].count++;
-                });
-
-                // Store and display
-                Object.keys(ratingsByApp).forEach(slug => {
-                    const avg = (ratingsByApp[slug].total / ratingsByApp[slug].count).toFixed(1);
-                    appRatings[slug] = { avg, count: ratingsByApp[slug].count };
-                    updateRatingDisplay(slug, avg, ratingsByApp[slug].count);
-                });
-
-                // Load user's ratings if logged in
-                if (currentUser) {
-                    loadUserRatings();
-                }
+                displayRatings(ratings);
             } catch (e) {
                 console.error('Error loading ratings:', e);
+            }
+        }
+
+        function displayRatings(ratings) {
+            // Calculate averages
+            const ratingsByApp = {};
+            (ratings || []).forEach(r => {
+                if (!ratingsByApp[r.app_slug]) {
+                    ratingsByApp[r.app_slug] = { total: 0, count: 0 };
+                }
+                ratingsByApp[r.app_slug].total += r.rating;
+                ratingsByApp[r.app_slug].count++;
+            });
+
+            // Store and display
+            Object.keys(ratingsByApp).forEach(slug => {
+                const avg = (ratingsByApp[slug].total / ratingsByApp[slug].count).toFixed(1);
+                appRatings[slug] = { avg, count: ratingsByApp[slug].count };
+                updateRatingDisplay(slug, avg, ratingsByApp[slug].count);
+            });
+
+            // Load user's ratings if logged in
+            if (currentUser) {
+                loadUserRatings();
             }
         }
 
