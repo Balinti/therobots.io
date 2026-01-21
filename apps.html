@@ -227,6 +227,29 @@
             transition: all 0.1s ease;
         }
 
+        .app-thumbnail {
+            width: 100%;
+            height: 160px;
+            border-radius: 12px;
+            overflow: hidden;
+            margin-bottom: 1rem;
+            cursor: pointer;
+            background: linear-gradient(135deg, #2d1b69 0%, #11001c 100%);
+        }
+
+        .app-thumbnail img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.4s ease, opacity 0.3s;
+            opacity: 0.9;
+        }
+
+        .app-thumbnail:hover img {
+            transform: scale(1.05);
+            opacity: 1;
+        }
+
         .app-header {
             display: flex;
             justify-content: space-between;
@@ -1179,6 +1202,9 @@
             noResults.classList.remove('active');
             grid.innerHTML = filteredApps.map((app, index) => `
                 <div class="app-card" data-category="${app.category}" style="animation-delay: ${Math.min(index * 0.05, 0.5)}s">
+                    <div class="app-thumbnail" onclick="window.open('${app.url}', '_blank')">
+                        <img src="https://image.thum.io/get/width/400/crop/600/${app.url}" alt="${app.name} preview" loading="lazy">
+                    </div>
                     <div class="app-header">
                         <div class="app-info">
                             <h3 class="app-name">${app.name}</h3>
