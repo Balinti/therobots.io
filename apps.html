@@ -428,19 +428,50 @@
             margin-bottom: 1rem;
             cursor: pointer;
             background: linear-gradient(135deg, #2d1b69 0%, #11001c 100%);
+            position: relative;
         }
 
         .app-thumbnail img {
             width: 100%;
             height: 100%;
             object-fit: cover;
-            transition: transform 0.4s ease, opacity 0.3s;
+            position: absolute;
+            top: 0;
+            left: 0;
+            opacity: 0;
+            transition: opacity 0.8s ease-in-out, transform 0.4s ease;
+        }
+
+        .app-thumbnail img.active {
             opacity: 0.9;
         }
 
-        .app-thumbnail:hover img {
+        .app-thumbnail:hover img.active {
             transform: scale(1.05);
             opacity: 1;
+        }
+
+        .thumbnail-indicator {
+            position: absolute;
+            bottom: 8px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 6px;
+            z-index: 10;
+        }
+
+        .thumbnail-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.4);
+            transition: background 0.3s, transform 0.3s;
+        }
+
+        .thumbnail-dot.active {
+            background: rgba(255, 255, 255, 0.9);
+            transform: scale(1.3);
         }
 
         .app-header {
@@ -1402,8 +1433,15 @@
             noResults.classList.remove('active');
             grid.innerHTML = filteredApps.map((app, index) => `
                 <div class="app-card" data-category="${app.category}" style="animation-delay: ${Math.min(index * 0.05, 0.5)}s">
-                    <div class="app-thumbnail" onclick="window.open('${app.url}', '_blank')">
-                        <img src="https://image.thum.io/get/width/400/crop/600/${app.url}" alt="${app.name} preview" loading="lazy">
+                    <div class="app-thumbnail" onclick="window.open('${app.url}', '_blank')" data-app-name="${encodeURIComponent(app.name)}">
+                        <img src="https://image.thum.io/get/width/400/crop/600/${app.url}" alt="${app.name} screenshot" loading="lazy" class="thumb-img active" data-type="screenshot">
+                        <img src="https://source.boringavatars.com/beam/400/${encodeURIComponent(app.name)}?colors=2d1b69,9d4edd,c77dff,e0aaff,7209b7" alt="${app.name} avatar" loading="lazy" class="thumb-img" data-type="boring">
+                        <img src="https://api.dicebear.com/7.x/shapes/svg?seed=${encodeURIComponent(app.name)}&size=400&backgroundColor=2d1b69,11001c" alt="${app.name} pattern" loading="lazy" class="thumb-img" data-type="dicebear">
+                        <div class="thumbnail-indicator">
+                            <span class="thumbnail-dot active" data-index="0"></span>
+                            <span class="thumbnail-dot" data-index="1"></span>
+                            <span class="thumbnail-dot" data-index="2"></span>
+                        </div>
                     </div>
                     <div class="app-header">
                         <div class="app-info">
@@ -2399,6 +2437,46 @@
                 if (cursorTrail) cursorTrail.style.display = 'none';
             }
         })();
+
+        // ========== THUMBNAIL ROTATION ==========
+        function initThumbnailRotation() {
+            const thumbnails = document.querySelectorAll('.app-thumbnail');
+
+            thumbnails.forEach((thumbnail, thumbIndex) => {
+                const images = thumbnail.querySelectorAll('.thumb-img');
+                const dots = thumbnail.querySelectorAll('.thumbnail-dot');
+                let currentIndex = 0;
+
+                // Stagger start times so all thumbnails don't change at once
+                const staggerDelay = (thumbIndex % 10) * 300;
+
+                setTimeout(() => {
+                    setInterval(() => {
+                        // Remove active from current
+                        images[currentIndex].classList.remove('active');
+                        dots[currentIndex].classList.remove('active');
+
+                        // Move to next
+                        currentIndex = (currentIndex + 1) % images.length;
+
+                        // Add active to new current
+                        images[currentIndex].classList.add('active');
+                        dots[currentIndex].classList.add('active');
+                    }, 3000);
+                }, staggerDelay);
+            });
+        }
+
+        // Initialize thumbnail rotation after apps are rendered
+        initThumbnailRotation();
+
+        // Re-initialize when apps are re-rendered (after search/filter)
+        const originalRenderApps = renderApps;
+        renderApps = function(filteredApps) {
+            originalRenderApps(filteredApps);
+            // Small delay to ensure DOM is updated
+            setTimeout(initThumbnailRotation, 100);
+        };
 
     </script>
 </body>
