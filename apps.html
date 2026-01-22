@@ -1448,8 +1448,8 @@
                 <div class="app-card" data-category="${app.category}" style="animation-delay: ${Math.min(index * 0.05, 0.5)}s">
                     <div class="app-thumbnail" onclick="window.open('${app.url}', '_blank')" data-app-name="${encodeURIComponent(app.name)}">
                         <img src="https://image.thum.io/get/width/400/crop/600/${app.url}" alt="${app.name} screenshot" loading="lazy" class="thumb-img active" data-type="screenshot">
-                        <img src="https://source.unsplash.com/400x200/?${getCategoryKeywords(app.category)}" alt="${app.name} category" loading="lazy" class="thumb-img" data-type="unsplash">
-                        <img src="https://placehold.co/400x160/2d1b69/c77dff?text=${encodeURIComponent(app.name)}&font=raleway" alt="${app.name}" loading="lazy" class="thumb-img" data-type="placeholder">
+                        <img src="https://picsum.photos/seed/${app.category}${index}/400/160" alt="${app.name} category" loading="lazy" class="thumb-img" data-type="picsum">
+                        <img src="https://dummyimage.com/400x160/2d1b69/c77dff.png&text=${encodeURIComponent(app.name)}" alt="${app.name}" loading="lazy" class="thumb-img" data-type="text">
                         <div class="thumbnail-indicator">
                             <span class="thumbnail-dot active" data-index="0"></span>
                             <span class="thumbnail-dot" data-index="1"></span>
