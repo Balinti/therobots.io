@@ -1433,6 +1433,11 @@
             return keywords[category] || 'technology,app';
         }
 
+        // Convert app name to image filename format (e.g., "AI Tutor Kids" -> "AI_Tutor_Kids")
+        function getImageBaseName(appName) {
+            return appName.replace(/\s+/g, '_');
+        }
+
         function renderApps(filteredApps) {
             const grid = document.getElementById('appsGrid');
             const noResults = document.getElementById('noResults');
@@ -1448,12 +1453,16 @@
                 <div class="app-card" data-category="${app.category}" style="animation-delay: ${Math.min(index * 0.05, 0.5)}s">
                     <div class="app-thumbnail" onclick="window.open('${app.url}', '_blank')" data-app-name="${encodeURIComponent(app.name)}">
                         <img src="https://image.thum.io/get/width/400/crop/600/${app.url}" alt="${app.name} screenshot" loading="lazy" class="thumb-img active" data-type="screenshot">
-                        <img src="https://picsum.photos/seed/${app.category}${index}/400/160" alt="${app.name} category" loading="lazy" class="thumb-img" data-type="picsum">
-                        <img src="https://dummyimage.com/400x160/2d1b69/c77dff.png&text=${encodeURIComponent(app.name)}" alt="${app.name}" loading="lazy" class="thumb-img" data-type="text">
+                        <img src="images/apps/${getImageBaseName(app.name)}_v1.jpg" alt="${app.name} preview 1" loading="lazy" class="thumb-img" data-type="local">
+                        <img src="images/apps/${getImageBaseName(app.name)}_v2.jpg" alt="${app.name} preview 2" loading="lazy" class="thumb-img" data-type="local">
+                        <img src="images/apps/${getImageBaseName(app.name)}_v3.jpg" alt="${app.name} preview 3" loading="lazy" class="thumb-img" data-type="local">
+                        <img src="images/apps/${getImageBaseName(app.name)}_v4.jpg" alt="${app.name} preview 4" loading="lazy" class="thumb-img" data-type="local">
                         <div class="thumbnail-indicator">
                             <span class="thumbnail-dot active" data-index="0"></span>
                             <span class="thumbnail-dot" data-index="1"></span>
                             <span class="thumbnail-dot" data-index="2"></span>
+                            <span class="thumbnail-dot" data-index="3"></span>
+                            <span class="thumbnail-dot" data-index="4"></span>
                         </div>
                     </div>
                     <div class="app-header">
@@ -2460,22 +2469,34 @@
                 const dots = thumbnail.querySelectorAll('.thumbnail-dot');
                 let currentIndex = 0;
 
+                // Get random interval between 3-5 seconds (3000-5000ms)
+                function getRandomInterval() {
+                    return Math.floor(Math.random() * 2000) + 3000;
+                }
+
+                // Recursive function to rotate with random timing
+                function rotateImage() {
+                    // Remove active from current
+                    images[currentIndex].classList.remove('active');
+                    dots[currentIndex].classList.remove('active');
+
+                    // Move to next
+                    currentIndex = (currentIndex + 1) % images.length;
+
+                    // Add active to new current
+                    images[currentIndex].classList.add('active');
+                    dots[currentIndex].classList.add('active');
+
+                    // Schedule next rotation with new random interval
+                    setTimeout(rotateImage, getRandomInterval());
+                }
+
                 // Stagger start times so all thumbnails don't change at once
                 const staggerDelay = (thumbIndex % 10) * 300;
 
+                // Start the rotation with initial random delay
                 setTimeout(() => {
-                    setInterval(() => {
-                        // Remove active from current
-                        images[currentIndex].classList.remove('active');
-                        dots[currentIndex].classList.remove('active');
-
-                        // Move to next
-                        currentIndex = (currentIndex + 1) % images.length;
-
-                        // Add active to new current
-                        images[currentIndex].classList.add('active');
-                        dots[currentIndex].classList.add('active');
-                    }, 3000);
+                    setTimeout(rotateImage, getRandomInterval());
                 }, staggerDelay);
             });
         }
