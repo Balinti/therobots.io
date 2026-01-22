@@ -1420,6 +1420,19 @@
             return labels[category] || category;
         }
 
+        function getCategoryKeywords(category) {
+            const keywords = {
+                productivity: 'workspace,desk,laptop,minimal',
+                education: 'books,learning,study,library',
+                finance: 'money,charts,business,investment',
+                wellness: 'meditation,nature,yoga,peaceful',
+                games: 'gaming,fun,colorful,play',
+                ai: 'technology,robot,futuristic,digital',
+                social: 'people,community,connection,friends'
+            };
+            return keywords[category] || 'technology,app';
+        }
+
         function renderApps(filteredApps) {
             const grid = document.getElementById('appsGrid');
             const noResults = document.getElementById('noResults');
@@ -1435,8 +1448,8 @@
                 <div class="app-card" data-category="${app.category}" style="animation-delay: ${Math.min(index * 0.05, 0.5)}s">
                     <div class="app-thumbnail" onclick="window.open('${app.url}', '_blank')" data-app-name="${encodeURIComponent(app.name)}">
                         <img src="https://image.thum.io/get/width/400/crop/600/${app.url}" alt="${app.name} screenshot" loading="lazy" class="thumb-img active" data-type="screenshot">
-                        <img src="https://source.boringavatars.com/beam/400/${encodeURIComponent(app.name)}?colors=2d1b69,9d4edd,c77dff,e0aaff,7209b7" alt="${app.name} avatar" loading="lazy" class="thumb-img" data-type="boring">
-                        <img src="https://api.dicebear.com/7.x/shapes/svg?seed=${encodeURIComponent(app.name)}&size=400&backgroundColor=2d1b69,11001c" alt="${app.name} pattern" loading="lazy" class="thumb-img" data-type="dicebear">
+                        <img src="https://source.unsplash.com/400x200/?${getCategoryKeywords(app.category)}" alt="${app.name} category" loading="lazy" class="thumb-img" data-type="unsplash">
+                        <img src="https://placehold.co/400x160/2d1b69/c77dff?text=${encodeURIComponent(app.name)}&font=raleway" alt="${app.name}" loading="lazy" class="thumb-img" data-type="placeholder">
                         <div class="thumbnail-indicator">
                             <span class="thumbnail-dot active" data-index="0"></span>
                             <span class="thumbnail-dot" data-index="1"></span>
