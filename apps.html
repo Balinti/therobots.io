@@ -1452,13 +1452,13 @@
             grid.innerHTML = filteredApps.map((app, index) => `
                 <div class="app-card" data-category="${app.category}" style="animation-delay: ${Math.min(index * 0.05, 0.5)}s">
                     <div class="app-thumbnail" onclick="window.open('${app.url}', '_blank')" data-app-name="${encodeURIComponent(app.name)}">
-                        <img src="https://image.thum.io/get/width/400/crop/600/${app.url}" alt="${app.name} screenshot" loading="lazy" class="thumb-img active" data-type="screenshot">
+                        <img src="https://image.thum.io/get/width/400/crop/600/${app.url}" alt="${app.name} screenshot" loading="lazy" class="thumb-img" data-type="screenshot">
                         <img src="images/apps/${getImageBaseName(app.name)}_v1.jpg" alt="${app.name} preview 1" loading="lazy" class="thumb-img" data-type="local">
                         <img src="images/apps/${getImageBaseName(app.name)}_v2.jpg" alt="${app.name} preview 2" loading="lazy" class="thumb-img" data-type="local">
                         <img src="images/apps/${getImageBaseName(app.name)}_v3.jpg" alt="${app.name} preview 3" loading="lazy" class="thumb-img" data-type="local">
                         <img src="images/apps/${getImageBaseName(app.name)}_v4.jpg" alt="${app.name} preview 4" loading="lazy" class="thumb-img" data-type="local">
                         <div class="thumbnail-indicator">
-                            <span class="thumbnail-dot active" data-index="0"></span>
+                            <span class="thumbnail-dot" data-index="0"></span>
                             <span class="thumbnail-dot" data-index="1"></span>
                             <span class="thumbnail-dot" data-index="2"></span>
                             <span class="thumbnail-dot" data-index="3"></span>
@@ -2467,7 +2467,13 @@
             thumbnails.forEach((thumbnail, thumbIndex) => {
                 const images = thumbnail.querySelectorAll('.thumb-img');
                 const dots = thumbnail.querySelectorAll('.thumbnail-dot');
-                let currentIndex = 0;
+
+                // Start with a random image for each app
+                let currentIndex = Math.floor(Math.random() * images.length);
+
+                // Activate the random starting image immediately
+                images[currentIndex].classList.add('active');
+                dots[currentIndex].classList.add('active');
 
                 // Get random interval between 3-5 seconds (3000-5000ms)
                 function getRandomInterval() {
