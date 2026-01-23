@@ -1736,11 +1736,25 @@
             // Load ratings for everyone (logged in or not)
             loadAllRatings();
 
+            // Check for returnTo parameter and store it for after OAuth
+            const urlParams = new URLSearchParams(window.location.search);
+            const returnTo = urlParams.get('returnTo');
+            if (returnTo) {
+                localStorage.setItem('authReturnTo', returnTo);
+            }
+
             supabaseClient.auth.getSession().then(({ data: { session } }) => {
                 if (session) {
                     currentUser = session.user;
                     updateAuthUI();
                     loadUserRatings();
+
+                    // If user is already logged in and there's a returnTo, redirect immediately
+                    const storedReturnUrl = localStorage.getItem('authReturnTo');
+                    if (storedReturnUrl && !storedReturnUrl.includes('/apps.html')) {
+                        localStorage.removeItem('authReturnTo');
+                        window.location.href = storedReturnUrl;
+                    }
                 }
             }).catch(e => console.error('Auth session error:', e));
 
@@ -1750,6 +1764,16 @@
                 if (event === 'SIGNED_IN' && session?.user) {
                     trackUserLogin(session.user, 'therobots');
                     loadUserRatings();
+
+                    // Check if there's a stored return URL and redirect
+                    const returnUrl = localStorage.getItem('authReturnTo');
+                    if (returnUrl && returnUrl !== window.location.href) {
+                        localStorage.removeItem('authReturnTo');
+                        // Only redirect to external apps (not back to apps.html)
+                        if (!returnUrl.includes('/apps.html')) {
+                            window.location.href = returnUrl;
+                        }
+                    }
                 }
             });
         }
@@ -1839,11 +1863,19 @@
             updateAuthUI();
         }
 
-        async function signInWithGoogle() {
+        async function signInWithGoogle(returnTo = null) {
             if (!supabaseClient) {
                 alert('Authentication is still loading. Please wait a moment.');
                 return;
             }
+
+            // Check for returnTo URL parameter or use provided returnTo
+            const urlParams = new URLSearchParams(window.location.search);
+            const returnUrl = returnTo || urlParams.get('returnTo') || window.location.href;
+
+            // Store the return URL in localStorage so we can redirect after OAuth
+            localStorage.setItem('authReturnTo', returnUrl);
+
             const { error } = await supabaseClient.auth.signInWithOAuth({
                 provider: 'google',
                 options: {
