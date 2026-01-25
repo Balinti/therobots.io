@@ -1736,11 +1736,15 @@
             // Load ratings for everyone (logged in or not)
             loadAllRatings();
 
-            // Check for returnTo parameter and store it for after OAuth
+            // Check for returnTo and app parameters and store them for after OAuth
             const urlParams = new URLSearchParams(window.location.search);
             const returnTo = urlParams.get('returnTo');
+            const appParam = urlParams.get('app');
             if (returnTo) {
                 localStorage.setItem('authReturnTo', returnTo);
+            }
+            if (appParam) {
+                localStorage.setItem('authAppName', appParam);
             }
 
             supabaseClient.auth.getSession().then(({ data: { session } }) => {
@@ -1751,7 +1755,13 @@
 
                     // If user is already logged in and there's a returnTo, redirect immediately
                     const storedReturnUrl = localStorage.getItem('authReturnTo');
+                    const storedAppName = localStorage.getItem('authAppName');
                     if (storedReturnUrl && !storedReturnUrl.includes('/apps.html')) {
+                        // Track login for the external app before redirecting
+                        if (storedAppName) {
+                            trackUserLogin(session.user, storedAppName);
+                            localStorage.removeItem('authAppName');
+                        }
                         localStorage.removeItem('authReturnTo');
                         window.location.href = storedReturnUrl;
                     }
@@ -1762,13 +1772,16 @@
                 currentUser = session?.user || null;
                 updateAuthUI();
                 if (event === 'SIGNED_IN' && session?.user) {
-                    trackUserLogin(session.user, 'therobots');
+                    // Get the app name from localStorage (set by external app) or default to 'therobots'
+                    const storedAppName = localStorage.getItem('authAppName') || 'therobots';
+                    trackUserLogin(session.user, storedAppName);
                     loadUserRatings();
 
                     // Check if there's a stored return URL and redirect
                     const returnUrl = localStorage.getItem('authReturnTo');
                     if (returnUrl && returnUrl !== window.location.href) {
                         localStorage.removeItem('authReturnTo');
+                        localStorage.removeItem('authAppName');
                         // Only redirect to external apps (not back to apps.html)
                         if (!returnUrl.includes('/apps.html')) {
                             window.location.href = returnUrl;
@@ -1892,17 +1905,22 @@
             if (!supabaseClient || !user) return;
 
             try {
-                // Check if user exists for this app
-                const { data: existing } = await supabaseClient
+                // Check if user exists for this app - use maybeSingle() to handle no rows gracefully
+                const { data: existing, error: fetchError } = await supabaseClient
                     .from('user_tracking')
                     .select('*')
                     .eq('user_id', user.id)
                     .eq('app', appName)
-                    .single();
+                    .maybeSingle();
+
+                if (fetchError) {
+                    console.error('Error checking existing user:', fetchError);
+                    return;
+                }
 
                 if (existing) {
                     // Update login count and last login
-                    await supabaseClient
+                    const { error: updateError } = await supabaseClient
                         .from('user_tracking')
                         .update({
                             login_cnt: existing.login_cnt + 1,
@@ -1910,15 +1928,17 @@
                         })
                         .eq('user_id', user.id)
                         .eq('app', appName);
+                    if (updateError) console.error('Error updating user tracking:', updateError);
                 } else {
                     // Insert new record
-                    await supabaseClient
+                    const { error: insertError } = await supabaseClient
                         .from('user_tracking')
                         .insert({
                             user_id: user.id,
                             email: user.email,
                             app: appName
                         });
+                    if (insertError) console.error('Error inserting user tracking:', insertError);
                 }
             } catch (e) {
                 console.error('Error tracking user login:', e);
