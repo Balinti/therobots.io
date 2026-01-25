@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign In - TheRobots.io</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+        }
+        .container {
+            text-align: center;
+            padding: 2rem;
+        }
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid rgba(255,255,255,0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .message { font-size: 1.2rem; opacity: 0.9; }
+        .error { color: #ff6b6b; margin-top: 1rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="spinner"></div>
+        <p class="message">Redirecting to Google Sign In...</p>
+        <p id="error" class="error" style="display: none;"></p>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        const SUPABASE_URL = 'https://api.srv936332.hstgr.cloud';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE';
+
+        async function init() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const app = urlParams.get('app');
+            const returnUrl = urlParams.get('return_url');
+
+            if (!app || !returnUrl) {
+                showError('Missing required parameters: app and return_url');
+                return;
+            }
+
+            // Store auth context for callback
+            localStorage.setItem('oauth_app', app);
+            localStorage.setItem('oauth_return_url', returnUrl);
+
+            // Create Supabase client
+            const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+            // Initiate Google OAuth
+            const { error } = await supabase.auth.signInWithOAuth({
+                provider: 'google',
+                options: {
+                    redirectTo: window.location.origin + '/auth/callback.html'
+                }
+            });
+
+            if (error) {
+                showError('OAuth error: ' + error.message);
+            }
+        }
+
+        function showError(msg) {
+            document.querySelector('.spinner').style.display = 'none';
+            document.querySelector('.message').textContent = 'Authentication Failed';
+            const errorEl = document.getElementById('error');
+            errorEl.textContent = msg;
+            errorEl.style.display = 'block';
+        }
+
+        init();
+    </script>
+</body>
+</html>
