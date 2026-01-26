@@ -1747,6 +1747,44 @@
                 localStorage.setItem('authAppName', appParam);
             }
 
+            // IMPORTANT: Check for cross-app OAuth callback BEFORE getSession
+            // This handles the case where user is already logged in
+            const oauthApp = localStorage.getItem('oauth_app');
+            const oauthReturnUrl = localStorage.getItem('oauth_return_url');
+            const hashHasTokens = window.location.hash.includes('access_token');
+
+            console.log('Cross-app check:', { oauthApp, oauthReturnUrl, hashHasTokens });
+
+            if (oauthApp && oauthReturnUrl && hashHasTokens) {
+                // Extract tokens from hash and redirect immediately
+                const hashParams = new URLSearchParams(window.location.hash.substring(1));
+                const accessToken = hashParams.get('access_token');
+                const refreshToken = hashParams.get('refresh_token');
+
+                if (accessToken && refreshToken) {
+                    console.log('Cross-app OAuth detected! Redirecting to:', oauthApp);
+
+                    // Decode JWT to get user info for tracking
+                    try {
+                        const payload = JSON.parse(atob(accessToken.split('.')[1]));
+                        trackUserLogin({ id: payload.sub, email: payload.email }, oauthApp);
+                    } catch (e) {
+                        console.error('Failed to decode JWT for tracking:', e);
+                    }
+
+                    // Clean up
+                    localStorage.removeItem('oauth_app');
+                    localStorage.removeItem('oauth_return_url');
+
+                    // Redirect to external app with tokens
+                    const redirectUrl = new URL(oauthReturnUrl);
+                    redirectUrl.searchParams.set('access_token', accessToken);
+                    redirectUrl.searchParams.set('refresh_token', refreshToken);
+                    window.location.href = redirectUrl.toString();
+                    return; // Stop here, don't continue with normal auth flow
+                }
+            }
+
             supabaseClient.auth.getSession().then(({ data: { session } }) => {
                 if (session) {
                     currentUser = session.user;
