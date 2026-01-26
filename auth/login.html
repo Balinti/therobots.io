@@ -64,11 +64,11 @@
             // Create Supabase client
             const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-            // Initiate Google OAuth
+            // Initiate Google OAuth - redirect to apps.html which is already whitelisted
             const { error } = await supabase.auth.signInWithOAuth({
                 provider: 'google',
                 options: {
-                    redirectTo: window.location.origin + '/auth/callback.html'
+                    redirectTo: window.location.origin + '/apps.html'
                 }
             });
 
