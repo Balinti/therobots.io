@@ -1753,6 +1753,28 @@
                     updateAuthUI();
                     loadUserRatings();
 
+                    // Check for cross-app OAuth callback (from /auth/login.html)
+                    const oauthApp = localStorage.getItem('oauth_app');
+                    const oauthReturnUrl = localStorage.getItem('oauth_return_url');
+
+                    if (oauthApp && oauthReturnUrl) {
+                        // This is a cross-app OAuth callback - track login and redirect with tokens
+                        console.log('Cross-app OAuth (getSession) for:', oauthApp);
+                        trackUserLogin(session.user, oauthApp);
+
+                        // Clean up
+                        localStorage.removeItem('oauth_app');
+                        localStorage.removeItem('oauth_return_url');
+
+                        // Redirect to external app with tokens
+                        const redirectUrl = new URL(oauthReturnUrl);
+                        redirectUrl.searchParams.set('access_token', session.access_token);
+                        redirectUrl.searchParams.set('refresh_token', session.refresh_token);
+                        console.log('Redirecting to external app with tokens...');
+                        window.location.href = redirectUrl.toString();
+                        return;
+                    }
+
                     // If user is already logged in and there's a returnTo, redirect immediately
                     const storedReturnUrl = localStorage.getItem('authReturnTo');
                     const storedAppName = localStorage.getItem('authAppName');
@@ -1772,7 +1794,29 @@
                 currentUser = session?.user || null;
                 updateAuthUI();
                 if (event === 'SIGNED_IN' && session?.user) {
-                    // Get the app name from localStorage (set by external app) or default to 'therobots'
+                    // Check for cross-app OAuth callback (from /auth/login.html)
+                    const oauthApp = localStorage.getItem('oauth_app');
+                    const oauthReturnUrl = localStorage.getItem('oauth_return_url');
+
+                    if (oauthApp && oauthReturnUrl) {
+                        // This is a cross-app OAuth callback - track login and redirect with tokens
+                        console.log('Cross-app OAuth callback for:', oauthApp);
+                        trackUserLogin(session.user, oauthApp);
+
+                        // Clean up
+                        localStorage.removeItem('oauth_app');
+                        localStorage.removeItem('oauth_return_url');
+
+                        // Redirect to external app with tokens
+                        const redirectUrl = new URL(oauthReturnUrl);
+                        redirectUrl.searchParams.set('access_token', session.access_token);
+                        redirectUrl.searchParams.set('refresh_token', session.refresh_token);
+                        console.log('Redirecting to external app with tokens...');
+                        window.location.href = redirectUrl.toString();
+                        return;
+                    }
+
+                    // Regular therobots.io login flow
                     const storedAppName = localStorage.getItem('authAppName') || 'therobots';
                     trackUserLogin(session.user, storedAppName);
                     loadUserRatings();
