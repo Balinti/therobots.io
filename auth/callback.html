@@ -79,18 +79,39 @@
                 console.log('Return URL:', returnUrl);
                 console.log('Has access token:', !!accessToken);
                 console.log('Has refresh token:', !!refreshToken);
+                console.log('Access token length:', accessToken?.length);
+                console.log('Access token preview:', accessToken?.substring(0, 50) + '...');
 
                 if (!accessToken) {
                     showError('No authentication token found. Please try signing in again.');
                     return;
                 }
 
+                // TEST: Verify token is valid by calling /auth/v1/user directly
+                updateMessage('Verifying token...');
+                console.log('Testing token validity with direct API call...');
+                const testResponse = await fetch(SUPABASE_URL + '/auth/v1/user', {
+                    headers: {
+                        'Authorization': 'Bearer ' + accessToken,
+                        'apikey': SUPABASE_ANON_KEY
+                    }
+                });
+                console.log('Token test response status:', testResponse.status);
+                if (!testResponse.ok) {
+                    const errorText = await testResponse.text();
+                    console.error('Token test failed:', errorText);
+                    showError('Token validation failed on therobots.io: ' + testResponse.status + ' - ' + errorText);
+                    return;
+                }
+                const userData = await testResponse.json();
+                console.log('Token is VALID! User:', userData.email);
+
                 if (!app || !returnUrl) {
                     showError('Missing app context. Please start the sign-in process from your app.');
                     return;
                 }
 
-                // Decode JWT to get user info (don't call setSession - that must happen on the originating app)
+                // Decode JWT to get user info
                 const payload = decodeJwtPayload(accessToken);
                 if (!payload) {
                     showError('Failed to decode authentication token.');
@@ -114,13 +135,13 @@
                 localStorage.removeItem('oauth_return_url');
 
                 // Redirect to originating app with tokens
-                // The originating app will call setSession() with these tokens
                 updateMessage('Redirecting back to app...');
 
                 const redirectUrl = new URL(returnUrl);
                 redirectUrl.searchParams.set('access_token', accessToken);
                 redirectUrl.searchParams.set('refresh_token', refreshToken);
 
+                console.log('Redirecting to:', redirectUrl.toString().substring(0, 100) + '...');
                 window.location.href = redirectUrl.toString();
 
             } catch (e) {
