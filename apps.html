@@ -1832,9 +1832,11 @@
             }).catch(e => console.error('Auth session error:', e));
 
             supabaseClient.auth.onAuthStateChange((event, session) => {
+                console.log('onAuthStateChange:', event, session?.user?.email);
                 currentUser = session?.user || null;
                 updateAuthUI();
                 if (event === 'SIGNED_IN' && session?.user) {
+                    console.log('SIGNED_IN event detected, will track login');
                     // Check for cross-app OAuth callback (from /auth/login.html)
                     const oauthApp = localStorage.getItem('oauth_app');
                     const oauthReturnUrl = localStorage.getItem('oauth_return_url');
@@ -1987,7 +1989,11 @@
         }
 
         async function trackUserLogin(user, appName = 'therobots') {
-            if (!supabaseClient || !user) return;
+            console.log('trackUserLogin called:', { userId: user?.id, email: user?.email, appName });
+            if (!supabaseClient || !user) {
+                console.log('trackUserLogin skipped: no client or user');
+                return;
+            }
 
             try {
                 // Check if user exists for this app - use maybeSingle() to handle no rows gracefully
@@ -1997,6 +2003,8 @@
                     .eq('user_id', user.id)
                     .eq('app', appName)
                     .maybeSingle();
+
+                console.log('trackUserLogin existing check:', { existing, fetchError });
 
                 if (fetchError) {
                     console.error('Error checking existing user:', fetchError);
@@ -2014,6 +2022,7 @@
                         .eq('user_id', user.id)
                         .eq('app', appName);
                     if (updateError) console.error('Error updating user tracking:', updateError);
+                    else console.log('trackUserLogin: updated successfully');
                 } else {
                     // Insert new record
                     const { error: insertError } = await supabaseClient
@@ -2024,6 +2033,7 @@
                             app: appName
                         });
                     if (insertError) console.error('Error inserting user tracking:', insertError);
+                    else console.log('trackUserLogin: inserted successfully');
                 }
             } catch (e) {
                 console.error('Error tracking user login:', e);
