@@ -50,6 +50,19 @@
         const SUPABASE_URL = 'https://api.srv936332.hstgr.cloud';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE';
 
+        // Decode JWT payload to get user info without calling setSession
+        function decodeJwtPayload(token) {
+            try {
+                const parts = token.split('.');
+                if (parts.length !== 3) return null;
+                const payload = JSON.parse(atob(parts[1]));
+                return payload;
+            } catch (e) {
+                console.error('Failed to decode JWT:', e);
+                return null;
+            }
+        }
+
         async function init() {
             try {
                 // Get stored auth context
@@ -68,16 +81,6 @@
                 console.log('Has refresh token:', !!refreshToken);
 
                 if (!accessToken) {
-                    // No token in hash - maybe Supabase session already exists
-                    // Try to get existing session
-                    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-                    const { data: { session }, error } = await supabase.auth.getSession();
-
-                    if (session && session.access_token) {
-                        await handleSession(session, app, returnUrl);
-                        return;
-                    }
-
                     showError('No authentication token found. Please try signing in again.');
                     return;
                 }
@@ -87,26 +90,38 @@
                     return;
                 }
 
-                // Create Supabase client and set session
-                const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-                // Set the session with the tokens from OAuth
-                const { data: { session }, error } = await supabase.auth.setSession({
-                    access_token: accessToken,
-                    refresh_token: refreshToken
-                });
-
-                if (error) {
-                    showError('Failed to establish session: ' + error.message);
+                // Decode JWT to get user info (don't call setSession - that must happen on the originating app)
+                const payload = decodeJwtPayload(accessToken);
+                if (!payload) {
+                    showError('Failed to decode authentication token.');
                     return;
                 }
 
-                if (!session) {
-                    showError('No session returned after setting tokens');
-                    return;
+                const userId = payload.sub;
+                const email = payload.email;
+
+                console.log('User ID from JWT:', userId);
+                console.log('Email from JWT:', email);
+
+                // Track login in user_tracking table
+                if (app && userId) {
+                    updateMessage('Tracking login...');
+                    await trackUserLogin(userId, email, app);
                 }
 
-                await handleSession(session, app, returnUrl);
+                // Clean up localStorage
+                localStorage.removeItem('oauth_app');
+                localStorage.removeItem('oauth_return_url');
+
+                // Redirect to originating app with tokens
+                // The originating app will call setSession() with these tokens
+                updateMessage('Redirecting back to app...');
+
+                const redirectUrl = new URL(returnUrl);
+                redirectUrl.searchParams.set('access_token', accessToken);
+                redirectUrl.searchParams.set('refresh_token', refreshToken);
+
+                window.location.href = redirectUrl.toString();
 
             } catch (e) {
                 showError('Unexpected error: ' + e.message);
@@ -114,42 +129,15 @@
             }
         }
 
-        async function handleSession(session, app, returnUrl) {
-            const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-            // Track the login in user_tracking table
-            if (app && session.user) {
-                updateMessage('Tracking login...');
-                await trackUserLogin(supabase, session.user, app);
-            }
-
-            // Clean up localStorage
-            localStorage.removeItem('oauth_app');
-            localStorage.removeItem('oauth_return_url');
-
-            // Build redirect URL with tokens
-            if (returnUrl) {
-                updateMessage('Redirecting back to app...');
-
-                const redirectUrl = new URL(returnUrl);
-                redirectUrl.searchParams.set('access_token', session.access_token);
-                redirectUrl.searchParams.set('refresh_token', session.refresh_token);
-
-                // Redirect back to the originating app
-                window.location.href = redirectUrl.toString();
-            } else {
-                // No return URL - redirect to apps page
-                window.location.href = '/apps.html';
-            }
-        }
-
-        async function trackUserLogin(supabase, user, appName) {
+        async function trackUserLogin(userId, email, appName) {
             try {
+                const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
                 // Check if user exists for this app
                 const { data: existing, error: fetchError } = await supabase
                     .from('user_tracking')
                     .select('*')
-                    .eq('user_id', user.id)
+                    .eq('user_id', userId)
                     .eq('app', appName)
                     .maybeSingle();
 
@@ -166,7 +154,7 @@
                             login_cnt: existing.login_cnt + 1,
                             last_login_ts: new Date().toISOString()
                         })
-                        .eq('user_id', user.id)
+                        .eq('user_id', userId)
                         .eq('app', appName);
                     if (updateError) console.error('Error updating user tracking:', updateError);
                     else console.log('Updated user tracking for', appName);
@@ -175,8 +163,8 @@
                     const { error: insertError } = await supabase
                         .from('user_tracking')
                         .insert({
-                            user_id: user.id,
-                            email: user.email,
+                            user_id: userId,
+                            email: email,
                             app: appName
                         });
                     if (insertError) console.error('Error inserting user tracking:', insertError);
