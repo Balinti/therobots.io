@@ -1764,10 +1764,20 @@
                 if (accessToken && refreshToken) {
                     console.log('Cross-app OAuth detected! Tracking login for:', oauthApp);
 
-                    // Decode JWT to get user info for tracking
+                    // Set the session on the client so RLS policies work
+                    try {
+                        await supabaseClient.auth.setSession({
+                            access_token: accessToken,
+                            refresh_token: refreshToken
+                        });
+                        console.log('Session set on Supabase client');
+                    } catch (e) {
+                        console.error('Failed to set session:', e);
+                    }
+
+                    // Now track with authenticated client
                     try {
                         const payload = JSON.parse(atob(accessToken.split('.')[1]));
-                        // IMPORTANT: await the tracking before redirecting!
                         await trackUserLogin({ id: payload.sub, email: payload.email }, oauthApp);
                         console.log('User tracking complete for:', oauthApp);
                     } catch (e) {
