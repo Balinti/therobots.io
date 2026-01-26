@@ -1730,7 +1730,7 @@
         };
         document.head.appendChild(supabaseScript);
 
-        function initSupabaseAuth() {
+        async function initSupabaseAuth() {
             if (!supabaseClient) return;
 
             // Load ratings for everyone (logged in or not)
@@ -1762,14 +1762,16 @@
                 const refreshToken = hashParams.get('refresh_token');
 
                 if (accessToken && refreshToken) {
-                    console.log('Cross-app OAuth detected! Redirecting to:', oauthApp);
+                    console.log('Cross-app OAuth detected! Tracking login for:', oauthApp);
 
                     // Decode JWT to get user info for tracking
                     try {
                         const payload = JSON.parse(atob(accessToken.split('.')[1]));
-                        trackUserLogin({ id: payload.sub, email: payload.email }, oauthApp);
+                        // IMPORTANT: await the tracking before redirecting!
+                        await trackUserLogin({ id: payload.sub, email: payload.email }, oauthApp);
+                        console.log('User tracking complete for:', oauthApp);
                     } catch (e) {
-                        console.error('Failed to decode JWT for tracking:', e);
+                        console.error('Failed to track user login:', e);
                     }
 
                     // Clean up
@@ -1780,6 +1782,7 @@
                     const redirectUrl = new URL(oauthReturnUrl);
                     redirectUrl.searchParams.set('access_token', accessToken);
                     redirectUrl.searchParams.set('refresh_token', refreshToken);
+                    console.log('Redirecting to:', oauthReturnUrl);
                     window.location.href = redirectUrl.toString();
                     return; // Stop here, don't continue with normal auth flow
                 }
