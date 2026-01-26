@@ -1695,8 +1695,22 @@
         supabaseScript.onload = function() {
             try {
                 if (typeof window.supabase !== 'undefined') {
-                    // Simple client - let Supabase handle auth headers automatically
-                    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                    // Custom fetch to ensure apikey header - but DON'T override Authorization
+                    const customFetch = (url, options = {}) => {
+                        const headers = new Headers(options.headers || {});
+                        // Always ensure apikey is set (needed for all Supabase requests)
+                        if (!headers.has('apikey')) {
+                            headers.set('apikey', SUPABASE_ANON_KEY);
+                        }
+                        // DON'T set Authorization here - let Supabase handle it based on session
+                        return fetch(url, { ...options, headers });
+                    };
+
+                    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+                        global: {
+                            fetch: customFetch
+                        }
+                    });
                     console.log('Supabase client created successfully');
                     initSupabaseAuth();
                 } else {
