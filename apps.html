@@ -1765,36 +1765,42 @@
                     console.log('Cross-app OAuth detected! Tracking login for:', oauthApp);
 
                     // Set the session on the client so RLS policies work
+                    let sessionSet = false;
                     try {
-                        await supabaseClient.auth.setSession({
+                        const { error } = await supabaseClient.auth.setSession({
                             access_token: accessToken,
                             refresh_token: refreshToken
                         });
-                        console.log('Session set on Supabase client');
+                        sessionSet = !error;
+                        if (error) console.error('setSession error:', error);
+                        else console.log('Session set on Supabase client');
                     } catch (e) {
                         console.error('Failed to set session:', e);
                     }
 
-                    // Now track with authenticated client
-                    try {
-                        const payload = JSON.parse(atob(accessToken.split('.')[1]));
-                        await trackUserLogin({ id: payload.sub, email: payload.email }, oauthApp);
-                        console.log('User tracking complete for:', oauthApp);
-                    } catch (e) {
-                        console.error('Failed to track user login:', e);
+                    // Track login only if session was set (otherwise RLS will block)
+                    if (sessionSet) {
+                        try {
+                            const payload = JSON.parse(atob(accessToken.split('.')[1]));
+                            await trackUserLogin({ id: payload.sub, email: payload.email }, oauthApp);
+                            console.log('User tracking complete for:', oauthApp);
+                        } catch (e) {
+                            console.error('Failed to track user login:', e);
+                        }
+                    } else {
+                        console.log('Skipping tracking - session not set');
                     }
 
-                    // Clean up
+                    // Always redirect regardless of tracking success
                     localStorage.removeItem('oauth_app');
                     localStorage.removeItem('oauth_return_url');
 
-                    // Redirect to external app with tokens
                     const redirectUrl = new URL(oauthReturnUrl);
                     redirectUrl.searchParams.set('access_token', accessToken);
                     redirectUrl.searchParams.set('refresh_token', refreshToken);
                     console.log('Redirecting to:', oauthReturnUrl);
                     window.location.href = redirectUrl.toString();
-                    return; // Stop here, don't continue with normal auth flow
+                    return;
                 }
             }
 
