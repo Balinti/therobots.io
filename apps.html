@@ -1227,7 +1227,7 @@
 
             <div class="stats-bar">
                 <div class="stat-item">
-                    <div class="stat-number">66</div>
+                    <div class="stat-number" id="totalAppsCount">66</div>
                     <div class="stat-label">Total Apps</div>
                 </div>
                 <div class="stat-item">
@@ -1528,6 +1528,9 @@
 
         // RENDER APPS IMMEDIATELY (before event listeners that might fail)
         renderApps(apps);
+
+        // Update total apps count dynamically
+        document.getElementById('totalAppsCount').textContent = apps.length;
 
         function openQrModal(name, url) {
             document.getElementById('modalAppName').textContent = name;
