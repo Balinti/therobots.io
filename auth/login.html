@@ -38,16 +38,12 @@
 <body>
     <div class="container">
         <div class="spinner"></div>
-        <p class="message">Redirecting to Google Sign In...</p>
+        <p class="message">Redirecting to sign in...</p>
         <p id="error" class="error" style="display: none;"></p>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
-        const SUPABASE_URL = 'https://api.srv936332.hstgr.cloud';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE';
-
-        async function init() {
+        function init() {
             const urlParams = new URLSearchParams(window.location.search);
             const app = urlParams.get('app');
             const returnUrl = urlParams.get('return_url');
@@ -57,24 +53,14 @@
                 return;
             }
 
-            // Store auth context for callback
+            // Store auth context for callback (apps.html will read these after sign-in)
             localStorage.setItem('oauth_app', app);
             localStorage.setItem('oauth_return_url', returnUrl);
 
-            // Create Supabase client
-            const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-            // Initiate Google OAuth - redirect to apps.html which is already whitelisted
-            const { error } = await supabase.auth.signInWithOAuth({
-                provider: 'google',
-                options: {
-                    redirectTo: window.location.origin + '/apps.html'
-                }
-            });
-
-            if (error) {
-                showError('OAuth error: ' + error.message);
-            }
+            // Redirect to apps.html which handles Firebase auth
+            // If user is already signed in, it will immediately redirect back with tokens
+            // If not, user will sign in there and then be redirected back
+            window.location.href = '/apps.html';
         }
 
         function showError(msg) {

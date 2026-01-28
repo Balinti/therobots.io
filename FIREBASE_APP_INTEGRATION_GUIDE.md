@@ -36,8 +36,8 @@ Redirect users to therobots.io for authentication, then receive tokens back:
 ```javascript
 function loginViaHub() {
   const returnUrl = window.location.href;
-  const appName = 'Your_App_Name'; // Use underscores, matches image naming
-  window.location.href = `https://therobots.io/auth/login.html?app=${appName}&return_url=${encodeURIComponent(returnUrl)}`;
+  const appSlug = 'your-app-slug'; // lowercase with hyphens, e.g., 'transit-mindful'
+  window.location.href = `https://therobots.io/auth/login.html?app=${appSlug}&return_url=${encodeURIComponent(returnUrl)}`;
 }
 
 // On page load, check for returning tokens
@@ -53,9 +53,22 @@ function checkAuthCallback() {
 
     // Clean URL
     window.history.replaceState({}, '', window.location.pathname);
+
+    // Now you can use the token for Firebase operations
+    // The token is a Firebase ID token that can be verified server-side
+    // The uid is the Firebase user ID for Firestore queries
   }
 }
+
+// Call on page load
+checkAuthCallback();
 ```
+
+**Flow:**
+1. App redirects to `therobots.io/auth/login.html` with `app` and `return_url` params
+2. Hub stores context and redirects to `apps.html`
+3. User signs in (or is already signed in)
+4. Hub redirects back to your `return_url` with `?firebase_token=...&uid=...`
 
 ### Option 2: Direct Firebase Auth (For Apps Needing Full Control)
 
