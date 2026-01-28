@@ -1826,11 +1826,6 @@
 
                     if (oauthApp && oauthReturnUrl) {
                         console.log('Cross-app auth callback for:', oauthApp);
-                        await trackUserLogin(currentUser, oauthApp);
-
-                        // Clean up
-                        localStorage.removeItem('oauth_app');
-                        localStorage.removeItem('oauth_return_url');
 
                         // Get Firebase ID token for cross-app auth
                         try {
@@ -1838,11 +1833,24 @@
                             const redirectUrl = new URL(oauthReturnUrl);
                             redirectUrl.searchParams.set('firebase_token', idToken);
                             redirectUrl.searchParams.set('uid', user.uid);
-                            console.log('Redirecting to external app...');
+
+                            // Track login (don't await - let it happen in background)
+                            trackUserLogin(currentUser, oauthApp).catch(e =>
+                                console.error('Failed to track login:', e)
+                            );
+
+                            // Clean up AFTER we have the redirect URL ready
+                            localStorage.removeItem('oauth_app');
+                            localStorage.removeItem('oauth_return_url');
+
+                            console.log('Redirecting to external app:', redirectUrl.toString());
                             window.location.href = redirectUrl.toString();
                             return;
                         } catch (e) {
                             console.error('Failed to get ID token:', e);
+                            // Clean up on error too
+                            localStorage.removeItem('oauth_app');
+                            localStorage.removeItem('oauth_return_url');
                         }
                     }
 
