@@ -651,6 +651,279 @@
             font-weight: 600;
         }
 
+        /* Revenue Share Styles */
+        .share-section {
+            border-top: 1px solid rgba(157, 78, 221, 0.2);
+            padding-top: 0.75rem;
+            margin-top: 0.5rem;
+        }
+
+        .share-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+
+        .share-label {
+            font-size: 0.75rem;
+            color: #c77dff;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .share-price {
+            font-size: 0.85rem;
+            color: #10b981;
+            font-weight: 700;
+        }
+
+        .share-progress-bar {
+            width: 100%;
+            height: 6px;
+            background: rgba(74, 44, 122, 0.5);
+            border-radius: 3px;
+            overflow: hidden;
+            margin-bottom: 0.4rem;
+        }
+
+        .share-progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #10b981, #34d399);
+            border-radius: 3px;
+            transition: width 0.5s ease;
+        }
+
+        .share-info-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.7rem;
+            color: #9ca3af;
+            margin-bottom: 0.6rem;
+        }
+
+        .share-holders {
+            color: #a78bfa;
+        }
+
+        .share-actions {
+            display: flex;
+            gap: 6px;
+        }
+
+        .share-btn {
+            flex: 1;
+            padding: 6px 8px;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            font-size: 0.72rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            text-align: center;
+        }
+
+        .share-btn-buy {
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: white;
+        }
+
+        .share-btn-buy:hover {
+            box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);
+            transform: translateY(-1px);
+        }
+
+        .share-btn-buy:disabled {
+            background: #4a4a5a;
+            color: #888;
+            cursor: not-allowed;
+            box-shadow: none;
+            transform: none;
+        }
+
+        .share-btn-full {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            color: white;
+        }
+
+        .share-btn-full:hover {
+            box-shadow: 0 4px 15px rgba(245, 158, 11, 0.4);
+            transform: translateY(-1px);
+        }
+
+        .share-btn-info {
+            background: transparent;
+            border: 1px solid rgba(157, 78, 221, 0.4);
+            color: #c77dff;
+            flex: 0 0 auto;
+            padding: 6px 10px;
+        }
+
+        .share-btn-info:hover {
+            background: rgba(157, 78, 221, 0.1);
+            border-color: #c77dff;
+        }
+
+        .share-sold-out {
+            text-align: center;
+            color: #f59e0b;
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 6px;
+        }
+
+        .share-owned-badge {
+            display: inline-block;
+            background: rgba(16, 185, 129, 0.15);
+            color: #10b981;
+            font-size: 0.7rem;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-weight: 600;
+        }
+
+        .share-fully-owned {
+            text-align: center;
+            color: #f59e0b;
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 6px;
+            background: rgba(245, 158, 11, 0.1);
+            border-radius: 8px;
+        }
+
+        /* Share Info Modal */
+        .share-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .share-modal.active {
+            display: flex;
+        }
+
+        .share-modal-content {
+            background: rgba(45, 27, 105, 0.98);
+            border: 2px solid #10b981;
+            border-radius: 20px;
+            padding: 2rem;
+            max-width: 480px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .share-modal-content h3 {
+            color: white;
+            margin-bottom: 0.5rem;
+            font-size: 1.3rem;
+        }
+
+        .share-modal-app-name {
+            color: #c77dff;
+            font-size: 0.9rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .tier-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 1.5rem;
+        }
+
+        .tier-table th {
+            text-align: left;
+            padding: 8px 12px;
+            color: #a78bfa;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid rgba(157, 78, 221, 0.3);
+        }
+
+        .tier-table td {
+            padding: 8px 12px;
+            color: #cfcfe1;
+            font-size: 0.85rem;
+            border-bottom: 1px solid rgba(157, 78, 221, 0.1);
+        }
+
+        .tier-table tr.current-tier td {
+            color: #10b981;
+            font-weight: 600;
+        }
+
+        .share-modal-note {
+            color: #9ca3af;
+            font-size: 0.8rem;
+            line-height: 1.5;
+            padding: 12px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            margin-bottom: 1rem;
+        }
+
+        .share-modal-close {
+            background: linear-gradient(45deg, #9d4edd, #7209b7);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 1rem;
+            width: 100%;
+            transition: all 0.3s;
+        }
+
+        .share-modal-close:hover {
+            transform: scale(1.02);
+            box-shadow: 0 5px 20px rgba(157, 78, 221, 0.4);
+        }
+
+        /* Purchase success banner */
+        .purchase-banner {
+            position: fixed;
+            top: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1500;
+            padding: 12px 24px;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            animation: slideDown 0.3s ease, fadeOut 0.5s ease 4s forwards;
+        }
+
+        .purchase-banner.success {
+            background: rgba(16, 185, 129, 0.95);
+            color: white;
+            border: 1px solid #34d399;
+        }
+
+        .purchase-banner.cancelled {
+            background: rgba(245, 158, 11, 0.95);
+            color: white;
+            border: 1px solid #fbbf24;
+        }
+
+        @keyframes slideDown {
+            from { top: 60px; opacity: 0; }
+            to { top: 80px; opacity: 1; }
+        }
+
+        @keyframes fadeOut {
+            to { opacity: 0; pointer-events: none; }
+        }
+
         .stats-bar {
             display: flex;
             justify-content: center;
@@ -1321,6 +1594,25 @@
         </div>
     </div>
 
+    <!-- Share Info Modal -->
+    <div class="share-modal" id="shareModal">
+        <div class="share-modal-content">
+            <h3>Revenue Share</h3>
+            <p class="share-modal-app-name" id="shareModalAppName"></p>
+            <table class="tier-table">
+                <thead>
+                    <tr><th>Tier</th><th>Shares</th><th>Price/Share</th><th>Status</th></tr>
+                </thead>
+                <tbody id="shareModalTiers"></tbody>
+            </table>
+            <div class="share-modal-note" id="shareModalNote">
+                Each share = 1% revenue ownership. Maximum 49 shares available per app (owner retains 51%+).
+                Revenue sharing activates when the app reaches $1,000 lifetime revenue. Payouts are distributed quarterly.
+            </div>
+            <button class="share-modal-close" onclick="closeShareModal()">Close</button>
+        </div>
+    </div>
+
     <script>
         // ========== GLOBAL VARIABLES (must be at top) ==========
         let currentUser = null;
@@ -1519,6 +1811,23 @@
                     <div class="app-actions">
                         <a href="${app.url}" target="_blank" rel="noopener noreferrer" class="app-btn app-btn-primary">Open App</a>
                         <button onclick="openFeedbackModal('${app.name}', '${getAppSlug(app.url)}')" class="app-btn app-btn-feedback">Feedback</button>
+                    </div>
+                    <div class="share-section" id="share-${getAppSlug(app.url)}" data-app-slug="${getAppSlug(app.url)}" data-app-name="${app.name}">
+                        <div class="share-header">
+                            <span class="share-label">Revenue Share</span>
+                            <span class="share-price" id="share-price-${getAppSlug(app.url)}">Loading...</span>
+                        </div>
+                        <div class="share-progress-bar">
+                            <div class="share-progress-fill" id="share-bar-${getAppSlug(app.url)}" style="width: 0%"></div>
+                        </div>
+                        <div class="share-info-row">
+                            <span id="share-sold-${getAppSlug(app.url)}">0/49 sold</span>
+                            <span class="share-holders" id="share-holders-${getAppSlug(app.url)}">0 holders</span>
+                        </div>
+                        <div class="share-actions" id="share-actions-${getAppSlug(app.url)}">
+                            <button class="share-btn share-btn-buy" onclick="buyShare('${getAppSlug(app.url)}', '${app.name.replace(/'/g, "\\'")}')">Buy 1% Share</button>
+                            <button class="share-btn share-btn-info" onclick="openShareModal('${getAppSlug(app.url)}', '${app.name.replace(/'/g, "\\'")}')">?</button>
+                        </div>
                     </div>
                 </div>
             `).join('');
@@ -1721,6 +2030,7 @@
                 closeQrModal();
                 closeFeedbackModal();
                 closeAuthModal();
+                closeShareModal();
             }
         });
 
@@ -2217,6 +2527,265 @@
             const stars = container.querySelectorAll('.star');
             stars.forEach(s => s.classList.remove('hovered'));
         }
+
+        // ========== REVENUE SHARE SYSTEM ==========
+
+        // Cloud Functions base URL - UPDATE THIS after deploying functions
+        const FUNCTIONS_BASE_URL = 'https://us-central1-therobots-io.cloudfunctions.net';
+
+        // Cache for share data to avoid repeated fetches
+        const shareDataCache = {};
+
+        // Load share info for all visible apps
+        async function loadAllShareInfo() {
+            const shareElements = document.querySelectorAll('.share-section');
+            // Load in batches to avoid overwhelming the server
+            const batchSize = 10;
+            const slugs = Array.from(shareElements).map(el => el.dataset.appSlug);
+
+            for (let i = 0; i < slugs.length; i += batchSize) {
+                const batch = slugs.slice(i, i + batchSize);
+                await Promise.all(batch.map(slug => loadShareInfo(slug)));
+            }
+        }
+
+        async function loadShareInfo(appSlug) {
+            try {
+                const response = await fetch(`${FUNCTIONS_BASE_URL}/getAppShareInfo?appSlug=${encodeURIComponent(appSlug)}`);
+                if (!response.ok) throw new Error('Failed to fetch');
+                const data = await response.json();
+                shareDataCache[appSlug] = data;
+                updateShareDisplay(appSlug, data);
+            } catch (error) {
+                // Silently fail - show default state
+                console.debug('Share info not available for:', appSlug);
+                updateShareDisplayDefault(appSlug);
+            }
+        }
+
+        function updateShareDisplay(appSlug, data) {
+            const priceEl = document.getElementById(`share-price-${appSlug}`);
+            const barEl = document.getElementById(`share-bar-${appSlug}`);
+            const soldEl = document.getElementById(`share-sold-${appSlug}`);
+            const holdersEl = document.getElementById(`share-holders-${appSlug}`);
+            const actionsEl = document.getElementById(`share-actions-${appSlug}`);
+
+            if (!priceEl) return;
+
+            const soldPercent = (data.totalSharesSold / data.maxShares) * 100;
+
+            if (data.isFullyOwned) {
+                priceEl.textContent = 'OWNED';
+                priceEl.style.color = '#f59e0b';
+                barEl.style.width = '100%';
+                barEl.style.background = 'linear-gradient(90deg, #f59e0b, #d97706)';
+                soldEl.textContent = '49/49 sold';
+                holdersEl.textContent = 'Fully purchased';
+                actionsEl.innerHTML = '<div class="share-fully-owned">This app has been fully purchased</div>';
+            } else if (data.sharesRemaining <= 0) {
+                priceEl.textContent = 'SOLD OUT';
+                priceEl.style.color = '#f59e0b';
+                barEl.style.width = '100%';
+                soldEl.textContent = `${data.totalSharesSold}/${data.maxShares} sold`;
+                holdersEl.textContent = `${data.holderCount} holder${data.holderCount !== 1 ? 's' : ''}`;
+                actionsEl.innerHTML = '<div class="share-sold-out">All shares sold</div>';
+            } else {
+                priceEl.textContent = data.currentPriceDisplay + '/share';
+                barEl.style.width = `${soldPercent}%`;
+                soldEl.textContent = `${data.totalSharesSold}/${data.maxShares} sold`;
+                holdersEl.textContent = `${data.holderCount} holder${data.holderCount !== 1 ? 's' : ''}`;
+
+                const appName = document.getElementById(`share-${appSlug}`)?.dataset.appName || appSlug;
+                let buttonsHtml = `<button class="share-btn share-btn-buy" onclick="buyShare('${appSlug}', '${appName.replace(/'/g, "\\'")}')">Buy 1% — ${data.currentPriceDisplay}</button>`;
+
+                if (data.fullAppPurchaseAvailable) {
+                    buttonsHtml += `<button class="share-btn share-btn-full" onclick="buyFullApp('${appSlug}', '${appName.replace(/'/g, "\\'")}')">Buy App — $1,000</button>`;
+                }
+
+                buttonsHtml += `<button class="share-btn share-btn-info" onclick="openShareModal('${appSlug}', '${appName.replace(/'/g, "\\'")}')">?</button>`;
+                actionsEl.innerHTML = buttonsHtml;
+            }
+        }
+
+        function updateShareDisplayDefault(appSlug) {
+            const priceEl = document.getElementById(`share-price-${appSlug}`);
+            if (priceEl) {
+                priceEl.textContent = '$10/share';
+            }
+            const soldEl = document.getElementById(`share-sold-${appSlug}`);
+            if (soldEl) {
+                soldEl.textContent = '0/49 sold';
+            }
+        }
+
+        async function buyShare(appSlug, appName) {
+            if (!currentUser) {
+                if (confirm('Please sign in to purchase revenue shares. Sign in now?')) {
+                    signInWithGoogle();
+                }
+                return;
+            }
+
+            try {
+                const idToken = await window.firebaseAuth.currentUser.getIdToken();
+                const response = await fetch(`${FUNCTIONS_BASE_URL}/createCheckoutSession`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${idToken}`
+                    },
+                    body: JSON.stringify({
+                        appSlug,
+                        appName,
+                        purchaseType: 'share',
+                        quantity: 1
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    alert(data.error || 'Failed to create checkout session');
+                    return;
+                }
+
+                // Redirect to Stripe Checkout
+                if (data.url) {
+                    window.location.href = data.url;
+                }
+            } catch (error) {
+                console.error('Buy share error:', error);
+                alert('Something went wrong. Please try again.');
+            }
+        }
+
+        async function buyFullApp(appSlug, appName) {
+            if (!currentUser) {
+                if (confirm('Please sign in to purchase this app. Sign in now?')) {
+                    signInWithGoogle();
+                }
+                return;
+            }
+
+            if (!confirm(`Purchase "${appName}" for $1,000?\n\nThis includes all 49 revenue shares (49% ownership). Revenue sharing activates at $1,000 lifetime revenue.`)) {
+                return;
+            }
+
+            try {
+                const idToken = await window.firebaseAuth.currentUser.getIdToken();
+                const response = await fetch(`${FUNCTIONS_BASE_URL}/createCheckoutSession`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${idToken}`
+                    },
+                    body: JSON.stringify({
+                        appSlug,
+                        appName,
+                        purchaseType: 'full',
+                        quantity: 49
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    alert(data.error || 'Failed to create checkout session');
+                    return;
+                }
+
+                if (data.url) {
+                    window.location.href = data.url;
+                }
+            } catch (error) {
+                console.error('Buy full app error:', error);
+                alert('Something went wrong. Please try again.');
+            }
+        }
+
+        function openShareModal(appSlug, appName) {
+            document.getElementById('shareModalAppName').textContent = appName;
+            const tiersBody = document.getElementById('shareModalTiers');
+
+            const cached = shareDataCache[appSlug];
+            const sold = cached ? cached.totalSharesSold : 0;
+
+            const tiers = [
+                {name: 'Tier 1', range: '1-10', price: '$10', min: 1, max: 10},
+                {name: 'Tier 2', range: '11-20', price: '$25', min: 11, max: 20},
+                {name: 'Tier 3', range: '21-30', price: '$50', min: 21, max: 30},
+                {name: 'Tier 4', range: '31-40', price: '$100', min: 31, max: 40},
+                {name: 'Tier 5', range: '41-49', price: '$200', min: 41, max: 49}
+            ];
+
+            tiersBody.innerHTML = tiers.map(tier => {
+                const nextShare = sold + 1;
+                const isCurrent = nextShare >= tier.min && nextShare <= tier.max;
+                const isSoldOut = sold >= tier.max;
+                const status = isSoldOut ? 'Sold' : (isCurrent ? 'Current' : 'Upcoming');
+                const statusColor = isSoldOut ? '#f59e0b' : (isCurrent ? '#10b981' : '#9ca3af');
+
+                return `<tr class="${isCurrent ? 'current-tier' : ''}">
+                    <td>${tier.name}</td>
+                    <td>Shares ${tier.range}</td>
+                    <td>${tier.price}</td>
+                    <td style="color: ${statusColor}">${status}</td>
+                </tr>`;
+            }).join('');
+
+            const noteEl = document.getElementById('shareModalNote');
+            let noteText = 'Each share = 1% revenue ownership. Maximum 49 shares available per app (owner retains 51%+). Revenue sharing activates when the app reaches $1,000 lifetime revenue. Payouts are distributed quarterly.';
+
+            if (cached && cached.fullAppPurchaseAvailable) {
+                noteText += '\n\nFull app purchase available for $1,000 (includes all 49 shares). This option is only available when no individual shares have been sold.';
+            }
+
+            noteEl.textContent = noteText;
+            document.getElementById('shareModal').classList.add('active');
+        }
+
+        function closeShareModal() {
+            document.getElementById('shareModal').classList.remove('active');
+        }
+
+        // Close share modal on outside click
+        document.getElementById('shareModal').addEventListener('click', (e) => {
+            if (e.target === document.getElementById('shareModal')) {
+                closeShareModal();
+            }
+        });
+
+        // Check for purchase result from Stripe redirect
+        (function checkPurchaseResult() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const purchaseResult = urlParams.get('purchase');
+            const purchaseApp = urlParams.get('app');
+
+            if (purchaseResult) {
+                const banner = document.createElement('div');
+                banner.className = `purchase-banner ${purchaseResult}`;
+
+                if (purchaseResult === 'success') {
+                    banner.textContent = `Purchase successful! Your revenue share has been recorded.`;
+                    // Refresh share data for this app
+                    if (purchaseApp) {
+                        setTimeout(() => loadShareInfo(purchaseApp), 1000);
+                    }
+                } else if (purchaseResult === 'cancelled') {
+                    banner.textContent = 'Purchase cancelled.';
+                }
+
+                document.body.appendChild(banner);
+                setTimeout(() => banner.remove(), 5000);
+
+                // Clean up URL
+                const cleanUrl = window.location.pathname;
+                window.history.replaceState({}, '', cleanUrl);
+            }
+        })();
+
+        // Load share info after Firebase is ready (or immediately for public data)
+        setTimeout(loadAllShareInfo, 1500);
 
         // ========== SHADER & VISUAL EFFECTS ==========
 
