@@ -1,0 +1,77 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // === EXISTING COLLECTIONS (unchanged) ===
+
+    // User profiles - users can only read/write their own
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Login tracking - pattern: appSlug_userId
+    match /logins/{loginId} {
+      allow read: if request.auth != null && loginId.matches('.*_' + request.auth.uid);
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow update: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+
+    // Ratings - public read, authenticated write own
+    match /ratings/{ratingId} {
+      allow read: if true;
+      allow create, update: if request.auth != null
+        && ratingId == request.resource.data.appSlug + '_' + request.auth.uid
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.rating >= 1
+        && request.resource.data.rating <= 5;
+    }
+
+    // Feedback - user can read/write their own
+    match /feedback/{feedbackId} {
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+    }
+
+    // === REVENUE SHARE COLLECTIONS (new - server-only writes) ===
+
+    // App revenue data - PUBLIC read, NO client writes
+    // Only Cloud Functions (admin SDK) can write to these
+    match /apps_revenue/{appSlug} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Share ownership records - PUBLIC read, NO client writes
+    // Only written by webhook handler after verified Stripe payment
+    match /shares/{shareId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Transaction log - NO client access at all
+    // Only Cloud Functions can read/write
+    match /transactions/{transactionId} {
+      allow read, write: if false;
+    }
+
+    // Payment issues log - NO client access
+    match /payment_issues/{issueId} {
+      allow read, write: if false;
+    }
+
+    // Payout records - shareholders can read their own payouts
+    match /payouts/{payoutId} {
+      allow read: if request.auth != null
+        && resource.data.distributions != null;
+      allow write: if false;
+    }
+
+    // App-specific collections
+    match /apps/{appSlug}/{document=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+        && request.resource.data.userId == request.auth.uid;
+    }
+  }
+}
