@@ -1,4 +1,4 @@
-const functions = require("firebase-functions");
+const {onRequest} = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const stripe = require("stripe");
 const cors = require("cors");
@@ -78,9 +78,9 @@ function getTierInfo(sharesSold) {
  * @return {object} Stripe instance
  */
 function getStripe() {
-  const secretKey = functions.config().stripe?.secret_key;
+  const secretKey = process.env.STRIPE_SECRET_KEY;
   if (!secretKey) {
-    throw new Error("Stripe secret key not configured. Run: firebase functions:config:set stripe.secret_key=\"sk_...\"");
+    throw new Error("Stripe secret key not configured. Add STRIPE_SECRET_KEY to functions/.env");
   }
   return stripe(secretKey);
 }
@@ -91,7 +91,7 @@ function getStripe() {
 // Public endpoint - returns share availability and pricing for an app
 // =============================================================================
 
-exports.getAppShareInfo = functions.https.onRequest((req, res) => {
+exports.getAppShareInfo = onRequest({invoker: "public"}, (req, res) => {
   corsHandler(req, res, async () => {
     try {
       const {appSlug} = req.query;
@@ -171,7 +171,7 @@ exports.getAppShareInfo = functions.https.onRequest((req, res) => {
 // Validates: auth, share availability, calculates price server-side
 // =============================================================================
 
-exports.createCheckoutSession = functions.https.onRequest((req, res) => {
+exports.createCheckoutSession = onRequest({invoker: "public"}, (req, res) => {
   corsHandler(req, res, async () => {
     if (req.method !== "POST") {
       res.status(405).json({error: "Method not allowed"});
@@ -334,13 +334,13 @@ exports.createCheckoutSession = functions.https.onRequest((req, res) => {
 // This is the ONLY way shares get recorded - no client can fake this
 // =============================================================================
 
-exports.handleStripeWebhook = functions.https.onRequest(async (req, res) => {
+exports.handleStripeWebhook = onRequest({invoker: "public"}, async (req, res) => {
   if (req.method !== "POST") {
     res.status(405).send("Method not allowed");
     return;
   }
 
-  const webhookSecret = functions.config().stripe?.webhook_secret;
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!webhookSecret) {
     console.error("Stripe webhook secret not configured");
     res.status(500).send("Webhook not configured");
@@ -473,7 +473,7 @@ exports.handleStripeWebhook = functions.https.onRequest(async (req, res) => {
 // Returns all shares owned by the authenticated user
 // =============================================================================
 
-exports.getUserShares = functions.https.onRequest((req, res) => {
+exports.getUserShares = onRequest({invoker: "public"}, (req, res) => {
   corsHandler(req, res, async () => {
     try {
       const authHeader = req.headers.authorization;
