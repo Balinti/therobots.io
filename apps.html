@@ -1950,6 +1950,18 @@
                     createdAt: serverTimestamp()
                 });
 
+                // Also send to n8n webhook (fire-and-forget for spreadsheet tracking)
+                fetch('https://n8n.srv936332.hstgr.cloud/webhook/app-feedback', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        app_slug: appSlug,
+                        feedback_text: feedbackText,
+                        user_email: currentUser.email,
+                        user_id: currentUser.id
+                    })
+                }).catch(err => console.warn('n8n webhook failed (non-critical):', err));
+
                 statusDiv.className = 'feedback-status success';
                 statusDiv.textContent = 'Thank you! Your feedback has been submitted successfully.';
                 document.getElementById('feedbackText').value = '';
