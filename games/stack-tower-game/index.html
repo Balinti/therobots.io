@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Stack Tower</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #1a1a2e;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      overflow: hidden;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      touch-action: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    #gameContainer {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      height: 100vh;
+      max-height: 750px;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      border-radius: 0;
+    }
+
+    #ui {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    #score {
+      font-size: 72px;
+      font-weight: 800;
+      color: rgba(255, 255, 255, 0.9);
+      margin-top: 60px;
+      text-shadow: 0 4px 20px rgba(0,0,0,0.3);
+      transition: transform 0.1s;
+    }
+
+    #score.pop {
+      transform: scale(1.3);
+    }
+
+    #combo {
+      font-size: 24px;
+      font-weight: 600;
+      color: #ffd700;
+      height: 30px;
+      text-shadow: 0 2px 10px rgba(255, 215, 0, 0.5);
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    #combo.show {
+      opacity: 1;
+    }
+
+    #startScreen, #gameOverScreen {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      pointer-events: auto;
+      cursor: pointer;
+    }
+
+    #startScreen {
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    }
+
+    #startScreen h1 {
+      font-size: 48px;
+      font-weight: 900;
+      color: #fff;
+      margin-bottom: 8px;
+      text-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    }
+
+    #startScreen .subtitle {
+      font-size: 16px;
+      color: rgba(255,255,255,0.5);
+      margin-bottom: 50px;
+    }
+
+    #startScreen .tap-hint {
+      font-size: 18px;
+      color: rgba(255,255,255,0.7);
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    #gameOverScreen {
+      background: rgba(0, 0, 0, 0.7);
+      display: none;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+
+    #gameOverScreen .go-title {
+      font-size: 36px;
+      font-weight: 800;
+      color: #fff;
+      margin-bottom: 20px;
+    }
+
+    #gameOverScreen .final-score-label {
+      font-size: 16px;
+      color: rgba(255,255,255,0.6);
+      text-transform: uppercase;
+      letter-spacing: 3px;
+    }
+
+    #gameOverScreen .final-score {
+      font-size: 80px;
+      font-weight: 900;
+      color: #fff;
+      margin-bottom: 10px;
+    }
+
+    #gameOverScreen .best-score {
+      font-size: 18px;
+      color: rgba(255,255,255,0.5);
+      margin-bottom: 50px;
+    }
+
+    #gameOverScreen .restart-hint {
+      font-size: 18px;
+      color: rgba(255,255,255,0.7);
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 0.5; }
+      50% { opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+  <div id="gameContainer">
+    <canvas id="game"></canvas>
+    <div id="ui">
+      <div id="score">0</div>
+      <div id="combo"></div>
+    </div>
+
+    <div id="startScreen">
+      <h1>Stack Tower</h1>
+      <div class="subtitle">How high can you go?</div>
+      <div class="tap-hint">Tap to Start</div>
+    </div>
+
+    <div id="gameOverScreen">
+      <div class="go-title">Game Over</div>
+      <div class="final-score-label">Score</div>
+      <div class="final-score" id="finalScore">0</div>
+      <div class="best-score" id="bestScore">Best: 0</div>
+      <div class="restart-hint">Tap to Retry</div>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('score');
+    const comboEl = document.getElementById('combo');
+    const startScreen = document.getElementById('startScreen');
+    const gameOverScreen = document.getElementById('gameOverScreen');
+    const finalScoreEl = document.getElementById('finalScore');
+    const bestScoreEl = document.getElementById('bestScore');
+
+    // High-DPI support
+    function resizeCanvas() {
+      const container = document.getElementById('gameContainer');
+      const rect = container.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      ctx.scale(dpr, dpr);
+      W = rect.width;
+      H = rect.height;
+    }
+
+    let W, H;
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    // Game palette — shifts hue as you go higher
+    function getColor(level) {
+      const hue = (level * 28 + 200) % 360;
+      return `hsl(${hue}, 65%, 55%)`;
+    }
+
+    function getDarkerColor(level) {
+      const hue = (level * 28 + 200) % 360;
+      return `hsl(${hue}, 65%, 40%)`;
+    }
+
+    // Game state
+    const BLOCK_HEIGHT = 28;
+    const BASE_SPEED = 2.5;
+    const SPEED_INCREMENT = 0.15;
+    const MAX_SPEED = 7;
+    const PERFECT_THRESHOLD = 5;
+
+    let state = 'start'; // start | playing | gameover
+    let blocks = [];
+    let fallingPieces = [];
+    let particles = [];
+    let currentBlock = null;
+    let score = 0;
+    let best = parseInt(localStorage.getItem('stackTowerBest') || '0');
+    let combo = 0;
+    let cameraY = 0;
+    let targetCameraY = 0;
+    let shakeX = 0;
+    let shakeTimer = 0;
+
+    function initGame() {
+      const baseWidth = W * 0.55;
+      const baseX = (W - baseWidth) / 2;
+
+      blocks = [{
+        x: baseX,
+        y: H - BLOCK_HEIGHT - 40,
+        width: baseWidth,
+        height: BLOCK_HEIGHT,
+        level: 0
+      }];
+
+      fallingPieces = [];
+      particles = [];
+      score = 0;
+      combo = 0;
+      cameraY = 0;
+      targetCameraY = 0;
+      shakeX = 0;
+      shakeTimer = 0;
+
+      scoreEl.textContent = '0';
+      comboEl.classList.remove('show');
+
+      spawnBlock();
+    }
+
+    function spawnBlock() {
+      const prev = blocks[blocks.length - 1];
+      const level = blocks.length;
+      const speed = Math.min(BASE_SPEED + level * SPEED_INCREMENT, MAX_SPEED);
+      const direction = level % 2 === 1 ? 1 : -1;
+      const startX = direction === 1 ? -prev.width : W;
+
+      currentBlock = {
+        x: startX,
+        y: prev.y - BLOCK_HEIGHT,
+        width: prev.width,
+        height: BLOCK_HEIGHT,
+        speed: speed * direction,
+        level: level
+      };
+    }
+
+    function placeBlock() {
+      if (!currentBlock) return;
+
+      const prev = blocks[blocks.length - 1];
+      const cb = currentBlock;
+
+      // Calculate overlap
+      const overlapLeft = Math.max(cb.x, prev.x);
+      const overlapRight = Math.min(cb.x + cb.width, prev.x + prev.width);
+      const overlapWidth = overlapRight - overlapLeft;
+
+      if (overlapWidth <= 0) {
+        // Missed completely
+        fallingPieces.push({
+          x: cb.x, y: cb.y - cameraY, width: cb.width, height: cb.height,
+          vy: 0, vx: cb.speed * 0.5, level: cb.level
+        });
+        gameOver();
+        return;
+      }
+
+      // Check for perfect placement
+      const isPerfect = Math.abs(cb.x - prev.x) < PERFECT_THRESHOLD;
+
+      if (isPerfect) {
+        combo++;
+        // Perfect — keep full width of previous block
+        blocks.push({
+          x: prev.x,
+          y: cb.y,
+          width: prev.width,
+          height: BLOCK_HEIGHT,
+          level: cb.level
+        });
+
+        // Burst particles for perfect
+        spawnParticles(prev.x + prev.width / 2, cb.y, cb.level, 20);
+
+        if (combo >= 2) {
+          comboEl.textContent = `PERFECT x${combo}!`;
+          comboEl.classList.add('show');
+        }
+      } else {
+        combo = 0;
+        comboEl.classList.remove('show');
+
+        // Trim block
+        blocks.push({
+          x: overlapLeft,
+          y: cb.y,
+          width: overlapWidth,
+          height: BLOCK_HEIGHT,
+          level: cb.level
+        });
+
+        // Falling trimmed piece
+        const cutLeft = cb.x < prev.x;
+        const fallingX = cutLeft ? cb.x : overlapRight;
+        const fallingW = cb.width - overlapWidth;
+
+        if (fallingW > 1) {
+          fallingPieces.push({
+            x: fallingX, y: cb.y - cameraY, width: fallingW, height: BLOCK_HEIGHT,
+            vy: 0, vx: cutLeft ? -2 : 2, level: cb.level
+          });
+        }
+
+        spawnParticles(overlapLeft + overlapWidth / 2, cb.y, cb.level, 6);
+      }
+
+      score++;
+      scoreEl.textContent = score;
+      scoreEl.classList.add('pop');
+      setTimeout(() => scoreEl.classList.remove('pop'), 100);
+
+      // Move camera up
+      const placed = blocks[blocks.length - 1];
+      const screenY = placed.y - cameraY;
+      if (screenY < H * 0.45) {
+        targetCameraY -= BLOCK_HEIGHT;
+      }
+
+      currentBlock = null;
+      spawnBlock();
+    }
+
+    function spawnParticles(x, y, level, count) {
+      for (let i = 0; i < count; i++) {
+        particles.push({
+          x: x,
+          y: y,
+          vx: (Math.random() - 0.5) * 8,
+          vy: (Math.random() - 0.8) * 6,
+          size: Math.random() * 5 + 2,
+          life: 1,
+          level: level
+        });
+      }
+    }
+
+    function gameOver() {
+      state = 'gameover';
+      currentBlock = null;
+
+      shakeTimer = 15;
+
+      if (score > best) {
+        best = score;
+        localStorage.setItem('stackTowerBest', best.toString());
+      }
+
+      finalScoreEl.textContent = score;
+      bestScoreEl.textContent = `Best: ${best}`;
+
+      setTimeout(() => {
+        gameOverScreen.style.display = 'flex';
+      }, 500);
+    }
+
+    function update() {
+      // Camera smoothing
+      cameraY += (targetCameraY - cameraY) * 0.1;
+
+      // Screen shake
+      if (shakeTimer > 0) {
+        shakeX = (Math.random() - 0.5) * shakeTimer * 0.8;
+        shakeTimer--;
+      } else {
+        shakeX = 0;
+      }
+
+      // Move current block
+      if (currentBlock) {
+        currentBlock.x += currentBlock.speed;
+
+        // Bounce off edges
+        if (currentBlock.x + currentBlock.width > W + 50) {
+          currentBlock.speed = -Math.abs(currentBlock.speed);
+        } else if (currentBlock.x < -50) {
+          currentBlock.speed = Math.abs(currentBlock.speed);
+        }
+      }
+
+      // Update falling pieces
+      for (let i = fallingPieces.length - 1; i >= 0; i--) {
+        const p = fallingPieces[i];
+        p.vy += 0.5;
+        p.y += p.vy;
+        p.x += p.vx;
+        if (p.y > H + 100) {
+          fallingPieces.splice(i, 1);
+        }
+      }
+
+      // Update particles
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.15;
+        p.life -= 0.025;
+        if (p.life <= 0) {
+          particles.splice(i, 1);
+        }
+      }
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, W, H);
+
+      // Background gradient
+      const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+      bgGrad.addColorStop(0, '#0f3460');
+      bgGrad.addColorStop(0.5, '#16213e');
+      bgGrad.addColorStop(1, '#1a1a2e');
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, W, H);
+
+      ctx.save();
+      ctx.translate(shakeX, 0);
+
+      // Draw stacked blocks
+      for (const block of blocks) {
+        const drawY = block.y - cameraY;
+        if (drawY > H + 50 || drawY < -50) continue;
+
+        // Block face
+        ctx.fillStyle = getColor(block.level);
+        ctx.fillRect(block.x, drawY, block.width, block.height);
+
+        // Top highlight
+        ctx.fillStyle = 'rgba(255,255,255,0.15)';
+        ctx.fillRect(block.x, drawY, block.width, 4);
+
+        // Side shadow
+        ctx.fillStyle = getDarkerColor(block.level);
+        ctx.fillRect(block.x, drawY + block.height - 4, block.width, 4);
+      }
+
+      // Draw current moving block
+      if (currentBlock) {
+        const drawY = currentBlock.y - cameraY;
+        ctx.fillStyle = getColor(currentBlock.level);
+        ctx.fillRect(currentBlock.x, drawY, currentBlock.width, currentBlock.height);
+
+        ctx.fillStyle = 'rgba(255,255,255,0.15)';
+        ctx.fillRect(currentBlock.x, drawY, currentBlock.width, 4);
+
+        ctx.fillStyle = getDarkerColor(currentBlock.level);
+        ctx.fillRect(currentBlock.x, drawY + currentBlock.height - 4, currentBlock.width, 4);
+      }
+
+      // Draw falling pieces
+      for (const piece of fallingPieces) {
+        ctx.globalAlpha = 0.8;
+        ctx.fillStyle = getColor(piece.level);
+        ctx.fillRect(piece.x, piece.y, piece.width, piece.height);
+        ctx.globalAlpha = 1;
+      }
+
+      // Draw particles
+      for (const p of particles) {
+        const drawY = p.y - cameraY;
+        ctx.globalAlpha = p.life;
+        ctx.fillStyle = getColor(p.level);
+        ctx.beginPath();
+        ctx.arc(p.x, drawY, p.size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+
+      ctx.restore();
+    }
+
+    function gameLoop() {
+      if (state === 'playing') {
+        update();
+      } else if (state === 'gameover') {
+        update(); // Keep animating falling pieces
+      }
+      draw();
+      requestAnimationFrame(gameLoop);
+    }
+
+    // Input handling
+    function handleTap() {
+      if (state === 'start') {
+        state = 'playing';
+        startScreen.style.display = 'none';
+        scoreEl.style.display = 'block';
+        initGame();
+      } else if (state === 'playing') {
+        placeBlock();
+      } else if (state === 'gameover') {
+        gameOverScreen.style.display = 'none';
+        state = 'playing';
+        initGame();
+      }
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.code === 'Space' || e.code === 'Enter') {
+        e.preventDefault();
+        handleTap();
+      }
+    });
+
+    document.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      handleTap();
+    });
+
+    // Start loop
+    gameLoop();
+  </script>
+</body>
+</html>

@@ -56,6 +56,7 @@
             // Store auth context for callback (apps.html will read these after sign-in)
             localStorage.setItem('oauth_app', app);
             localStorage.setItem('oauth_return_url', returnUrl);
+            localStorage.setItem('oauth_timestamp', Date.now().toString());
 
             // Redirect to apps.html which handles Firebase auth
             // If user is already signed in, it will immediately redirect back with tokens

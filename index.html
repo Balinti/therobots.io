@@ -197,7 +197,79 @@
             color: #c77dff;
         }
 
-        /* App/Game cards grid */
+        /* Game featured card */
+        .game-featured {
+            background: rgba(0, 0, 0, 0.7);
+            border: 2px solid #4a2c7a;
+            border-radius: 20px;
+            overflow: hidden;
+            transition: transform 0.3s, border-color 0.3s;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            text-decoration: none;
+            color: white;
+            margin-bottom: 4rem;
+        }
+
+        .game-featured:hover {
+            transform: translateY(-5px);
+            border-color: #9d4edd;
+            box-shadow: 0 10px 30px rgba(157, 78, 221, 0.3);
+        }
+
+        .game-featured-preview {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 300px;
+            padding: 2rem;
+        }
+
+        .game-preview-icon {
+            font-size: 6rem;
+            text-align: center;
+        }
+
+        .game-preview-icon p {
+            font-size: 1rem;
+            color: #aaa;
+            margin-top: 1rem;
+        }
+
+        .game-featured-info {
+            padding: 2.5rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .game-featured-info h3 {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+        }
+
+        .game-featured-info p {
+            font-size: 1rem;
+            color: #cccccc;
+            margin-bottom: 1.5rem;
+            line-height: 1.7;
+        }
+
+        .game-tag {
+            display: inline-block;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            background: rgba(255, 107, 107, 0.2);
+            color: #ff6b6b;
+            border: 1px solid rgba(255, 107, 107, 0.3);
+            width: fit-content;
+        }
+
+        /* App cards grid */
         .cards-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -258,12 +330,6 @@
             margin-top: 0.75rem;
         }
 
-        .tag-games {
-            background: rgba(255, 107, 107, 0.2);
-            color: #ff6b6b;
-            border: 1px solid rgba(255, 107, 107, 0.3);
-        }
-
         .tag-ai {
             background: rgba(157, 78, 221, 0.2);
             color: #c77dff;
@@ -298,31 +364,6 @@
             background: rgba(252, 92, 125, 0.2);
             color: #fc5c7d;
             border: 1px solid rgba(252, 92, 125, 0.3);
-        }
-
-        /* Stats bar */
-        .stats-bar {
-            display: flex;
-            justify-content: center;
-            gap: 3rem;
-            padding: 2rem 0;
-            margin-bottom: 3rem;
-            flex-wrap: wrap;
-        }
-
-        .stat-item {
-            text-align: center;
-        }
-
-        .stat-number {
-            font-size: 2.5rem;
-            font-weight: bold;
-            color: #9d4edd;
-        }
-
-        .stat-label {
-            font-size: 0.95rem;
-            color: #cccccc;
         }
 
         /* Browse all banner */
@@ -366,12 +407,12 @@
                 gap: 1rem;
             }
 
-            .stats-bar {
-                gap: 1.5rem;
+            .game-featured {
+                grid-template-columns: 1fr;
             }
 
-            .stat-number {
-                font-size: 2rem;
+            .game-featured-preview {
+                min-height: 200px;
             }
 
             .section-header {
@@ -396,7 +437,6 @@
             <ul class="nav-links">
                 <li><a href="index.html">Home</a></li>
                 <li><a href="apps.html">Apps</a></li>
-                <li><a href="founders.html">Founders</a></li>
             </ul>
         </nav>
     </header>
@@ -405,35 +445,31 @@
         <section class="hero">
             <img src="images/mark-logo.png" alt="The Robots TR Logo" class="hero-logo">
             <h1>Discover <span class="gradient-text">Games & Apps</span></h1>
-            <p>Explore our collection of 128+ games, tools, and apps built for fun, learning, and productivity</p>
+            <p>Play our games and explore 128+ apps built for fun, learning, and productivity</p>
             <div class="cta-buttons">
-                <a href="apps.html" class="cta-button">Browse All Apps</a>
-                <a href="apps.html#games" class="cta-button secondary">Explore Games</a>
+                <a href="games/stack-tower-game/" class="cta-button">Play Stack Tower</a>
+                <a href="apps.html" class="cta-button secondary">Browse Apps</a>
             </div>
         </section>
 
-        <div class="stats-bar">
-            <div class="stat-item">
-                <div class="stat-number" data-target="128">0</div>
-                <div class="stat-label">Apps & Games</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-number" data-target="7">0</div>
-                <div class="stat-label">Categories</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-number" data-target="100">0</div>
-                <div class="stat-label">% Free to Use</div>
-            </div>
-        </div>
-
-        <!-- Featured Games -->
+        <!-- Games Section -->
         <section>
             <div class="section-header">
-                <h2>Featured Games</h2>
-                <a href="apps.html#games">View all games &rarr;</a>
+                <h2>Games</h2>
             </div>
-            <div class="cards-grid" id="games-grid"></div>
+            <a href="games/stack-tower-game/" class="game-featured">
+                <div class="game-featured-preview">
+                    <div class="game-preview-icon">
+                        <div>&#x1F3D7;&#xFE0F;</div>
+                        <p>Tap to play</p>
+                    </div>
+                </div>
+                <div class="game-featured-info">
+                    <h3>Stack Tower</h3>
+                    <p>Stack blocks as high as you can in this addictive tower-building game. Time your taps perfectly to align each block and build the tallest tower. Combo streaks for bonus points!</p>
+                    <span class="game-tag">Game</span>
+                </div>
+            </a>
         </section>
 
         <!-- Featured Apps -->
@@ -460,53 +496,23 @@
     </footer>
 
     <script>
-        const allApps = [
+        const featuredApps = [
             { name: "AI Tutor Kids", url: "https://ai-tutor-kids.vercel.app", description: "Child-friendly AI tutor that makes learning fun. Interactive lessons, quizzes, and adaptive content for young learners.", category: "ai" },
-            { name: "AI Chatbot Builder", url: "https://ai-chatbot-builder.vercel.app", description: "Build and deploy custom AI chatbots with no code. Perfect for businesses and personal projects.", category: "ai" },
             { name: "Streak Vault", url: "https://streak-vault.vercel.app", description: "Secure storage for all your habit streaks and achievements. Track multiple goals and celebrate your consistency.", category: "productivity" },
-            { name: "Social Anxiety Practice Lab", url: "https://social-anxiety-practice-lab.vercel.app", description: "Safe space to practice social interactions through simulated scenarios. Build confidence at your own pace.", category: "wellness" },
-            { name: "Knit Community Hub", url: "https://knit-community-hub.vercel.app", description: "Connect with fellow knitting enthusiasts. Share patterns, get tips, and join virtual knitting circles.", category: "social" },
-            { name: "Transit Vocab Builder", url: "https://transit-vocab-builder.vercel.app", description: "Learn vocabulary during your commute with bite-sized lessons optimized for transit time.", category: "education" },
-            { name: "Habit Streak Tracker", url: "https://habit-streak-tracker.vercel.app", description: "Track and maintain your daily habits with streak counters and motivational reminders.", category: "productivity" },
-            { name: "Focus Writer Daily", url: "https://focus-writer-daily.vercel.app", description: "A distraction-free writing environment with daily prompts and goals. Build your writing habit.", category: "productivity" },
-            { name: "Budget Battle Arena", url: "https://budget-battle-arena.vercel.app", description: "Gamify your budgeting! Compete with friends to achieve savings goals and earn rewards.", category: "finance" },
             { name: "Study Fizz", url: "https://study-fizz.vercel.app", description: "Make studying fun with gamified learning sessions. Earn rewards and track progress.", category: "education" },
-            { name: "Beat Battle Arena", url: "https://beat-battle-arena.vercel.app", description: "Compete in rhythm-based music battles. Create beats and challenge other producers.", category: "games" },
-            { name: "Zen Block Adventure", url: "https://zen-block-adventure.vercel.app", description: "Relaxing puzzle game combining block-matching with peaceful zen aesthetics.", category: "games" },
-            { name: "Word Unwind Daily", url: "https://word-unwind-daily.vercel.app", description: "Relaxing word puzzles to unwind after a long day. Build vocabulary while destressing.", category: "games" },
-            { name: "Pattern Memory Challenge", url: "https://pattern-memory-challenge.vercel.app", description: "Test and improve your visual memory with increasingly complex pattern sequences.", category: "games" },
-            { name: "Photo Reality Puzzler", url: "https://photo-reality-puzzler.vercel.app", description: "Spot the real photo among AI-generated images. Train your eye.", category: "games" },
-            { name: "Blackbox Mind Teasers", url: "https://blackbox-mind-teasers.vercel.app", description: "Challenge your logical thinking with cryptic puzzles. Deductive reasoning.", category: "games" },
-            { name: "Karma Task RPG", url: "https://karma-task-rpg.vercel.app", description: "Turn your to-do list into an RPG adventure. Earn karma points.", category: "games" },
-            { name: "Brain Boost Daily", url: "https://brain-boost-daily.vercel.app", description: "Daily brain training exercises to keep your mind sharp.", category: "games" },
-            { name: "Color Block Jam", url: "https://color-block-jam.vercel.app", description: "Addictive puzzle game where you match and clear colored blocks.", category: "games" },
-            { name: "Daily Logic Puzzle", url: "https://daily-logic-puzzle.vercel.app", description: "Fresh logic puzzles every day to sharpen your mind.", category: "games" },
-            { name: "Skibidi Brain Riddle", url: "https://skibidi-brain-riddle.vercel.app", description: "Brain teasers and riddles with a Gen Z twist. Challenge your mind with trendy puzzles.", category: "games" },
-            { name: "Escher Valley Quest", url: "https://escher-valley-quest.vercel.app", description: "Mind-bending puzzle adventure inspired by impossible geometry. Navigate surreal landscapes.", category: "games" },
-            { name: "Word Streak Hero", url: "https://word-streak-hero.vercel.app", description: "Word puzzle game with streak challenges. Build vocabulary while maintaining winning streaks.", category: "games" },
-            { name: "Finance Tycoon", url: "https://finance-tycoon.vercel.app", description: "Simulation game where you build your financial empire. Learn investing.", category: "finance" },
-            { name: "Financial Literacy Game", url: "https://financial-literacy-game.vercel.app", description: "Learn finance through interactive games. Master budgeting, investing, and money management.", category: "finance" },
-            { name: "Mood Meditate AI", url: "https://mood-meditate-ai.vercel.app", description: "AI-powered meditation that adapts to your current mood and emotional state.", category: "wellness" },
-            { name: "Lecture Summarizer", url: "https://lecture-summarizer.vercel.app", description: "Upload lecture recordings and get AI-powered summaries. Extract key points.", category: "ai" },
-            { name: "Flowchart Flow", url: "https://flowchart-flow.vercel.app", description: "Create beautiful flowcharts and diagrams with intuitive drag-and-drop.", category: "productivity" },
-            { name: "ADHD Body Doubling Buddy", url: "https://adhd-body-doubling-buddy.vercel.app", description: "Virtual body doubling companion for focus and accountability.", category: "wellness" },
+            { name: "Social Anxiety Practice Lab", url: "https://social-anxiety-practice-lab.vercel.app", description: "Safe space to practice social interactions through simulated scenarios. Build confidence at your own pace.", category: "wellness" },
+            { name: "Budget Battle Arena", url: "https://budget-battle-arena.vercel.app", description: "Gamify your budgeting! Compete with friends to achieve savings goals and earn rewards.", category: "finance" },
             { name: "Focus Timer App", url: "https://focus-timer-app.vercel.app", description: "Simple yet powerful focus timer with Pomodoro and custom intervals. Stay productive.", category: "productivity" },
-            { name: "GenZ AI Art Generator", url: "https://genz-ai-art-generator.vercel.app", description: "AI art generation with trendy aesthetics. Create viral-worthy visuals with modern styles.", category: "ai" },
             { name: "Code Bite Mini", url: "https://code-bite-mini.vercel.app", description: "Bite-sized coding lessons for beginners. Learn programming in small, digestible chunks.", category: "education" },
+            { name: "Knit Community Hub", url: "https://knit-community-hub.vercel.app", description: "Connect with fellow knitting enthusiasts. Share patterns, get tips, and join virtual knitting circles.", category: "social" },
         ];
 
         function toSlug(name) {
             return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
         }
 
-        function getImagePath(name) {
-            const slug = toSlug(name);
-            return `images/apps/${slug}-1.webp`;
-        }
-
         function getTagClass(category) {
             const map = {
-                games: 'tag-games',
                 ai: 'tag-ai',
                 productivity: 'tag-productivity',
                 education: 'tag-education',
@@ -518,9 +524,10 @@
         }
 
         function renderCard(app) {
+            const slug = toSlug(app.name);
             return `
                 <a href="${app.url}" target="_blank" rel="noopener" class="card">
-                    <img class="card-img" src="${getImagePath(app.name)}" alt="${app.name}" onerror="this.style.display='none'">
+                    <img class="card-img" src="images/apps/${slug}-1.webp" alt="${app.name}" onerror="this.style.display='none'">
                     <div class="card-body">
                         <h3>${app.name}</h3>
                         <p>${app.description}</p>
@@ -530,56 +537,7 @@
             `;
         }
 
-        // Render featured games (all games category)
-        const games = allApps.filter(a => a.category === 'games');
-        document.getElementById('games-grid').innerHTML = games.slice(0, 4).map(renderCard).join('');
-
-        // Render featured apps (non-games, mixed categories)
-        const apps = allApps.filter(a => a.category !== 'games');
-        // Pick a varied set
-        const featured = [];
-        const seen = new Set();
-        for (const app of apps) {
-            if (!seen.has(app.category)) {
-                featured.push(app);
-                seen.add(app.category);
-            }
-            if (featured.length >= 4) break;
-        }
-        document.getElementById('apps-grid').innerHTML = featured.map(renderCard).join('');
-
-        // Animated counters
-        function animateCounter(element) {
-            const target = parseInt(element.getAttribute('data-target'));
-            const duration = 1500;
-            const increment = target / (duration / 16);
-            let current = 0;
-
-            const update = () => {
-                current += increment;
-                if (current < target) {
-                    element.textContent = Math.floor(current).toLocaleString();
-                    requestAnimationFrame(update);
-                } else {
-                    element.textContent = target.toLocaleString();
-                }
-            };
-            update();
-        }
-
-        const observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                    entry.target.querySelectorAll('.stat-number').forEach(animateCounter);
-                    observer.unobserve(entry.target);
-                }
-            });
-        }, { threshold: 0.5 });
-
-        document.addEventListener('DOMContentLoaded', () => {
-            const bar = document.querySelector('.stats-bar');
-            if (bar) observer.observe(bar);
-        });
+        document.getElementById('apps-grid').innerHTML = featuredApps.map(renderCard).join('');
     </script>
 </body>
 </html>
