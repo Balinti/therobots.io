@@ -2066,7 +2066,7 @@
         firebaseAppScript.type = 'module';
         firebaseAppScript.textContent = `
             import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
-            import { getAuth, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, signInAnonymously, signOut, onAuthStateChanged, GoogleAuthProvider } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js';
+            import { getAuth, signInWithPopup, signInWithRedirect, signInWithEmailAndPassword, createUserWithEmailAndPassword, signInAnonymously, signOut, onAuthStateChanged, GoogleAuthProvider } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js';
             import { getFirestore, doc, setDoc, getDoc, getDocs, collection, query, where, updateDoc, serverTimestamp, increment } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
 
             const config = ${JSON.stringify(firebaseConfig)};
@@ -2078,6 +2078,7 @@
             // Expose Firebase functions globally
             window.firebaseFns = {
                 signInWithPopup,
+                signInWithRedirect,
                 signInWithEmailAndPassword,
                 createUserWithEmailAndPassword,
                 signInAnonymously,
@@ -2206,11 +2207,13 @@
                     updateAuthUI();
 
                     // Auto-trigger sign-in if arriving from cross-app OAuth flow
+                    // Uses redirect (not popup) so it works without user gesture, like the old Supabase flow
                     const pendingOauthApp = localStorage.getItem('oauth_app');
                     const pendingOauthReturn = localStorage.getItem('oauth_return_url');
                     if (pendingOauthApp && pendingOauthReturn) {
-                        console.log('Cross-app auth pending for:', pendingOauthApp, '- auto-triggering sign-in');
-                        signInWithGoogle();
+                        console.log('Cross-app auth pending for:', pendingOauthApp, '- redirecting to Google sign-in');
+                        const { signInWithRedirect } = window.firebaseFns;
+                        signInWithRedirect(window.firebaseAuth, window.googleProvider);
                     }
                 }
             });
