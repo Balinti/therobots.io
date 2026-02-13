@@ -2066,7 +2066,7 @@
         firebaseAppScript.type = 'module';
         firebaseAppScript.textContent = `
             import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
-            import { getAuth, signInWithPopup, signInWithRedirect, signInWithEmailAndPassword, createUserWithEmailAndPassword, signInAnonymously, signOut, onAuthStateChanged, GoogleAuthProvider } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js';
+            import { getAuth, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, signInAnonymously, signOut, onAuthStateChanged, GoogleAuthProvider } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js';
             import { getFirestore, doc, setDoc, getDoc, getDocs, collection, query, where, updateDoc, serverTimestamp, increment } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
 
             const config = ${JSON.stringify(firebaseConfig)};
@@ -2078,7 +2078,6 @@
             // Expose Firebase functions globally
             window.firebaseFns = {
                 signInWithPopup,
-                signInWithRedirect,
                 signInWithEmailAndPassword,
                 createUserWithEmailAndPassword,
                 signInAnonymously,
@@ -2130,17 +2129,6 @@
                 localStorage.setItem('authAppName', appParam);
             }
 
-            // Clean up stale auth values older than 5 minutes
-            const oauthTimestamp = localStorage.getItem('oauth_timestamp');
-            if (oauthTimestamp && (Date.now() - parseInt(oauthTimestamp)) > 5 * 60 * 1000) {
-                console.log('Cleaning up stale OAuth localStorage values');
-                localStorage.removeItem('oauth_app');
-                localStorage.removeItem('oauth_return_url');
-                localStorage.removeItem('oauth_timestamp');
-                localStorage.removeItem('authReturnTo');
-                localStorage.removeItem('authAppName');
-            }
-
             // Listen for auth state changes
             onAuthStateChanged(window.firebaseAuth, async (user) => {
                 console.log('onAuthStateChanged:', user?.email || user?.uid || 'signed out');
@@ -2176,7 +2164,6 @@
                             // Clean up AFTER we have the redirect URL ready
                             localStorage.removeItem('oauth_app');
                             localStorage.removeItem('oauth_return_url');
-                            localStorage.removeItem('oauth_timestamp');
 
                             console.log('Redirecting to external app:', redirectUrl.toString());
                             window.location.href = redirectUrl.toString();
@@ -2186,7 +2173,6 @@
                             // Clean up on error too
                             localStorage.removeItem('oauth_app');
                             localStorage.removeItem('oauth_return_url');
-                            localStorage.removeItem('oauth_timestamp');
                         }
                     }
 
@@ -2205,16 +2191,6 @@
                 } else {
                     currentUser = null;
                     updateAuthUI();
-
-                    // Auto-trigger sign-in if arriving from cross-app OAuth flow
-                    // Uses redirect (not popup) so it works without user gesture, like the old Supabase flow
-                    const pendingOauthApp = localStorage.getItem('oauth_app');
-                    const pendingOauthReturn = localStorage.getItem('oauth_return_url');
-                    if (pendingOauthApp && pendingOauthReturn) {
-                        console.log('Cross-app auth pending for:', pendingOauthApp, '- redirecting to Google sign-in');
-                        const { signInWithRedirect } = window.firebaseFns;
-                        signInWithRedirect(window.firebaseAuth, window.googleProvider);
-                    }
                 }
             });
         }
