@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>The Robots - AI Voice Automation Solutions</title>
+    <title>The Robots - Games & Apps</title>
     <style>
         * {
             margin: 0;
@@ -137,6 +137,13 @@
             color: white;
         }
 
+        .cta-buttons {
+            display: flex;
+            gap: 1.5rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
         .cta-button {
             background: linear-gradient(45deg, #9d4edd, #7209b7);
             color: white;
@@ -157,207 +164,187 @@
             box-shadow: 0 6px 25px rgba(157, 78, 221, 0.6);
         }
 
-        /* Statistics Section */
-        .stats-section {
-            padding: 3rem 0;
-            margin: 3rem 0;
+        .cta-button.secondary {
+            background: transparent;
+            border: 2px solid #9d4edd;
         }
 
-        .stats-grid {
+        .cta-button.secondary:hover {
+            background: rgba(157, 78, 221, 0.2);
+        }
+
+        /* Section heading */
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+        }
+
+        .section-header h2 {
+            font-size: 2rem;
+            color: white;
+        }
+
+        .section-header a {
+            color: #9d4edd;
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.3s;
+        }
+
+        .section-header a:hover {
+            color: #c77dff;
+        }
+
+        /* App/Game cards grid */
+        .cards-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 2rem;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 4rem;
         }
 
-        .stat-card {
+        .card {
             background: rgba(0, 0, 0, 0.7);
             border: 2px solid #4a2c7a;
             border-radius: 20px;
-            padding: 2rem;
-            text-align: center;
+            overflow: hidden;
             transition: transform 0.3s, border-color 0.3s;
+            cursor: pointer;
+            text-decoration: none;
+            color: white;
+            display: block;
         }
 
-        .stat-card:hover {
-            transform: translateY(-10px);
+        .card:hover {
+            transform: translateY(-8px);
             border-color: #9d4edd;
             box-shadow: 0 10px 30px rgba(157, 78, 221, 0.3);
         }
 
-        .stat-icon {
-            font-size: 3rem;
-            margin-bottom: 1rem;
+        .card-img {
+            width: 100%;
+            height: 180px;
+            object-fit: cover;
+            background: linear-gradient(135deg, #3a1f7a, #1a0a3e);
+        }
+
+        .card-body {
+            padding: 1.25rem;
+        }
+
+        .card-body h3 {
+            font-size: 1.1rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .card-body p {
+            font-size: 0.9rem;
+            color: #cccccc;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .card-tag {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-top: 0.75rem;
+        }
+
+        .tag-games {
+            background: rgba(255, 107, 107, 0.2);
+            color: #ff6b6b;
+            border: 1px solid rgba(255, 107, 107, 0.3);
+        }
+
+        .tag-ai {
+            background: rgba(157, 78, 221, 0.2);
+            color: #c77dff;
+            border: 1px solid rgba(157, 78, 221, 0.3);
+        }
+
+        .tag-productivity {
+            background: rgba(69, 170, 242, 0.2);
+            color: #45aaf2;
+            border: 1px solid rgba(69, 170, 242, 0.3);
+        }
+
+        .tag-education {
+            background: rgba(38, 222, 129, 0.2);
+            color: #26de81;
+            border: 1px solid rgba(38, 222, 129, 0.3);
+        }
+
+        .tag-wellness {
+            background: rgba(252, 196, 25, 0.2);
+            color: #fcc419;
+            border: 1px solid rgba(252, 196, 25, 0.3);
+        }
+
+        .tag-finance {
+            background: rgba(32, 191, 107, 0.2);
+            color: #20bf6b;
+            border: 1px solid rgba(32, 191, 107, 0.3);
+        }
+
+        .tag-social {
+            background: rgba(252, 92, 125, 0.2);
+            color: #fc5c7d;
+            border: 1px solid rgba(252, 92, 125, 0.3);
+        }
+
+        /* Stats bar */
+        .stats-bar {
+            display: flex;
+            justify-content: center;
+            gap: 3rem;
+            padding: 2rem 0;
+            margin-bottom: 3rem;
+            flex-wrap: wrap;
+        }
+
+        .stat-item {
+            text-align: center;
         }
 
         .stat-number {
-            font-size: 3rem;
-            font-weight: bold;
-            color: #9d4edd;
-            margin-bottom: 0.5rem;
-        }
-
-        .stat-label {
-            font-size: 1.1rem;
-            color: #cccccc;
-        }
-
-        /* ROI Calculator */
-        .roi-calculator {
-            background: rgba(0, 0, 0, 0.7);
-            border: 2px solid #4a2c7a;
-            border-radius: 20px;
-            padding: 3rem;
-            margin: 3rem 0;
-        }
-
-        .roi-calculator h2 {
-            text-align: center;
-            margin-bottom: 2rem;
-            color: white;
-        }
-
-        .calculator-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 3rem;
-            max-width: 1000px;
-            margin: 0 auto;
-        }
-
-        .calculator-inputs {
-            display: flex;
-            flex-direction: column;
-            gap: 1.5rem;
-        }
-
-        .input-group {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .input-group label {
-            margin-bottom: 0.5rem;
-            color: #cccccc;
-            font-weight: 500;
-        }
-
-        .input-group input {
-            width: 100%;
-            padding: 12px;
-            background: rgba(157, 78, 221, 0.1);
-            border: 2px solid #4a2c7a;
-            border-radius: 10px;
-            color: white;
-            font-size: 1.1rem;
-            transition: border-color 0.3s;
-        }
-
-        .input-group input:focus {
-            outline: none;
-            border-color: #9d4edd;
-        }
-
-        .calculate-btn {
-            width: 100%;
-            background: linear-gradient(45deg, #9d4edd, #7209b7);
-            color: white;
-            padding: 15px;
-            border: none;
-            border-radius: 10px;
-            font-size: 1.1rem;
-            font-weight: bold;
-            cursor: pointer;
-            transition: transform 0.3s;
-        }
-
-        .calculate-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(157, 78, 221, 0.4);
-        }
-
-        .calculator-results {
-            display: flex;
-            flex-direction: column;
-            gap: 1.5rem;
-        }
-
-        .result-card {
-            background: rgba(157, 78, 221, 0.1);
-            border: 2px solid #9d4edd;
-            border-radius: 15px;
-            padding: 1.5rem;
-            text-align: center;
-            transition: transform 0.3s;
-        }
-
-        .result-card:hover {
-            transform: scale(1.05);
-        }
-
-        .result-card h3 {
-            color: #cccccc;
-            margin-bottom: 1rem;
-            font-size: 1rem;
-        }
-
-        .result-value {
             font-size: 2.5rem;
             font-weight: bold;
             color: #9d4edd;
         }
 
-        .video-section {
+        .stat-label {
+            font-size: 0.95rem;
+            color: #cccccc;
+        }
+
+        /* Browse all banner */
+        .browse-banner {
             background: rgba(0, 0, 0, 0.7);
+            border: 2px solid #4a2c7a;
             border-radius: 20px;
             padding: 3rem;
-            margin: 3rem 0;
             text-align: center;
-            border: 2px solid #4a2c7a;
+            margin: 2rem 0 3rem;
         }
 
-        .video-section h2 {
-            color: white;
-            margin-bottom: 2rem;
-        }
-
-        .video-container {
-            position: relative;
-            width: 100%;
-            max-width: 900px;
-            margin: 0 auto;
-            padding-bottom: 50.25%;
-            height: 0;
-            overflow: hidden;
-            border-radius: 15px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.5);
-        }
-
-        .video-container iframe {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            border-radius: 15px;
-        }
-
-        .ai-agent-section {
-            background: rgba(0, 0, 0, 0.7);
-            border-radius: 20px;
-            padding: 3rem;
-            margin: 3rem 0;
-            text-align: center;
-            border: 2px solid #4a2c7a;
-        }
-
-        .ai-agent-section h2 {
-            color: white;
+        .browse-banner h2 {
+            font-size: 2rem;
             margin-bottom: 1rem;
+            color: white;
         }
 
-        .ai-agent-section p {
+        .browse-banner p {
             color: #cccccc;
             margin-bottom: 2rem;
+            font-size: 1.1rem;
         }
 
         footer {
@@ -373,29 +360,28 @@
             .hero h1 {
                 font-size: 2.5rem;
             }
-            
+
             .nav-links {
                 flex-direction: column;
                 gap: 1rem;
             }
 
-            .calculator-grid {
-                grid-template-columns: 1fr;
+            .stats-bar {
+                gap: 1.5rem;
             }
 
-            .stats-grid {
-                grid-template-columns: 1fr;
-            }
-            
-            .video-container {
-                max-width: 100%;
-                padding-bottom: 56.25%;
+            .stat-number {
+                font-size: 2rem;
             }
 
-            .video-section,
-            .ai-agent-section,
-            .roi-calculator {
-                padding: 2rem 1rem;
+            .section-header {
+                flex-direction: column;
+                gap: 0.5rem;
+                text-align: center;
+            }
+
+            .cards-grid {
+                grid-template-columns: 1fr;
             }
         }
     </style>
@@ -409,9 +395,8 @@
             </a>
             <ul class="nav-links">
                 <li><a href="index.html">Home</a></li>
-                <li><a href="services.html">Services</a></li>
+                <li><a href="apps.html">Apps</a></li>
                 <li><a href="founders.html">Founders</a></li>
-                <li><a href="#contact">Contact</a></li>
             </ul>
         </nav>
     </header>
@@ -419,177 +404,182 @@
     <main class="container">
         <section class="hero">
             <img src="images/mark-logo.png" alt="The Robots TR Logo" class="hero-logo">
-            <h1>Transform Your Business with <span class="gradient-text">AI Voice Agents</span></h1>
-            <p>Automate calls, book meetings, and delight customers 24/7 with Tara</p>
-            <a href="#ai-agent" class="cta-button">🎙️ Speak with Tara Now</a>
-        </section>
-
-        <!-- Statistics Section -->
-        <section class="stats-section">
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-icon">📞</div>
-                    <div class="stat-number" data-target="50000">0</div>
-                    <div class="stat-label">Calls Automated</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-icon">⏱️</div>
-                    <div class="stat-number" data-target="10000">0</div>
-                    <div class="stat-label">Hours Saved</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-icon">😊</div>
-                    <div class="stat-number" data-target="98">0</div>
-                    <div class="stat-label">% Customer Satisfaction</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-icon">💰</div>
-                    <div class="stat-number" data-target="2000000">0</div>
-                    <div class="stat-label">$ Saved for Clients</div>
-                </div>
+            <h1>Discover <span class="gradient-text">Games & Apps</span></h1>
+            <p>Explore our collection of 128+ games, tools, and apps built for fun, learning, and productivity</p>
+            <div class="cta-buttons">
+                <a href="apps.html" class="cta-button">Browse All Apps</a>
+                <a href="apps.html#games" class="cta-button secondary">Explore Games</a>
             </div>
         </section>
 
-        <!-- ROI Calculator -->
-        <section class="roi-calculator">
-            <h2>💡 Calculate Your Savings with AI Voice Automation</h2>
-            <div class="calculator-grid">
-                <div class="calculator-inputs">
-                    <div class="input-group">
-                        <label>Average calls per day</label>
-                        <input type="number" id="callsPerDay" value="50" min="1">
-                    </div>
-                    <div class="input-group">
-                        <label>Average call duration (minutes)</label>
-                        <input type="number" id="callDuration" value="5" min="1">
-                    </div>
-                    <div class="input-group">
-                        <label>Current cost per call ($)</label>
-                        <input type="number" id="costPerCall" value="3" min="0" step="0.1">
-                    </div>
-                    <button onclick="calculateROI()" class="calculate-btn">Calculate Savings</button>
-                </div>
-                <div class="calculator-results">
-                    <div class="result-card">
-                        <h3>Monthly Savings</h3>
-                        <div class="result-value" id="monthlySavings">$0</div>
-                    </div>
-                    <div class="result-card">
-                        <h3>Annual Savings</h3>
-                        <div class="result-value" id="annualSavings">$0</div>
-                    </div>
-                    <div class="result-card">
-                        <h3>Hours Saved/Month</h3>
-                        <div class="result-value" id="hoursSaved">0</div>
-                    </div>
-                </div>
+        <div class="stats-bar">
+            <div class="stat-item">
+                <div class="stat-number" data-target="128">0</div>
+                <div class="stat-label">Apps & Games</div>
             </div>
+            <div class="stat-item">
+                <div class="stat-number" data-target="7">0</div>
+                <div class="stat-label">Categories</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number" data-target="100">0</div>
+                <div class="stat-label">% Free to Use</div>
+            </div>
+        </div>
+
+        <!-- Featured Games -->
+        <section>
+            <div class="section-header">
+                <h2>Featured Games</h2>
+                <a href="apps.html#games">View all games &rarr;</a>
+            </div>
+            <div class="cards-grid" id="games-grid"></div>
         </section>
 
-        <section class="video-section">
-            <h2>See Our Work in Action</h2>
-            <div class="video-container">
-                <iframe src="https://www.youtube.com/embed/mRtGNMQlAic" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+        <!-- Featured Apps -->
+        <section>
+            <div class="section-header">
+                <h2>Featured Apps</h2>
+                <a href="apps.html">View all apps &rarr;</a>
             </div>
+            <div class="cards-grid" id="apps-grid"></div>
+        </section>
+
+        <!-- Browse All Banner -->
+        <section class="browse-banner">
+            <h2>Ready to explore everything?</h2>
+            <p>Browse our full directory with search, filters, ratings, and more</p>
+            <a href="apps.html" class="cta-button">Open Apps Directory</a>
         </section>
     </main>
 
-    <!-- AI Agent section -->
-    <section class="ai-agent-section" id="ai-agent">
-        <div class="container">
-            <h2>🎙️ Speak with Tara - Our AI Voice Agent</h2>
-            <p>Experience our AI technology firsthand - have a real conversation!</p>
-            <div style="background: rgba(20, 20, 20, 0.8); border-radius: 15px; padding: 2rem; border: 2px solid #4a2c7a; margin-top: 2rem;">
-                <elevenlabs-convai agent-id="agent_0701k6238fn5ex58es31xvqvs868"></elevenlabs-convai>
-                <script src="https://unpkg.com/@elevenlabs/convai-widget-embed" async type="text/javascript"></script>
-            </div>
-        </div>
-    </section>
-
     <footer>
         <div class="container">
-            <p>&copy; 2024 The Robots. All rights reserved. | Powered by AI Innovation</p>
+            <p>&copy; 2025 The Robots. All rights reserved.</p>
         </div>
     </footer>
 
     <script>
-        // Animated counter for statistics
+        const allApps = [
+            { name: "AI Tutor Kids", url: "https://ai-tutor-kids.vercel.app", description: "Child-friendly AI tutor that makes learning fun. Interactive lessons, quizzes, and adaptive content for young learners.", category: "ai" },
+            { name: "AI Chatbot Builder", url: "https://ai-chatbot-builder.vercel.app", description: "Build and deploy custom AI chatbots with no code. Perfect for businesses and personal projects.", category: "ai" },
+            { name: "Streak Vault", url: "https://streak-vault.vercel.app", description: "Secure storage for all your habit streaks and achievements. Track multiple goals and celebrate your consistency.", category: "productivity" },
+            { name: "Social Anxiety Practice Lab", url: "https://social-anxiety-practice-lab.vercel.app", description: "Safe space to practice social interactions through simulated scenarios. Build confidence at your own pace.", category: "wellness" },
+            { name: "Knit Community Hub", url: "https://knit-community-hub.vercel.app", description: "Connect with fellow knitting enthusiasts. Share patterns, get tips, and join virtual knitting circles.", category: "social" },
+            { name: "Transit Vocab Builder", url: "https://transit-vocab-builder.vercel.app", description: "Learn vocabulary during your commute with bite-sized lessons optimized for transit time.", category: "education" },
+            { name: "Habit Streak Tracker", url: "https://habit-streak-tracker.vercel.app", description: "Track and maintain your daily habits with streak counters and motivational reminders.", category: "productivity" },
+            { name: "Focus Writer Daily", url: "https://focus-writer-daily.vercel.app", description: "A distraction-free writing environment with daily prompts and goals. Build your writing habit.", category: "productivity" },
+            { name: "Budget Battle Arena", url: "https://budget-battle-arena.vercel.app", description: "Gamify your budgeting! Compete with friends to achieve savings goals and earn rewards.", category: "finance" },
+            { name: "Study Fizz", url: "https://study-fizz.vercel.app", description: "Make studying fun with gamified learning sessions. Earn rewards and track progress.", category: "education" },
+            { name: "Beat Battle Arena", url: "https://beat-battle-arena.vercel.app", description: "Compete in rhythm-based music battles. Create beats and challenge other producers.", category: "games" },
+            { name: "Zen Block Adventure", url: "https://zen-block-adventure.vercel.app", description: "Relaxing puzzle game combining block-matching with peaceful zen aesthetics.", category: "games" },
+            { name: "Word Unwind Daily", url: "https://word-unwind-daily.vercel.app", description: "Relaxing word puzzles to unwind after a long day. Build vocabulary while destressing.", category: "games" },
+            { name: "Pattern Memory Challenge", url: "https://pattern-memory-challenge.vercel.app", description: "Test and improve your visual memory with increasingly complex pattern sequences.", category: "games" },
+            { name: "Photo Reality Puzzler", url: "https://photo-reality-puzzler.vercel.app", description: "Spot the real photo among AI-generated images. Train your eye.", category: "games" },
+            { name: "Blackbox Mind Teasers", url: "https://blackbox-mind-teasers.vercel.app", description: "Challenge your logical thinking with cryptic puzzles. Deductive reasoning.", category: "games" },
+            { name: "Karma Task RPG", url: "https://karma-task-rpg.vercel.app", description: "Turn your to-do list into an RPG adventure. Earn karma points.", category: "games" },
+            { name: "Brain Boost Daily", url: "https://brain-boost-daily.vercel.app", description: "Daily brain training exercises to keep your mind sharp.", category: "games" },
+            { name: "Color Block Jam", url: "https://color-block-jam.vercel.app", description: "Addictive puzzle game where you match and clear colored blocks.", category: "games" },
+            { name: "Daily Logic Puzzle", url: "https://daily-logic-puzzle.vercel.app", description: "Fresh logic puzzles every day to sharpen your mind.", category: "games" },
+            { name: "Skibidi Brain Riddle", url: "https://skibidi-brain-riddle.vercel.app", description: "Brain teasers and riddles with a Gen Z twist. Challenge your mind with trendy puzzles.", category: "games" },
+            { name: "Escher Valley Quest", url: "https://escher-valley-quest.vercel.app", description: "Mind-bending puzzle adventure inspired by impossible geometry. Navigate surreal landscapes.", category: "games" },
+            { name: "Word Streak Hero", url: "https://word-streak-hero.vercel.app", description: "Word puzzle game with streak challenges. Build vocabulary while maintaining winning streaks.", category: "games" },
+            { name: "Finance Tycoon", url: "https://finance-tycoon.vercel.app", description: "Simulation game where you build your financial empire. Learn investing.", category: "finance" },
+            { name: "Financial Literacy Game", url: "https://financial-literacy-game.vercel.app", description: "Learn finance through interactive games. Master budgeting, investing, and money management.", category: "finance" },
+            { name: "Mood Meditate AI", url: "https://mood-meditate-ai.vercel.app", description: "AI-powered meditation that adapts to your current mood and emotional state.", category: "wellness" },
+            { name: "Lecture Summarizer", url: "https://lecture-summarizer.vercel.app", description: "Upload lecture recordings and get AI-powered summaries. Extract key points.", category: "ai" },
+            { name: "Flowchart Flow", url: "https://flowchart-flow.vercel.app", description: "Create beautiful flowcharts and diagrams with intuitive drag-and-drop.", category: "productivity" },
+            { name: "ADHD Body Doubling Buddy", url: "https://adhd-body-doubling-buddy.vercel.app", description: "Virtual body doubling companion for focus and accountability.", category: "wellness" },
+            { name: "Focus Timer App", url: "https://focus-timer-app.vercel.app", description: "Simple yet powerful focus timer with Pomodoro and custom intervals. Stay productive.", category: "productivity" },
+            { name: "GenZ AI Art Generator", url: "https://genz-ai-art-generator.vercel.app", description: "AI art generation with trendy aesthetics. Create viral-worthy visuals with modern styles.", category: "ai" },
+            { name: "Code Bite Mini", url: "https://code-bite-mini.vercel.app", description: "Bite-sized coding lessons for beginners. Learn programming in small, digestible chunks.", category: "education" },
+        ];
+
+        function toSlug(name) {
+            return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+        }
+
+        function getImagePath(name) {
+            const slug = toSlug(name);
+            return `images/apps/${slug}-1.webp`;
+        }
+
+        function getTagClass(category) {
+            const map = {
+                games: 'tag-games',
+                ai: 'tag-ai',
+                productivity: 'tag-productivity',
+                education: 'tag-education',
+                wellness: 'tag-wellness',
+                finance: 'tag-finance',
+                social: 'tag-social',
+            };
+            return map[category] || 'tag-ai';
+        }
+
+        function renderCard(app) {
+            return `
+                <a href="${app.url}" target="_blank" rel="noopener" class="card">
+                    <img class="card-img" src="${getImagePath(app.name)}" alt="${app.name}" onerror="this.style.display='none'">
+                    <div class="card-body">
+                        <h3>${app.name}</h3>
+                        <p>${app.description}</p>
+                        <span class="card-tag ${getTagClass(app.category)}">${app.category}</span>
+                    </div>
+                </a>
+            `;
+        }
+
+        // Render featured games (all games category)
+        const games = allApps.filter(a => a.category === 'games');
+        document.getElementById('games-grid').innerHTML = games.slice(0, 4).map(renderCard).join('');
+
+        // Render featured apps (non-games, mixed categories)
+        const apps = allApps.filter(a => a.category !== 'games');
+        // Pick a varied set
+        const featured = [];
+        const seen = new Set();
+        for (const app of apps) {
+            if (!seen.has(app.category)) {
+                featured.push(app);
+                seen.add(app.category);
+            }
+            if (featured.length >= 4) break;
+        }
+        document.getElementById('apps-grid').innerHTML = featured.map(renderCard).join('');
+
+        // Animated counters
         function animateCounter(element) {
             const target = parseInt(element.getAttribute('data-target'));
-            const duration = 2000;
+            const duration = 1500;
             const increment = target / (duration / 16);
             let current = 0;
 
-            const updateCounter = () => {
+            const update = () => {
                 current += increment;
                 if (current < target) {
                     element.textContent = Math.floor(current).toLocaleString();
-                    requestAnimationFrame(updateCounter);
+                    requestAnimationFrame(update);
                 } else {
                     element.textContent = target.toLocaleString();
                 }
             };
-
-            updateCounter();
+            update();
         }
-
-        // Intersection Observer to trigger animation when visible
-        const observerOptions = {
-            threshold: 0.5
-        };
 
         const observer = new IntersectionObserver((entries) => {
             entries.forEach(entry => {
                 if (entry.isIntersecting) {
-                    const counters = entry.target.querySelectorAll('.stat-number');
-                    counters.forEach(counter => animateCounter(counter));
+                    entry.target.querySelectorAll('.stat-number').forEach(animateCounter);
                     observer.unobserve(entry.target);
                 }
             });
-        }, observerOptions);
+        }, { threshold: 0.5 });
 
         document.addEventListener('DOMContentLoaded', () => {
-            const statsSection = document.querySelector('.stats-section');
-            if (statsSection) observer.observe(statsSection);
+            const bar = document.querySelector('.stats-bar');
+            if (bar) observer.observe(bar);
         });
-
-        // ROI Calculator
-        function calculateROI() {
-            const callsPerDay = parseInt(document.getElementById('callsPerDay').value);
-            const callDuration = parseInt(document.getElementById('callDuration').value);
-            const costPerCall = parseFloat(document.getElementById('costPerCall').value);
-            
-            // Assuming AI reduces costs by 70%
-            const savingsPerCall = costPerCall * 0.7;
-            const dailySavings = callsPerDay * savingsPerCall;
-            const monthlySavings = dailySavings * 30;
-            const annualSavings = monthlySavings * 12;
-            const hoursSaved = (callsPerDay * callDuration * 30) / 60;
-            
-            // Animate the results
-            animateValue('monthlySavings', 0, monthlySavings, 1000, true);
-            animateValue('annualSavings', 0, annualSavings, 1000, true);
-            animateValue('hoursSaved', 0, hoursSaved, 1000, false);
-        }
-
-        function animateValue(id, start, end, duration, isCurrency) {
-            const element = document.getElementById(id);
-            const range = end - start;
-            const increment = range / (duration / 16);
-            let current = start;
-            
-            const timer = setInterval(() => {
-                current += increment;
-                if (current >= end) {
-                    current = end;
-                    clearInterval(timer);
-                }
-                const displayValue = isCurrency ? 
-                    `$${Math.floor(current).toLocaleString()}` : 
-                    Math.floor(current).toLocaleString();
-                element.textContent = displayValue;
-            }, 16);
-        }
     </script>
 </body>
 </html>
