@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Zigzag Dash</title>
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490"
+     crossorigin="anonymous"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #1a1a2e;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      overflow: hidden;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      touch-action: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    #gameContainer {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      height: 100vh;
+      max-height: 750px;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    #ui {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    #score {
+      font-size: 72px;
+      font-weight: 800;
+      color: rgba(255, 255, 255, 0.9);
+      margin-top: 40px;
+      text-shadow: 0 4px 20px rgba(0,0,0,0.3);
+      transition: transform 0.1s;
+    }
+
+    #score.pop { transform: scale(1.3); }
+
+    #startScreen, #gameOverScreen {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      pointer-events: auto;
+      cursor: pointer;
+    }
+
+    #startScreen {
+      background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+    }
+
+    #startScreen h1 {
+      font-size: 48px;
+      font-weight: 900;
+      color: #fff;
+      margin-bottom: 8px;
+    }
+
+    #startScreen .subtitle {
+      font-size: 16px;
+      color: rgba(255,255,255,0.5);
+      margin-bottom: 50px;
+    }
+
+    #startScreen .tap-hint {
+      font-size: 18px;
+      color: rgba(255,255,255,0.7);
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    #gameOverScreen {
+      background: rgba(0,0,0,0.7);
+      display: none;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+
+    #gameOverScreen .go-title {
+      font-size: 36px;
+      font-weight: 800;
+      color: #fff;
+      margin-bottom: 20px;
+    }
+
+    #gameOverScreen .final-score-label {
+      font-size: 16px;
+      color: rgba(255,255,255,0.6);
+      text-transform: uppercase;
+      letter-spacing: 3px;
+    }
+
+    #gameOverScreen .final-score {
+      font-size: 80px;
+      font-weight: 900;
+      color: #fff;
+      margin-bottom: 10px;
+    }
+
+    #gameOverScreen .best-score {
+      font-size: 18px;
+      color: rgba(255,255,255,0.5);
+      margin-bottom: 50px;
+    }
+
+    #gameOverScreen .restart-hint {
+      font-size: 18px;
+      color: rgba(255,255,255,0.7);
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 0.5; }
+      50% { opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+  <div id="gameContainer">
+    <canvas id="game"></canvas>
+    <div id="ui">
+      <div id="score">0</div>
+    </div>
+
+    <div id="startScreen">
+      <h1>Zigzag Dash</h1>
+      <div class="subtitle">Stay on the path!</div>
+      <div class="tap-hint">Tap to Start</div>
+    </div>
+
+    <div id="gameOverScreen">
+      <div class="go-title">Game Over</div>
+      <div class="final-score-label">Score</div>
+      <div class="final-score" id="finalScore">0</div>
+      <div class="best-score" id="bestScore">Best: 0</div>
+      <div class="restart-hint">Tap to Retry</div>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('score');
+    const startScreen = document.getElementById('startScreen');
+    const gameOverScreen = document.getElementById('gameOverScreen');
+    const finalScoreEl = document.getElementById('finalScore');
+    const bestScoreEl = document.getElementById('bestScore');
+
+    let W, H;
+
+    function resizeCanvas() {
+      const container = document.getElementById('gameContainer');
+      const rect = container.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      ctx.scale(dpr, dpr);
+      W = rect.width;
+      H = rect.height;
+    }
+
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    // Isometric tile settings
+    const TILE_W = 55;
+    const TILE_H = 28;
+    const TILE_DEPTH = 14;
+    const BALL_RADIUS = 10;
+    const START_SPEED = 1.5;
+    const MAX_MOVE_SPEED = 4;
+    const SPEED_RAMP = 0.03; // speed increase per tile
+
+    let state = 'start';
+    let tiles = [];
+    let ball = { tileIndex: 0, progress: 0 };
+    let direction = 1; // 1 = right-forward, -1 = left-forward
+    let score = 0;
+    let best = parseInt(localStorage.getItem('zigzagBest') || '0');
+    let cameraX = 0;
+    let cameraY = 0;
+    let targetCamX = 0;
+    let targetCamY = 0;
+    let falling = false;
+    let fallVY = 0;
+    let fallBallX = 0;
+    let fallBallY = 0;
+    let particles = [];
+    let gemParticles = [];
+
+    // Convert tile grid position to isometric screen position
+    function toIso(gx, gy) {
+      return {
+        x: (gx - gy) * (TILE_W / 2),
+        y: (gx + gy) * (TILE_H / 2)
+      };
+    }
+
+    function getTileColor(i) {
+      const hue = (i * 15 + 180) % 360;
+      return {
+        top: `hsl(${hue}, 50%, 55%)`,
+        left: `hsl(${hue}, 50%, 38%)`,
+        right: `hsl(${hue}, 50%, 30%)`
+      };
+    }
+
+    function drawTile(sx, sy, colors) {
+      const hw = TILE_W / 2;
+      const hh = TILE_H / 2;
+
+      // Top face
+      ctx.fillStyle = colors.top;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy - hh);
+      ctx.lineTo(sx + hw, sy);
+      ctx.lineTo(sx, sy + hh);
+      ctx.lineTo(sx - hw, sy);
+      ctx.closePath();
+      ctx.fill();
+
+      // Left face
+      ctx.fillStyle = colors.left;
+      ctx.beginPath();
+      ctx.moveTo(sx - hw, sy);
+      ctx.lineTo(sx, sy + hh);
+      ctx.lineTo(sx, sy + hh + TILE_DEPTH);
+      ctx.lineTo(sx - hw, sy + TILE_DEPTH);
+      ctx.closePath();
+      ctx.fill();
+
+      // Right face
+      ctx.fillStyle = colors.right;
+      ctx.beginPath();
+      ctx.moveTo(sx + hw, sy);
+      ctx.lineTo(sx, sy + hh);
+      ctx.lineTo(sx, sy + hh + TILE_DEPTH);
+      ctx.lineTo(sx + hw, sy + TILE_DEPTH);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    function generatePath(startGX, startGY, count) {
+      const path = [];
+      let gx = startGX;
+      let gy = startGY;
+      let lastDir = null;
+      let runLength = 0;
+
+      for (let i = 0; i < count; i++) {
+        path.push({ gx, gy, scored: false });
+
+        // Early tiles: longer straight runs so the player can learn
+        // Later tiles: more frequent direction changes
+        const minRun = i < 10 ? 4 : i < 30 ? 3 : 1;
+        let dir;
+        if (runLength < minRun && lastDir !== null) {
+          dir = lastDir;
+        } else {
+          dir = Math.random() < 0.5 ? 'right' : 'down';
+        }
+
+        if (dir === lastDir) {
+          runLength++;
+        } else {
+          runLength = 1;
+          lastDir = dir;
+        }
+
+        if (dir === 'right') {
+          gx += 1;
+        } else {
+          gy += 1;
+        }
+      }
+      return path;
+    }
+
+    function initGame() {
+      tiles = generatePath(0, 0, 200);
+      ball = { tileIndex: 0, progress: 0 };
+      direction = 1;
+      score = 0;
+      falling = false;
+      fallVY = 0;
+      particles = [];
+      gemParticles = [];
+
+      scoreEl.textContent = '0';
+
+      // Center camera on first tile
+      const startPos = toIso(tiles[0].gx, tiles[0].gy);
+      cameraX = W / 2 - startPos.x;
+      cameraY = H * 0.4 - startPos.y;
+      targetCamX = cameraX;
+      targetCamY = cameraY;
+    }
+
+    function getBallScreenPos() {
+      const cur = tiles[ball.tileIndex];
+      const next = tiles[ball.tileIndex + 1];
+      if (!cur) return { x: 0, y: 0 };
+      if (!next) {
+        const p = toIso(cur.gx, cur.gy);
+        return { x: p.x, y: p.y };
+      }
+
+      const p1 = toIso(cur.gx, cur.gy);
+      const p2 = toIso(next.gx, next.gy);
+
+      return {
+        x: p1.x + (p2.x - p1.x) * ball.progress,
+        y: p1.y + (p2.y - p1.y) * ball.progress
+      };
+    }
+
+    function getDirectionForTile(index) {
+      if (index + 1 >= tiles.length) return null;
+      const cur = tiles[index];
+      const next = tiles[index + 1];
+      if (next.gx > cur.gx) return 1;  // moving right in grid = right-forward on screen
+      return -1; // moving down in grid = left-forward on screen
+    }
+
+    function spawnScoreParticles(x, y) {
+      for (let i = 0; i < 6; i++) {
+        gemParticles.push({
+          x, y,
+          vx: (Math.random() - 0.5) * 4,
+          vy: (Math.random() - 0.8) * 4,
+          life: 1,
+          size: Math.random() * 4 + 2
+        });
+      }
+    }
+
+    function update() {
+      if (falling) {
+        fallVY += 0.4;
+        fallBallY += fallVY;
+        fallBallX += (direction === 1 ? 1.5 : -1.5);
+
+        if (fallBallY > H) {
+          gameOver();
+        }
+        return;
+      }
+
+      if (state !== 'playing') return;
+
+      // Move ball forward — speed ramps up over time
+      const currentSpeed = Math.min(START_SPEED + ball.tileIndex * SPEED_RAMP, MAX_MOVE_SPEED);
+      ball.progress += currentSpeed / 60;
+
+      if (ball.progress >= 1) {
+        ball.progress = 0;
+        ball.tileIndex++;
+
+        // Check if we need to verify direction
+        const requiredDir = getDirectionForTile(ball.tileIndex);
+
+        if (ball.tileIndex >= tiles.length - 1) {
+          // Extend path
+          const lastTile = tiles[tiles.length - 1];
+          const extension = generatePath(lastTile.gx, lastTile.gy, 100);
+          extension.shift(); // remove duplicate first tile
+          tiles = tiles.concat(extension);
+        }
+
+        // Score
+        if (!tiles[ball.tileIndex].scored) {
+          tiles[ball.tileIndex].scored = true;
+          score++;
+          scoreEl.textContent = score;
+          scoreEl.classList.add('pop');
+          setTimeout(() => scoreEl.classList.remove('pop'), 100);
+
+          const bp = getBallScreenPos();
+          spawnScoreParticles(bp.x + cameraX, bp.y + cameraY);
+        }
+
+        // Check if direction matches the path
+        if (requiredDir !== null && direction !== requiredDir) {
+          // Falling off!
+          const bp = getBallScreenPos();
+          fallBallX = bp.x + cameraX;
+          fallBallY = bp.y + cameraY - BALL_RADIUS - 5;
+          fallVY = -3;
+          falling = true;
+          return;
+        }
+      }
+
+      // Update camera to follow ball
+      const bp = getBallScreenPos();
+      targetCamX = W / 2 - bp.x;
+      targetCamY = H * 0.4 - bp.y;
+      cameraX += (targetCamX - cameraX) * 0.08;
+      cameraY += (targetCamY - cameraY) * 0.08;
+
+      // Update particles
+      for (let i = gemParticles.length - 1; i >= 0; i--) {
+        const p = gemParticles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.1;
+        p.life -= 0.03;
+        if (p.life <= 0) gemParticles.splice(i, 1);
+      }
+    }
+
+    let gameOverTimer = null;
+
+    function gameOver() {
+      state = 'gameover';
+      if (score > best) {
+        best = score;
+        localStorage.setItem('zigzagBest', best.toString());
+      }
+      finalScoreEl.textContent = score;
+      bestScoreEl.textContent = `Best: ${best}`;
+      if (gameOverTimer) clearTimeout(gameOverTimer);
+      gameOverTimer = setTimeout(() => {
+        if (state === 'gameover') {
+          gameOverScreen.style.display = 'flex';
+        }
+      }, 300);
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, W, H);
+
+      // Background
+      const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+      bgGrad.addColorStop(0, '#0f0c29');
+      bgGrad.addColorStop(0.5, '#302b63');
+      bgGrad.addColorStop(1, '#24243e');
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, W, H);
+
+      ctx.save();
+      ctx.translate(cameraX, cameraY);
+
+      // Draw tiles (only visible ones)
+      const startIdx = Math.max(0, ball.tileIndex - 5);
+      const endIdx = Math.min(tiles.length, ball.tileIndex + 40);
+
+      for (let i = startIdx; i < endIdx; i++) {
+        const tile = tiles[i];
+        const pos = toIso(tile.gx, tile.gy);
+        const sx = pos.x;
+        const sy = pos.y;
+
+        const colors = getTileColor(i);
+        drawTile(sx, sy, colors);
+
+        // Draw a subtle diamond indicator on next few tiles
+        if (i > ball.tileIndex && i <= ball.tileIndex + 3) {
+          ctx.fillStyle = 'rgba(255,255,255,0.08)';
+          const hw = TILE_W / 2 - 8;
+          const hh = TILE_H / 2 - 4;
+          ctx.beginPath();
+          ctx.moveTo(sx, sy - hh);
+          ctx.lineTo(sx + hw, sy);
+          ctx.lineTo(sx, sy + hh);
+          ctx.lineTo(sx - hw, sy);
+          ctx.closePath();
+          ctx.fill();
+        }
+      }
+
+      // Draw ball (shadow first)
+      if (!falling) {
+        const bp = getBallScreenPos();
+
+        // Shadow
+        ctx.fillStyle = 'rgba(0,0,0,0.25)';
+        ctx.beginPath();
+        ctx.ellipse(bp.x, bp.y + 2, BALL_RADIUS * 0.9, BALL_RADIUS * 0.45, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Ball
+        const ballGrad = ctx.createRadialGradient(
+          bp.x - 3, bp.y - BALL_RADIUS - 8, 2,
+          bp.x, bp.y - BALL_RADIUS - 5, BALL_RADIUS
+        );
+        ballGrad.addColorStop(0, '#fff');
+        ballGrad.addColorStop(0.3, '#f0f0f0');
+        ballGrad.addColorStop(1, '#bbb');
+
+        ctx.fillStyle = ballGrad;
+        ctx.beginPath();
+        ctx.arc(bp.x, bp.y - BALL_RADIUS - 5, BALL_RADIUS, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Shine
+        ctx.fillStyle = 'rgba(255,255,255,0.6)';
+        ctx.beginPath();
+        ctx.arc(bp.x - 3, bp.y - BALL_RADIUS - 8, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.restore();
+
+      // Draw falling ball (in screen space)
+      if (falling) {
+        ctx.fillStyle = 'rgba(0,0,0,0.2)';
+        ctx.beginPath();
+        ctx.ellipse(fallBallX, fallBallY + BALL_RADIUS + 5, BALL_RADIUS * 0.8, BALL_RADIUS * 0.4, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        const ballGrad = ctx.createRadialGradient(
+          fallBallX - 3, fallBallY - 3, 2,
+          fallBallX, fallBallY, BALL_RADIUS
+        );
+        ballGrad.addColorStop(0, '#fff');
+        ballGrad.addColorStop(1, '#bbb');
+        ctx.fillStyle = ballGrad;
+        ctx.beginPath();
+        ctx.arc(fallBallX, fallBallY, BALL_RADIUS, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Draw particles (screen space)
+      for (const p of gemParticles) {
+        ctx.globalAlpha = p.life;
+        ctx.fillStyle = '#ffd700';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+
+      // Direction indicator
+      if (state === 'playing' && !falling) {
+        const arrowY = H - 60;
+        const arrowX = W / 2;
+        ctx.fillStyle = 'rgba(255,255,255,0.25)';
+        ctx.font = '14px sans-serif';
+        ctx.textAlign = 'center';
+
+        if (direction === 1) {
+          ctx.fillText('▶ RIGHT', arrowX, arrowY);
+        } else {
+          ctx.fillText('◀ LEFT', arrowX, arrowY);
+        }
+      }
+    }
+
+    function handleTap() {
+      if (state === 'start') {
+        state = 'playing';
+        startScreen.style.display = 'none';
+        initGame();
+      } else if (state === 'playing' && !falling) {
+        // Switch direction
+        direction *= -1;
+      } else if (state === 'playing' && falling) {
+        // Allow restart during fall animation
+        falling = false;
+        gameOver();
+        gameOverScreen.style.display = 'flex';
+      } else if (state === 'gameover') {
+        if (gameOverTimer) { clearTimeout(gameOverTimer); gameOverTimer = null; }
+        gameOverScreen.style.display = 'none';
+        state = 'playing';
+        initGame();
+      }
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.code === 'Space' || e.code === 'Enter') {
+        e.preventDefault();
+        handleTap();
+      }
+    });
+
+    document.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      handleTap();
+    });
+
+    function gameLoop() {
+      update();
+      draw();
+      requestAnimationFrame(gameLoop);
+    }
+
+    gameLoop();
+  </script>
+</body>
+</html>
