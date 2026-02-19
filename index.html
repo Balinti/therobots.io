@@ -368,6 +368,12 @@
             border: 1px solid rgba(252, 92, 125, 0.3);
         }
 
+        .tag-game {
+            background: rgba(255, 107, 107, 0.2);
+            color: #ff6b6b;
+            border: 1px solid rgba(255, 107, 107, 0.3);
+        }
+
         /* Browse all banner */
         .browse-banner {
             background: rgba(0, 0, 0, 0.7);
@@ -438,6 +444,7 @@
             </a>
             <ul class="nav-links">
                 <li><a href="index.html">Home</a></li>
+                <li><a href="#games-section">Games</a></li>
                 <li><a href="apps.html">Apps</a></li>
             </ul>
         </nav>
@@ -447,31 +454,19 @@
         <section class="hero">
             <img src="images/mark-logo.png" alt="The Robots TR Logo" class="hero-logo">
             <h1>Discover <span class="gradient-text">Games & Apps</span></h1>
-            <p>Play our games and explore 128+ apps built for fun, learning, and productivity</p>
+            <p>Play 16 games and explore 164+ apps built for fun, learning, and productivity</p>
             <div class="cta-buttons">
-                <a href="games/stack-tower-game/" class="cta-button">Play Stack Tower</a>
+                <a href="#games-section" class="cta-button">Browse Games</a>
                 <a href="apps.html" class="cta-button secondary">Browse Apps</a>
             </div>
         </section>
 
         <!-- Games Section -->
-        <section>
+        <section id="games-section">
             <div class="section-header">
                 <h2>Games</h2>
             </div>
-            <a href="games/stack-tower-game/" class="game-featured">
-                <div class="game-featured-preview">
-                    <div class="game-preview-icon">
-                        <div>&#x1F3D7;&#xFE0F;</div>
-                        <p>Tap to play</p>
-                    </div>
-                </div>
-                <div class="game-featured-info">
-                    <h3>Stack Tower</h3>
-                    <p>Stack blocks as high as you can in this addictive tower-building game. Time your taps perfectly to align each block and build the tallest tower. Combo streaks for bonus points!</p>
-                    <span class="game-tag">Game</span>
-                </div>
-            </a>
+            <div class="cards-grid" id="games-grid"></div>
         </section>
 
         <!-- Featured Apps -->
@@ -498,6 +493,42 @@
     </footer>
 
     <script>
+        const games = [
+            { name: "Stack Tower", slug: "stack-tower-game", description: "Stack blocks as high as you can. Time your taps to align each block and build the tallest tower.", emoji: "\u{1F3D7}\u{FE0F}" },
+            { name: "Zigzag Dash", slug: "zigzag-dash", description: "Navigate through zigzag paths at high speed. Quick reflexes are key to survival.", emoji: "\u26A1" },
+            { name: "Neon Bounce", slug: "neon-bounce", description: "Bounce a glowing ball between neon platforms. Platforms get narrower as your score increases.", emoji: "\u{1F4A1}" },
+            { name: "Color Dash", slug: "color-dash", description: "Run through color gates matching your current color. Tap to switch colors. Speed increases every 10 points.", emoji: "\u{1F3A8}" },
+            { name: "Gravity Flip", slug: "gravity-flip", description: "Tap to flip gravity up/down while dodging obstacles from both sides. Collect stars for bonus points.", emoji: "\u{1F504}" },
+            { name: "Cosmic Chain", slug: "cosmic-chain", description: "Swipe to link planets in a chain as obstacles spawn and multiply rapidly.", emoji: "\u{1FA90}" },
+            { name: "Canopy Rush", slug: "canopy-rush", description: "Leap between towering trees and catch random powerups for extra jumps.", emoji: "\u{1F333}" },
+            { name: "Lava Sprint", slug: "lava-sprint", description: "Dodge multiplying volcanic rocks in an endless blazing lava run.", emoji: "\u{1F30B}" },
+            { name: "Gear Rhythm", slug: "gear-rhythm", description: "Tap matching gears on a rotating clockwork wheel as speed escalates.", emoji: "\u2699\u{FE0F}" },
+            { name: "Steampile Spin", slug: "steampile-spin", description: "Stack quirky steampunk contraptions as the entire screen rotates unpredictably.", emoji: "\u{1F529}" },
+            { name: "Tide Twist", slug: "tide-twist", description: "Bounce to reverse gravity and connect ocean creatures of matching colors during tidal flows.", emoji: "\u{1F30A}" },
+            { name: "Turbo Cog", slug: "turbo-cog", description: "Tap to toggle direction along a narrow, spinning cog path before your time expires.", emoji: "\u{1F504}" },
+            { name: "Vine Blur", slug: "vine-blur", description: "Swing rapidly between vines, avoiding multiplying logs and spikes.", emoji: "\u{1F33F}" },
+            { name: "Vine Switch", slug: "vine-switch", description: "Swipe to flip gravity while swinging on jungle vines that change colors instantly.", emoji: "\u{1F343}" },
+            { name: "Wave Chain", slug: "wave-chain", description: "Tap to chain oceanic dots while the screen rotates in sync with rolling waves.", emoji: "\u{1F517}" },
+            { name: "Wave Connect", slug: "wave-connect", description: "Swipe to link dots as gravity randomly changes directions in a vaporwave cityscape.", emoji: "\u{1F306}" },
+        ];
+
+        function renderGameCard(game) {
+            return `
+                <a href="games/${game.slug}/" class="card">
+                    <div class="card-img" style="display:flex;align-items:center;justify-content:center;font-size:3.5rem;">
+                        ${game.emoji}
+                    </div>
+                    <div class="card-body">
+                        <h3>${game.name}</h3>
+                        <p>${game.description}</p>
+                        <span class="card-tag tag-game">Game</span>
+                    </div>
+                </a>
+            `;
+        }
+
+        document.getElementById('games-grid').innerHTML = games.map(renderGameCard).join('');
+
         const featuredApps = [
             { name: "AI Tutor Kids", url: "https://ai-tutor-kids.vercel.app", description: "Child-friendly AI tutor that makes learning fun. Interactive lessons, quizzes, and adaptive content for young learners.", category: "ai" },
             { name: "Streak Vault", url: "https://streak-vault.vercel.app", description: "Secure storage for all your habit streaks and achievements. Track multiple goals and celebrate your consistency.", category: "productivity" },

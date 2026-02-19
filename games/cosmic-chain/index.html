@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Cosmic Chain - Free HTML5 Game</title>
+<meta name="description" content="Play Cosmic Chain - Swipe to link planets in a chain as obstacles spawn and multiply rapidly.">
+<meta name="theme-color" content="#0a0a2e">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Cosmic Chain - Free HTML5 Game">
+<meta property="og:description" content="Play Cosmic Chain - Swipe to link planets in a chain as obstacles spawn and multiply rapidly.">
+<meta property="og:url" content="https://balinti.github.io/cosmic-chain/">
+<meta property="og:image" content="https://balinti.github.io/cosmic-chain/og-image.png">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#05051a;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;color:#fff;touch-action:none;user-select:none;-webkit-user-select:none}
+#wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;min-height:100dvh}
+#header{width:100%;max-width:420px;padding:8px 16px;display:flex;justify-content:space-between;align-items:center;font-size:14px;z-index:10;flex-shrink:0;height:40px}
+#header .lbl{opacity:.6;font-size:11px;text-transform:uppercase;letter-spacing:1px}
+#header .val{font-size:18px;font-weight:700;font-variant-numeric:tabular-nums}
+#combo-display{color:#ffcc00;text-shadow:0 0 8px rgba(255,204,0,.5)}
+#chain-display{color:#00e5ff;text-shadow:0 0 8px rgba(0,229,255,.5)}
+#mute-btn{position:absolute;top:8px;right:8px;background:none;border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:50%;width:32px;height:32px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;z-index:20;opacity:.7;transition:opacity .2s}
+#mute-btn:hover{opacity:1}
+#game-container{position:relative;width:100%;max-width:420px;flex:1;min-height:0;max-height:750px}
+canvas{display:block;width:100%;height:100%;border-radius:12px}
+#footer{width:100%;max-width:420px;padding:8px 16px;text-align:center;flex-shrink:0;height:36px}
+#about{max-width:420px;width:100%;padding:12px 16px;text-align:center;font-size:11px;opacity:.4;line-height:1.5;flex-shrink:0}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="header">
+    <div><span class="lbl">Score</span><br><span class="val" id="score-display">0</span></div>
+    <div><span class="lbl">Combo</span><br><span class="val" id="combo-display">x1</span></div>
+    <div><span class="lbl">Chain</span><br><span class="val" id="chain-display">0/6</span></div>
+    <div><span class="lbl">Best</span><br><span class="val" id="best-display">0</span></div>
+  </div>
+  <div id="game-container">
+    <canvas id="gc"></canvas>
+  </div>
+  <button id="mute-btn" aria-label="Toggle sound">&#128264;</button>
+  <div id="footer"></div>
+  <div id="about">Cosmic Chain: Pulse Orbit &mdash; A hyper-casual timing game. Tap to lock planets on the orbit ring, dodge meteors, build combos and bank bonuses. Built with HTML5 Canvas.</div>
+</div>
+<script>
+'use strict';
+(()=>{
+
+/* ── Audio ── */
+let muted=false;
+const actx=(()=>{try{return new(window.AudioContext||window.webkitAudioContext)()}catch(e){return null}})();
+function beep(freq,dur,vol,type){
+  if(!actx||muted)return;
+  if(actx.state==='suspended')actx.resume();
+  const o=actx.createOscillator(),g=actx.createGain();
+  o.type=type||'sine';o.frequency.value=freq;
+  g.gain.setValueAtTime(vol||.15,actx.currentTime);
+  g.gain.exponentialRampToValueAtTime(.001,actx.currentTime+dur);
+  o.connect(g);g.connect(actx.destination);
+  o.start();o.stop(actx.currentTime+dur);
+}
+function sfxLock(){beep(880,.12,.2,'sine');beep(1320,.08,.1,'triangle')}
+function sfxCashOut(){beep(660,.1,.2);setTimeout(()=>beep(880,.1,.2),80);setTimeout(()=>beep(1100,.15,.25),160)}
+function sfxDeath(){beep(200,.4,.3,'sawtooth');beep(100,.6,.2,'square')}
+function sfxComboUp(){beep(1200,.06,.12)}
+
+const muteBtn=document.getElementById('mute-btn');
+muteBtn.onclick=()=>{muted=!muted;muteBtn.innerHTML=muted?'&#128263;':'&#128264;'};
+
+/* ── Canvas Setup ── */
+const canvas=document.getElementById('gc');
+const ctx=canvas.getContext('2d');
+const container=document.getElementById('game-container');
+
+let W,H,cx,cy,dpr;
+function resize(){
+  const r=container.getBoundingClientRect();
+  dpr=window.devicePixelRatio||1;
+  W=r.width;H=r.height;
+  canvas.width=W*dpr;canvas.height=H*dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  cx=W/2;cy=H/2;
+}
+window.addEventListener('resize',resize);
+resize();
+
+/* ── Score UI ── */
+const scoreEl=document.getElementById('score-display');
+const comboEl=document.getElementById('combo-display');
+const chainEl=document.getElementById('chain-display');
+const bestEl=document.getElementById('best-display');
+
+let hiScore=parseInt(localStorage.getItem('cc_hi'))||0;
+bestEl.textContent=hiScore;
+
+/* ── Game State ── */
+const TWO_PI=Math.PI*2;
+const CHAIN_MAX=6;
+let state='start'; // start | playing | gameover
+let score,combo,chain,comboTimer,pulseAngle,pulseSpeed,orbitR;
+let planets,meteors,warnings,particles,lockedMarkers;
+let shieldTimer,shieldDur;
+let difficulty,elapsed,nextPlanetTime,nextMeteorTime;
+let shakeMag,shakeDecay;
+let cashOutFlash;
+
+/* ── Helpers ── */
+function angleDiff(a,b){let d=((b-a)%TWO_PI+TWO_PI)%TWO_PI;return d>Math.PI?d-TWO_PI:d}
+function lerp(a,b,t){return a+(b-a)*t}
+function rand(a,b){return a+Math.random()*(b-a)}
+function hsl(h,s,l,a){return a!==undefined?`hsla(${h},${s}%,${l}%,${a})`:`hsl(${h},${s}%,${l}%)`}
+
+/* ── Particles ── */
+function spawnParticles(x,y,count,hue,speed,life){
+  for(let i=0;i<count;i++){
+    const a=rand(0,TWO_PI),sp=rand(speed*.3,speed);
+    particles.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,life:rand(life*.5,life),maxLife:life,hue:hue+rand(-20,20),size:rand(1.5,4)});
+  }
+}
+function spawnArcParticles(angle,count,hue){
+  const x=cx+Math.cos(angle)*orbitR,y=cy+Math.sin(angle)*orbitR;
+  spawnParticles(x,y,count,hue,120,0.6);
+}
+
+/* ── Init ── */
+function init(){
+  score=0;combo=1;chain=0;comboTimer=3;
+  pulseAngle=-Math.PI/2;
+  pulseSpeed=1.8;
+  orbitR=Math.min(W,H)*0.32;
+  planets=[];meteors=[];warnings=[];particles=[];lockedMarkers=[];
+  shieldTimer=0;shieldDur=0.4;
+  difficulty=1;elapsed=0;
+  nextPlanetTime=0.5;nextMeteorTime=3;
+  shakeMag=0;shakeDecay=0;
+  cashOutFlash=0;
+  // Spawn initial planets
+  for(let i=0;i<3;i++){
+    planets.push({angle:rand(0,TWO_PI),speed:rand(0.15,0.35)*(Math.random()<.5?1:-1),hue:rand(0,360),radius:rand(8,14),glow:0});
+  }
+  updateUI();
+}
+
+function updateUI(){
+  scoreEl.textContent=score;
+  comboEl.textContent='x'+combo;
+  chainEl.textContent=chain+'/'+CHAIN_MAX;
+  bestEl.textContent=hiScore;
+}
+
+/* ── Lock Action ── */
+function tryLock(){
+  if(state!=='playing')return;
+  // find closest planet within lock window
+  let lockWindow=0.35-difficulty*0.012;
+  if(lockWindow<0.12)lockWindow=0.12;
+  let best=null,bestDist=Infinity;
+  for(const p of planets){
+    const d=Math.abs(angleDiff(pulseAngle,p.angle));
+    if(d<lockWindow&&d<bestDist){bestDist=d;best=p;}
+  }
+  if(best){
+    // Successful lock
+    sfxLock();
+    chain++;
+    comboTimer=3;
+    score+=combo;
+    // locked marker
+    lockedMarkers.push({angle:best.angle,hue:best.hue,life:1.5});
+    // particles
+    spawnArcParticles(best.angle,15,best.hue);
+    // shield
+    shieldTimer=shieldDur;
+    // remove planet
+    planets.splice(planets.indexOf(best),1);
+    // small shake
+    shakeMag=3;shakeDecay=0.85;
+    // combo increase
+    if(chain>1){combo++;sfxComboUp();}
+    // cash out
+    if(chain>=CHAIN_MAX){
+      const bonus=combo*3;
+      score+=bonus;
+      cashOutFlash=1;
+      chain=0;
+      combo=Math.max(1,Math.floor(combo*0.5)+1);
+      shakeMag=8;shakeDecay=0.88;
+      sfxCashOut();
+      spawnParticles(cx,cy,40,50,200,1);
+      lockedMarkers=[];
+    }
+    updateUI();
+  } else {
+    // missed lock — combo penalty
+    if(combo>1){combo=Math.max(1,combo-1);comboTimer=3;updateUI();}
+  }
+}
+
+/* ── Update ── */
+let lastTime=0;
+function update(dt){
+  if(state!=='playing')return;
+  elapsed+=dt;
+  difficulty=1+elapsed/30;
+
+  // Pulse movement
+  pulseSpeed=1.8+difficulty*0.25;
+  pulseAngle=(pulseAngle+pulseSpeed*dt)%TWO_PI;
+
+  // Combo decay
+  comboTimer-=dt;
+  if(comboTimer<=0&&combo>1){
+    combo=Math.max(1,combo-1);
+    comboTimer=3;
+    updateUI();
+  }
+
+  // Spawn planets
+  nextPlanetTime-=dt;
+  if(nextPlanetTime<=0){
+    // avoid spawning too close to pulse
+    let a=rand(0,TWO_PI);
+    let tries=0;
+    while(Math.abs(angleDiff(pulseAngle,a))<0.8&&tries<10){a=rand(0,TWO_PI);tries++;}
+    planets.push({angle:a,speed:rand(0.15,0.4)*(Math.random()<.5?1:-1),hue:rand(0,360),radius:rand(8,14),glow:0});
+    nextPlanetTime=rand(1.5,3)/difficulty;
+  }
+
+  // Spawn warnings then meteors
+  nextMeteorTime-=dt;
+  if(nextMeteorTime<=0){
+    const a=rand(0,TWO_PI);
+    const warnTime=1.5;
+    warnings.push({angle:a,timer:warnTime,maxTime:warnTime});
+    setTimeout(()=>{
+      if(state!=='playing')return;
+      meteors.push({angle:a,distFromCenter:orbitR*2.2,speed:rand(120,180)+difficulty*20,hue:0,passed:false});
+    },warnTime*1000);
+    const interval=Math.max(1,4-difficulty*0.3);
+    nextMeteorTime=rand(interval*0.7,interval*1.3);
+  }
+
+  // Update planets
+  for(const p of planets){
+    p.angle=(p.angle+p.speed*dt)%TWO_PI;
+    p.glow=Math.sin(elapsed*4+p.hue)*0.3+0.7;
+  }
+
+  // Update meteors
+  for(let i=meteors.length-1;i>=0;i--){
+    const m=meteors[i];
+    m.distFromCenter-=m.speed*dt;
+    if(m.distFromCenter<-orbitR*0.5){meteors.splice(i,1);continue;}
+    // Check collision with pulse at orbit ring
+    if(!m.passed&&Math.abs(m.distFromCenter-orbitR)<15){
+      const ad=Math.abs(angleDiff(pulseAngle,m.angle));
+      if(ad<0.25){
+        if(shieldTimer>0){
+          // shield absorbs
+          m.passed=true;
+          spawnArcParticles(m.angle,20,200);
+          shakeMag=4;shakeDecay=0.85;
+        }else{
+          // death
+          gameOver();
+          return;
+        }
+      }
+      if(m.distFromCenter<orbitR-15)m.passed=true;
+    }
+  }
+
+  // Update warnings
+  for(let i=warnings.length-1;i>=0;i--){
+    warnings[i].timer-=dt;
+    if(warnings[i].timer<=0)warnings.splice(i,1);
+  }
+
+  // Update locked markers
+  for(let i=lockedMarkers.length-1;i>=0;i--){
+    lockedMarkers[i].life-=dt;
+    if(lockedMarkers[i].life<=0)lockedMarkers.splice(i,1);
+  }
+
+  // Update particles
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    p.x+=p.vx*dt;p.y+=p.vy*dt;
+    p.vx*=0.97;p.vy*=0.97;
+    p.life-=dt;
+    if(p.life<=0)particles.splice(i,1);
+  }
+
+  // Shield timer
+  if(shieldTimer>0)shieldTimer-=dt;
+
+  // Cash out flash
+  if(cashOutFlash>0)cashOutFlash-=dt*2.5;
+
+  // Shake
+  if(shakeMag>0.1)shakeMag*=shakeDecay;
+  else shakeMag=0;
+}
+
+/* ── Game Over ── */
+function gameOver(){
+  state='gameover';
+  sfxDeath();
+  shakeMag=15;shakeDecay=0.9;
+  spawnParticles(cx+Math.cos(pulseAngle)*orbitR,cy+Math.sin(pulseAngle)*orbitR,50,0,250,1.2);
+  if(score>hiScore){hiScore=score;localStorage.setItem('cc_hi',hiScore);}
+  updateUI();
+}
+
+/* ── Draw ── */
+function draw(){
+  ctx.save();
+  // Shake
+  if(shakeMag>0.1){
+    ctx.translate(rand(-shakeMag,shakeMag),rand(-shakeMag,shakeMag));
+  }
+
+  // Background
+  const grad=ctx.createRadialGradient(cx,cy,0,cx,cy,Math.max(W,H)*0.7);
+  grad.addColorStop(0,'#0f0f3a');
+  grad.addColorStop(1,'#050518');
+  ctx.fillStyle=grad;
+  ctx.fillRect(-20,-20,W+40,H+40);
+
+  // Stars (static seed)
+  ctx.fillStyle='rgba(255,255,255,0.4)';
+  for(let i=0;i<60;i++){
+    const sx=(Math.sin(i*127.1+i*i*0.03)*0.5+0.5)*W;
+    const sy=(Math.cos(i*311.7+i*0.07)*0.5+0.5)*H;
+    const ss=0.5+Math.sin(elapsed*2+i)*0.5;
+    ctx.beginPath();ctx.arc(sx,sy,ss,0,TWO_PI);ctx.fill();
+  }
+
+  // Cash out flash
+  if(cashOutFlash>0){
+    ctx.fillStyle=`rgba(255,220,50,${cashOutFlash*0.15})`;
+    ctx.fillRect(-20,-20,W+40,H+40);
+  }
+
+  // Orbit ring
+  ctx.strokeStyle='rgba(100,140,255,0.15)';
+  ctx.lineWidth=2;
+  ctx.beginPath();ctx.arc(cx,cy,orbitR,0,TWO_PI);ctx.stroke();
+
+  // Orbit ring glow
+  ctx.strokeStyle='rgba(100,140,255,0.06)';
+  ctx.lineWidth=12;
+  ctx.beginPath();ctx.arc(cx,cy,orbitR,0,TWO_PI);ctx.stroke();
+
+  // Locked markers (chain arc)
+  for(const m of lockedMarkers){
+    const a=m.life/1.5;
+    const mx=cx+Math.cos(m.angle)*orbitR;
+    const my=cy+Math.sin(m.angle)*orbitR;
+    ctx.fillStyle=hsl(m.hue,80,60,a);
+    ctx.shadowColor=hsl(m.hue,90,60);
+    ctx.shadowBlur=12*a;
+    ctx.beginPath();ctx.arc(mx,my,5,0,TWO_PI);ctx.fill();
+    ctx.shadowBlur=0;
+  }
+
+  // Chain arc visualization
+  if(lockedMarkers.length>1){
+    ctx.strokeStyle=`rgba(0,229,255,${0.3})`;
+    ctx.lineWidth=2;
+    ctx.beginPath();
+    for(let i=0;i<lockedMarkers.length;i++){
+      const m=lockedMarkers[i];
+      const mx=cx+Math.cos(m.angle)*orbitR;
+      const my=cy+Math.sin(m.angle)*orbitR;
+      if(i===0)ctx.moveTo(mx,my);else ctx.lineTo(mx,my);
+    }
+    ctx.stroke();
+  }
+
+  // Warnings
+  for(const w of warnings){
+    const progress=1-w.timer/w.maxTime;
+    const flash=Math.sin(progress*20)>0?1:0.3;
+    const wx=cx+Math.cos(w.angle)*orbitR;
+    const wy=cy+Math.sin(w.angle)*orbitR;
+    ctx.strokeStyle=`rgba(255,60,60,${flash*0.7})`;
+    ctx.lineWidth=2;
+    ctx.beginPath();
+    ctx.moveTo(wx-8,wy-8);ctx.lineTo(wx+8,wy+8);
+    ctx.moveTo(wx+8,wy-8);ctx.lineTo(wx-8,wy+8);
+    ctx.stroke();
+    // warning line from edge
+    const ex=cx+Math.cos(w.angle)*(orbitR*1.8);
+    const ey=cy+Math.sin(w.angle)*(orbitR*1.8);
+    ctx.strokeStyle=`rgba(255,60,60,${flash*0.2})`;
+    ctx.setLineDash([4,6]);
+    ctx.beginPath();ctx.moveTo(ex,ey);ctx.lineTo(wx,wy);ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Meteors
+  for(const m of meteors){
+    const mx=cx+Math.cos(m.angle)*m.distFromCenter;
+    const my=cy+Math.sin(m.angle)*m.distFromCenter;
+    ctx.fillStyle='rgba(255,80,60,0.9)';
+    ctx.shadowColor='#ff3030';ctx.shadowBlur=10;
+    ctx.beginPath();
+    // diamond shape
+    ctx.moveTo(mx,my-7);ctx.lineTo(mx+5,my);ctx.lineTo(mx,my+7);ctx.lineTo(mx-5,my);
+    ctx.closePath();ctx.fill();
+    ctx.shadowBlur=0;
+    // trail
+    const tx=cx+Math.cos(m.angle)*(m.distFromCenter+20);
+    const ty=cy+Math.sin(m.angle)*(m.distFromCenter+20);
+    ctx.strokeStyle='rgba(255,80,60,0.3)';
+    ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(mx,my);ctx.lineTo(tx,ty);ctx.stroke();
+  }
+
+  // Planets
+  for(const p of planets){
+    const px=cx+Math.cos(p.angle)*orbitR;
+    const py=cy+Math.sin(p.angle)*orbitR;
+    // glow
+    const rg=ctx.createRadialGradient(px,py,0,px,py,p.radius*2.5);
+    rg.addColorStop(0,hsl(p.hue,80,60,0.4*p.glow));
+    rg.addColorStop(1,hsl(p.hue,80,60,0));
+    ctx.fillStyle=rg;
+    ctx.beginPath();ctx.arc(px,py,p.radius*2.5,0,TWO_PI);ctx.fill();
+    // body
+    const bg=ctx.createRadialGradient(px-p.radius*0.3,py-p.radius*0.3,0,px,py,p.radius);
+    bg.addColorStop(0,hsl(p.hue,70,70));
+    bg.addColorStop(1,hsl(p.hue,80,40));
+    ctx.fillStyle=bg;
+    ctx.beginPath();ctx.arc(px,py,p.radius,0,TWO_PI);ctx.fill();
+  }
+
+  // Pulse
+  const px=cx+Math.cos(pulseAngle)*orbitR;
+  const py=cy+Math.sin(pulseAngle)*orbitR;
+
+  // Shield indicator
+  if(shieldTimer>0){
+    const sa=shieldTimer/shieldDur;
+    ctx.strokeStyle=hsl(180,100,70,sa*0.6);
+    ctx.lineWidth=3;
+    ctx.beginPath();ctx.arc(px,py,18,0,TWO_PI);ctx.stroke();
+  }
+
+  // Pulse glow
+  const pulseHue=(elapsed*60)%360;
+  const pg=ctx.createRadialGradient(px,py,0,px,py,22);
+  pg.addColorStop(0,hsl(pulseHue,100,80,0.8));
+  pg.addColorStop(0.5,hsl(pulseHue,100,60,0.3));
+  pg.addColorStop(1,hsl(pulseHue,100,50,0));
+  ctx.fillStyle=pg;
+  ctx.beginPath();ctx.arc(px,py,22,0,TWO_PI);ctx.fill();
+
+  // Pulse core
+  ctx.fillStyle=hsl(pulseHue,100,85);
+  ctx.shadowColor=hsl(pulseHue,100,70);ctx.shadowBlur=15;
+  ctx.beginPath();ctx.arc(px,py,6,0,TWO_PI);ctx.fill();
+  ctx.shadowBlur=0;
+
+  // Pulse trail
+  for(let i=1;i<=6;i++){
+    const ta=pulseAngle-i*0.06*pulseSpeed;
+    const tx=cx+Math.cos(ta)*orbitR;
+    const ty=cy+Math.sin(ta)*orbitR;
+    ctx.fillStyle=hsl(pulseHue,100,70,0.3-i*0.045);
+    ctx.beginPath();ctx.arc(tx,ty,6-i*0.7,0,TWO_PI);ctx.fill();
+  }
+
+  // Particles
+  for(const p of particles){
+    const a=p.life/p.maxLife;
+    ctx.fillStyle=hsl(p.hue,80,60,a);
+    ctx.beginPath();ctx.arc(p.x,p.y,p.size*a,0,TWO_PI);ctx.fill();
+  }
+
+  // Center info
+  if(state==='playing'){
+    // Combo timer bar
+    if(combo>1){
+      const ct=Math.max(0,comboTimer/3);
+      ctx.strokeStyle=hsl(50,100,60,0.5);
+      ctx.lineWidth=2;
+      ctx.beginPath();
+      ctx.arc(cx,cy,orbitR*0.18,-Math.PI/2,-Math.PI/2+TWO_PI*ct);
+      ctx.stroke();
+    }
+  }
+
+  // Overlays
+  if(state==='start'){
+    drawOverlay('Cosmic Chain','Tap to Start','Lock planets on the orbit ring.\nDodge meteors. Build combos!');
+  }else if(state==='gameover'){
+    drawOverlay('Game Over','Tap to Retry','Score: '+score+(score>=hiScore&&score>0?' - NEW BEST!':''));
+  }
+
+  ctx.restore();
+}
+
+function drawOverlay(title,action,sub){
+  ctx.fillStyle='rgba(5,5,24,0.75)';
+  ctx.fillRect(0,0,W,H);
+
+  ctx.textAlign='center';
+
+  // Title
+  ctx.font='bold 32px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle='#fff';
+  ctx.shadowColor='rgba(100,140,255,0.6)';ctx.shadowBlur=20;
+  ctx.fillText(title,cx,cy-50);
+  ctx.shadowBlur=0;
+
+  // Sub text
+  ctx.font='14px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle='rgba(255,255,255,0.6)';
+  const lines=sub.split('\n');
+  lines.forEach((l,i)=>ctx.fillText(l,cx,cy-10+i*20));
+
+  // Action
+  const pulse=Math.sin(elapsed*4)*0.3+0.7;
+  ctx.font='bold 18px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle=`rgba(100,200,255,${pulse})`;
+  ctx.fillText(action,cx,cy+50+lines.length*10);
+
+  ctx.textAlign='start';
+}
+
+/* ── Loop ── */
+function loop(ts){
+  const dt=Math.min((ts-lastTime)/1000,0.05);
+  lastTime=ts;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+/* ── Input ── */
+function handleInput(){
+  if(state==='start'){state='playing';init();}
+  else if(state==='playing'){tryLock();}
+  else if(state==='gameover'){state='start';elapsed=0;particles=[];}
+}
+
+canvas.addEventListener('pointerdown',e=>{e.preventDefault();handleInput();});
+document.addEventListener('keydown',e=>{
+  if(e.code==='Space'||e.code==='Enter'){e.preventDefault();handleInput();}
+});
+
+/* ── Start ── */
+init();
+state='start';
+lastTime=performance.now();
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

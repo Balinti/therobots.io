@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Turbo Cog - Free HTML5 Game</title>
+<meta name="description" content="Play Turbo Cog - Tap to toggle direction along a narrow, spinning cog path before your time expires.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0a0e1a">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Turbo Cog - Free HTML5 Game">
+<meta property="og:description" content="Play Turbo Cog - Tap to toggle direction along a narrow, spinning cog path before your time expires.">
+<meta property="og:url" content="https://balinti.github.io/turbo-cog/">
+<meta property="og:image" content="https://balinti.github.io/turbo-cog/og-image.png">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#0a0e1a;font-family:'Segoe UI',system-ui,sans-serif;touch-action:none;user-select:none;-webkit-user-select:none}
+#wrap{display:flex;align-items:center;justify-content:center;width:100%;height:100%;background:linear-gradient(135deg,#0a0e1a 0%,#151b30 50%,#0a0e1a 100%)}
+canvas{display:block;max-width:420px;max-height:750px;width:100%;height:100%;border-radius:8px}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="c"></canvas></div>
+<script>
+'use strict';
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+// --- High-DPI scaling ---
+const dpr = window.devicePixelRatio || 1;
+let W, H;
+function resize() {
+  const wrap = document.getElementById('wrap');
+  const maxW = 420, maxH = 750;
+  let w = Math.min(wrap.clientWidth, maxW);
+  let h = Math.min(wrap.clientHeight, maxH);
+  // keep aspect ratio on mobile
+  if (wrap.clientWidth < maxW) w = wrap.clientWidth;
+  if (wrap.clientHeight < maxH) h = wrap.clientHeight;
+  canvas.style.width = w + 'px';
+  canvas.style.height = h + 'px';
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  W = canvas.width;
+  H = canvas.height;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  W = w; H = h;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// --- Constants ---
+const TAU = Math.PI * 2;
+const COG_TEETH = 24;
+const TOOTH_ARC = TAU / COG_TEETH;
+const INNER_R_RATIO = 0.22;
+const OUTER_R_RATIO = 0.36;
+const LANE_WIDTH_RATIO = 0.055;
+const TOOTH_DEPTH_RATIO = 0.035;
+const PLAYER_SIZE_RATIO = 0.025;
+
+// --- Game state ---
+let state = 'start'; // 'start' | 'playing' | 'gameover'
+let score = 0;
+let highScore = parseInt(localStorage.getItem('turboCogHigh')) || 0;
+let combo = 0;
+let playerAngle = 0; // unwrapped angle (increases forever)
+let playerLane = 0; // 0 = inner, 1 = outer
+let playerSpeed = 1.8; // radians per second base
+let laneTransition = 0; // 0..1 for snap animation
+let laneFrom = 0;
+let laneTo = 0;
+let isLatching = false;
+let latchTimer = 0;
+
+// Obstacles: array of { startAngle (unwrapped), arcLen, lane }
+let obstacles = [];
+let nextObstacleAngle = TAU; // next angle to spawn at
+let difficulty = 0; // increases over time
+let teethPassed = 0;
+let lastToothIndex = -1;
+
+// Visual
+let cogVisualAngle = 0;
+let hueBase = 200;
+let shakeX = 0, shakeY = 0, shakeMag = 0;
+let particles = [];
+let flashTexts = [];
+let slowMo = 1; // 1 = normal, <1 = slow
+let slowMoTimer = 0;
+let deathFreezeTimer = 0;
+
+// Perfect latch markers
+let perfectMarkers = []; // { angle (unwrapped) }
+const PERFECT_WINDOW = 0.12; // radians
+
+// --- Particle system ---
+class Particle {
+  constructor(x, y, vx, vy, life, color, size) {
+    this.x = x; this.y = y;
+    this.vx = vx; this.vy = vy;
+    this.life = this.maxLife = life;
+    this.color = color;
+    this.size = size;
+  }
+  update(dt) {
+    this.x += this.vx * dt;
+    this.y += this.vy * dt;
+    this.vy += 80 * dt; // gravity
+    this.life -= dt;
+  }
+  draw() {
+    const a = Math.max(0, this.life / this.maxLife);
+    ctx.globalAlpha = a;
+    ctx.fillStyle = this.color;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.size * a, 0, TAU);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+}
+
+function spawnParticles(x, y, count, color, speed, size) {
+  for (let i = 0; i < count; i++) {
+    const ang = Math.random() * TAU;
+    const spd = (Math.random() * 0.7 + 0.3) * speed;
+    particles.push(new Particle(x, y, Math.cos(ang) * spd, Math.sin(ang) * spd, 0.4 + Math.random() * 0.5, color, size || 3));
+  }
+}
+
+// --- Flash text ---
+function addFlashText(text, x, y, color, scale) {
+  flashTexts.push({ text, x, y, color, scale: scale || 1, life: 1.0, maxLife: 1.0 });
+}
+
+// --- Cog geometry helpers ---
+function getCogCenter() { return { x: W / 2, y: H * 0.45 }; }
+function getInnerR() { return Math.min(W, H) * INNER_R_RATIO; }
+function getOuterR() { return Math.min(W, H) * OUTER_R_RATIO; }
+function getLaneWidth() { return Math.min(W, H) * LANE_WIDTH_RATIO; }
+function getToothDepth() { return Math.min(W, H) * TOOTH_DEPTH_RATIO; }
+function getPlayerSize() { return Math.min(W, H) * PLAYER_SIZE_RATIO; }
+
+function getLaneRadius(lane) {
+  return lane === 0 ? getInnerR() : getOuterR();
+}
+
+function getPlayerPos(angle, lane, transition) {
+  const c = getCogCenter();
+  let r;
+  if (transition !== undefined && transition < 1) {
+    const rFrom = getLaneRadius(laneFrom);
+    const rTo = getLaneRadius(laneTo);
+    // Smooth snap with easing
+    const t = 1 - Math.pow(1 - transition, 3);
+    r = rFrom + (rTo - rFrom) * t;
+  } else {
+    r = getLaneRadius(lane);
+  }
+  const wrapped = angle % TAU;
+  return {
+    x: c.x + Math.cos(wrapped) * r,
+    y: c.y + Math.sin(wrapped) * r
+  };
+}
+
+// --- Obstacle generation ---
+function generateObstacles() {
+  // Generate obstacles ahead of the player
+  while (nextObstacleAngle < playerAngle + TAU * 3) {
+    // Difficulty ramps up
+    const d = Math.min(difficulty, 1);
+
+    // Gap size shrinks with difficulty
+    const gapArc = TOOTH_ARC * (1.2 - d * 0.4);
+
+    // Choose lane: at low difficulty always one lane; at high difficulty sometimes both (but offset so solvable)
+    const bothLanes = d > 0.5 && Math.random() < (d - 0.5) * 0.4;
+
+    if (bothLanes) {
+      // Two gaps on different lanes, offset so player can navigate
+      const lane1 = Math.random() < 0.5 ? 0 : 1;
+      const lane2 = 1 - lane1;
+      const offset = TOOTH_ARC * (2 + Math.random() * 2); // gap between them
+      obstacles.push({ startAngle: nextObstacleAngle, arcLen: gapArc, lane: lane1 });
+      obstacles.push({ startAngle: nextObstacleAngle + offset, arcLen: gapArc, lane: lane2 });
+      nextObstacleAngle += offset + gapArc + TOOTH_ARC * (3 - d * 1.5);
+    } else {
+      const lane = Math.random() < 0.5 ? 0 : 1;
+      obstacles.push({ startAngle: nextObstacleAngle, arcLen: gapArc, lane });
+      nextObstacleAngle += gapArc + TOOTH_ARC * (3.5 - d * 1.8);
+    }
+
+    // Ensure minimum spacing
+    if (nextObstacleAngle < playerAngle + TOOTH_ARC * 2) {
+      nextObstacleAngle = playerAngle + TOOTH_ARC * 2;
+    }
+  }
+
+  // Generate perfect markers
+  while (perfectMarkers.length < 5 || (perfectMarkers.length > 0 && perfectMarkers[perfectMarkers.length - 1].angle < playerAngle + TAU * 2)) {
+    const lastA = perfectMarkers.length > 0 ? perfectMarkers[perfectMarkers.length - 1].angle : playerAngle;
+    perfectMarkers.push({ angle: lastA + TOOTH_ARC * (3 + Math.random() * 4) });
+  }
+
+  // Cleanup old obstacles and markers
+  obstacles = obstacles.filter(o => o.startAngle + o.arcLen > playerAngle - TAU);
+  perfectMarkers = perfectMarkers.filter(m => m.angle > playerAngle - TAU);
+}
+
+// --- Collision ---
+function checkCollision() {
+  if (isLatching) return false; // grace during latch animation
+  for (const obs of obstacles) {
+    if (obs.lane !== playerLane) continue;
+    if (playerAngle >= obs.startAngle && playerAngle <= obs.startAngle + obs.arcLen) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// --- Near miss detection ---
+function checkNearMiss() {
+  for (const obs of obstacles) {
+    if (obs.lane === playerLane) continue; // only check the lane we left
+    const distToGapEnd = obs.startAngle + obs.arcLen - playerAngle;
+    if (distToGapEnd > 0 && distToGapEnd < 0.08) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// --- Input ---
+function doLatch() {
+  if (state === 'start') {
+    startGame();
+    return;
+  }
+  if (state === 'gameover') {
+    if (deathFreezeTimer <= 0) {
+      state = 'start';
+    }
+    return;
+  }
+  if (state === 'playing' && !isLatching) {
+    laneFrom = playerLane;
+    laneTo = 1 - playerLane;
+    playerLane = laneTo;
+    isLatching = true;
+    laneTransition = 0;
+    latchTimer = 0;
+
+    // Check for perfect latch
+    let isPerfect = false;
+    for (const m of perfectMarkers) {
+      if (Math.abs(playerAngle - m.angle) < PERFECT_WINDOW) {
+        isPerfect = true;
+        m.hit = true;
+        break;
+      }
+    }
+
+    const pos = getPlayerPos(playerAngle, playerLane);
+
+    if (isPerfect) {
+      combo++;
+      const bonus = combo * 5;
+      score += bonus;
+      spawnParticles(pos.x, pos.y, 20, `hsl(${(hueBase + 60) % 360}, 100%, 70%)`, 150, 4);
+      addFlashText(`PERFECT x${combo}! +${bonus}`, W / 2, H * 0.25, `hsl(${(hueBase + 60) % 360}, 100%, 80%)`, 1.2);
+      shakeMag = 3;
+    } else {
+      combo = 0;
+      spawnParticles(pos.x, pos.y, 8, `hsl(${hueBase}, 80%, 60%)`, 80, 2);
+    }
+
+    // Check near-miss / scrape
+    if (checkNearMiss()) {
+      spawnParticles(pos.x, pos.y, 15, '#ff0', 120, 3);
+      addFlashText('SCRAPE!', W / 2, H * 0.32, '#ffcc00', 1.0);
+      slowMo = 0.3;
+      slowMoTimer = 0.15;
+      score += 3;
+    }
+  }
+}
+
+canvas.addEventListener('pointerdown', (e) => { e.preventDefault(); doLatch(); });
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); doLatch(); }
+});
+
+// --- Game lifecycle ---
+function startGame() {
+  state = 'playing';
+  score = 0;
+  combo = 0;
+  playerAngle = 0;
+  playerLane = 0;
+  playerSpeed = 1.8;
+  obstacles = [];
+  perfectMarkers = [];
+  nextObstacleAngle = TAU * 0.8;
+  difficulty = 0;
+  teethPassed = 0;
+  lastToothIndex = -1;
+  particles = [];
+  flashTexts = [];
+  shakeMag = 0;
+  slowMo = 1;
+  slowMoTimer = 0;
+  deathFreezeTimer = 0;
+  isLatching = false;
+  laneTransition = 1;
+  hueBase = 200;
+  cogVisualAngle = 0;
+  generateObstacles();
+}
+
+function gameOver() {
+  state = 'gameover';
+  if (score > highScore) {
+    highScore = score;
+    localStorage.setItem('turboCogHigh', highScore);
+  }
+  shakeMag = 12;
+  deathFreezeTimer = 0.8;
+  const pos = getPlayerPos(playerAngle, playerLane);
+  for (let i = 0; i < 40; i++) {
+    const ang = Math.random() * TAU;
+    const spd = 60 + Math.random() * 200;
+    particles.push(new Particle(pos.x, pos.y, Math.cos(ang) * spd, Math.sin(ang) * spd, 0.6 + Math.random() * 0.8, `hsl(${Math.random() * 60}, 100%, ${50 + Math.random() * 30}%)`, 2 + Math.random() * 4));
+  }
+}
+
+// --- Main loop ---
+let lastTime = 0;
+function loop(timestamp) {
+  requestAnimationFrame(loop);
+  const rawDt = Math.min((timestamp - lastTime) / 1000, 0.05);
+  lastTime = timestamp;
+
+  // Slow-mo
+  if (slowMoTimer > 0) {
+    slowMoTimer -= rawDt;
+    if (slowMoTimer <= 0) slowMo = 1;
+  }
+  const dt = rawDt * slowMo;
+
+  if (deathFreezeTimer > 0) {
+    deathFreezeTimer -= rawDt;
+  }
+
+  update(dt, rawDt);
+  draw();
+}
+
+function update(dt, rawDt) {
+  // Update shake
+  if (shakeMag > 0) {
+    shakeX = (Math.random() - 0.5) * shakeMag * 2;
+    shakeY = (Math.random() - 0.5) * shakeMag * 2;
+    shakeMag *= Math.pow(0.05, rawDt);
+    if (shakeMag < 0.3) shakeMag = 0;
+  } else {
+    shakeX = shakeY = 0;
+  }
+
+  // Particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    particles[i].update(rawDt);
+    if (particles[i].life <= 0) particles.splice(i, 1);
+  }
+
+  // Flash texts
+  for (let i = flashTexts.length - 1; i >= 0; i--) {
+    flashTexts[i].life -= rawDt;
+    flashTexts[i].y -= 30 * rawDt;
+    if (flashTexts[i].life <= 0) flashTexts.splice(i, 1);
+  }
+
+  if (state !== 'playing') return;
+  if (deathFreezeTimer > 0) return;
+
+  // Player movement
+  playerAngle += playerSpeed * dt;
+
+  // Speed ramp
+  difficulty = Math.min(playerAngle / (TAU * 20), 1);
+  playerSpeed = 1.8 + difficulty * 1.4;
+
+  // Hue cycling
+  hueBase = (200 + score * 0.5) % 360;
+
+  // Cog visual spin (just cosmetic offset)
+  cogVisualAngle = playerAngle * 0.05;
+
+  // Latch animation
+  if (isLatching) {
+    laneTransition += rawDt * 8;
+    if (laneTransition >= 1) {
+      laneTransition = 1;
+      isLatching = false;
+    }
+  }
+
+  // Count teeth passed
+  const currentTooth = Math.floor(playerAngle / TOOTH_ARC);
+  if (currentTooth > lastToothIndex) {
+    const teethDelta = currentTooth - lastToothIndex;
+    teethPassed += teethDelta;
+    score += teethDelta;
+    lastToothIndex = currentTooth;
+  }
+
+  // Generate more obstacles
+  generateObstacles();
+
+  // Collision check
+  if (checkCollision()) {
+    gameOver();
+  }
+}
+
+// --- Drawing ---
+function draw() {
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
+
+  // Background
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, '#0a0e1a');
+  grad.addColorStop(0.5, `hsl(${hueBase}, 20%, 8%)`);
+  grad.addColorStop(1, '#0a0e1a');
+  ctx.fillStyle = grad;
+  ctx.fillRect(-20, -20, W + 40, H + 40);
+
+  const center = getCogCenter();
+  const innerR = getInnerR();
+  const outerR = getOuterR();
+  const laneW = getLaneWidth();
+  const toothDepth = getToothDepth();
+  const wrappedAngle = playerAngle % TAU;
+
+  // --- Draw cog body (background decoration) ---
+  ctx.save();
+  ctx.translate(center.x, center.y);
+
+  // Central hub
+  const hubGrad = ctx.createRadialGradient(0, 0, innerR * 0.3, 0, 0, innerR * 0.7);
+  hubGrad.addColorStop(0, `hsl(${hueBase}, 15%, 18%)`);
+  hubGrad.addColorStop(1, `hsl(${hueBase}, 10%, 10%)`);
+  ctx.fillStyle = hubGrad;
+  ctx.beginPath();
+  ctx.arc(0, 0, innerR - laneW * 0.5, 0, TAU);
+  ctx.fill();
+
+  // Hub detail - center dot
+  ctx.fillStyle = `hsl(${hueBase}, 20%, 25%)`;
+  ctx.beginPath();
+  ctx.arc(0, 0, innerR * 0.15, 0, TAU);
+  ctx.fill();
+
+  // Spokes
+  ctx.strokeStyle = `hsl(${hueBase}, 10%, 15%)`;
+  ctx.lineWidth = 2;
+  for (let i = 0; i < 6; i++) {
+    const a = i * TAU / 6 + cogVisualAngle;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(a) * innerR * 0.2, Math.sin(a) * innerR * 0.2);
+    ctx.lineTo(Math.cos(a) * (innerR - laneW), Math.sin(a) * (innerR - laneW));
+    ctx.stroke();
+  }
+
+  ctx.restore();
+
+  // --- Draw lanes ---
+  // Inner lane
+  drawLane(center, innerR, laneW, 0);
+  // Outer lane
+  drawLane(center, outerR, laneW, 1);
+
+  // --- Draw obstacles (gaps) ---
+  for (const obs of obstacles) {
+    const obsWrappedStart = ((obs.startAngle % TAU) + TAU) % TAU;
+    const r = getLaneRadius(obs.lane);
+    const color = `hsla(0, 80%, 50%, 0.6)`;
+
+    ctx.save();
+    ctx.translate(center.x, center.y);
+
+    // Draw the gap as a darker/red segment
+    ctx.beginPath();
+    ctx.arc(0, 0, r + laneW / 2, obsWrappedStart, obsWrappedStart + obs.arcLen);
+    ctx.arc(0, 0, r - laneW / 2, obsWrappedStart + obs.arcLen, obsWrappedStart, true);
+    ctx.closePath();
+    ctx.fillStyle = `hsla(0, 70%, 15%, 0.9)`;
+    ctx.fill();
+
+    // Danger stripes
+    ctx.strokeStyle = `hsla(0, 80%, 40%, 0.7)`;
+    ctx.lineWidth = 2;
+    const stripeCount = Math.max(2, Math.floor(obs.arcLen / 0.05));
+    for (let i = 0; i <= stripeCount; i++) {
+      const a = obsWrappedStart + (obs.arcLen * i / stripeCount);
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * (r - laneW / 2), Math.sin(a) * (r - laneW / 2));
+      ctx.lineTo(Math.cos(a) * (r + laneW / 2), Math.sin(a) * (r + laneW / 2));
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  // --- Draw perfect markers ---
+  for (const m of perfectMarkers) {
+    if (m.hit) continue;
+    const dist = m.angle - playerAngle;
+    if (dist < -0.5 || dist > TAU * 1.5) continue;
+    const mWrapped = ((m.angle % TAU) + TAU) % TAU;
+    const markerR = (innerR + outerR) / 2;
+
+    ctx.save();
+    ctx.translate(center.x, center.y);
+
+    const mx = Math.cos(mWrapped) * markerR;
+    const my = Math.sin(mWrapped) * markerR;
+
+    // Diamond marker
+    const s = 6;
+    ctx.fillStyle = `hsla(${(hueBase + 120) % 360}, 100%, 70%, ${0.5 + Math.sin(Date.now() * 0.005) * 0.3})`;
+    ctx.beginPath();
+    ctx.moveTo(mx, my - s);
+    ctx.lineTo(mx + s, my);
+    ctx.lineTo(mx, my + s);
+    ctx.lineTo(mx - s, my);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  // --- Draw cog teeth (decorative) ---
+  ctx.save();
+  ctx.translate(center.x, center.y);
+  const cogOuterEdge = outerR + laneW / 2;
+  for (let i = 0; i < COG_TEETH; i++) {
+    const a = i * TOOTH_ARC + cogVisualAngle;
+    const halfTooth = TOOTH_ARC * 0.3;
+
+    ctx.fillStyle = `hsl(${hueBase}, 15%, 20%)`;
+    ctx.beginPath();
+    ctx.arc(0, 0, cogOuterEdge + toothDepth, a - halfTooth, a + halfTooth);
+    ctx.arc(0, 0, cogOuterEdge, a + halfTooth, a - halfTooth, true);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // --- Draw player ---
+  const pos = isLatching ? getPlayerPos(playerAngle, playerLane, laneTransition) : getPlayerPos(playerAngle, playerLane);
+  const pSize = getPlayerSize();
+
+  // Glow
+  const glowGrad = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, pSize * 4);
+  glowGrad.addColorStop(0, `hsla(${hueBase}, 100%, 70%, 0.3)`);
+  glowGrad.addColorStop(1, `hsla(${hueBase}, 100%, 70%, 0)`);
+  ctx.fillStyle = glowGrad;
+  ctx.beginPath();
+  ctx.arc(pos.x, pos.y, pSize * 4, 0, TAU);
+  ctx.fill();
+
+  // Player body
+  ctx.fillStyle = `hsl(${hueBase}, 90%, 65%)`;
+  ctx.beginPath();
+  ctx.arc(pos.x, pos.y, pSize, 0, TAU);
+  ctx.fill();
+
+  // Player highlight
+  ctx.fillStyle = `hsl(${hueBase}, 100%, 85%)`;
+  ctx.beginPath();
+  ctx.arc(pos.x - pSize * 0.25, pos.y - pSize * 0.25, pSize * 0.4, 0, TAU);
+  ctx.fill();
+
+  // Trail
+  for (let i = 1; i <= 8; i++) {
+    const trailAngle = playerAngle - i * 0.03;
+    const tp = getPlayerPos(trailAngle, playerLane);
+    const ta = 1 - i / 9;
+    ctx.fillStyle = `hsla(${hueBase}, 80%, 60%, ${ta * 0.3})`;
+    ctx.beginPath();
+    ctx.arc(tp.x, tp.y, pSize * (1 - i * 0.08), 0, TAU);
+    ctx.fill();
+  }
+
+  // --- Particles ---
+  for (const p of particles) p.draw();
+
+  // --- Flash texts ---
+  for (const ft of flashTexts) {
+    const a = Math.max(0, ft.life / ft.maxLife);
+    ctx.globalAlpha = a;
+    ctx.fillStyle = ft.color;
+    ctx.font = `bold ${18 * ft.scale}px 'Segoe UI', system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText(ft.text, ft.x, ft.y);
+    ctx.globalAlpha = 1;
+  }
+
+  // --- UI Overlay ---
+  if (state === 'playing' || state === 'gameover') {
+    // Score
+    ctx.fillStyle = '#fff';
+    ctx.font = `bold 28px 'Segoe UI', system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText(score, W / 2, 45);
+
+    // Combo
+    if (combo > 1) {
+      ctx.fillStyle = `hsl(${(hueBase + 60) % 360}, 100%, 75%)`;
+      ctx.font = `bold 16px 'Segoe UI', system-ui, sans-serif`;
+      ctx.fillText(`x${combo} COMBO`, W / 2, 68);
+    }
+
+    // High score
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.font = `12px 'Segoe UI', system-ui, sans-serif`;
+    ctx.fillText(`BEST: ${highScore}`, W / 2, H - 20);
+  }
+
+  // --- Start screen ---
+  if (state === 'start') {
+    ctx.fillStyle = 'rgba(10, 14, 26, 0.7)';
+    ctx.fillRect(0, 0, W, H);
+
+    // Title
+    ctx.fillStyle = `hsl(${(Date.now() * 0.02) % 360}, 80%, 70%)`;
+    ctx.font = `bold 42px 'Segoe UI', system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText('TURBO COG', W / 2, H * 0.3);
+
+    // Subtitle
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.font = `16px 'Segoe UI', system-ui, sans-serif`;
+    ctx.fillText('Lane Latch', W / 2, H * 0.3 + 30);
+
+    // Instructions
+    ctx.fillStyle = 'rgba(255,255,255,0.8)';
+    ctx.font = `15px 'Segoe UI', system-ui, sans-serif`;
+    ctx.fillText('Tap or press Space to switch lanes', W / 2, H * 0.50);
+    ctx.fillText('Avoid the gaps!', W / 2, H * 0.50 + 25);
+
+    // Start prompt
+    const pulse = 0.6 + Math.sin(Date.now() * 0.004) * 0.4;
+    ctx.fillStyle = `rgba(255,255,255,${pulse})`;
+    ctx.font = `bold 18px 'Segoe UI', system-ui, sans-serif`;
+    ctx.fillText('TAP TO START', W / 2, H * 0.68);
+
+    // High score
+    if (highScore > 0) {
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.font = `14px 'Segoe UI', system-ui, sans-serif`;
+      ctx.fillText(`High Score: ${highScore}`, W / 2, H * 0.78);
+    }
+  }
+
+  // --- Game over screen ---
+  if (state === 'gameover' && deathFreezeTimer <= 0) {
+    ctx.fillStyle = 'rgba(10, 14, 26, 0.6)';
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.fillStyle = '#ff4444';
+    ctx.font = `bold 36px 'Segoe UI', system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText('GAME OVER', W / 2, H * 0.32);
+
+    ctx.fillStyle = '#fff';
+    ctx.font = `bold 24px 'Segoe UI', system-ui, sans-serif`;
+    ctx.fillText(`Score: ${score}`, W / 2, H * 0.42);
+
+    if (score >= highScore && score > 0) {
+      ctx.fillStyle = '#ffcc00';
+      ctx.font = `bold 16px 'Segoe UI', system-ui, sans-serif`;
+      ctx.fillText('NEW BEST!', W / 2, H * 0.48);
+    }
+
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.font = `14px 'Segoe UI', system-ui, sans-serif`;
+    ctx.fillText(`Best: ${highScore}`, W / 2, H * 0.55);
+
+    const pulse = 0.5 + Math.sin(Date.now() * 0.004) * 0.5;
+    ctx.fillStyle = `rgba(255,255,255,${pulse})`;
+    ctx.font = `bold 16px 'Segoe UI', system-ui, sans-serif`;
+    ctx.fillText('TAP TO RETRY', W / 2, H * 0.68);
+  }
+
+  ctx.restore();
+}
+
+function drawLane(center, radius, laneW, laneIndex) {
+  ctx.save();
+  ctx.translate(center.x, center.y);
+
+  // Lane track
+  ctx.strokeStyle = `hsl(${hueBase}, 20%, ${laneIndex === 0 ? 22 : 18}%)`;
+  ctx.lineWidth = laneW;
+  ctx.beginPath();
+  ctx.arc(0, 0, radius, 0, TAU);
+  ctx.stroke();
+
+  // Lane edge highlights
+  ctx.strokeStyle = `hsla(${hueBase}, 40%, 40%, 0.3)`;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(0, 0, radius + laneW / 2, 0, TAU);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(0, 0, radius - laneW / 2, 0, TAU);
+  ctx.stroke();
+
+  // Tick marks on lane
+  for (let i = 0; i < COG_TEETH; i++) {
+    const a = i * TOOTH_ARC;
+    ctx.strokeStyle = `hsla(${hueBase}, 30%, 35%, 0.4)`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(a) * (radius - laneW * 0.3), Math.sin(a) * (radius - laneW * 0.3));
+    ctx.lineTo(Math.cos(a) * (radius + laneW * 0.3), Math.sin(a) * (radius + laneW * 0.3));
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+// --- Start ---
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

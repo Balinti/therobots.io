@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Canopy Rush - Free HTML5 Game</title>
+<meta name="description" content="Play Canopy Rush - Tap to leap between towering trees and catch random powerups for extra jumps.">
+<meta name="theme-color" content="#0a1e0a">
+<link rel="canonical" href="https://balinti.github.io/canopy-rush/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Canopy Rush - Free HTML5 Game">
+<meta property="og:description" content="Play Canopy Rush - Tap to leap between towering trees and catch random powerups for extra jumps.">
+<meta property="og:url" content="https://balinti.github.io/canopy-rush/">
+<meta property="og:image" content="https://balinti.github.io/canopy-rush/og.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Canopy Rush - Free HTML5 Game">
+<meta name="twitter:description" content="Play Canopy Rush - Tap to leap between towering trees and catch random powerups for extra jumps.">
+<meta name="twitter:image" content="https://balinti.github.io/canopy-rush/og.jpg">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{width:100%;height:100%;overflow-x:hidden;background:#050e05;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;color:#c8e6c8;}
+#game-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;min-height:100dvh;padding:8px;}
+#game-container{position:relative;width:100%;max-width:420px;aspect-ratio:420/750;max-height:750px;border-radius:12px;overflow:hidden;box-shadow:0 0 40px rgba(34,197,94,.15);touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;}
+canvas{display:block;width:100%;height:100%;border-radius:12px;}
+#sound-btn{position:absolute;top:10px;right:10px;z-index:10;background:rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.15);color:#fff;font-size:18px;width:36px;height:36px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);}
+#sound-btn:hover{background:rgba(0,0,0,.6);}
+.seo-section{max-width:420px;margin:24px auto;padding:0 16px;line-height:1.6;font-size:14px;color:#7a9e7a;}
+.seo-section h2{font-size:18px;color:#a0d8a0;margin-bottom:8px;}
+.seo-section p{margin-bottom:12px;}
+@media(max-height:500px){#game-container{max-height:95vh;}}
+</style>
+</head>
+<body>
+<div id="game-wrap">
+<div id="game-container">
+<canvas id="gc"></canvas>
+<button id="sound-btn" aria-label="Toggle sound">&#128266;</button>
+</div>
+</div>
+
+<section class="seo-section">
+<h2>How to Play Canopy Rush</h2>
+<p>Canopy Rush is a hyper-casual HTML5 game where you leap from branch to branch high in the treetops. Tap or press Space to jump. Land in the glowing snap zone at the center of each branch to build your combo multiplier and earn a speed burst. Miss the snap zone and your combo resets. Stay too long on a branch and it cracks and collapses beneath you!</p>
+<p>Fill up your Vine Save meter by landing perfect combos. If you fall, the vine will catch you once — but your combo resets. How far can you run through the canopy?</p>
+<p>Works on desktop and mobile — no download required. Beat your high score and share with friends!</p>
+</section>
+
+<script>
+'use strict';
+(()=>{
+const canvas=document.getElementById('gc');
+const ctx=canvas.getContext('2d');
+const container=document.getElementById('game-container');
+const soundBtn=document.getElementById('sound-btn');
+
+/* ── High-DPI scaling ── */
+let W,H,dpr;
+function resize(){
+  const rect=container.getBoundingClientRect();
+  dpr=window.devicePixelRatio||1;
+  W=rect.width;H=rect.height;
+  canvas.width=W*dpr;canvas.height=H*dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+resize();
+window.addEventListener('resize',resize);
+
+/* ── Audio ── */
+let audioCtx=null;
+let soundOn=localStorage.getItem('canopyrush_sound_v1')!=='off';
+function updateSoundBtn(){soundBtn.textContent=soundOn?'\u{1F50A}':'\u{1F507}';}
+updateSoundBtn();
+soundBtn.addEventListener('click',(e)=>{e.stopPropagation();soundOn=!soundOn;localStorage.setItem('canopyrush_sound_v1',soundOn?'on':'off');updateSoundBtn();});
+
+function ensureAudio(){if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume();}
+function playTone(freq,dur,vol=0.12,type='sine'){
+  if(!soundOn||!audioCtx)return;
+  try{
+    const o=audioCtx.createOscillator();const g=audioCtx.createGain();
+    o.type=type;o.frequency.value=freq;g.gain.value=vol;
+    g.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+dur);
+    o.connect(g);g.connect(audioCtx.destination);o.start();o.stop(audioCtx.currentTime+dur);
+  }catch(e){}
+}
+function sfxJump(){playTone(520,0.1,0.1);}
+function sfxPerfect(){playTone(880,0.15,0.14);setTimeout(()=>playTone(1100,0.12,0.1),80);}
+function sfxLand(){playTone(260,0.08,0.08,'triangle');}
+function sfxCrack(){playTone(120,0.25,0.15,'sawtooth');}
+function sfxGameOver(){playTone(180,0.4,0.15,'sawtooth');setTimeout(()=>playTone(120,0.5,0.12,'sawtooth'),200);}
+function sfxVineSave(){playTone(440,0.2,0.12);setTimeout(()=>playTone(660,0.2,0.1),100);setTimeout(()=>playTone(880,0.15,0.08),200);}
+
+/* ── Constants ── */
+const GRAVITY=0.55;
+const JUMP_VEL=-10.5;
+const BASE_SCROLL=2.8;
+const MAX_SCROLL=6.5;
+const BRANCH_MIN_W=70;
+const BRANCH_MAX_W=130;
+const BRANCH_H=14;
+const SNAP_RATIO=0.32;
+const PLAYER_R=12;
+const BRANCH_LIFE=2.8;
+const CRACK_WARN=1.2;
+const BOOST_SPEED=2.0;
+const BOOST_DUR=0.4;
+const MAX_COMBO=15;
+const VINE_CHARGE_PER_PERFECT=0.18;
+const MAX_GAP_X=160;
+const MIN_GAP_X=80;
+const VERT_RANGE=90;
+
+/* ── State ── */
+let state='start';
+let score=0,bestScore=parseInt(localStorage.getItem('canopyrush_highscore_v1'))||0;
+let combo=0,comboMult=1;
+let vineCharge=0;
+let vineUsed=false;
+let distance=0;
+let scrollSpeed=BASE_SCROLL;
+let boostTimer=0;
+let shakeTimer=0,shakeMag=0;
+let hueShift=0;
+let lastTime=0;
+
+/* ── Player ── */
+const player={x:0,y:0,vy:0,onGround:false,groundBranch:null,groundTimer:0};
+
+/* ── Pools ── */
+let branches=[];
+let particles=[];
+let speedLines=[];
+let bgTrees=[];
+
+/* ── Difficulty ── */
+function diff(){return Math.min(1,distance/12000);}
+function curScroll(){return BASE_SCROLL+(MAX_SCROLL-BASE_SCROLL)*diff()*0.7+(boostTimer>0?BOOST_SPEED:0);}
+
+/* ── Branch spawning ── */
+function spawnBranch(x,y){
+  const w=BRANCH_MIN_W+(BRANCH_MAX_W-BRANCH_MIN_W)*(1-diff()*0.4)*(0.7+Math.random()*0.3);
+  return{x,y,w,h:BRANCH_H,life:BRANCH_LIFE+(1-diff())*1.2,maxLife:BRANCH_LIFE+(1-diff())*1.2,cracking:false,dead:false,snapW:w*SNAP_RATIO,hue:100+Math.random()*40};
+}
+
+function initBranches(){
+  branches=[];
+  const startBranch=spawnBranch(W*0.25,H*0.6);
+  branches.push(startBranch);
+  let lastB=startBranch;
+  for(let i=0;i<12;i++){
+    const gapX=MIN_GAP_X+Math.random()*(MAX_GAP_X-MIN_GAP_X);
+    const nx=lastB.x+lastB.w+gapX;
+    const ny=lastB.y+(Math.random()-0.5)*VERT_RANGE;
+    const clamped=Math.max(H*0.25,Math.min(H*0.75,ny));
+    const b=spawnBranch(nx,clamped);
+    branches.push(b);
+    lastB=b;
+  }
+}
+
+function spawnNext(){
+  const last=branches[branches.length-1];
+  const d=diff();
+  const gapX=MIN_GAP_X+Math.random()*(MAX_GAP_X-MIN_GAP_X)*(1+d*0.3);
+  const nx=last.x+last.w+gapX;
+  const vertR=VERT_RANGE*(1+d*0.4);
+  let ny=last.y+(Math.random()-0.5)*vertR;
+  ny=Math.max(H*0.2,Math.min(H*0.78,ny));
+  branches.push(spawnBranch(nx,ny));
+}
+
+/* ── BG Trees ── */
+function initBgTrees(){
+  bgTrees=[];
+  for(let i=0;i<8;i++){
+    bgTrees.push({x:Math.random()*W*2,h:100+Math.random()*200,w:30+Math.random()*20,depth:0.3+Math.random()*0.5});
+  }
+}
+
+/* ── Particles ── */
+function emitPerfect(x,y){
+  for(let i=0;i<18;i++){
+    const a=Math.random()*Math.PI*2;const sp=2+Math.random()*4;
+    particles.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp-2,life:0.6+Math.random()*0.4,maxLife:0.6+Math.random()*0.4,r:2+Math.random()*3,hue:80+Math.random()*60,type:'leaf'});
+  }
+  for(let i=0;i<10;i++){
+    const a=Math.random()*Math.PI*2;const sp=1+Math.random()*2;
+    particles.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp-1,life:0.5+Math.random()*0.3,maxLife:0.5+Math.random()*0.3,r:1.5+Math.random()*1.5,hue:50+Math.random()*30,type:'pollen'});
+  }
+}
+
+function emitCrack(x,y,w){
+  for(let i=0;i<14;i++){
+    particles.push({x:x+Math.random()*w,y:y,vx:(Math.random()-0.5)*3,vy:-2-Math.random()*3,life:0.5+Math.random()*0.3,maxLife:0.5+Math.random()*0.3,r:2+Math.random()*3,hue:25+Math.random()*15,type:'splinter'});
+  }
+}
+
+function emitNearMiss(x,y){
+  for(let i=0;i<8;i++){
+    const a=Math.random()*Math.PI*2;
+    particles.push({x,y,vx:Math.cos(a)*2,vy:Math.sin(a)*2,life:0.3+Math.random()*0.2,maxLife:0.3+Math.random()*0.2,r:1+Math.random()*2,hue:40+Math.random()*20,type:'spark'});
+  }
+}
+
+function emitVine(x,y){
+  for(let i=0;i<12;i++){
+    particles.push({x:x+(Math.random()-0.5)*30,y:y-Math.random()*60,vx:(Math.random()-0.5)*1.5,vy:-1-Math.random()*2,life:0.6+Math.random()*0.4,maxLife:0.6+Math.random()*0.4,r:2+Math.random()*2,hue:130+Math.random()*30,type:'leaf'});
+  }
+}
+
+/* ── Speed lines ── */
+function addSpeedLines(){
+  for(let i=0;i<2;i++){
+    speedLines.push({x:W+Math.random()*20,y:Math.random()*H,len:30+Math.random()*60,life:0.3,maxLife:0.3});
+  }
+}
+
+/* ── Init / Reset ── */
+function resetGame(){
+  score=0;combo=0;comboMult=1;vineCharge=0;vineUsed=false;distance=0;
+  boostTimer=0;shakeTimer=0;shakeMag=0;hueShift=0;
+  scrollSpeed=BASE_SCROLL;
+  particles=[];speedLines=[];
+  initBranches();initBgTrees();
+  const b=branches[0];
+  player.x=b.x+b.w*0.5;player.y=b.y-PLAYER_R;player.vy=0;player.onGround=true;player.groundBranch=b;player.groundTimer=0;
+}
+
+function jump(){
+  if(player.onGround||player.vy<0){
+    player.vy=JUMP_VEL;player.onGround=false;player.groundBranch=null;player.groundTimer=0;
+    sfxJump();
+  }
+}
+
+/* ── Input ── */
+function handleInput(e){
+  ensureAudio();
+  if(state==='start'){state='playing';resetGame();return;}
+  if(state==='gameover'){state='playing';resetGame();return;}
+  if(state==='playing'){jump();}
+}
+
+canvas.addEventListener('pointerdown',handleInput);
+document.addEventListener('keydown',(e)=>{
+  if(e.code==='Space'||e.code==='Enter'){e.preventDefault();handleInput(e);}
+});
+
+/* ── Share ── */
+function shareScore(){
+  const text=`I scored ${score} in Canopy Rush! Can you beat it?\nhttps://balinti.github.io/canopy-rush/`;
+  if(navigator.share){
+    navigator.share({title:'Canopy Rush',text}).catch(()=>{});
+  }else{
+    navigator.clipboard.writeText(text).then(()=>{shareMsg='Copied!';shareMsgTimer=1.5;}).catch(()=>{});
+  }
+}
+let shareMsg='';let shareMsgTimer=0;
+
+/* ── Update ── */
+function update(dt){
+  if(state!=='playing')return;
+  dt=Math.min(dt,0.035);
+
+  distance+=curScroll()*60*dt;
+  score=Math.floor(distance*0.1*comboMult);
+  hueShift=(hueShift+dt*20)%360;
+
+  if(boostTimer>0)boostTimer-=dt;
+  if(shakeTimer>0)shakeTimer-=dt;
+
+  const spd=curScroll();
+
+  /* scroll branches */
+  for(const b of branches){
+    b.x-=spd*60*dt;
+    if(player.onGround&&player.groundBranch===b){
+      b.life-=dt;
+      if(b.life<CRACK_WARN&&!b.cracking){b.cracking=true;sfxCrack();}
+      if(b.life<=0&&!b.dead){
+        b.dead=true;
+        emitCrack(b.x,b.y,b.w);
+        player.onGround=false;player.groundBranch=null;
+        shakeTimer=0.2;shakeMag=3;
+      }
+    }
+  }
+
+  /* remove offscreen branches, spawn new */
+  while(branches.length>0&&branches[0].x+branches[0].w<-50){
+    branches.shift();
+    spawnNext();
+  }
+  while(branches[branches.length-1].x<W+400){
+    spawnNext();
+  }
+
+  /* bg trees scroll */
+  for(const t of bgTrees){
+    t.x-=spd*60*dt*t.depth*0.3;
+    if(t.x+t.w<0){t.x=W+Math.random()*100;t.h=100+Math.random()*200;}
+  }
+
+  /* player physics */
+  player.vy+=GRAVITY*60*dt;
+  player.y+=player.vy*60*dt;
+  if(player.onGround&&player.groundBranch){
+    player.x+=(player.groundBranch.x+player.groundBranch.w*0.5-player.x)*0.05;
+    player.y=player.groundBranch.y-PLAYER_R;
+  }
+
+  /* collision: land on branch from above */
+  if(!player.onGround&&player.vy>0){
+    for(const b of branches){
+      if(b.dead)continue;
+      const px=player.x,py=player.y+PLAYER_R;
+      const prevPy=py-player.vy*60*dt;
+      if(px>b.x-4&&px<b.x+b.w+4&&py>=b.y&&prevPy<=b.y+4){
+        player.y=b.y-PLAYER_R;player.vy=0;player.onGround=true;player.groundBranch=b;player.groundTimer=0;
+
+        const cx=b.x+b.w*0.5;
+        const distFromCenter=Math.abs(px-cx);
+        const halfSnap=b.snapW*0.5;
+
+        if(distFromCenter<=halfSnap){
+          /* Perfect / snap zone */
+          combo=Math.min(combo+1,MAX_COMBO);comboMult=1+combo*0.3;
+          boostTimer=BOOST_DUR;
+          vineCharge=Math.min(1,vineCharge+VINE_CHARGE_PER_PERFECT);
+          emitPerfect(px,b.y);
+          shakeTimer=0.08;shakeMag=2;
+          sfxPerfect();
+        }else{
+          /* Landed but off-center */
+          const edgeDist=Math.min(px-b.x,b.x+b.w-px);
+          if(edgeDist<10){
+            emitNearMiss(px,b.y);
+          }
+          combo=0;comboMult=1;
+          sfxLand();
+        }
+        break;
+      }
+    }
+  }
+
+  /* Scroll player with ground */
+  if(player.onGround&&player.groundBranch){
+    player.x-=spd*60*dt;
+  }
+
+  /* Fall off screen */
+  if(player.y>H+50){
+    if(vineCharge>=1&&!vineUsed){
+      /* Vine save */
+      vineUsed=false;vineCharge=0;combo=0;comboMult=1;
+      const nearestAbove=branches.find(b=>!b.dead&&b.x>player.x-50&&b.x<player.x+120);
+      if(nearestAbove){
+        player.x=nearestAbove.x+nearestAbove.w*0.5;
+        player.y=nearestAbove.y-PLAYER_R-30;
+        player.vy=-4;player.onGround=false;player.groundBranch=null;
+        emitVine(player.x,player.y);
+        sfxVineSave();
+      }else{
+        player.y=H*0.4;player.vy=-6;player.onGround=false;player.groundBranch=null;
+        emitVine(player.x,player.y);
+        sfxVineSave();
+      }
+    }else{
+      gameOver();return;
+    }
+  }
+
+  /* Fall off left */
+  if(player.x<-30){gameOver();return;}
+
+  /* Speed lines during boost */
+  if(boostTimer>0){addSpeedLines();}
+
+  /* Particles update */
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    p.x+=p.vx*60*dt;p.y+=p.vy*60*dt;
+    p.vy+=0.15*60*dt;p.life-=dt;
+    if(p.life<=0)particles.splice(i,1);
+  }
+
+  /* Speed lines update */
+  for(let i=speedLines.length-1;i>=0;i--){
+    const s=speedLines[i];
+    s.x-=12*60*dt;s.life-=dt;
+    if(s.life<=0)speedLines.splice(i,1);
+  }
+
+  shareMsgTimer=Math.max(0,shareMsgTimer-dt);
+}
+
+function gameOver(){
+  state='gameover';
+  if(score>bestScore){bestScore=score;localStorage.setItem('canopyrush_highscore_v1',bestScore);}
+  shakeTimer=0.35;shakeMag=8;
+  sfxGameOver();
+}
+
+/* ── Draw ── */
+function draw(){
+  ctx.save();
+
+  /* Shake */
+  let sx=0,sy=0;
+  if(shakeTimer>0){
+    sx=(Math.random()-0.5)*shakeMag*2*(shakeTimer/0.35);
+    sy=(Math.random()-0.5)*shakeMag*2*(shakeTimer/0.35);
+    ctx.translate(sx,sy);
+  }
+
+  /* BG gradient */
+  const bg=ctx.createLinearGradient(0,0,0,H);
+  bg.addColorStop(0,'#061208');bg.addColorStop(0.5,'#0a1e0a');bg.addColorStop(1,'#051005');
+  ctx.fillStyle=bg;ctx.fillRect(-10,-10,W+20,H+20);
+
+  /* BG trees */
+  for(const t of bgTrees){
+    const alpha=0.08+t.depth*0.06;
+    ctx.fillStyle=`rgba(20,80,30,${alpha})`;
+    ctx.fillRect(t.x,H-t.h,t.w,t.h);
+    ctx.beginPath();ctx.arc(t.x+t.w/2,H-t.h,t.w*0.9,0,Math.PI*2);ctx.fill();
+  }
+
+  /* Speed lines */
+  for(const s of speedLines){
+    const a=s.life/s.maxLife;
+    ctx.strokeStyle=`rgba(180,255,180,${a*0.3})`;ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(s.x,s.y);ctx.lineTo(s.x+s.len,s.y);ctx.stroke();
+  }
+
+  if(state==='playing'||state==='gameover'){
+    /* Branches */
+    for(const b of branches){
+      if(b.x+b.w<-10||b.x>W+10)continue;
+      if(b.dead)continue;
+
+      /* Branch body */
+      const lifeRatio=b.life/b.maxLife;
+      const crackAlpha=b.cracking?0.4+Math.sin(Date.now()*0.02)*0.2:0;
+      const bHue=b.cracking?30:b.hue;
+      ctx.fillStyle=`hsl(${bHue},${40+lifeRatio*20}%,${20+lifeRatio*15}%)`;
+      ctx.fillRect(b.x,b.y,b.w,b.h);
+
+      /* Bark texture lines */
+      ctx.strokeStyle=`rgba(0,0,0,0.15)`;ctx.lineWidth=1;
+      for(let lx=b.x+8;lx<b.x+b.w-8;lx+=12){
+        ctx.beginPath();ctx.moveTo(lx,b.y+2);ctx.lineTo(lx+3,b.y+b.h-2);ctx.stroke();
+      }
+
+      if(b.cracking){
+        ctx.strokeStyle=`rgba(255,100,50,${crackAlpha})`;ctx.lineWidth=1.5;
+        const cx=b.x+b.w*0.5;
+        ctx.beginPath();ctx.moveTo(cx-10,b.y);ctx.lineTo(cx+5,b.y+b.h);ctx.stroke();
+        ctx.beginPath();ctx.moveTo(cx+8,b.y);ctx.lineTo(cx-3,b.y+b.h);ctx.stroke();
+      }
+
+      /* Snap zone ring */
+      const snapCx=b.x+b.w*0.5;const snapCy=b.y;
+      const snapR=b.snapW*0.5;
+      ctx.strokeStyle=`hsla(${(hueShift+b.hue)%360},80%,60%,0.6)`;
+      ctx.lineWidth=2;
+      ctx.beginPath();ctx.ellipse(snapCx,snapCy,snapR,4,0,0,Math.PI*2);ctx.stroke();
+
+      /* Center glow */
+      const glow=ctx.createRadialGradient(snapCx,snapCy,0,snapCx,snapCy,snapR);
+      glow.addColorStop(0,`hsla(${(hueShift+b.hue)%360},80%,60%,0.15)`);
+      glow.addColorStop(1,'transparent');
+      ctx.fillStyle=glow;ctx.fillRect(b.x,b.y-8,b.w,16);
+
+      /* Next branch telegraph (outline) */
+      const idx=branches.indexOf(b);
+      if(idx<branches.length-1){
+        const nb=branches[idx+1];
+        if(!nb.dead&&nb.x<W+50&&nb.x>0){
+          ctx.strokeStyle='rgba(100,255,100,0.12)';ctx.lineWidth=1;ctx.setLineDash([4,4]);
+          ctx.strokeRect(nb.x-2,nb.y-2,nb.w+4,nb.h+4);
+          ctx.setLineDash([]);
+        }
+      }
+    }
+
+    /* Player */
+    const ph=(hueShift+120)%360;
+    const pg=ctx.createRadialGradient(player.x,player.y,0,player.x,player.y,PLAYER_R);
+    pg.addColorStop(0,`hsl(${ph},70%,65%)`);pg.addColorStop(1,`hsl(${ph},60%,35%)`);
+    ctx.fillStyle=pg;
+    ctx.beginPath();ctx.arc(player.x,player.y,PLAYER_R,0,Math.PI*2);ctx.fill();
+
+    /* Player glow */
+    if(combo>0){
+      ctx.shadowColor=`hsl(${ph},80%,50%)`;ctx.shadowBlur=10+combo*2;
+      ctx.beginPath();ctx.arc(player.x,player.y,PLAYER_R+1,0,Math.PI*2);ctx.fill();
+      ctx.shadowBlur=0;ctx.shadowColor='transparent';
+    }
+
+    /* Eyes */
+    ctx.fillStyle='#fff';
+    ctx.beginPath();ctx.arc(player.x+4,player.y-3,2.5,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.arc(player.x-3,player.y-3,2.5,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#111';
+    ctx.beginPath();ctx.arc(player.x+4.5,player.y-3,1.2,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.arc(player.x-2.5,player.y-3,1.2,0,Math.PI*2);ctx.fill();
+
+    /* Particles */
+    for(const p of particles){
+      const a=p.life/p.maxLife;
+      if(p.type==='leaf'){
+        ctx.fillStyle=`hsla(${p.hue},70%,50%,${a})`;
+        ctx.fillRect(p.x-p.r,p.y-p.r*0.5,p.r*2,p.r);
+      }else if(p.type==='pollen'){
+        ctx.fillStyle=`hsla(${p.hue},80%,75%,${a*0.7})`;
+        ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill();
+      }else if(p.type==='splinter'){
+        ctx.fillStyle=`hsla(${p.hue},50%,35%,${a})`;
+        ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.vx);
+        ctx.fillRect(-p.r,-1,p.r*2,2);ctx.restore();
+      }else if(p.type==='spark'){
+        ctx.fillStyle=`hsla(${p.hue},90%,70%,${a})`;
+        ctx.beginPath();ctx.arc(p.x,p.y,p.r*a,0,Math.PI*2);ctx.fill();
+      }
+    }
+
+    /* Vignette overlay based on combo */
+    if(combo>2){
+      const vigA=Math.min(0.2,combo*0.025);
+      const vig=ctx.createRadialGradient(W/2,H/2,W*0.3,W/2,H/2,W*0.8);
+      vig.addColorStop(0,'transparent');
+      vig.addColorStop(1,`hsla(${(hueShift+60)%360},60%,30%,${vigA})`);
+      ctx.fillStyle=vig;ctx.fillRect(0,0,W,H);
+    }
+
+    /* HUD */
+    ctx.fillStyle='rgba(0,0,0,0.35)';
+    ctx.fillRect(10,10,130,50);
+    ctx.fillStyle='#e0ffe0';ctx.font='bold 20px system-ui';
+    ctx.fillText(`${score}`,18,34);
+    ctx.font='12px system-ui';ctx.fillStyle='#8fc88f';
+    ctx.fillText(`x${comboMult.toFixed(1)} combo`,18,50);
+
+    /* Vine meter */
+    const meterW=80,meterH=6,meterX=W-meterW-14,meterY=16;
+    ctx.fillStyle='rgba(0,0,0,0.4)';ctx.fillRect(meterX-2,meterY-2,meterW+4,meterH+4);
+    ctx.fillStyle=vineCharge>=1?`hsl(130,80%,50%)`:`hsl(${90+vineCharge*40},50%,35%)`;
+    ctx.fillRect(meterX,meterY,meterW*vineCharge,meterH);
+    ctx.strokeStyle='rgba(255,255,255,0.2)';ctx.lineWidth=1;ctx.strokeRect(meterX-2,meterY-2,meterW+4,meterH+4);
+    ctx.fillStyle='#8fc88f';ctx.font='9px system-ui';
+    ctx.fillText(vineCharge>=1?'VINE READY':'vine save',meterX,meterY+meterH+11);
+  }
+
+  /* ── Start Screen ── */
+  if(state==='start'){
+    ctx.fillStyle='rgba(0,0,0,0.6)';ctx.fillRect(0,0,W,H);
+    ctx.textAlign='center';
+
+    /* Title */
+    ctx.font='bold 36px system-ui';
+    ctx.fillStyle=`hsl(${(Date.now()*0.03)%360},70%,65%)`;
+    ctx.fillText('CANOPY RUSH',W/2,H*0.32);
+
+    /* Subtitle */
+    ctx.font='14px system-ui';ctx.fillStyle='#8fc88f';
+    ctx.fillText('Leap through the treetops',W/2,H*0.38);
+
+    /* Tap prompt */
+    const pulse=0.6+Math.sin(Date.now()*0.004)*0.4;
+    ctx.font='18px system-ui';ctx.fillStyle=`rgba(200,255,200,${pulse})`;
+    ctx.fillText('Tap to Start',W/2,H*0.55);
+
+    ctx.font='12px system-ui';ctx.fillStyle='#6a9a6a';
+    ctx.fillText('Space / Enter / Tap',W/2,H*0.61);
+
+    /* Instructions */
+    ctx.font='11px system-ui';ctx.fillStyle='#5a8a5a';
+    ctx.fillText('Land in the glowing zone for combos',W/2,H*0.72);
+    ctx.fillText('Don\'t stay too long — branches crack!',W/2,H*0.76);
+    ctx.fillText('Fill the vine meter for an auto-save',W/2,H*0.80);
+
+    if(bestScore>0){
+      ctx.font='13px system-ui';ctx.fillStyle='#7ab87a';
+      ctx.fillText(`Best: ${bestScore}`,W/2,H*0.88);
+    }
+    ctx.textAlign='left';
+  }
+
+  /* ── Game Over Screen ── */
+  if(state==='gameover'){
+    ctx.fillStyle='rgba(0,0,0,0.65)';ctx.fillRect(0,0,W,H);
+    ctx.textAlign='center';
+
+    ctx.font='bold 28px system-ui';ctx.fillStyle='#ff8866';
+    ctx.fillText('GAME OVER',W/2,H*0.3);
+
+    ctx.font='bold 40px system-ui';ctx.fillStyle='#e0ffe0';
+    ctx.fillText(`${score}`,W/2,H*0.42);
+    ctx.font='14px system-ui';ctx.fillStyle='#8fc88f';
+    ctx.fillText('SCORE',W/2,H*0.46);
+
+    ctx.font='16px system-ui';ctx.fillStyle='#7ab87a';
+    ctx.fillText(`Best: ${bestScore}`,W/2,H*0.53);
+
+    if(score===bestScore&&score>0){
+      ctx.font='bold 14px system-ui';ctx.fillStyle='#ffd700';
+      ctx.fillText('NEW BEST!',W/2,H*0.57);
+    }
+
+    /* Share button */
+    const btnW=110,btnH=34,btnX=W/2-btnW/2,btnY=H*0.62;
+    ctx.fillStyle='rgba(34,197,94,0.3)';
+    ctx.beginPath();
+    ctx.roundRect(btnX,btnY,btnW,btnH,8);ctx.fill();
+    ctx.strokeStyle='rgba(34,197,94,0.6)';ctx.lineWidth=1;
+    ctx.beginPath();ctx.roundRect(btnX,btnY,btnW,btnH,8);ctx.stroke();
+    ctx.font='13px system-ui';ctx.fillStyle='#a0f0a0';
+    ctx.fillText('Share Score',W/2,btnY+22);
+
+    /* Store share button bounds for click */
+    shareBtn.x=btnX;shareBtn.y=btnY;shareBtn.w=btnW;shareBtn.h=btnH;
+
+    if(shareMsg&&shareMsgTimer>0){
+      ctx.font='12px system-ui';ctx.fillStyle='#80ff80';
+      ctx.fillText(shareMsg,W/2,btnY+btnH+18);
+    }
+
+    const pulse=0.6+Math.sin(Date.now()*0.004)*0.4;
+    ctx.font='16px system-ui';ctx.fillStyle=`rgba(200,255,200,${pulse})`;
+    ctx.fillText('Tap to Retry',W/2,H*0.78);
+
+    ctx.textAlign='left';
+  }
+
+  ctx.restore();
+}
+
+const shareBtn={x:0,y:0,w:0,h:0};
+canvas.addEventListener('pointerdown',(e)=>{
+  if(state==='gameover'){
+    const rect=canvas.getBoundingClientRect();
+    const cx=(e.clientX-rect.left);
+    const cy=(e.clientY-rect.top);
+    if(cx>=shareBtn.x&&cx<=shareBtn.x+shareBtn.w&&cy>=shareBtn.y&&cy<=shareBtn.y+shareBtn.h){
+      e.stopPropagation();shareScore();return;
+    }
+  }
+},{capture:true});
+
+/* ── Main loop ── */
+function loop(ts){
+  if(!lastTime)lastTime=ts;
+  const dt=Math.min((ts-lastTime)/1000,0.05);
+  lastTime=ts;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+resetGame();
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

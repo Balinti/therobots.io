@@ -1,0 +1,935 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Wave Chain - Free HTML5 Game</title>
+<meta name="description" content="Play Wave Chain - Tap to chain oceanic dots while the entire screen rotates in sync with rolling waves.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0a1628">
+<link rel="canonical" href="https://balinti.github.io/wave-chain/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Wave Chain - Free HTML5 Game">
+<meta property="og:description" content="Tap to chain oceanic dots while the entire screen rotates in sync with rolling waves.">
+<meta property="og:url" content="https://balinti.github.io/wave-chain/">
+<meta property="og:image" content="https://balinti.github.io/wave-chain/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Wave Chain - Free HTML5 Game">
+<meta name="twitter:description" content="Tap to chain oceanic dots while the entire screen rotates in sync with rolling waves.">
+<meta name="twitter:image" content="https://balinti.github.io/wave-chain/og-image.png">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#0a1628;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;touch-action:none;-webkit-tap-highlight-color:transparent;user-select:none}
+#container{position:relative;width:100%;max-width:420px;height:100vh;max-height:750px;overflow:hidden;border-radius:0}
+canvas{display:block;width:100%;height:100%;touch-action:none}
+@media(min-width:421px)and(min-height:751px){#container{border-radius:16px;box-shadow:0 0 60px rgba(0,150,255,.15)}}
+</style>
+</head>
+<body>
+<div id="container"><canvas id="gc"></canvas></div>
+<script>
+'use strict';
+(()=>{
+const W=420,H=750;
+const SAFE_TOP=70,SAFE_BOT=70;
+const canvas=document.getElementById('gc');
+const ctx=canvas.getContext('2d');
+let dpr=1,cW=W,cH=H,scaleX=1,scaleY=1;
+
+function resize(){
+  const cont=document.getElementById('container');
+  const rect=cont.getBoundingClientRect();
+  dpr=window.devicePixelRatio||1;
+  canvas.width=rect.width*dpr;
+  canvas.height=rect.height*dpr;
+  canvas.style.width=rect.width+'px';
+  canvas.style.height=rect.height+'px';
+  cW=rect.width;cH=rect.height;
+  scaleX=(rect.width*dpr)/W;
+  scaleY=(rect.height*dpr)/H;
+}
+window.addEventListener('resize',resize);
+resize();
+
+// Persistent state
+let highScore=parseInt(localStorage.getItem('waveChainHighScore'))||0;
+let bestCombo=parseInt(localStorage.getItem('waveChainBestCombo'))||0;
+let reducedSway=localStorage.getItem('waveChainReducedSway')==='true';
+
+// Game state
+let state='start'; // start, playing, gameover
+let score=0,lives=3,combo=0,gameTime=0;
+let tideMeter=0;const TIDE_MAX=100;
+let highTideActive=false,highTideTimer=0;const HIGH_TIDE_DUR=3;
+let stormTimer=0,stormActive=false;
+let screenShakeX=0,screenShakeY=0,screenShakeT=0;
+let swayAngle=0;
+let activePos={x:W/2,y:H/2};
+let chainPath=[];
+let dots=[];
+let particles=[];
+let feedbackTexts=[];
+let foamLines=[];
+let hueShift=0;
+
+// Tide colors
+const TIDE_COLORS=[
+  {h:190,s:90,l:55}, // cyan
+  {h:280,s:80,l:60}, // purple
+  {h:40,s:95,l:55}   // gold
+];
+let activeTideColors=1;
+let currentTideIdx=0;
+
+// Dot class
+function makeDot(isDecoy,isGold){
+  const margin=30;
+  const x=margin+Math.random()*(W-2*margin);
+  const y=SAFE_TOP+margin+Math.random()*(H-SAFE_TOP-SAFE_BOT-2*margin);
+  const tideIdx=isGold?-1:(isDecoy?((currentTideIdx+1+Math.floor(Math.random()*(activeTideColors-1)))%activeTideColors):currentTideIdx);
+  const ringPeriod=1.5+Math.random()*1.0;
+  const sweetSpotWidth=Math.max(0.12,0.3-gameTime*0.002);
+  return{
+    x,y,
+    tideIdx,
+    isDecoy:!!isDecoy,
+    isGold:!!isGold,
+    radius:isGold?14:16,
+    ringPhase:Math.random()*Math.PI*2,
+    ringPeriod,
+    sweetSpotWidth:isGold?0.35:sweetSpotWidth,
+    lifetime:isGold?1.0:null,
+    age:0,
+    born:gameTime
+  };
+}
+
+function spawnTarget(){
+  dots=dots.filter(d=>d.isDecoy||d.isGold);
+  const d=makeDot(false,false);
+  // First target: near center and close to player
+  if(gameTime<0.5){
+    d.x=W/2+(-30+Math.random()*60);
+    d.y=H/2+(-50+Math.random()*30);
+    d.ringPhase=0; // sync so first tap is easy
+    d.sweetSpotWidth=0.45;
+  }
+  dots.unshift(d);
+}
+
+function spawnDecoy(){
+  if(activeTideColors<2)return;
+  const d=makeDot(true,false);
+  dots.push(d);
+}
+
+function spawnGold(){
+  const d=makeDot(false,true);
+  dots.push(d);
+}
+
+function getTarget(){
+  for(let i=0;i<dots.length;i++){
+    if(!dots[i].isDecoy&&!dots[i].isGold)return dots[i];
+  }
+  return null;
+}
+
+function getRingValue(dot,t){
+  // 0..1 oscillation, sweet spot near 1
+  return(Math.sin((t-dot.ringPhase)/dot.ringPeriod*Math.PI*2)*0.5+0.5);
+}
+
+function isInSweetSpot(dot,t){
+  const v=getRingValue(dot,t);
+  return v>(1-dot.sweetSpotWidth);
+}
+
+function comboMultiplier(){
+  if(combo>=15)return 5;
+  if(combo>=10)return 3;
+  if(combo>=5)return 2;
+  return 1;
+}
+
+function tideColor(idx,a){
+  if(idx===-1)return `hsla(48,100%,65%,${a||1})`;
+  const c=TIDE_COLORS[idx%TIDE_COLORS.length];
+  return `hsla(${(c.h+hueShift)%360},${c.s}%,${c.l}%,${a||1})`;
+}
+
+// Particles
+function burstParticles(x,y,color,count,speed,type){
+  for(let i=0;i<count;i++){
+    const a=Math.random()*Math.PI*2;
+    const sp=(0.5+Math.random())*speed;
+    particles.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,life:1,maxLife:0.5+Math.random()*0.5,color,size:type==='star'?3:2,type:type||'circle'});
+  }
+}
+
+function ringParticle(x,y,color){
+  particles.push({x,y,vx:0,vy:0,life:1,maxLife:0.6,color,size:20,type:'ring'});
+}
+
+// Foam lines
+function spawnFoam(){
+  const y=SAFE_TOP+60+Math.random()*(H-SAFE_TOP-SAFE_BOT-120);
+  const x1=40+Math.random()*80;
+  const x2=W-40-Math.random()*80;
+  foamLines.push({y,x1,x2,life:8+Math.random()*4,age:0});
+}
+
+// Feedback text
+function addFeedback(x,y,text,color){
+  feedbackTexts.push({x,y,text,color,life:1,maxLife:1});
+}
+
+// Shake
+function triggerShake(intensity,dur){
+  screenShakeT=dur;
+  screenShakeX=intensity;
+  screenShakeY=intensity;
+}
+
+// Input
+function handleTap(px,py){
+  // Convert screen coords to game coords
+  const gx=px/cW*W;
+  const gy=py/cH*H;
+
+  if(state==='start'){
+    startGame();
+    return;
+  }
+  if(state==='gameover'){
+    // Check reduced sway toggle area
+    const toggleX=W/2,toggleY=H/2+155;
+    if(Math.abs(gx-toggleX)<100&&Math.abs(gy-toggleY)<20){
+      reducedSway=!reducedSway;
+      localStorage.setItem('waveChainReducedSway',reducedSway?'true':'false');
+      return;
+    }
+    // Check share button area
+    const shareY=H/2+110;
+    if(Math.abs(gx-W/2)<90&&Math.abs(gy-shareY)<18){
+      shareScore();
+      return;
+    }
+    state='start';
+    return;
+  }
+  if(state==='playing'){
+    doTap(gx,gy);
+  }
+}
+
+function shareScore(){
+  const text=`I scored ${score} in Wave Chain! Can you beat it?\nhttps://balinti.github.io/wave-chain/`;
+  if(navigator.share){
+    navigator.share({title:'Wave Chain',text}).catch(()=>{});
+  } else if(navigator.clipboard){
+    navigator.clipboard.writeText(text).then(()=>{
+      addFeedback(W/2,H/2+80,'Link copied!','#fff');
+    }).catch(()=>{});
+  }
+}
+
+canvas.addEventListener('pointerdown',(e)=>{
+  e.preventDefault();
+  const rect=canvas.getBoundingClientRect();
+  handleTap(e.clientX-rect.left,e.clientY-rect.top);
+});
+
+document.addEventListener('keydown',(e)=>{
+  if(e.code==='Space'||e.code==='Enter'){
+    e.preventDefault();
+    handleTap(cW/2,cH/2);
+  }
+});
+
+function startGame(){
+  state='playing';
+  score=0;lives=3;combo=0;gameTime=0;
+  tideMeter=0;highTideActive=false;highTideTimer=0;
+  stormTimer=0;stormActive=false;
+  activeTideColors=1;currentTideIdx=0;
+  activePos={x:W/2,y:H/2};
+  chainPath=[{x:W/2,y:H/2}];
+  dots=[];particles=[];feedbackTexts=[];foamLines=[];
+  screenShakeT=0;
+  spawnTarget();
+}
+
+function doTap(gx,gy){
+  const t=gameTime;
+  // Find nearest valid (non-decoy) dot or gold
+  let best=null,bestDist=Infinity;
+  for(const d of dots){
+    if(d.isDecoy)continue;
+    const dx=d.x-gx,dy=d.y-gy;
+    const dist=Math.sqrt(dx*dx+dy*dy);
+    if(dist<bestDist){bestDist=dist;best=d;}
+  }
+  // Also check decoys for "wrong tap"
+  let closestAny=null,closestAnyDist=Infinity;
+  for(const d of dots){
+    const dx=d.x-gx,dy=d.y-gy;
+    const dist=Math.sqrt(dx*dx+dy*dy);
+    if(dist<closestAnyDist){closestAnyDist=dist;closestAny=d;}
+  }
+
+  const tapRadius=55;
+  if(!best||bestDist>tapRadius){
+    // Miss
+    miss(gx,gy);
+    return;
+  }
+
+  // If closest dot is decoy and closer than target
+  if(closestAny&&closestAny.isDecoy&&closestAnyDist<bestDist&&closestAnyDist<tapRadius){
+    miss(gx,gy);
+    return;
+  }
+
+  const inSweet=isInSweetSpot(best,t);
+  const ringVal=getRingValue(best,t);
+  const isPerfect=ringVal>0.92;
+
+  if(!inSweet){
+    // Timing miss
+    const delta=ringVal<0.5?'EARLY':'LATE';
+    addFeedback(best.x,best.y-30,delta,'#ff6b6b');
+    miss(gx,gy);
+    return;
+  }
+
+  // Success!
+  successSnap(best,isPerfect);
+}
+
+function miss(x,y){
+  combo=0;
+  lives--;
+  burstParticles(x,y,'#ff4466',12,80,'circle');
+  ringParticle(x,y,'rgba(255,68,102,0.5)');
+  triggerShake(3,0.15);
+  if(lives<=0){
+    gameOver();
+  }
+}
+
+function successSnap(dot,perfect){
+  const isGold=dot.isGold;
+  // Move active pos
+  const oldPos={...activePos};
+  activePos={x:dot.x,y:dot.y};
+  chainPath.push({x:dot.x,y:dot.y});
+  if(chainPath.length>30)chainPath.shift();
+
+  // Check foam crossing
+  let foamCross=false;
+  for(const f of foamLines){
+    if(f.age<f.life){
+      // Simple line intersection check
+      if((oldPos.y<f.y&&dot.y>f.y)||(oldPos.y>f.y&&dot.y<f.y)){
+        const t=(f.y-oldPos.y)/(dot.y-oldPos.y);
+        const ix=oldPos.x+t*(dot.x-oldPos.x);
+        if(ix>=f.x1&&ix<=f.x2){
+          foamCross=true;
+          break;
+        }
+      }
+    }
+  }
+
+  if(foamCross){
+    combo=0;
+    addFeedback(dot.x,dot.y-25,'FOAM!','#88ddff');
+  } else {
+    combo++;
+  }
+
+  // Score
+  let points=10;
+  if(perfect)points+=5;
+  if(isGold)points+=25;
+  const mult=comboMultiplier();
+  const tideMult=highTideActive?1.5:1;
+  points=Math.round(points*mult*tideMult);
+  score+=points;
+
+  // Tide meter
+  if(!highTideActive){
+    tideMeter+=perfect?12:8;
+    if(tideMeter>=TIDE_MAX){
+      highTideActive=true;
+      highTideTimer=HIGH_TIDE_DUR;
+      tideMeter=TIDE_MAX;
+    }
+  }
+
+  // Best combo
+  if(combo>bestCombo){
+    bestCombo=combo;
+    localStorage.setItem('waveChainBestCombo',bestCombo);
+  }
+
+  // Visual feedback
+  const col=isGold?'#ffd700':tideColor(dot.tideIdx,1);
+  burstParticles(dot.x,dot.y,col,perfect?35:22,perfect?120:80,'circle');
+  if(perfect){
+    burstParticles(dot.x,dot.y,'#fff',8,60,'star');
+    addFeedback(dot.x,dot.y-35,'PERFECT!','#ffd700');
+    triggerShake(2,0.08);
+  } else {
+    addFeedback(dot.x,dot.y-35,`+${points}`,'#fff');
+  }
+  if(isGold){
+    burstParticles(dot.x,dot.y,'#ffd700',40,140,'star');
+    triggerShake(3,0.1);
+  }
+
+  // Remove dot and spawn next
+  dots=dots.filter(d=>d!==dot);
+  if(!isGold){
+    // Advance tide color
+    currentTideIdx=(currentTideIdx+1)%activeTideColors;
+    spawnTarget();
+  }
+}
+
+function gameOver(){
+  state='gameover';
+  if(score>highScore){
+    highScore=score;
+    localStorage.setItem('waveChainHighScore',highScore);
+  }
+  triggerShake(8,0.4);
+}
+
+// Spawn timers
+let decoySpawnT=0,foamSpawnT=0,goldSpawnT=0;
+
+function update(dt){
+  if(state!=='playing')return;
+  gameTime+=dt;
+  hueShift=gameTime*8;
+
+  // Difficulty progression
+  if(gameTime>10&&activeTideColors<2)activeTideColors=2;
+  if(gameTime>25&&activeTideColors<3)activeTideColors=3;
+
+  // Sway
+  const swayMax=reducedSway?3:10;
+  swayAngle=Math.sin(gameTime*0.7)*swayMax*(Math.PI/180);
+
+  // Decoy spawning
+  if(gameTime>10){
+    decoySpawnT-=dt;
+    if(decoySpawnT<=0){
+      spawnDecoy();
+      const interval=Math.max(1.5,4-gameTime*0.03);
+      decoySpawnT=interval+Math.random()*1.5;
+    }
+  }
+
+  // Foam spawning
+  if(gameTime>25){
+    foamSpawnT-=dt;
+    if(foamSpawnT<=0){
+      spawnFoam();
+      foamSpawnT=6+Math.random()*4;
+    }
+  }
+
+  // Gold dot spawning
+  if(gameTime>45){
+    goldSpawnT-=dt;
+    if(goldSpawnT<=0){
+      spawnGold();
+      goldSpawnT=12+Math.random()*8;
+    }
+  }
+
+  // Storm gusts
+  if(gameTime>45){
+    stormTimer+=dt;
+    stormActive=Math.sin(stormTimer*0.8)>0.7;
+  }
+
+  // High tide timer
+  if(highTideActive){
+    highTideTimer-=dt;
+    if(highTideTimer<=0){
+      highTideActive=false;
+      tideMeter=0;
+    }
+  }
+
+  // Update dots
+  for(let i=dots.length-1;i>=0;i--){
+    const d=dots[i];
+    d.age+=dt;
+    if(d.lifetime&&d.age>=d.lifetime){
+      dots.splice(i,1);
+    }
+    // Remove old decoys
+    if(d.isDecoy&&d.age>6){
+      dots.splice(i,1);
+    }
+  }
+
+  // Update particles
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    p.x+=p.vx*dt;
+    p.y+=p.vy*dt;
+    p.vy+=120*dt; // gravity
+    p.life-=dt/p.maxLife;
+    if(p.life<=0)particles.splice(i,1);
+  }
+
+  // Update feedback texts
+  for(let i=feedbackTexts.length-1;i>=0;i--){
+    const f=feedbackTexts[i];
+    f.y-=40*dt;
+    f.life-=dt/f.maxLife;
+    if(f.life<=0)feedbackTexts.splice(i,1);
+  }
+
+  // Update foam lines
+  for(const f of foamLines){
+    f.age+=dt;
+  }
+  for(let i=foamLines.length-1;i>=0;i--){
+    if(foamLines[i].age>=foamLines[i].life)foamLines.splice(i,1);
+  }
+
+  // Screen shake
+  if(screenShakeT>0){
+    screenShakeT-=dt;
+  }
+
+  // Ensure there's always a target
+  if(!getTarget()&&state==='playing'){
+    spawnTarget();
+  }
+}
+
+function draw(){
+  ctx.save();
+  ctx.setTransform(scaleX,0,0,scaleY,0,0);
+
+  // Clear
+  const grad=ctx.createLinearGradient(0,0,0,H);
+  grad.addColorStop(0,'#0a1628');
+  grad.addColorStop(0.5,'#0d1f3c');
+  grad.addColorStop(1,'#061020');
+  ctx.fillStyle=grad;
+  ctx.fillRect(0,0,W,H);
+
+  // Apply sway rotation (visual only)
+  let shakeOx=0,shakeOy=0;
+  if(screenShakeT>0){
+    shakeOx=(Math.random()-0.5)*screenShakeX*2;
+    shakeOy=(Math.random()-0.5)*screenShakeY*2;
+  }
+
+  ctx.save();
+  ctx.translate(W/2+shakeOx,H/2+shakeOy);
+  if(state==='playing'){
+    ctx.rotate(swayAngle);
+  }
+  ctx.translate(-W/2,-H/2);
+
+  // High tide glow
+  if(highTideActive){
+    const glow=ctx.createRadialGradient(W/2,H/2,50,W/2,H/2,350);
+    glow.addColorStop(0,`hsla(${(190+hueShift)%360},100%,60%,0.08)`);
+    glow.addColorStop(1,'transparent');
+    ctx.fillStyle=glow;
+    ctx.fillRect(0,0,W,H);
+  }
+
+  // Storm visual
+  if(stormActive){
+    ctx.fillStyle='rgba(100,150,200,0.03)';
+    ctx.fillRect(0,0,W,H);
+    // Wind lines
+    for(let i=0;i<5;i++){
+      const y=Math.random()*H;
+      ctx.strokeStyle='rgba(150,200,255,0.1)';
+      ctx.lineWidth=1;
+      ctx.beginPath();
+      ctx.moveTo(0,y);
+      ctx.lineTo(W,y+20);
+      ctx.stroke();
+    }
+  }
+
+  // Foam lines
+  for(const f of foamLines){
+    if(f.age>=f.life)continue;
+    const alpha=Math.min(1,(f.life-f.age)/2)*0.4;
+    ctx.strokeStyle=`rgba(200,230,255,${alpha})`;
+    ctx.lineWidth=2;
+    ctx.setLineDash([8,6]);
+    ctx.beginPath();
+    ctx.moveTo(f.x1,f.y);
+    ctx.lineTo(f.x2,f.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Chain path
+  if(chainPath.length>1&&state==='playing'){
+    ctx.lineWidth=2;
+    ctx.lineCap='round';
+    for(let i=1;i<chainPath.length;i++){
+      const alpha=i/chainPath.length*0.6;
+      ctx.strokeStyle=`rgba(100,200,255,${alpha})`;
+      ctx.beginPath();
+      ctx.moveTo(chainPath[i-1].x,chainPath[i-1].y);
+      ctx.lineTo(chainPath[i].x,chainPath[i].y);
+      ctx.stroke();
+    }
+    // Traveling pulse on last segment
+    if(chainPath.length>=2){
+      const t=(gameTime*2)%1;
+      const a=chainPath[chainPath.length-2];
+      const b=chainPath[chainPath.length-1];
+      const px=a.x+(b.x-a.x)*t;
+      const py=a.y+(b.y-a.y)*t;
+      ctx.fillStyle='rgba(150,220,255,0.8)';
+      ctx.beginPath();
+      ctx.arc(px,py,3,0,Math.PI*2);
+      ctx.fill();
+    }
+  }
+
+  // Draw dots
+  if(state==='playing'){
+    for(const d of dots){
+      drawDot(d);
+    }
+    // Active position marker
+    ctx.fillStyle='rgba(255,255,255,0.9)';
+    ctx.beginPath();
+    ctx.arc(activePos.x,activePos.y,5,0,Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,0.2)';
+    ctx.beginPath();
+    ctx.arc(activePos.x,activePos.y,10,0,Math.PI*2);
+    ctx.fill();
+  }
+
+  // Particles
+  for(const p of particles){
+    const a=Math.max(0,p.life);
+    if(p.type==='ring'){
+      const r=p.size*(1-p.life)*3;
+      ctx.strokeStyle=p.color.replace(/[\d.]+\)$/,`${a*0.5})`);
+      ctx.lineWidth=2;
+      ctx.beginPath();
+      ctx.arc(p.x,p.y,r,0,Math.PI*2);
+      ctx.stroke();
+    } else if(p.type==='star'){
+      ctx.save();
+      ctx.translate(p.x,p.y);
+      ctx.rotate(p.life*3);
+      ctx.fillStyle=p.color;
+      ctx.globalAlpha=a;
+      const s=p.size*a;
+      ctx.beginPath();
+      for(let j=0;j<5;j++){
+        const ang=j*Math.PI*2/5-Math.PI/2;
+        const r1=s*2;const r2=s*0.8;
+        ctx.lineTo(Math.cos(ang)*r1,Math.sin(ang)*r1);
+        const ang2=ang+Math.PI/5;
+        ctx.lineTo(Math.cos(ang2)*r2,Math.sin(ang2)*r2);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.globalAlpha=1;
+      ctx.restore();
+    } else {
+      ctx.fillStyle=p.color;
+      ctx.globalAlpha=a;
+      ctx.beginPath();
+      ctx.arc(p.x,p.y,p.size*a,0,Math.PI*2);
+      ctx.fill();
+      ctx.globalAlpha=1;
+    }
+  }
+
+  // Feedback texts
+  for(const f of feedbackTexts){
+    ctx.save();
+    ctx.globalAlpha=Math.max(0,f.life);
+    ctx.fillStyle=f.color;
+    ctx.font='bold 16px "Segoe UI",system-ui,sans-serif';
+    ctx.textAlign='center';
+    ctx.fillText(f.text,f.x,f.y);
+    ctx.restore();
+  }
+
+  ctx.restore(); // undo sway/shake
+
+  // HUD (not affected by sway)
+  if(state==='playing'){
+    drawHUD();
+  }
+
+  // Start screen
+  if(state==='start'){
+    drawStart();
+  }
+
+  // Game over
+  if(state==='gameover'){
+    drawGameOver();
+  }
+
+  ctx.restore(); // undo scale
+}
+
+function drawDot(d){
+  const ringVal=getRingValue(d,gameTime);
+  const inSweet=isInSweetSpot(d,gameTime);
+  const col=d.isGold?'#ffd700':tideColor(d.tideIdx,1);
+  const colGlow=d.isGold?'rgba(255,215,0,0.3)':tideColor(d.tideIdx,0.25);
+
+  // Timing ring
+  const ringR=d.radius+8+ringVal*14;
+  ctx.strokeStyle=inSweet?'rgba(255,255,255,0.7)':'rgba(255,255,255,0.2)';
+  ctx.lineWidth=inSweet?3:1.5;
+  ctx.beginPath();
+  ctx.arc(d.x,d.y,ringR,0,Math.PI*2);
+  ctx.stroke();
+
+  // Outer glow
+  ctx.fillStyle=colGlow;
+  ctx.beginPath();
+  ctx.arc(d.x,d.y,d.radius+6,0,Math.PI*2);
+  ctx.fill();
+
+  // Core
+  ctx.fillStyle=col;
+  ctx.beginPath();
+  ctx.arc(d.x,d.y,d.radius,0,Math.PI*2);
+  ctx.fill();
+
+  // Inner shine
+  ctx.fillStyle='rgba(255,255,255,0.3)';
+  ctx.beginPath();
+  ctx.arc(d.x-3,d.y-3,d.radius*0.4,0,Math.PI*2);
+  ctx.fill();
+
+  // Gold shimmer
+  if(d.isGold){
+    const shimmer=Math.sin(gameTime*8)*0.3+0.3;
+    ctx.fillStyle=`rgba(255,255,255,${shimmer})`;
+    ctx.beginPath();
+    ctx.arc(d.x,d.y,d.radius+2,0,Math.PI*2);
+    ctx.fill();
+  }
+
+  // Decoy marker (X)
+  if(d.isDecoy){
+    ctx.globalAlpha=0.3;
+    ctx.strokeStyle='#fff';
+    ctx.lineWidth=1.5;
+    const s=5;
+    ctx.beginPath();ctx.moveTo(d.x-s,d.y-s);ctx.lineTo(d.x+s,d.y+s);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(d.x+s,d.y-s);ctx.lineTo(d.x-s,d.y+s);ctx.stroke();
+    ctx.globalAlpha=1;
+  }
+
+  // Lifetime indicator for gold
+  if(d.lifetime){
+    const frac=1-d.age/d.lifetime;
+    ctx.strokeStyle='rgba(255,215,0,0.6)';
+    ctx.lineWidth=2;
+    ctx.beginPath();
+    ctx.arc(d.x,d.y,d.radius+16,-Math.PI/2,-Math.PI/2+frac*Math.PI*2);
+    ctx.stroke();
+  }
+}
+
+function drawHUD(){
+  // Score
+  ctx.fillStyle='rgba(255,255,255,0.9)';
+  ctx.font='bold 22px "Segoe UI",system-ui,sans-serif';
+  ctx.textAlign='left';
+  ctx.fillText(score,16,32);
+
+  // Best
+  ctx.fillStyle='rgba(255,255,255,0.4)';
+  ctx.font='12px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText('BEST '+highScore,16,50);
+
+  // Lives (pips)
+  for(let i=0;i<3;i++){
+    ctx.fillStyle=i<lives?'rgba(255,100,120,0.9)':'rgba(255,255,255,0.15)';
+    ctx.beginPath();
+    ctx.arc(W-30-i*22,28,7,0,Math.PI*2);
+    ctx.fill();
+  }
+
+  // Combo
+  if(combo>1){
+    const mult=comboMultiplier();
+    ctx.fillStyle='rgba(255,220,100,0.9)';
+    ctx.font='bold 16px "Segoe UI",system-ui,sans-serif';
+    ctx.textAlign='right';
+    ctx.fillText(`x${mult} (${combo})`,W-16,55);
+  }
+
+  // Tide meter bar
+  const barW=120,barH=6,barX=(W-barW)/2,barY=14;
+  ctx.fillStyle='rgba(255,255,255,0.1)';
+  ctx.fillRect(barX,barY,barW,barH);
+  const frac=tideMeter/TIDE_MAX;
+  const barCol=highTideActive?`hsl(${(190+hueShift)%360},100%,65%)`:'rgba(100,200,255,0.7)';
+  ctx.fillStyle=barCol;
+  ctx.fillRect(barX,barY,barW*frac,barH);
+  if(highTideActive){
+    ctx.fillStyle='rgba(255,255,255,0.8)';
+    ctx.font='bold 10px "Segoe UI",system-ui,sans-serif';
+    ctx.textAlign='center';
+    ctx.fillText('HIGH TIDE!',W/2,barY+barH+14);
+  }
+}
+
+function drawStart(){
+  // Overlay
+  ctx.fillStyle='rgba(10,22,40,0.85)';
+  ctx.fillRect(0,0,W,H);
+
+  // Animated wave bg
+  const t=performance.now()/1000;
+  for(let i=0;i<3;i++){
+    ctx.strokeStyle=`hsla(${190+i*40},80%,50%,0.08)`;
+    ctx.lineWidth=2;
+    ctx.beginPath();
+    for(let x=0;x<=W;x+=4){
+      const y=H/2+Math.sin(x*0.015+t*(0.5+i*0.3))*40+i*25-40;
+      x===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+  }
+
+  // Title
+  ctx.fillStyle='#fff';
+  ctx.font='bold 42px "Segoe UI",system-ui,sans-serif';
+  ctx.textAlign='center';
+  ctx.fillText('Wave Chain',W/2,H/2-60);
+
+  ctx.fillStyle='rgba(100,200,255,0.7)';
+  ctx.font='16px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText('Tide Snap',W/2,H/2-30);
+
+  // Tap to start
+  const pulse=Math.sin(t*3)*0.2+0.8;
+  ctx.globalAlpha=pulse;
+  ctx.fillStyle='#fff';
+  ctx.font='18px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText('Tap to Start',W/2,H/2+30);
+  ctx.globalAlpha=1;
+
+  // Instructions
+  ctx.fillStyle='rgba(255,255,255,0.35)';
+  ctx.font='13px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText('Tap when the ring is brightest',W/2,H/2+70);
+  ctx.fillText('Chain dots to build combos',W/2,H/2+90);
+
+  // High score
+  if(highScore>0){
+    ctx.fillStyle='rgba(255,220,100,0.6)';
+    ctx.font='14px "Segoe UI",system-ui,sans-serif';
+    ctx.fillText('Best: '+highScore,W/2,H/2+130);
+  }
+}
+
+function drawGameOver(){
+  // Overlay
+  ctx.fillStyle='rgba(10,22,40,0.9)';
+  ctx.fillRect(0,0,W,H);
+
+  ctx.fillStyle='rgba(255,100,120,0.9)';
+  ctx.font='bold 32px "Segoe UI",system-ui,sans-serif';
+  ctx.textAlign='center';
+  ctx.fillText('Game Over',W/2,H/2-100);
+
+  // Score
+  ctx.fillStyle='#fff';
+  ctx.font='bold 48px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText(score,W/2,H/2-40);
+
+  ctx.fillStyle='rgba(255,255,255,0.5)';
+  ctx.font='14px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText('SCORE',W/2,H/2-55);
+
+  // Best
+  const isNew=score>=highScore&&score>0;
+  ctx.fillStyle=isNew?'rgba(255,220,100,0.9)':'rgba(255,255,255,0.5)';
+  ctx.font='16px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText(isNew?'NEW BEST!':'Best: '+highScore,W/2,H/2+5);
+
+  // Best combo
+  ctx.fillStyle='rgba(255,255,255,0.4)';
+  ctx.font='13px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText('Best Combo: '+bestCombo,W/2,H/2+30);
+
+  // Tap to retry
+  const t=performance.now()/1000;
+  const pulse=Math.sin(t*3)*0.2+0.8;
+  ctx.globalAlpha=pulse;
+  ctx.fillStyle='#fff';
+  ctx.font='18px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText('Tap to Retry',W/2,H/2+70);
+  ctx.globalAlpha=1;
+
+  // Share button
+  ctx.fillStyle='rgba(100,200,255,0.15)';
+  const btnW=180,btnH=34;
+  const btnX=W/2-btnW/2,btnY=H/2+93;
+  ctx.beginPath();
+  ctx.roundRect(btnX,btnY,btnW,btnH,8);
+  ctx.fill();
+  ctx.fillStyle='rgba(100,200,255,0.9)';
+  ctx.font='14px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText('Challenge a friend',W/2,H/2+114);
+
+  // Reduced sway toggle
+  const toggleY=H/2+150;
+  ctx.fillStyle='rgba(255,255,255,0.3)';
+  ctx.font='13px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText('Reduced Sway: '+(reducedSway?'ON':'OFF'),W/2,toggleY);
+  // Toggle indicator
+  const indX=W/2+62,indY=toggleY-4;
+  ctx.fillStyle=reducedSway?'rgba(100,200,100,0.7)':'rgba(255,255,255,0.15)';
+  ctx.beginPath();
+  ctx.roundRect(indX,indY-6,28,12,6);
+  ctx.fill();
+  ctx.fillStyle='#fff';
+  ctx.beginPath();
+  ctx.arc(reducedSway?indX+22:indX+6,indY,5,0,Math.PI*2);
+  ctx.fill();
+}
+
+// Main loop
+let lastTime=0;
+function loop(timestamp){
+  const dt=Math.min((timestamp-lastTime)/1000,0.033);
+  lastTime=timestamp;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame((t)=>{lastTime=t;loop(t);});
+
+})();
+</script>
+</body>
+</html>

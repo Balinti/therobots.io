@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Gear Rhythm - Free HTML5 Game</title>
+<meta name="description" content="Play Gear Rhythm - Tap matching gears on a rotating clockwork wheel as speed escalates.">
+<meta name="theme-color" content="#1a1a2e">
+<meta property="og:title" content="Gear Rhythm - Free HTML5 Game">
+<meta property="og:description" content="Tap matching gears on a rotating clockwork wheel as speed escalates. A hyper-casual timing game.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://balinti.github.io/gear-rhythm/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Gear Rhythm - Free HTML5 Game">
+<meta name="twitter:description" content="Tap matching gears on a rotating clockwork wheel. One-tap rhythm arcade game.">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#0a0a1a;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;color:#e0e0e0;touch-action:none;user-select:none;-webkit-user-select:none}
+#wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100vh;height:100dvh}
+#game-container{position:relative;width:100%;max-width:420px;max-height:750px;aspect-ratio:420/750;display:flex;align-items:center;justify-content:center}
+canvas{display:block;width:100%;height:100%;border-radius:12px}
+#score-hud{position:absolute;top:12px;left:0;right:0;display:flex;justify-content:space-between;padding:0 18px;pointer-events:none;z-index:2}
+#score-hud .label{font-size:11px;text-transform:uppercase;letter-spacing:1px;opacity:.6}
+#score-hud .value{font-size:22px;font-weight:700;text-shadow:0 0 12px rgba(255,255,255,.3)}
+#combo-hud{position:absolute;top:58px;left:0;right:0;text-align:center;pointer-events:none;z-index:2;font-size:14px;font-weight:600;opacity:.8}
+#lives-hud{position:absolute;top:80px;left:0;right:0;text-align:center;pointer-events:none;z-index:2;font-size:18px;letter-spacing:4px}
+.info-section{max-width:420px;margin:20px auto;padding:16px 20px;color:#aaa;font-size:13px;line-height:1.6;text-align:center}
+.info-section h2{font-size:16px;color:#ddd;margin-bottom:8px}
+.info-section p{margin-bottom:8px}
+@media(max-height:600px){.info-section{display:none}}
+</style>
+</head>
+<body>
+<div id="wrap">
+<div id="game-container">
+<canvas id="gc"></canvas>
+<div id="score-hud" style="display:none">
+<div><div class="label">Score</div><div class="value" id="s-score">0</div></div>
+<div><div class="label">Best</div><div class="value" id="s-best">0</div></div>
+</div>
+<div id="combo-hud" style="display:none"></div>
+<div id="lives-hud" style="display:none"></div>
+</div>
+</div>
+<section class="info-section">
+<h2>How to Play Gear Rhythm</h2>
+<p>Gear Rhythm is a one-tap timing game where you lock highlighted gear pucks as they pass the marker at 12 o'clock. Tap or press Space when the glowing puck aligns with the lock notch to score points and build combos. Miss the timing window three times and it's game over.</p>
+<p>As you progress, the clockwork ring spins faster, the hit window tightens, and jam-beat fakeouts test your patience. Reach a combo of 15+ and a second marker appears at 6 o'clock for bonus challenge. Perfect locks earn sparks, screen shake, and color shifts. This free HTML5 browser game works on any device with no downloads required.</p>
+<p>Keywords: timing game, rhythm game, arcade, one tap, browser game, HTML5, hyper-casual, gear, clockwork, free online game, mobile game, canvas game.</p>
+</section>
+<script>
+'use strict';
+(()=>{
+
+// ─── CONSTANTS ────────────────────────────────────────
+const PUCK_COUNT = 12;
+const BASE_SPEED = 0.4;            // radians per second
+const BASE_HIT_WINDOW = 0.32;      // radians
+const MISS_LIMIT = 3;
+const BEAT_INTERVAL_BASE = 2.2;    // seconds between highlights
+const RING_RADIUS_BASE = 0.34;     // fraction of canvas size
+const PUCK_RADIUS_FRAC = 0.055;
+const MARKER_SIZE = 0.04;
+const GRAVITY = 600;
+const MAX_PARTICLES = 200;
+
+// ─── CANVAS SETUP ─────────────────────────────────────
+const canvas = document.getElementById('gc');
+const ctx = canvas.getContext('2d');
+const container = document.getElementById('game-container');
+let W, H, CX, CY, dpr;
+
+function resize() {
+  const rect = container.getBoundingClientRect();
+  dpr = window.devicePixelRatio || 1;
+  W = Math.round(rect.width);
+  H = Math.round(rect.height);
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  CX = W / 2;
+  CY = H / 2;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ─── DOM REFS ─────────────────────────────────────────
+const scoreHud = document.getElementById('score-hud');
+const sScore = document.getElementById('s-score');
+const sBest = document.getElementById('s-best');
+const comboHud = document.getElementById('combo-hud');
+const livesHud = document.getElementById('lives-hud');
+
+// ─── STATE ────────────────────────────────────────────
+let state = 'start';
+let score = 0;
+let bestScore = parseInt(localStorage.getItem('gr_best') || '0', 10);
+let combo = 0;
+let misses = 0;
+let ringAngle = 0;
+let ringSpeed = BASE_SPEED;
+let hitWindow = BASE_HIT_WINDOW;
+let highlightedPuck = -1;
+let highlightTimer = 0;
+let beatInterval = BEAT_INTERVAL_BASE;
+let gameTime = 0;
+let ringRadius = 0;
+let accentHue = 30;
+let screenShakeX = 0;
+let screenShakeY = 0;
+let screenShakeDecay = 0;
+let ringShrink = 0;
+let ringSquash = 0;
+let ringSquashTimer = 0;
+let canTap = true;
+let tapLocked = false;
+let secondMarker = false;
+let activeMarker = 0;   // 0=top, 1=bottom
+let jamBeat = false;
+let jamFlashOff = false;
+let jamTimer = 0;
+let feedbackText = '';
+let feedbackTimer = 0;
+let feedbackScale = 1;
+let timingRingAlpha = 0;
+let timingRingRadius = 0;
+let particles = [];
+let prevTime = 0;
+let puckAngles = [];
+
+// audio context for optional sound
+let audioCtx = null;
+function initAudio() {
+  try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) { audioCtx = null; }
+}
+function playTone(freq, dur, vol) {
+  if (!audioCtx) return;
+  try {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(vol || 0.15, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + dur);
+  } catch(e) {}
+}
+function playClank() { playTone(880, 0.08, 0.2); setTimeout(()=>playTone(1200, 0.05, 0.1), 30); }
+function playMiss() { playTone(200, 0.15, 0.15); }
+
+// ─── PUCK POSITIONS ──────────────────────────────────
+function initPucks() {
+  puckAngles = [];
+  for (let i = 0; i < PUCK_COUNT; i++) {
+    puckAngles.push((Math.PI * 2 / PUCK_COUNT) * i);
+  }
+}
+initPucks();
+
+// ─── PARTICLES ────────────────────────────────────────
+function spawnParticles(x, y, count, color1, color2, speed, life) {
+  for (let i = 0; i < count && particles.length < MAX_PARTICLES; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const sp = (0.3 + Math.random() * 0.7) * speed;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * sp,
+      vy: Math.sin(angle) * sp - Math.random() * 60,
+      life: life * (0.5 + Math.random() * 0.5),
+      maxLife: life,
+      r: 1.5 + Math.random() * 3,
+      color: Math.random() < 0.5 ? color1 : color2,
+      type: Math.random() < 0.3 ? 'line' : 'circle'
+    });
+  }
+}
+
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy += GRAVITY * dt;
+    p.life -= dt;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    const alpha = Math.max(0, p.life / p.maxLife);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = p.color;
+    ctx.strokeStyle = p.color;
+    if (p.type === 'line') {
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(p.x - p.vx * 0.02, p.y - p.vy * 0.02);
+      ctx.stroke();
+    } else {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r * alpha, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ─── SCREEN SHAKE ─────────────────────────────────────
+function addShake(amount) {
+  screenShakeDecay = amount;
+}
+
+function updateShake(dt) {
+  if (screenShakeDecay > 0.1) {
+    screenShakeX = (Math.random() - 0.5) * screenShakeDecay;
+    screenShakeY = (Math.random() - 0.5) * screenShakeDecay;
+    screenShakeDecay *= Math.pow(0.05, dt);
+  } else {
+    screenShakeX = 0;
+    screenShakeY = 0;
+    screenShakeDecay = 0;
+  }
+}
+
+// ─── DIFFICULTY ───────────────────────────────────────
+function updateDifficulty() {
+  // Phase 1: 0-10s
+  if (gameTime < 10) {
+    ringSpeed = BASE_SPEED;
+    hitWindow = BASE_HIT_WINDOW;
+    beatInterval = BEAT_INTERVAL_BASE;
+    secondMarker = false;
+    jamBeat = false;
+  }
+  // Phase 2: 10-25s
+  else if (gameTime < 25) {
+    const t = (gameTime - 10) / 15;
+    ringSpeed = BASE_SPEED + t * 0.35;
+    hitWindow = BASE_HIT_WINDOW - t * 0.1;
+    beatInterval = BEAT_INTERVAL_BASE - t * 0.5;
+    secondMarker = false;
+    jamBeat = false;
+  }
+  // Phase 3: 25-45s
+  else if (gameTime < 45) {
+    const t = (gameTime - 25) / 20;
+    ringSpeed = BASE_SPEED + 0.35 + t * 0.25;
+    hitWindow = BASE_HIT_WINDOW - 0.1 - t * 0.05;
+    beatInterval = BEAT_INTERVAL_BASE - 0.5 - t * 0.3;
+    secondMarker = false;
+    jamBeat = true;
+  }
+  // Phase 4: 45s+
+  else {
+    const t = Math.min((gameTime - 45) / 30, 1);
+    ringSpeed = BASE_SPEED + 0.6 + t * 0.3;
+    hitWindow = Math.max(0.12, BASE_HIT_WINDOW - 0.15 - t * 0.04);
+    beatInterval = Math.max(1.0, BEAT_INTERVAL_BASE - 0.8 - t * 0.2);
+    secondMarker = combo >= 15;
+    jamBeat = true;
+  }
+  ringRadius = RING_RADIUS_BASE * Math.min(W, H) - ringShrink;
+}
+
+// ─── HIGHLIGHT LOGIC ──────────────────────────────────
+function nextHighlight() {
+  highlightedPuck = Math.floor(Math.random() * PUCK_COUNT);
+  highlightTimer = beatInterval;
+  canTap = true;
+  tapLocked = false;
+  jamFlashOff = false;
+  jamTimer = 0;
+
+  // Choose which marker is active
+  if (secondMarker) {
+    activeMarker = Math.random() < 0.5 ? 1 : 0;
+  } else {
+    activeMarker = 0;
+  }
+}
+
+// ─── INPUT ────────────────────────────────────────────
+function handleTap() {
+  if (state === 'start') {
+    startGame();
+    return;
+  }
+  if (state === 'gameover') {
+    resetGame();
+    return;
+  }
+  if (state !== 'playing' || tapLocked) return;
+  tapLocked = true;
+
+  if (highlightedPuck < 0) {
+    registerMiss();
+    return;
+  }
+
+  // Jam beat fakeout: if highlight is flashed off, tapping is a miss
+  if (jamFlashOff) {
+    registerMiss();
+    return;
+  }
+
+  // Check if highlighted puck is near a marker
+  const puckWorldAngle = normalizeAngle(puckAngles[highlightedPuck] + ringAngle);
+  const markerAngle = activeMarker === 0 ? -Math.PI / 2 : Math.PI / 2;
+  const diff = Math.abs(angleDiff(puckWorldAngle, markerAngle));
+
+  if (diff < hitWindow) {
+    registerHit(diff);
+  } else if (diff < hitWindow * 1.8) {
+    registerScrape(diff);
+  } else {
+    registerMiss();
+  }
+}
+
+function registerHit(diff) {
+  const isPerfect = diff < hitWindow * 0.35;
+  combo++;
+  const comboMult = Math.min(1 + combo * 0.1, 3);
+  const points = isPerfect ? Math.round(100 * comboMult) : Math.round(60 * comboMult);
+  score += points;
+
+  feedbackText = isPerfect ? 'PERFECT' : 'GOOD';
+  feedbackTimer = 0.7;
+  feedbackScale = 1.5;
+
+  timingRingAlpha = 1;
+  timingRingRadius = 30;
+
+  // Sparks
+  const markerAngle = activeMarker === 0 ? -Math.PI / 2 : Math.PI / 2;
+  const mx = CX + Math.cos(markerAngle) * ringRadius;
+  const my = CY + Math.sin(markerAngle) * ringRadius;
+  spawnParticles(mx, my, isPerfect ? 18 : 10, '#ffe066', '#ffffff', 200, 0.6);
+
+  // Shrink ring on perfect
+  if (isPerfect) {
+    ringShrink = Math.min(ringShrink + 1.5, 30);
+    addShake(4);
+    accentHue = (accentHue + 15) % 360;
+    playClank();
+  } else {
+    addShake(2);
+    playClank();
+  }
+
+  // Squash effect
+  ringSquash = 0.06;
+  ringSquashTimer = 0.15;
+
+  highlightedPuck = -1;
+}
+
+function registerScrape(diff) {
+  combo++;
+  score += Math.round(25 * Math.min(1 + combo * 0.05, 2));
+  feedbackText = 'SCRAPE';
+  feedbackTimer = 0.5;
+  feedbackScale = 1.2;
+
+  const markerAngle = activeMarker === 0 ? -Math.PI / 2 : Math.PI / 2;
+  const mx = CX + Math.cos(markerAngle) * ringRadius;
+  const my = CY + Math.sin(markerAngle) * ringRadius;
+  spawnParticles(mx, my, 5, '#ffaa33', '#ff8800', 120, 0.4);
+  addShake(2);
+  playClank();
+
+  highlightedPuck = -1;
+}
+
+function registerMiss() {
+  combo = 0;
+  misses++;
+  feedbackText = 'MISS';
+  feedbackTimer = 0.6;
+  feedbackScale = 1.3;
+
+  ringShrink = Math.max(ringShrink - 5, 0);
+
+  // Smoke puffs
+  const markerAngle = activeMarker === 0 ? -Math.PI / 2 : Math.PI / 2;
+  const mx = CX + Math.cos(markerAngle) * ringRadius;
+  const my = CY + Math.sin(markerAngle) * ringRadius;
+  spawnParticles(mx, my, 12, '#888888', '#cc4444', 100, 0.8);
+  addShake(6);
+  playMiss();
+
+  if (misses >= MISS_LIMIT) {
+    gameOver();
+  }
+  highlightedPuck = -1;
+}
+
+canvas.addEventListener('pointerdown', (e) => { e.preventDefault(); handleTap(); });
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); handleTap(); }
+});
+
+// ─── GAME CONTROL ─────────────────────────────────────
+function startGame() {
+  if (!audioCtx) initAudio();
+  state = 'playing';
+  score = 0;
+  combo = 0;
+  misses = 0;
+  gameTime = 0;
+  ringAngle = 0;
+  ringShrink = 0;
+  accentHue = 30;
+  highlightedPuck = -1;
+  highlightTimer = 0.5;
+  particles = [];
+  secondMarker = false;
+  scoreHud.style.display = 'flex';
+  comboHud.style.display = 'block';
+  livesHud.style.display = 'block';
+  updateHud();
+}
+
+function resetGame() {
+  startGame();
+}
+
+function gameOver() {
+  state = 'gameover';
+  addShake(15);
+  if (score > bestScore) {
+    bestScore = score;
+    localStorage.setItem('gr_best', String(bestScore));
+  }
+  // Big explosion
+  spawnParticles(CX, CY, 40, '#ff4444', '#ff8800', 300, 1.2);
+}
+
+function updateHud() {
+  sScore.textContent = score;
+  sBest.textContent = bestScore;
+  if (combo > 1) {
+    comboHud.textContent = 'COMBO x' + combo;
+    comboHud.style.color = `hsl(${accentHue}, 80%, 65%)`;
+  } else {
+    comboHud.textContent = '';
+  }
+  const hearts = [];
+  for (let i = 0; i < MISS_LIMIT; i++) {
+    hearts.push(i < (MISS_LIMIT - misses) ? '\u2764' : '\u2661');
+  }
+  livesHud.textContent = hearts.join(' ');
+}
+
+// ─── UTILITY ──────────────────────────────────────────
+function normalizeAngle(a) {
+  while (a > Math.PI) a -= Math.PI * 2;
+  while (a < -Math.PI) a += Math.PI * 2;
+  return a;
+}
+function angleDiff(a, b) {
+  return normalizeAngle(a - b);
+}
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+// ─── UPDATE ───────────────────────────────────────────
+function update(dt) {
+  if (state !== 'playing') return;
+
+  gameTime += dt;
+  updateDifficulty();
+
+  // Rotate ring
+  ringAngle += ringSpeed * dt;
+
+  // Ring squash decay
+  if (ringSquashTimer > 0) {
+    ringSquashTimer -= dt;
+    if (ringSquashTimer <= 0) ringSquash = 0;
+  }
+
+  // Highlight timer
+  highlightTimer -= dt;
+  if (highlightTimer <= 0) {
+    // If a highlight was active and player didn't tap, that's a miss
+    if (highlightedPuck >= 0 && canTap && !tapLocked) {
+      registerMiss();
+    }
+    if (state === 'playing') nextHighlight();
+  }
+
+  // Jam beat logic: briefly flash off the highlight before it reaches marker
+  if (jamBeat && highlightedPuck >= 0 && !jamFlashOff && highlightTimer < beatInterval * 0.3 && highlightTimer > beatInterval * 0.15) {
+    if (Math.random() < 0.012) {  // small chance per frame cluster
+      jamFlashOff = true;
+      jamTimer = 0.2 + Math.random() * 0.15;
+    }
+  }
+  if (jamFlashOff) {
+    jamTimer -= dt;
+    if (jamTimer <= 0) jamFlashOff = false;
+  }
+
+  // Feedback text decay
+  if (feedbackTimer > 0) {
+    feedbackTimer -= dt;
+    feedbackScale = lerp(feedbackScale, 1, dt * 8);
+  }
+
+  // Timing ring
+  if (timingRingAlpha > 0) {
+    timingRingAlpha -= dt * 3;
+    timingRingRadius += dt * 80;
+  }
+
+  // Ringshrink decay
+  ringShrink = lerp(ringShrink, 0, dt * 0.5);
+
+  updateParticles(dt);
+  updateShake(dt);
+  updateHud();
+}
+
+// ─── DRAW ─────────────────────────────────────────────
+function drawBackground() {
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, '#0f0f23');
+  grad.addColorStop(0.5, '#1a1a2e');
+  grad.addColorStop(1, '#0f0f1a');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Subtle radial glow
+  const rg = ctx.createRadialGradient(CX, CY, 0, CX, CY, ringRadius * 1.5);
+  rg.addColorStop(0, `hsla(${accentHue}, 60%, 20%, 0.15)`);
+  rg.addColorStop(1, 'transparent');
+  ctx.fillStyle = rg;
+  ctx.fillRect(0, 0, W, H);
+}
+
+function drawRing() {
+  const squashX = 1 + ringSquash;
+  const squashY = 1 - ringSquash;
+
+  ctx.save();
+  ctx.translate(CX, CY);
+  ctx.scale(squashX, squashY);
+
+  // Ring track
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(0, 0, ringRadius, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Inner ring detail
+  ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(0, 0, ringRadius - 18, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(0, 0, ringRadius + 18, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Tick marks around ring
+  for (let i = 0; i < 60; i++) {
+    const a = (Math.PI * 2 / 60) * i + ringAngle;
+    const inner = ringRadius - 6;
+    const outer = ringRadius + 6;
+    ctx.strokeStyle = i % 5 === 0 ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.05)';
+    ctx.lineWidth = i % 5 === 0 ? 1.5 : 0.8;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(a) * inner, Math.sin(a) * inner);
+    ctx.lineTo(Math.cos(a) * outer, Math.sin(a) * outer);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+function drawPucks() {
+  const puckR = PUCK_RADIUS_FRAC * Math.min(W, H);
+  const squashX = 1 + ringSquash;
+  const squashY = 1 - ringSquash;
+
+  for (let i = 0; i < PUCK_COUNT; i++) {
+    const worldAngle = puckAngles[i] + ringAngle;
+    const px = CX + Math.cos(worldAngle) * ringRadius * squashX;
+    const py = CY + Math.sin(worldAngle) * ringRadius * squashY;
+
+    const isHighlighted = i === highlightedPuck && !jamFlashOff;
+
+    // Puck body
+    ctx.save();
+    if (isHighlighted) {
+      // Glow
+      const glowR = puckR * 2.2;
+      const glow = ctx.createRadialGradient(px, py, puckR * 0.5, px, py, glowR);
+      glow.addColorStop(0, `hsla(${accentHue}, 90%, 60%, 0.5)`);
+      glow.addColorStop(1, 'transparent');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(px, py, glowR, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Pulsing bright puck
+      const pulse = 0.8 + Math.sin(gameTime * 10) * 0.2;
+      ctx.fillStyle = `hsla(${accentHue}, 85%, ${55 + pulse * 15}%, 0.95)`;
+      ctx.shadowColor = `hsl(${accentHue}, 90%, 60%)`;
+      ctx.shadowBlur = 15;
+    } else {
+      ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    }
+
+    ctx.beginPath();
+    ctx.arc(px, py, puckR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Gear teeth on puck
+    const teethCount = 8;
+    for (let t = 0; t < teethCount; t++) {
+      const ta = (Math.PI * 2 / teethCount) * t + ringAngle * 2;
+      const tx = px + Math.cos(ta) * puckR;
+      const ty = py + Math.sin(ta) * puckR;
+      ctx.fillStyle = isHighlighted ? `hsla(${accentHue}, 80%, 50%, 0.7)` : 'rgba(255,255,255,0.08)';
+      ctx.beginPath();
+      ctx.arc(tx, ty, puckR * 0.25, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Center dot
+    ctx.fillStyle = isHighlighted ? '#fff' : 'rgba(255,255,255,0.15)';
+    ctx.beginPath();
+    ctx.arc(px, py, puckR * 0.25, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+}
+
+function drawMarkers() {
+  // Top marker (always)
+  drawSingleMarker(-Math.PI / 2, activeMarker === 0 && highlightedPuck >= 0);
+
+  // Bottom marker (Phase 4)
+  if (secondMarker) {
+    drawSingleMarker(Math.PI / 2, activeMarker === 1 && highlightedPuck >= 0);
+  }
+}
+
+function drawSingleMarker(angle, isActive) {
+  const mSize = MARKER_SIZE * Math.min(W, H);
+  const mx = CX + Math.cos(angle) * ringRadius;
+  const my = CY + Math.sin(angle) * ringRadius;
+
+  ctx.save();
+  ctx.translate(mx, my);
+  ctx.rotate(angle + Math.PI / 2);
+
+  // Triangle notch
+  const glow = isActive ? 1 : 0.4;
+  ctx.fillStyle = isActive ? `hsla(${accentHue}, 80%, 60%, ${glow})` : 'rgba(255,255,255,0.3)';
+  ctx.shadowColor = isActive ? `hsl(${accentHue}, 90%, 60%)` : 'transparent';
+  ctx.shadowBlur = isActive ? 12 : 0;
+
+  ctx.beginPath();
+  ctx.moveTo(0, -mSize * 1.5);
+  ctx.lineTo(-mSize, mSize * 0.5);
+  ctx.lineTo(mSize, mSize * 0.5);
+  ctx.closePath();
+  ctx.fill();
+
+  // Inner detail
+  ctx.fillStyle = isActive ? '#fff' : 'rgba(255,255,255,0.5)';
+  ctx.beginPath();
+  ctx.moveTo(0, -mSize * 0.8);
+  ctx.lineTo(-mSize * 0.4, mSize * 0.2);
+  ctx.lineTo(mSize * 0.4, mSize * 0.2);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.shadowBlur = 0;
+  ctx.restore();
+
+  // Timing ring
+  if (isActive && timingRingAlpha > 0) {
+    ctx.strokeStyle = `hsla(${accentHue}, 80%, 65%, ${timingRingAlpha})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(mx, my, timingRingRadius, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+}
+
+function drawFeedback() {
+  if (feedbackTimer <= 0) return;
+
+  const alpha = Math.min(1, feedbackTimer * 2);
+  const y = CY - ringRadius * 0.15;
+
+  ctx.save();
+  ctx.translate(CX, y);
+  ctx.scale(feedbackScale, feedbackScale);
+
+  let color;
+  if (feedbackText === 'PERFECT') color = `hsla(50, 100%, 70%, ${alpha})`;
+  else if (feedbackText === 'GOOD') color = `hsla(120, 70%, 60%, ${alpha})`;
+  else if (feedbackText === 'SCRAPE') color = `hsla(30, 80%, 55%, ${alpha})`;
+  else color = `hsla(0, 70%, 55%, ${alpha})`;
+
+  ctx.fillStyle = color;
+  ctx.font = 'bold 28px "Segoe UI", system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 10;
+  ctx.fillText(feedbackText, 0, 0);
+  ctx.shadowBlur = 0;
+  ctx.restore();
+}
+
+function drawStartScreen() {
+  drawBackground();
+
+  // Title
+  ctx.save();
+  ctx.translate(CX, CY - 80);
+
+  // Decorative gear behind title
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.lineWidth = 2;
+  const gr = 90;
+  ctx.beginPath();
+  ctx.arc(0, 0, gr, 0, Math.PI * 2);
+  ctx.stroke();
+  for (let i = 0; i < 16; i++) {
+    const a = (Math.PI * 2 / 16) * i + performance.now() * 0.0003;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(a) * (gr - 8), Math.sin(a) * (gr - 8));
+    ctx.lineTo(Math.cos(a) * (gr + 12), Math.sin(a) * (gr + 12));
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 42px "Segoe UI", system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = `hsl(30, 90%, 60%)`;
+  ctx.shadowBlur = 20;
+  ctx.fillText('GEAR', 0, -18);
+  ctx.fillStyle = `hsl(30, 80%, 60%)`;
+  ctx.fillText('RHYTHM', 0, 28);
+  ctx.shadowBlur = 0;
+  ctx.restore();
+
+  // Subtitle
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.font = '14px "Segoe UI", system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('Lock & Clank', CX, CY - 15);
+
+  // Best score
+  if (bestScore > 0) {
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.font = '13px "Segoe UI", system-ui, sans-serif';
+    ctx.fillText('Best: ' + bestScore, CX, CY + 25);
+  }
+
+  // Tap prompt
+  const pulse = 0.5 + Math.sin(performance.now() * 0.004) * 0.5;
+  ctx.fillStyle = `rgba(255,255,255,${0.4 + pulse * 0.4})`;
+  ctx.font = '18px "Segoe UI", system-ui, sans-serif';
+  ctx.fillText('Tap to Start', CX, CY + 80);
+
+  // Controls hint
+  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  ctx.font = '12px "Segoe UI", system-ui, sans-serif';
+  ctx.fillText('Space / Enter / Tap', CX, CY + 110);
+}
+
+function drawGameOverScreen() {
+  drawBackground();
+
+  // Dimming overlay
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.save();
+  ctx.translate(CX + screenShakeX, CY + screenShakeY);
+
+  // Game Over text
+  ctx.fillStyle = '#ff4444';
+  ctx.font = 'bold 36px "Segoe UI", system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = '#ff4444';
+  ctx.shadowBlur = 15;
+  ctx.fillText('GAME OVER', 0, -60);
+  ctx.shadowBlur = 0;
+
+  // Score
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 48px "Segoe UI", system-ui, sans-serif';
+  ctx.fillText(score, 0, 0);
+
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.font = '14px "Segoe UI", system-ui, sans-serif';
+  ctx.fillText('SCORE', 0, -30);
+
+  // Best
+  const isNewBest = score >= bestScore && score > 0;
+  ctx.fillStyle = isNewBest ? '#ffe066' : 'rgba(255,255,255,0.5)';
+  ctx.font = '16px "Segoe UI", system-ui, sans-serif';
+  ctx.fillText((isNewBest ? 'NEW BEST! ' : 'Best: ') + bestScore, 0, 45);
+
+  // Retry
+  const pulse = 0.5 + Math.sin(performance.now() * 0.004) * 0.5;
+  ctx.fillStyle = `rgba(255,255,255,${0.4 + pulse * 0.4})`;
+  ctx.font = '18px "Segoe UI", system-ui, sans-serif';
+  ctx.fillText('Tap to Retry', 0, 100);
+
+  ctx.restore();
+}
+
+function drawPlaying() {
+  ctx.save();
+  ctx.translate(screenShakeX, screenShakeY);
+
+  drawBackground();
+  drawRing();
+  drawPucks();
+  drawMarkers();
+  drawFeedback();
+  drawParticles();
+
+  ctx.restore();
+}
+
+// ─── MAIN LOOP ────────────────────────────────────────
+function frame(timestamp) {
+  if (!prevTime) prevTime = timestamp;
+  let dt = (timestamp - prevTime) / 1000;
+  prevTime = timestamp;
+
+  // Clamp dt to avoid spiral of death
+  if (dt > 0.1) dt = 0.1;
+  if (dt < 0) dt = 0;
+
+  update(dt);
+
+  // Clear
+  ctx.clearRect(0, 0, W, H);
+
+  if (state === 'start') {
+    drawStartScreen();
+  } else if (state === 'playing') {
+    drawPlaying();
+  } else if (state === 'gameover') {
+    drawGameOverScreen();
+    updateParticles(dt);
+    updateShake(dt);
+    ctx.save();
+    ctx.translate(screenShakeX, screenShakeY);
+    drawParticles();
+    ctx.restore();
+  }
+
+  requestAnimationFrame(frame);
+}
+
+requestAnimationFrame(frame);
+
+})();
+</script>
+</body>
+</html>

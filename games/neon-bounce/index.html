@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Neon Bounce - Free HTML5 Game</title>
+<meta name="description" content="Play Neon Bounce - Tap to bounce a glowing ball between neon platforms. Miss a platform and fall into the void. Platforms get narrower as score increases.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0a0a1a">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Neon Bounce - Free HTML5 Game">
+<meta property="og:description" content="Tap to flip lanes and land on neon platforms. Two lanes, three platform types, one chance. How far can you drop?">
+<meta property="og:url" content="https://balinti.github.io/neon-bounce/">
+<meta property="og:image" content="https://balinti.github.io/neon-bounce/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Neon Bounce - Free HTML5 Game">
+<meta name="twitter:description" content="Tap to flip lanes and land on neon platforms. Two lanes, three platform types, one chance.">
+<meta name="twitter:image" content="https://balinti.github.io/neon-bounce/og.png">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow-x:hidden;background:#06060f;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;touch-action:none;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
+#game-container{position:relative;width:100%;max-width:420px;height:100vh;height:100dvh;max-height:750px;margin:0 auto;overflow:hidden;background:#06060f}
+canvas{display:block;width:100%;height:100%;cursor:pointer}
+#overlay{position:absolute;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;z-index:2;transition:opacity 0.3s}
+#overlay.hidden{opacity:0;pointer-events:none}
+.ov-title{font-size:2.2em;font-weight:800;letter-spacing:3px;text-shadow:0 0 20px currentColor,0 0 45px currentColor}
+.ov-sub{font-size:0.92em;opacity:.7;margin-top:8px;color:#bbc}
+.ov-tap{font-size:.9em;opacity:.45;margin-top:22px;animation:pulse 1.8s ease-in-out infinite;color:#fff}
+.ov-score{font-size:3em;font-weight:800;margin-top:10px;color:#fff}
+.ov-best{font-size:.9em;opacity:.5;margin-top:4px;color:#aaa}
+.ov-new{color:#ffcc44;opacity:.9;font-size:.9em;margin-top:4px}
+.ov-reason{font-size:.78em;opacity:.55;margin-top:10px;font-style:italic;color:#f88}
+.ov-legend{display:flex;gap:14px;margin-top:18px;font-size:.72em;opacity:.55;color:#ccc}
+.ov-legend span{display:flex;align-items:center;gap:4px}
+.ov-dot{display:inline-block;width:8px;height:8px;border-radius:50%}
+@keyframes pulse{0%,100%{opacity:.3}50%{opacity:.8}}
+#seo-section{max-width:420px;margin:10px auto;padding:12px 16px;color:#6668a0;font-family:sans-serif;font-size:13px;line-height:1.6}
+#seo-section h2{font-size:15px;color:#8889bb;margin-bottom:6px}
+#seo-section strong{color:#9999cc}
+</style>
+</head>
+<body>
+<div id="game-container">
+<canvas id="gc"></canvas>
+<div id="overlay">
+<div class="ov-title" style="color:#0ff">NEON BOUNCE</div>
+<div class="ov-sub">Flip Lanes &middot; Land on Platforms &middot; Survive</div>
+<div class="ov-legend">
+  <span><span class="ov-dot" style="background:#0ef"></span> Safe</span>
+  <span><span class="ov-dot" style="background:#f4f"></span> Fragile</span>
+  <span><span class="ov-dot" style="background:#fe0"></span> Boost</span>
+</div>
+<div class="ov-tap">Tap or Space to Start</div>
+</div>
+</div>
+<section id="seo-section">
+<h2>How to Play Neon Bounce</h2>
+<p><strong>Controls:</strong> Tap anywhere or press Space/Enter to flip between the left and right lanes.</p>
+<p>Your glowing ball drops through a neon shaft with two lanes. Platforms spawn in either lane &mdash; you must flip to the correct lane before reaching each platform. <strong>Cyan</strong> platforms are safe, <strong>magenta</strong> platforms are fragile and break after one landing, and <strong>yellow</strong> boost platforms launch you higher for bonus points. Land near the center for Perfect combos that charge your Neon Meter. When full, enter Overdrive for bonus scoring and forgiveness. Miss a platform and you fall into the void!</p>
+</section>
+<script>
+'use strict';
+(()=>{
+
+/* ══════════════ CANVAS + DPR ══════════════ */
+const canvas = document.getElementById('gc');
+const ctx = canvas.getContext('2d');
+const overlay = document.getElementById('overlay');
+const container = document.getElementById('game-container');
+
+let W, H, dpr;
+function resize() {
+  const rect = container.getBoundingClientRect();
+  dpr = Math.min(window.devicePixelRatio || 1, 3);
+  W = rect.width; H = rect.height;
+  canvas.width = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+/* ══════════════ CONSTANTS ══════════════ */
+const BALL_R = 12;
+const GRAVITY = 0.38;
+const BOUNCE_VEL = -10.5;
+const BOOST_VEL = -13.8;
+const PLAT_H = 10;
+const BASE_PLAT_W = 72;
+const MIN_PLAT_W = 36;
+const BASE_GAP = 85;
+const LANE_MARGIN = 0.27; // lane center offset from center as fraction of W
+const NEON_METER_MAX = 6;
+const OVERDRIVE_DUR = 240; // frames
+const LS_KEY = 'neonBounceFlipHi';
+
+// Platform types
+const PT_SAFE = 0;
+const PT_FRAGILE = 1;
+const PT_BOOST = 2;
+
+// Colors
+const COL_SAFE = '#00eeff';
+const COL_FRAGILE = '#ff44ff';
+const COL_BOOST = '#ffee00';
+const COL_SAFE_H = 187;
+const COL_FRAG_H = 300;
+const COL_BOOST_H = 54;
+
+/* ══════════════ SEEDED RNG ══════════════ */
+let rngState;
+function seedRng(s) { rngState = s | 0 || 1; }
+function sRng() {
+  rngState ^= rngState << 13;
+  rngState ^= rngState >> 17;
+  rngState ^= rngState << 5;
+  return (rngState >>> 0) / 4294967296;
+}
+function sRand(a, b) { return a + sRng() * (b - a); }
+
+/* ══════════════ STATE ══════════════ */
+let state = 'start';
+let score, bestScore, combo, neonMeter, overdriveTimer;
+let ball, camera, targetCamera, platforms, particles, speedLines;
+let shakeTimer, shakeMag, shakeX, shakeY;
+let bgHue, frameCount, gateCount;
+let deathReason;
+let nextPlatY, platId;
+
+function loadBest() { try { bestScore = parseInt(localStorage.getItem(LS_KEY)) || 0; } catch(e) { bestScore = 0; } }
+function saveBest() { try { localStorage.setItem(LS_KEY, String(bestScore)); } catch(e) {} }
+loadBest();
+
+/* ══════════════ HELPERS ══════════════ */
+const clamp = (v, lo, hi) => v < lo ? lo : v > hi ? hi : v;
+
+function laneX(lane) {
+  // lane 0 = left, lane 1 = right
+  const center = W / 2;
+  const offset = W * LANE_MARGIN;
+  return lane === 0 ? center - offset : center + offset;
+}
+
+function diff() { return Math.min(score || 0, 120) / 120; } // 0..1
+
+/* ══════════════ PARTICLES ══════════════ */
+function spawnBurst(x, y, col, count, speed, life) {
+  for (let i = 0; i < count; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const sp = speed * (0.3 + Math.random() * 0.7);
+    particles.push({
+      x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 1.5,
+      life: life || 30, maxLife: life || 30, color: col,
+      size: 1.8 + Math.random() * 3, ring: false, ringR: 0
+    });
+  }
+}
+
+function spawnRing(x, y, col) {
+  particles.push({ x, y, vx: 0, vy: 0, life: 24, maxLife: 24, color: col, size: 0, ring: true, ringR: 5 });
+}
+
+function spawnShatter(x, y, w) {
+  // Rectangular shatter fragments for fragile platforms
+  for (let i = 0; i < 14; i++) {
+    const fx = x + (Math.random() - 0.5) * w;
+    const fy = y + Math.random() * PLAT_H;
+    particles.push({
+      x: fx, y: fy,
+      vx: (Math.random() - 0.5) * 4,
+      vy: Math.random() * -3 - 1,
+      life: 28, maxLife: 28, color: COL_FRAGILE,
+      size: 2 + Math.random() * 3, ring: false, ringR: 0,
+      shard: true, rot: Math.random() * Math.PI * 2, rotV: (Math.random() - 0.5) * 0.3
+    });
+  }
+}
+
+function addSpeedLine() {
+  speedLines.push({
+    x: Math.random() * W,
+    y: camera - 20,
+    len: 12 + Math.random() * 25,
+    alpha: 0.08 + diff() * 0.12,
+    speed: 3 + Math.random() * 4
+  });
+}
+
+/* ══════════════ PLATFORM GENERATION ══════════════ */
+function platWidth() {
+  const d = diff();
+  return BASE_PLAT_W - (BASE_PLAT_W - MIN_PLAT_W) * d * 0.7 + sRand(-5, 5);
+}
+
+function choosePlatType() {
+  const d = diff();
+  const r = sRng();
+  if (r < 0.12 + d * 0.08) return PT_BOOST;
+  if (r < 0.30 + d * 0.15) return PT_FRAGILE;
+  return PT_SAFE;
+}
+
+function makePlat(y, forceLane, forceType) {
+  const lane = forceLane !== undefined ? forceLane : (sRng() < 0.5 ? 0 : 1);
+  const type = forceType !== undefined ? forceType : choosePlatType();
+  const w = clamp(platWidth(), MIN_PLAT_W, BASE_PLAT_W + 6);
+  return {
+    id: platId++,
+    lane: lane,
+    x: laneX(lane),
+    y: y,
+    w: w,
+    type: type,
+    landed: false,
+    broken: false,
+    breakTimer: 0,
+    pulse: 0,
+    alpha: 1
+  };
+}
+
+function generatePlats() {
+  while (nextPlatY > camera - H * 0.5) {
+    // Ensure some variety: don't put too many in same lane
+    const lastP = platforms.length > 0 ? platforms[platforms.length - 1] : null;
+    let lane;
+    if (lastP) {
+      // Higher chance to alternate lanes, but not always
+      lane = sRng() < 0.6 ? (1 - lastP.lane) : lastP.lane;
+    } else {
+      lane = 0;
+    }
+
+    const p = makePlat(nextPlatY, lane);
+    platforms.push(p);
+
+    // Gap varies by difficulty and whether last was boost
+    let gap = BASE_GAP + sRand(-8, 8);
+    if (lastP && lastP.type === PT_BOOST) gap += 30; // boost = farther next
+    gap += diff() * 15;
+    nextPlatY -= gap;
+  }
+}
+
+function despawnPlats() {
+  platforms = platforms.filter(p => p.y < camera + H + 100 && !p.broken);
+}
+
+/* ══════════════ INIT ══════════════ */
+function init() {
+  seedRng(Date.now() & 0x7fffffff);
+  score = 0; combo = 0; neonMeter = 0; overdriveTimer = 0;
+  deathReason = ''; shakeTimer = 0; shakeMag = 0; shakeX = 0; shakeY = 0;
+  bgHue = 200; frameCount = 0; gateCount = 0;
+  platforms = []; particles = []; speedLines = [];
+  platId = 0;
+
+  // Ball starts in left lane
+  ball = { x: laneX(0), y: 0, vy: 0, lane: 0, r: BALL_R, targetX: laneX(0) };
+
+  // Starting platform under ball
+  const startP = makePlat(ball.y + 55, 0, PT_SAFE);
+  startP.w = BASE_PLAT_W * 1.4;
+  startP.x = laneX(0);
+  platforms.push(startP);
+
+  nextPlatY = startP.y - BASE_GAP;
+  camera = ball.y - H * 0.35;
+  targetCamera = camera;
+
+  generatePlats();
+
+  // Initial bounce
+  ball.vy = BOUNCE_VEL;
+}
+
+/* ══════════════ FLIP LANE ══════════════ */
+function flipLane() {
+  if (state !== 'playing') return;
+  ball.lane = 1 - ball.lane;
+  ball.targetX = laneX(ball.lane);
+  // Small flip particles
+  const col = ball.lane === 0 ? '#08ccff' : '#ff88dd';
+  spawnBurst(ball.x, ball.y, col, 5, 2, 12);
+}
+
+/* ══════════════ INPUT ══════════════ */
+function handleInput(e) {
+  if (e && e.preventDefault) e.preventDefault();
+  if (state === 'start') {
+    state = 'playing';
+    init();
+    overlay.classList.add('hidden');
+    return;
+  }
+  if (state === 'gameover') {
+    state = 'playing';
+    init();
+    overlay.classList.add('hidden');
+    return;
+  }
+  if (state === 'playing') flipLane();
+}
+
+canvas.addEventListener('pointerdown', handleInput);
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); handleInput(null); }
+});
+
+/* ══════════════ GAME OVER ══════════════ */
+function triggerGameOver(reason) {
+  state = 'gameover';
+  deathReason = reason;
+  shakeMag = 9; shakeTimer = 22;
+  spawnBurst(ball.x, ball.y, '#ff3355', 28, 5.5, 35);
+  spawnBurst(ball.x, ball.y, '#ff8800', 12, 3.5, 25);
+  if (score > bestScore) { bestScore = score; saveBest(); }
+  setTimeout(showGameOver, 400);
+}
+
+function showGameOver() {
+  const isNew = score >= bestScore && score > 0;
+  overlay.classList.remove('hidden');
+  overlay.innerHTML =
+    '<div class="ov-title" style="color:#ff4466">GAME OVER</div>' +
+    '<div class="ov-score">' + score + '</div>' +
+    (isNew ? '<div class="ov-new">New Best!</div>' :
+             '<div class="ov-best">Best: ' + bestScore + '</div>') +
+    '<div class="ov-reason">' + deathReason + '</div>' +
+    '<div class="ov-tap">Tap to Retry</div>';
+}
+
+/* ══════════════ UPDATE ══════════════ */
+function update(dt) {
+  if (state !== 'playing') return;
+  frameCount++;
+
+  const inOverdrive = overdriveTimer > 0;
+  if (inOverdrive) overdriveTimer--;
+
+  // Ball X interpolation (snap to lane)
+  const dx = ball.targetX - ball.x;
+  ball.x += dx * 0.32 * dt;
+  if (Math.abs(dx) < 0.5) ball.x = ball.targetX;
+
+  // Gravity
+  ball.vy += GRAVITY * dt;
+  const prevY = ball.y;
+  ball.y += ball.vy * dt;
+
+  // Swept collision (ball moving down)
+  if (ball.vy > 0) {
+    for (const p of platforms) {
+      if (p.landed || p.broken) continue;
+      if (p.lane !== ball.lane) continue;
+
+      const ballBottom = ball.y + ball.r;
+      const prevBottom = prevY + ball.r;
+      const platTop = p.y;
+
+      // Swept: did ball bottom cross platform top this frame?
+      if (prevBottom <= platTop + 4 && ballBottom >= platTop) {
+        // Horizontal check: ball center within platform width (with small forgiveness)
+        const forgive = inOverdrive ? 8 : 3;
+        if (ball.x > p.x - p.w / 2 - forgive && ball.x < p.x + p.w / 2 + forgive) {
+          // LANDED!
+          ball.y = platTop - ball.r;
+
+          // Determine bounce velocity
+          const isBoost = p.type === PT_BOOST;
+          ball.vy = isBoost ? BOOST_VEL : BOUNCE_VEL;
+
+          p.landed = true;
+          p.pulse = 1;
+
+          // Perfect check
+          const distC = Math.abs(ball.x - p.x);
+          const perfect = distC < p.w * 0.18;
+
+          // Score
+          let pts = 1;
+          if (isBoost) pts += 2;
+          if (perfect) {
+            combo++;
+            pts += combo;
+            if (!inOverdrive) {
+              neonMeter = Math.min(neonMeter + 1, NEON_METER_MAX);
+              if (neonMeter >= NEON_METER_MAX) {
+                overdriveTimer = OVERDRIVE_DUR;
+                neonMeter = 0;
+                shakeMag = Math.max(shakeMag, 5);
+                shakeTimer = Math.max(shakeTimer, 14);
+                spawnBurst(ball.x, ball.y, '#ffffff', 22, 5, 30);
+                spawnRing(ball.x, ball.y, '#ffffff');
+              }
+            }
+          } else {
+            combo = 0;
+          }
+          if (inOverdrive) pts = Math.ceil(pts * 1.5);
+
+          score += pts;
+
+          // Gate check (every 10 landings)
+          const newGate = Math.floor(score / 10);
+          if (newGate > gateCount) {
+            gateCount = newGate;
+            // Palette shift + burst
+            bgHue = (bgHue + 40) % 360;
+            spawnBurst(W / 2, ball.y, `hsl(${bgHue},100%,70%)`, 20, 4, 28);
+            spawnRing(W / 2, ball.y, `hsl(${bgHue},100%,70%)`);
+            shakeMag = Math.max(shakeMag, 3);
+            shakeTimer = Math.max(shakeTimer, 8);
+          }
+
+          // Particles
+          const col = p.type === PT_SAFE ? COL_SAFE : p.type === PT_FRAGILE ? COL_FRAGILE : COL_BOOST;
+          if (perfect) {
+            spawnRing(ball.x, p.y, col);
+            spawnBurst(ball.x, p.y, col, 16, 4, 26);
+            spawnBurst(ball.x, p.y, '#ffffff', 6, 2.5, 18);
+            shakeMag = Math.max(shakeMag, 2.5);
+            shakeTimer = Math.max(shakeTimer, 7);
+          } else {
+            spawnBurst(ball.x, p.y, col, 8, 2.8, 20);
+          }
+
+          // Fragile: schedule break
+          if (p.type === PT_FRAGILE) {
+            p.breakTimer = 12;
+          }
+
+          if (score > bestScore) { bestScore = score; saveBest(); }
+          break;
+        }
+      }
+    }
+  }
+
+  // Update fragile break timers
+  for (const p of platforms) {
+    if (p.breakTimer > 0) {
+      p.breakTimer--;
+      if (p.breakTimer <= 0 && p.landed && p.type === PT_FRAGILE) {
+        p.broken = true;
+        spawnShatter(p.x, p.y, p.w);
+      }
+    }
+    if (p.pulse > 0) p.pulse -= 0.04 * dt;
+  }
+
+  // Camera follows ball upward (downward in world = upward visually)
+  targetCamera = ball.y - H * 0.35;
+  if (targetCamera < camera) {
+    camera += (targetCamera - camera) * 0.09 * dt;
+  }
+
+  generatePlats();
+  despawnPlats();
+
+  // Fall death: ball fell below visible area
+  if (ball.y > camera + H + 60) {
+    triggerGameOver('Fell into the void');
+    return;
+  }
+
+  // Speed lines (visual difficulty feedback)
+  if (diff() > 0.15 && frameCount % Math.max(2, 8 - Math.floor(diff() * 6)) === 0) {
+    addSpeedLine();
+  }
+
+  // Update speed lines
+  for (let i = speedLines.length - 1; i >= 0; i--) {
+    const sl = speedLines[i];
+    sl.y += sl.speed * dt;
+    if (sl.y > camera + H + 40) speedLines.splice(i, 1);
+  }
+
+  // Update particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy += 0.1 * dt;
+    p.life -= dt;
+    if (p.ring) p.ringR += 2 * dt;
+    if (p.shard) p.rot += p.rotV * dt;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+
+  // Shake decay
+  if (shakeTimer > 0) {
+    shakeTimer -= dt;
+    const intensity = shakeMag * clamp(shakeTimer / 12, 0, 1);
+    shakeX = (Math.random() - 0.5) * intensity * 2;
+    shakeY = (Math.random() - 0.5) * intensity * 2;
+  } else {
+    shakeX = 0; shakeY = 0; shakeMag = 0;
+  }
+
+  // Background hue gentle shift
+  bgHue += 0.04 * dt;
+  bgHue = bgHue % 360;
+}
+
+/* ══════════════ DRAW ══════════════ */
+function draw() {
+  ctx.save();
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  // Shake offset
+  ctx.translate(shakeX || 0, shakeY || 0);
+
+  // Background gradient
+  const bg1 = `hsl(${bgHue}, 15%, 4%)`;
+  const bg2 = `hsl(${(bgHue + 20) % 360}, 20%, 7%)`;
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, bg1);
+  grad.addColorStop(1, bg2);
+  ctx.fillStyle = grad;
+  ctx.fillRect(-20, -20, W + 40, H + 40);
+
+  if (state === 'start') { drawStartIdle(); ctx.restore(); return; }
+
+  const camY = -camera;
+
+  // Lane divider (subtle)
+  const centerX = W / 2;
+  ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 8]);
+  ctx.beginPath();
+  ctx.moveTo(centerX, 0);
+  ctx.lineTo(centerX, H);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Lane glow indicators (very subtle)
+  const lAlpha = 0.015 + diff() * 0.01;
+  ctx.fillStyle = `rgba(0, 230, 255, ${lAlpha})`;
+  ctx.fillRect(0, 0, W / 2, H);
+  ctx.fillStyle = `rgba(255, 100, 200, ${lAlpha})`;
+  ctx.fillRect(W / 2, 0, W / 2, H);
+
+  // Speed lines
+  ctx.lineWidth = 1;
+  for (const sl of speedLines) {
+    const sy = sl.y + camY;
+    if (sy < -40 || sy > H + 40) continue;
+    ctx.strokeStyle = `rgba(255,255,255,${sl.alpha})`;
+    ctx.beginPath();
+    ctx.moveTo(sl.x, sy);
+    ctx.lineTo(sl.x, sy + sl.len);
+    ctx.stroke();
+  }
+
+  // Overdrive background pulse
+  if (overdriveTimer > 0) {
+    const pulse = 0.03 + 0.02 * Math.sin(frameCount * 0.15);
+    ctx.fillStyle = `rgba(255, 255, 200, ${pulse})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // Platforms
+  for (const p of platforms) {
+    if (p.broken) continue;
+    const py = p.y + camY;
+    if (py < -30 || py > H + 30) continue;
+
+    let col, hue;
+    if (p.type === PT_SAFE) { col = COL_SAFE; hue = COL_SAFE_H; }
+    else if (p.type === PT_FRAGILE) { col = COL_FRAGILE; hue = COL_FRAG_H; }
+    else { col = COL_BOOST; hue = COL_BOOST_H; }
+
+    const alpha = p.landed ? 0.25 : 1;
+    ctx.globalAlpha = alpha;
+
+    const rx = p.x - p.w / 2;
+    const cr = PLAT_H / 2;
+
+    // Glow
+    ctx.shadowColor = col;
+    ctx.shadowBlur = p.pulse > 0 ? 14 + p.pulse * 10 : 8;
+
+    // Platform body (rounded rect)
+    ctx.beginPath();
+    ctx.moveTo(rx + cr, py);
+    ctx.lineTo(rx + p.w - cr, py);
+    ctx.arcTo(rx + p.w, py, rx + p.w, py + cr, cr);
+    ctx.arcTo(rx + p.w, py + PLAT_H, rx + p.w - cr, py + PLAT_H, cr);
+    ctx.lineTo(rx + cr, py + PLAT_H);
+    ctx.arcTo(rx, py + PLAT_H, rx, py + cr, cr);
+    ctx.arcTo(rx, py, rx + cr, py, cr);
+    ctx.closePath();
+    ctx.fillStyle = col;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Top highlight
+    ctx.fillStyle = `hsla(${hue}, 100%, 85%, ${0.4 * alpha})`;
+    ctx.fillRect(rx + cr, py, p.w - cr * 2, 2);
+
+    // Fragile cracks visual
+    if (p.type === PT_FRAGILE && !p.landed) {
+      ctx.strokeStyle = `hsla(${hue}, 80%, 60%, 0.3)`;
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.moveTo(p.x - 6, py + 2);
+      ctx.lineTo(p.x, py + PLAT_H - 2);
+      ctx.lineTo(p.x + 8, py + 3);
+      ctx.stroke();
+    }
+
+    // Boost arrows visual
+    if (p.type === PT_BOOST && !p.landed) {
+      ctx.fillStyle = `hsla(${hue}, 100%, 40%, 0.5)`;
+      const arrowY = py + PLAT_H / 2;
+      ctx.beginPath();
+      ctx.moveTo(p.x - 4, arrowY + 2);
+      ctx.lineTo(p.x, arrowY - 3);
+      ctx.lineTo(p.x + 4, arrowY + 2);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    ctx.globalAlpha = 1;
+  }
+
+  // Ball
+  if (ball) {
+    const bx = ball.x;
+    const by = ball.y + camY;
+
+    // Trail effect
+    const trailCol = overdriveTimer > 0 ? '#ffffff' : '#8888ff';
+    ctx.globalAlpha = 0.15;
+    ctx.fillStyle = trailCol;
+    ctx.beginPath();
+    ctx.arc(bx, by + 5, ball.r * 0.8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 0.07;
+    ctx.beginPath();
+    ctx.arc(bx, by + 11, ball.r * 0.6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // Ball glow
+    const ballCol = overdriveTimer > 0 ? '#ffffff' : '#aaccff';
+    ctx.shadowColor = ballCol;
+    ctx.shadowBlur = overdriveTimer > 0 ? 25 : 16;
+
+    // Ball body
+    ctx.fillStyle = ballCol;
+    ctx.beginPath();
+    ctx.arc(bx, by, ball.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Inner bright core
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.beginPath();
+    ctx.arc(bx, by, ball.r * 0.4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Lane indicator ring
+    const laneCol = ball.lane === 0 ? 'rgba(0,230,255,0.35)' : 'rgba(255,100,220,0.35)';
+    ctx.strokeStyle = laneCol;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(bx, by, ball.r + 5, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Overdrive outer ring pulse
+    if (overdriveTimer > 0) {
+      const oAlpha = 0.3 + 0.2 * Math.sin(frameCount * 0.2);
+      ctx.strokeStyle = `rgba(255,255,180,${oAlpha})`;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(bx, by, ball.r + 10, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+
+  // Particles
+  for (const p of particles) {
+    const alpha = clamp(p.life / p.maxLife, 0, 1);
+    ctx.globalAlpha = alpha;
+    const py = p.y + camY;
+
+    if (p.ring) {
+      ctx.strokeStyle = p.color;
+      ctx.lineWidth = 2.5 * alpha;
+      ctx.beginPath();
+      ctx.arc(p.x, py, p.ringR, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (p.shard) {
+      ctx.save();
+      ctx.translate(p.x, py);
+      ctx.rotate(p.rot);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.size, -p.size * 0.5, p.size * 2, p.size);
+      ctx.restore();
+    } else {
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, py, p.size * alpha, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.globalAlpha = 1;
+
+  // HUD
+  if (state === 'playing' || state === 'gameover') {
+    // Score
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 26px "Segoe UI",system-ui,sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(String(score), 16, 38);
+
+    // Combo
+    ctx.textAlign = 'right';
+    if (combo > 1) {
+      ctx.fillStyle = '#ffdd44';
+      ctx.font = 'bold 17px "Segoe UI",system-ui,sans-serif';
+      ctx.fillText('x' + combo, W - 14, 32);
+    }
+
+    // Neon Meter bar
+    const barW = 54, barH = 5;
+    const barX = W - 14 - barW;
+    const barY = combo > 1 ? 42 : 38;
+    ctx.fillStyle = 'rgba(255,255,255,0.1)';
+    ctx.fillRect(barX, barY, barW, barH);
+
+    const fill = overdriveTimer > 0 ? 1 : neonMeter / NEON_METER_MAX;
+    const meterCol = overdriveTimer > 0
+      ? `hsl(${(frameCount * 3) % 360}, 100%, 70%)`
+      : 'rgba(255,255,255,0.35)';
+    ctx.fillStyle = meterCol;
+    ctx.fillRect(barX, barY, barW * fill, barH);
+
+    if (overdriveTimer > 0) {
+      ctx.fillStyle = '#ffe866';
+      ctx.font = 'bold 9px "Segoe UI",system-ui,sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText('OVERDRIVE', W - 14, barY + 15);
+    }
+
+    ctx.textAlign = 'left';
+  }
+
+  ctx.restore();
+}
+
+/* ══════════════ START SCREEN IDLE ══════════════ */
+function drawStartIdle() {
+  // Just draw some decorative floating platforms
+  const t = frameCount * 0.02;
+  const cols = [COL_SAFE, COL_FRAGILE, COL_BOOST];
+  for (let i = 0; i < 6; i++) {
+    const px = W * 0.2 + (i % 2) * W * 0.6;
+    const py = H * 0.25 + i * 75 + Math.sin(t + i * 1.3) * 8;
+    const pw = 50 + Math.sin(t + i) * 10;
+    const col = cols[i % 3];
+    ctx.globalAlpha = 0.15;
+    ctx.shadowColor = col;
+    ctx.shadowBlur = 8;
+    ctx.fillStyle = col;
+    const cr = 5;
+    const rx = px - pw / 2;
+    ctx.beginPath();
+    ctx.moveTo(rx + cr, py);
+    ctx.lineTo(rx + pw - cr, py);
+    ctx.arcTo(rx + pw, py, rx + pw, py + cr, cr);
+    ctx.arcTo(rx + pw, py + 10, rx + pw - cr, py + 10, cr);
+    ctx.lineTo(rx + cr, py + 10);
+    ctx.arcTo(rx, py + 10, rx, py + cr, cr);
+    ctx.arcTo(rx, py, rx + cr, py, cr);
+    ctx.closePath();
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+  ctx.globalAlpha = 1;
+}
+
+/* ══════════════ GAME LOOP ══════════════ */
+let lastTime = 0;
+function loop(time) {
+  requestAnimationFrame(loop);
+  const rawDt = (time - lastTime) / 16.67;
+  const dt = clamp(rawDt || 1, 0.2, 3);
+  lastTime = time;
+
+  frameCount = (frameCount || 0) + 1;
+
+  // Update gameover particles/shake even when not playing
+  if (state === 'gameover') {
+    if (shakeTimer > 0) {
+      shakeTimer -= 1;
+      const intensity = shakeMag * clamp(shakeTimer / 12, 0, 1);
+      shakeX = (Math.random() - 0.5) * intensity * 2;
+      shakeY = (Math.random() - 0.5) * intensity * 2;
+    } else { shakeX = 0; shakeY = 0; shakeMag = 0; }
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx; p.y += p.vy; p.vy += 0.1; p.life -= 1;
+      if (p.ring) p.ringR += 2;
+      if (p.shard) p.rot += p.rotV;
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+  }
+
+  update(dt);
+  draw();
+}
+
+// Initialize idle state
+ball = null;
+camera = 0;
+platforms = [];
+particles = [];
+speedLines = [];
+shakeX = 0; shakeY = 0; shakeMag = 0; shakeTimer = 0;
+bgHue = 200; frameCount = 0;
+overdriveTimer = 0;
+
+overlay.classList.remove('hidden');
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

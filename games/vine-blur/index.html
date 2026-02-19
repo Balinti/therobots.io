@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Vine Blur - Free HTML5 Game</title>
+<meta name="description" content="Play Vine Blur - Tap to swing rapidly between vines, avoiding multiplying logs and spikes.">
+<meta name="theme-color" content="#0a1628">
+<link rel="canonical" href="https://balinti.github.io/vine-blur/">
+<!-- Open Graph -->
+<meta property="og:title" content="Vine Blur - Free HTML5 Game">
+<meta property="og:description" content="Tap to swing rapidly between vines, avoiding multiplying logs and spikes. A hyper-casual HTML5 game.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://balinti.github.io/vine-blur/">
+<meta property="og:image" content="https://balinti.github.io/vine-blur/og-image.png">
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Vine Blur - Free HTML5 Game">
+<meta name="twitter:description" content="Tap to swing rapidly between vines, avoiding multiplying logs and spikes.">
+<meta name="twitter:image" content="https://balinti.github.io/vine-blur/og-image.png">
+<!-- AdSense -->
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#0a1628;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;touch-action:none;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
+#wrap{position:relative;max-width:420px;max-height:750px;width:100%;height:100vh;margin:0 auto;overflow:hidden}
+canvas{display:block;width:100%;height:100%}
+#info-section{position:absolute;bottom:0;left:0;right:0;background:rgba(10,22,40,0.95);color:#8899bb;font-size:11px;line-height:1.5;z-index:10;max-height:0;overflow:hidden;transition:max-height 0.3s ease}
+#info-section.open{max-height:200px;overflow-y:auto}
+#info-toggle{position:absolute;bottom:4px;right:8px;background:none;border:none;color:#556688;font-size:18px;cursor:pointer;z-index:11;line-height:1;padding:4px}
+#info-inner{padding:10px 14px 24px}
+#info-inner h2{font-size:13px;color:#aabbdd;margin-bottom:4px}
+#info-inner p{margin-bottom:6px}
+#mute-btn{position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:#99aabb;font-size:16px;width:32px;height:32px;cursor:pointer;z-index:12;display:flex;align-items:center;justify-content:center;line-height:1}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <button id="mute-btn" aria-label="Toggle sound">&#x1f50a;</button>
+  <button id="info-toggle" aria-label="Game info">&#x2139;</button>
+  <div id="info-section">
+    <div id="info-inner">
+      <h2>How to Play Vine Blur</h2>
+      <p>Tap or press Space/Enter to blink between vines. You auto-orbit each vine you land on. Time your blinks to avoid gates and obstacles. Hit the perfect timing window for bonus points and combos!</p>
+      <p>Difficulty increases over time: faster scrolling, tighter windows, and tricky patterns. How far can you go?</p>
+      <p>&copy; 2026 Vine Blur. Built with HTML5 Canvas.</p>
+    </div>
+  </div>
+</div>
+<script>
+'use strict';
+(() => {
+// ── DOM ──
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const wrap = document.getElementById('wrap');
+const muteBtn = document.getElementById('mute-btn');
+const infoToggle = document.getElementById('info-toggle');
+const infoSection = document.getElementById('info-section');
+
+// ── Info toggle ──
+infoToggle.addEventListener('click', e => { e.stopPropagation(); infoSection.classList.toggle('open'); });
+
+// ── Audio ──
+let audioCtx = null;
+let muted = localStorage.getItem('vineblink_mute') === '1';
+muteBtn.textContent = muted ? '\u{1F507}' : '\u{1F50A}';
+muteBtn.addEventListener('click', e => {
+  e.stopPropagation();
+  muted = !muted;
+  localStorage.setItem('vineblink_mute', muted ? '1' : '0');
+  muteBtn.textContent = muted ? '\u{1F507}' : '\u{1F50A}';
+});
+
+function ensureAudio() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+function playTone(freq, dur, vol = 0.12, type = 'sine') {
+  if (muted) return;
+  try {
+    ensureAudio();
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = type;
+    o.frequency.value = freq;
+    g.gain.setValueAtTime(vol, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(); o.stop(audioCtx.currentTime + dur);
+  } catch(e) {}
+}
+function sfxBlink() { playTone(520, 0.08, 0.1, 'sine'); playTone(780, 0.06, 0.08, 'sine'); }
+function sfxPerfect() { playTone(880, 0.12, 0.15, 'sine'); playTone(1100, 0.1, 0.12, 'triangle'); }
+function sfxDeath() { playTone(180, 0.3, 0.18, 'sawtooth'); playTone(100, 0.5, 0.12, 'square'); }
+
+// ── Constants ──
+const ORBIT_RADIUS = 54;
+const OMEGA = 2.8; // rad/s
+const BASE_SCROLL = 120; // px/s
+const SCROLL_ACCEL = 2.8; // px/s per second
+const MAX_SCROLL = 340;
+const LANE_Y_TOP = 0.33;
+const LANE_Y_BOT = 0.67;
+const VINE_SPAWN_MIN = 160;
+const VINE_SPAWN_MAX = 240;
+const GATE_WIDTH = 28;
+const GATE_TELEGRAPH = 1.2; // seconds before reaching player x
+const BAR_LENGTH = 90;
+const BAR_TELEGRAPH = 1.5;
+const BAR_SPIN_SPEED = 3.5;
+const PERFECT_BASE_WINDOW = 0.38; // radians
+const PERFECT_MIN_WINDOW = 0.15;
+const PERFECT_SHRINK_RATE = 0.003; // per second
+const DEATH_FREEZE = 0.18;
+const PLAYER_RADIUS = 10;
+const VINE_RADIUS = 12;
+const FAKE_VINE_START = 45; // seconds
+
+// ── State ──
+let W, H, dpr;
+let state = 'start'; // start | playing | gameover
+let elapsed, score, bestScore, scrollSpeed, perfectWindow;
+let shakeTrauma, shakeDuration;
+let deathTimer, deathFade;
+let hue;
+let playerX, playerY, playerAngle, currentVine;
+let vines, gates, bars, particles, popTexts;
+let combo, lastPerfect;
+let inputReady;
+
+// ── HiDPI resize ──
+function resize() {
+  const r = wrap.getBoundingClientRect();
+  W = r.width; H = r.height;
+  dpr = window.devicePixelRatio || 1;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', () => setTimeout(resize, 100));
+resize();
+
+// ── Persistence ──
+bestScore = parseInt(localStorage.getItem('vineblink_highscore')) || 0;
+
+// ── Helpers ──
+function laneY(lane) { return lane === 0 ? H * LANE_Y_TOP : H * LANE_Y_BOT; }
+function rand(a, b) { return a + Math.random() * (b - a); }
+function clamp(v, mn, mx) { return v < mn ? mn : v > mx ? mx : v; }
+function dist(x1, y1, x2, y2) { return Math.hypot(x2 - x1, y2 - y1); }
+
+// ── Init game ──
+function initGame() {
+  elapsed = 0; score = 0; combo = 0; lastPerfect = false;
+  scrollSpeed = BASE_SCROLL;
+  perfectWindow = PERFECT_BASE_WINDOW;
+  shakeTrauma = 0; shakeDuration = 0;
+  deathTimer = 0; deathFade = 0;
+  hue = 160;
+  vines = []; gates = []; bars = []; particles = []; popTexts = [];
+  inputReady = false;
+
+  // Spawn initial vines
+  const startX = W * 0.3;
+  const firstVine = { x: startX, y: laneY(1), lane: 1, alive: true, alpha: 1, fake: false, id: 0 };
+  vines.push(firstVine);
+
+  // Seed upcoming vines
+  let nextX = startX;
+  for (let i = 1; i < 8; i++) {
+    nextX += rand(VINE_SPAWN_MIN, VINE_SPAWN_MAX);
+    const lane = Math.random() < 0.5 ? 0 : 1;
+    vines.push({ x: nextX, y: laneY(lane), lane, alive: true, alpha: 1, fake: false, id: i });
+  }
+
+  currentVine = firstVine;
+  playerAngle = -Math.PI / 2;
+  playerX = currentVine.x + Math.cos(playerAngle) * ORBIT_RADIUS;
+  playerY = currentVine.y + Math.sin(playerAngle) * ORBIT_RADIUS;
+
+  setTimeout(() => { inputReady = true; }, 200);
+}
+
+// ── Vine management ──
+let vineIdCounter = 100;
+function spawnVineIfNeeded() {
+  const last = vines[vines.length - 1];
+  if (!last || last.x < W + 300) {
+    const nx = (last ? last.x : W) + rand(VINE_SPAWN_MIN, VINE_SPAWN_MAX);
+    const lane = Math.random() < 0.5 ? 0 : 1;
+    const isFake = elapsed > FAKE_VINE_START && Math.random() < 0.15;
+    vines.push({ x: nx, y: laneY(lane), lane, alive: true, alpha: 1, fake: isFake, id: vineIdCounter++ });
+  }
+}
+
+// ── Obstacle management ──
+let gateIdCounter = 0;
+function trySpawnGate() {
+  if (elapsed < 4) return;
+  const baseInterval = 3.5 - clamp(elapsed * 0.02, 0, 1.8);
+  if (gates.length === 0 || (gates[gates.length - 1].x < W + 100 && Math.random() < 0.02)) {
+    const lane = Math.random() < 0.5 ? 0 : 1;
+    const gx = W + 80;
+    const gy = laneY(lane);
+    gates.push({ x: gx, y: gy, lane, w: GATE_WIDTH, h: 80, telegraph: GATE_TELEGRAPH, timer: 0, id: gateIdCounter++ });
+  }
+}
+
+let barIdCounter = 0;
+function trySpawnBar() {
+  if (elapsed < 20) return;
+  if (bars.length > 0) return;
+  if (Math.random() < 0.005) {
+    const bx = W + 60;
+    const by = H * 0.5;
+    bars.push({ x: bx, y: by, angle: 0, spinning: false, windUp: BAR_TELEGRAPH, timer: 0, len: BAR_LENGTH, id: barIdCounter++ });
+  }
+}
+
+// ── Find next vine ──
+function findNextVine() {
+  let best = null;
+  let bestDist = Infinity;
+  for (const v of vines) {
+    if (v === currentVine) continue;
+    if (!v.alive || v.fake) continue;
+    const dx = v.x - playerX;
+    if (dx < 30) continue; // must be ahead
+    const d = dist(playerX, playerY, v.x, v.y);
+    if (d < bestDist && d < 400) {
+      bestDist = d;
+      best = v;
+    }
+  }
+  return best;
+}
+
+// ── Blink action ──
+function doBlink() {
+  if (state !== 'playing' || deathTimer > 0) return;
+  const next = findNextVine();
+  if (!next) return;
+
+  // Check perfect timing
+  const normAngle = ((playerAngle % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+  const perfectCenter = Math.PI * 1.5; // top of orbit
+  const angleDiff = Math.abs(normAngle - perfectCenter);
+  const isPerfect = angleDiff < perfectWindow || (2 * Math.PI - angleDiff) < perfectWindow;
+
+  // Wither old vine
+  currentVine.alive = false;
+
+  // Spawn blink trail particles
+  const trailCount = 12;
+  for (let i = 0; i < trailCount; i++) {
+    const t = i / trailCount;
+    particles.push({
+      x: playerX + (next.x - playerX) * t + rand(-8, 8),
+      y: playerY + (next.y - playerY) * t + rand(-8, 8),
+      vx: rand(-20, 20), vy: rand(-20, 20),
+      life: 0.4, maxLife: 0.4,
+      r: rand(2, 5), hue: hue + rand(-20, 20), type: 'trail'
+    });
+  }
+
+  // Switch vine
+  currentVine = next;
+  // Compute entry angle from approach direction
+  const dx = playerX - next.x;
+  const dy = playerY - next.y;
+  playerAngle = Math.atan2(dy, dx);
+
+  sfxBlink();
+
+  if (isPerfect) {
+    combo++;
+    lastPerfect = true;
+    const bonus = 5 * combo;
+    score += 10 + bonus;
+    shakeTrauma = Math.min(shakeTrauma + 0.15, 0.4);
+    sfxPerfect();
+    // Perfect particles
+    for (let i = 0; i < 20; i++) {
+      const a = rand(0, Math.PI * 2);
+      const sp = rand(60, 180);
+      particles.push({
+        x: next.x, y: next.y,
+        vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+        life: 0.6, maxLife: 0.6,
+        r: rand(3, 7), hue: hue + 60 + rand(-20, 20), type: 'perfect'
+      });
+    }
+    popTexts.push({ x: next.x, y: next.y - 30, text: combo > 1 ? `PERFECT x${combo}` : 'PERFECT!', life: 0.9, maxLife: 0.9, size: 18 + Math.min(combo * 2, 12) });
+  } else {
+    combo = 0;
+    lastPerfect = false;
+    score += 10;
+    // Normal attach particles
+    for (let i = 0; i < 8; i++) {
+      const a = rand(0, Math.PI * 2);
+      particles.push({
+        x: next.x, y: next.y,
+        vx: Math.cos(a) * rand(30, 80), vy: Math.sin(a) * rand(30, 80),
+        life: 0.35, maxLife: 0.35,
+        r: rand(2, 4), hue: hue + rand(-10, 10), type: 'attach'
+      });
+    }
+  }
+}
+
+// ── Death ──
+function triggerDeath() {
+  if (state !== 'playing') return;
+  deathTimer = DEATH_FREEZE;
+  shakeTrauma = 1.0;
+  sfxDeath();
+  // Death burst
+  for (let i = 0; i < 35; i++) {
+    const a = rand(0, Math.PI * 2);
+    const sp = rand(50, 200);
+    particles.push({
+      x: playerX, y: playerY,
+      vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+      life: 0.8, maxLife: 0.8,
+      r: rand(3, 8), hue: 0, type: 'death'
+    });
+  }
+}
+
+function goGameOver() {
+  state = 'gameover';
+  if (score > bestScore) {
+    bestScore = score;
+    localStorage.setItem('vineblink_highscore', bestScore);
+  }
+}
+
+// ── Collision detection ──
+function checkCollisions() {
+  // Gate collision
+  for (const g of gates) {
+    const gLeft = g.x - g.w / 2;
+    const gRight = g.x + g.w / 2;
+    const gTop = g.y - g.h / 2;
+    const gBot = g.y + g.h / 2;
+    if (playerX + PLAYER_RADIUS > gLeft && playerX - PLAYER_RADIUS < gRight &&
+        playerY + PLAYER_RADIUS > gTop && playerY - PLAYER_RADIUS < gBot) {
+      triggerDeath();
+      return;
+    }
+  }
+  // Bar collision
+  for (const b of bars) {
+    if (!b.spinning) continue;
+    // Line segment collision
+    const cx = b.x, cy = b.y;
+    const ex = cx + Math.cos(b.angle) * b.len / 2;
+    const ey = cy + Math.sin(b.angle) * b.len / 2;
+    const sx = cx - Math.cos(b.angle) * b.len / 2;
+    const sy = cy - Math.sin(b.angle) * b.len / 2;
+    // Point to segment distance
+    const dx = ex - sx, dy = ey - sy;
+    const len2 = dx * dx + dy * dy;
+    let t = ((playerX - sx) * dx + (playerY - sy) * dy) / len2;
+    t = clamp(t, 0, 1);
+    const closestX = sx + t * dx;
+    const closestY = sy + t * dy;
+    if (dist(playerX, playerY, closestX, closestY) < PLAYER_RADIUS + 6) {
+      triggerDeath();
+      return;
+    }
+  }
+  // Fake vine collision (landing on one)
+  // Handled in blink - fakes are filtered out
+  // Off-screen check
+  if (currentVine && currentVine.x < -ORBIT_RADIUS * 2) {
+    triggerDeath();
+  }
+}
+
+// ── Update ──
+function update(dt) {
+  if (state !== 'playing') return;
+
+  // Death freeze
+  if (deathTimer > 0) {
+    deathTimer -= dt;
+    if (deathTimer <= 0) {
+      deathFade = 0;
+      goGameOver();
+    }
+    // Still update particles during freeze
+    updateParticles(dt);
+    updatePopTexts(dt);
+    return;
+  }
+
+  elapsed += dt;
+  hue = (160 + elapsed * 8) % 360;
+
+  // Scroll speed
+  scrollSpeed = Math.min(BASE_SCROLL + SCROLL_ACCEL * elapsed, MAX_SCROLL);
+  perfectWindow = Math.max(PERFECT_BASE_WINDOW - PERFECT_SHRINK_RATE * elapsed, PERFECT_MIN_WINDOW);
+
+  // Scroll everything left
+  const scrollDx = scrollSpeed * dt;
+  for (const v of vines) v.x -= scrollDx;
+  for (const g of gates) g.x -= scrollDx;
+  for (const b of bars) b.x -= scrollDx;
+
+  // Wither dead vines
+  for (const v of vines) {
+    if (!v.alive) v.alpha = Math.max(0, v.alpha - dt * 2.5);
+  }
+
+  // Orbit
+  playerAngle += OMEGA * dt;
+  if (currentVine) {
+    playerX = currentVine.x + Math.cos(playerAngle) * ORBIT_RADIUS;
+    playerY = currentVine.y + Math.sin(playerAngle) * ORBIT_RADIUS;
+  }
+
+  // Cleanup offscreen
+  vines = vines.filter(v => v.x > -100 || v === currentVine);
+  gates = gates.filter(g => g.x > -60);
+  bars = bars.filter(b => b.x > -100);
+
+  // Spawn
+  spawnVineIfNeeded();
+  spawnVineIfNeeded(); // ensure buffer
+  trySpawnGate();
+  trySpawnBar();
+
+  // Update gates
+  for (const g of gates) {
+    g.timer += dt;
+  }
+
+  // Update bars
+  for (const b of bars) {
+    b.timer += dt;
+    if (b.timer > b.windUp && !b.spinning) b.spinning = true;
+    if (b.spinning) b.angle += BAR_SPIN_SPEED * dt;
+  }
+
+  // Collision
+  checkCollisions();
+
+  // Shake decay
+  shakeTrauma = Math.max(0, shakeTrauma - dt * 2.5);
+
+  // Particles
+  updateParticles(dt);
+  updatePopTexts(dt);
+
+  // Score from survival
+  score = Math.max(score, Math.floor(elapsed * 2) + (score - Math.floor(elapsed * 2) > 0 ? score - Math.floor(elapsed * 2) : 0));
+}
+
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy += 80 * dt; // gravity
+    p.life -= dt;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+  // Cap particles
+  if (particles.length > 200) particles.splice(0, particles.length - 200);
+}
+
+function updatePopTexts(dt) {
+  for (let i = popTexts.length - 1; i >= 0; i--) {
+    const p = popTexts[i];
+    p.y -= 40 * dt;
+    p.life -= dt;
+    if (p.life <= 0) popTexts.splice(i, 1);
+  }
+}
+
+// ── Drawing ──
+function getShakeOffset() {
+  const intensity = shakeTrauma * shakeTrauma * 8;
+  return {
+    x: (Math.random() - 0.5) * 2 * intensity,
+    y: (Math.random() - 0.5) * 2 * intensity
+  };
+}
+
+function drawBackground() {
+  const h1 = (hue + 200) % 360;
+  const h2 = (hue + 240) % 360;
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, `hsl(${h1}, 35%, 8%)`);
+  grad.addColorStop(0.5, `hsl(${(h1 + h2) / 2}, 30%, 6%)`);
+  grad.addColorStop(1, `hsl(${h2}, 40%, 10%)`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Lane hints
+  ctx.strokeStyle = `hsla(${hue}, 30%, 25%, 0.15)`;
+  ctx.lineWidth = 1;
+  ctx.setLineDash([8, 12]);
+  ctx.beginPath();
+  ctx.moveTo(0, laneY(0)); ctx.lineTo(W, laneY(0));
+  ctx.moveTo(0, laneY(1)); ctx.lineTo(W, laneY(1));
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function drawVine(v) {
+  const alpha = v.alpha;
+  if (alpha <= 0) return;
+
+  // Rope from top
+  ctx.strokeStyle = `hsla(${v.fake ? 30 : 100 + hue * 0.1}, ${v.fake ? 20 : 50}%, ${v.fake ? 25 : 35}%, ${alpha * 0.6})`;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(v.x, 0);
+  ctx.quadraticCurveTo(v.x + 10, v.y * 0.4, v.x, v.y);
+  ctx.stroke();
+
+  // Vine node
+  const glowR = VINE_RADIUS + (v === currentVine ? 4 + Math.sin(elapsed * 4) * 2 : 0);
+  if (v.fake) {
+    // Dull brownish
+    ctx.fillStyle = `hsla(30, 20%, 22%, ${alpha * 0.7})`;
+    ctx.strokeStyle = `hsla(30, 15%, 35%, ${alpha * 0.5})`;
+  } else {
+    ctx.fillStyle = `hsla(${120 + hue * 0.2}, 55%, 30%, ${alpha})`;
+    ctx.strokeStyle = `hsla(${120 + hue * 0.2}, 60%, 50%, ${alpha})`;
+  }
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.arc(v.x, v.y, glowR, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // Inner highlight
+  if (!v.fake && v.alive) {
+    ctx.fillStyle = `hsla(${130 + hue * 0.2}, 70%, 55%, ${alpha * 0.35})`;
+    ctx.beginPath();
+    ctx.arc(v.x - 3, v.y - 3, glowR * 0.45, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Orbit ring for current vine
+  if (v === currentVine && v.alive) {
+    ctx.strokeStyle = `hsla(${hue}, 50%, 50%, 0.15)`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(v.x, v.y, ORBIT_RADIUS, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Perfect zone indicator
+    const pAngle = Math.PI * 1.5;
+    ctx.strokeStyle = `hsla(60, 80%, 60%, 0.3)`;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(v.x, v.y, ORBIT_RADIUS, pAngle - perfectWindow, pAngle + perfectWindow);
+    ctx.stroke();
+  }
+}
+
+function drawGate(g) {
+  const progress = clamp(g.timer / GATE_TELEGRAPH, 0, 1);
+  // Telegraph pulse
+  const pulse = Math.sin(g.timer * 8) * 0.3 + 0.7;
+  const dangerAlpha = progress * 0.8;
+
+  // Warning outline
+  if (progress < 1) {
+    ctx.strokeStyle = `hsla(0, 80%, 55%, ${dangerAlpha * pulse * 0.5})`;
+    ctx.lineWidth = 2 + (1 - progress) * 4;
+    ctx.strokeRect(g.x - g.w / 2 - 4, g.y - g.h / 2 - 4, g.w + 8, g.h + 8);
+  }
+
+  // Gate body
+  ctx.fillStyle = `hsla(0, 70%, 45%, ${0.3 + progress * 0.6})`;
+  ctx.strokeStyle = `hsla(0, 80%, 60%, ${0.5 + progress * 0.4})`;
+  ctx.lineWidth = 2;
+  ctx.fillRect(g.x - g.w / 2, g.y - g.h / 2, g.w, g.h);
+  ctx.strokeRect(g.x - g.w / 2, g.y - g.h / 2, g.w, g.h);
+
+  // Spikes on gate
+  const spikeCount = 4;
+  ctx.fillStyle = `hsla(0, 75%, 55%, ${0.5 + progress * 0.5})`;
+  for (let i = 0; i < spikeCount; i++) {
+    const sy = g.y - g.h / 2 + (g.h / (spikeCount)) * (i + 0.5);
+    ctx.beginPath();
+    ctx.moveTo(g.x - g.w / 2 - 8, sy);
+    ctx.lineTo(g.x - g.w / 2, sy - 5);
+    ctx.lineTo(g.x - g.w / 2, sy + 5);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(g.x + g.w / 2 + 8, sy);
+    ctx.lineTo(g.x + g.w / 2, sy - 5);
+    ctx.lineTo(g.x + g.w / 2, sy + 5);
+    ctx.fill();
+  }
+}
+
+function drawBar(b) {
+  const windUpProgress = clamp(b.timer / b.windUp, 0, 1);
+
+  // Wind-up ring
+  if (!b.spinning) {
+    ctx.strokeStyle = `hsla(40, 80%, 55%, ${windUpProgress * 0.7})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, 20 + windUpProgress * 15, 0, Math.PI * 2 * windUpProgress);
+    ctx.stroke();
+  }
+
+  // Bar
+  const barAlpha = b.spinning ? 0.9 : windUpProgress * 0.5;
+  ctx.strokeStyle = `hsla(${b.spinning ? 0 : 40}, 70%, 50%, ${barAlpha})`;
+  ctx.lineWidth = 8;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  const angle = b.spinning ? b.angle : 0;
+  ctx.moveTo(b.x - Math.cos(angle) * b.len / 2, b.y - Math.sin(angle) * b.len / 2);
+  ctx.lineTo(b.x + Math.cos(angle) * b.len / 2, b.y + Math.sin(angle) * b.len / 2);
+  ctx.stroke();
+  ctx.lineCap = 'butt';
+
+  // Center dot
+  ctx.fillStyle = `hsla(${b.spinning ? 0 : 40}, 60%, 40%, ${barAlpha})`;
+  ctx.beginPath();
+  ctx.arc(b.x, b.y, 5, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawPlayer() {
+  // Trail/blur during motion
+  ctx.fillStyle = `hsla(${hue + 60}, 80%, 65%, 0.15)`;
+  const trailAngle = playerAngle - OMEGA * 0.06;
+  const tx = currentVine.x + Math.cos(trailAngle) * ORBIT_RADIUS;
+  const ty = currentVine.y + Math.sin(trailAngle) * ORBIT_RADIUS;
+  ctx.beginPath();
+  ctx.arc(tx, ty, PLAYER_RADIUS + 3, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Glow
+  const grd = ctx.createRadialGradient(playerX, playerY, 0, playerX, playerY, PLAYER_RADIUS * 2.5);
+  grd.addColorStop(0, `hsla(${hue + 60}, 90%, 70%, 0.25)`);
+  grd.addColorStop(1, `hsla(${hue + 60}, 90%, 70%, 0)`);
+  ctx.fillStyle = grd;
+  ctx.beginPath();
+  ctx.arc(playerX, playerY, PLAYER_RADIUS * 2.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Body
+  ctx.fillStyle = `hsl(${hue + 60}, 85%, 65%)`;
+  ctx.strokeStyle = `hsl(${hue + 60}, 90%, 80%)`;
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.arc(playerX, playerY, PLAYER_RADIUS, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // Inner shine
+  ctx.fillStyle = `hsla(${hue + 60}, 100%, 90%, 0.4)`;
+  ctx.beginPath();
+  ctx.arc(playerX - 3, playerY - 3, PLAYER_RADIUS * 0.4, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    const a = clamp(p.life / p.maxLife, 0, 1);
+    if (p.type === 'death') {
+      ctx.fillStyle = `hsla(0, 80%, 55%, ${a})`;
+    } else if (p.type === 'perfect') {
+      ctx.fillStyle = `hsla(${p.hue}, 90%, 70%, ${a})`;
+    } else {
+      ctx.fillStyle = `hsla(${p.hue}, 70%, 60%, ${a * 0.8})`;
+    }
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r * a, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawPopTexts() {
+  for (const p of popTexts) {
+    const a = clamp(p.life / p.maxLife, 0, 1);
+    const scale = 0.7 + a * 0.3;
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.scale(scale, scale);
+    ctx.font = `bold ${p.size}px 'Segoe UI', sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = `hsla(50, 100%, 70%, ${a})`;
+    ctx.strokeStyle = `hsla(50, 100%, 30%, ${a * 0.6})`;
+    ctx.lineWidth = 3;
+    ctx.strokeText(p.text, 0, 0);
+    ctx.fillText(p.text, 0, 0);
+    ctx.restore();
+  }
+}
+
+function drawUI() {
+  // Score
+  ctx.font = 'bold 22px "Segoe UI", sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  ctx.fillText(`${Math.floor(score)}`, 16, 36);
+
+  // Best (small)
+  ctx.font = '12px "Segoe UI", sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  ctx.fillText(`BEST ${bestScore}`, 16, 54);
+
+  // Combo
+  if (combo > 1) {
+    ctx.font = 'bold 14px "Segoe UI", sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillStyle = `hsla(50, 90%, 65%, 0.9)`;
+    ctx.fillText(`${combo}x combo`, W - 16, 36);
+  }
+}
+
+function drawStartScreen() {
+  drawBackground();
+
+  // Title
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 42px "Segoe UI", sans-serif';
+  const tGrad = ctx.createLinearGradient(W / 2 - 100, H * 0.32, W / 2 + 100, H * 0.32);
+  tGrad.addColorStop(0, `hsl(140, 70%, 60%)`);
+  tGrad.addColorStop(1, `hsl(200, 80%, 65%)`);
+  ctx.fillStyle = tGrad;
+  ctx.fillText('VINE BLUR', W / 2, H * 0.34);
+
+  // Subtitle
+  ctx.font = '14px "Segoe UI", sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.45)';
+  ctx.fillText('Swing between vines, avoid obstacles', W / 2, H * 0.40);
+
+  // Tap prompt
+  const pulseA = 0.4 + Math.sin(Date.now() * 0.004) * 0.3;
+  ctx.font = '18px "Segoe UI", sans-serif';
+  ctx.fillStyle = `rgba(255,255,255,${pulseA})`;
+  ctx.fillText('Tap to Start', W / 2, H * 0.56);
+
+  // Best score
+  if (bestScore > 0) {
+    ctx.font = '13px "Segoe UI", sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.fillText(`Best: ${bestScore}`, W / 2, H * 0.64);
+  }
+
+  // Controls hint
+  ctx.font = '11px "Segoe UI", sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.2)';
+  ctx.fillText('Space / Enter / Tap', W / 2, H * 0.72);
+
+  // Animated vine preview
+  const previewT = Date.now() * 0.001;
+  const pvx = W * 0.5, pvy = H * 0.85;
+  ctx.strokeStyle = `hsla(130, 50%, 35%, 0.4)`;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(pvx, H * 0.75);
+  ctx.quadraticCurveTo(pvx + 8, pvy * 0.9, pvx, pvy);
+  ctx.stroke();
+  ctx.fillStyle = `hsla(130, 55%, 35%, 0.6)`;
+  ctx.strokeStyle = `hsla(130, 60%, 50%, 0.6)`;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(pvx, pvy, 10, 0, Math.PI * 2);
+  ctx.fill(); ctx.stroke();
+  // Orbiting dot
+  const oa = previewT * OMEGA;
+  const odx = pvx + Math.cos(oa) * 30;
+  const ody = pvy + Math.sin(oa) * 30;
+  ctx.fillStyle = `hsl(200, 85%, 65%)`;
+  ctx.beginPath();
+  ctx.arc(odx, ody, 6, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawGameOverScreen() {
+  // Overlay
+  deathFade = Math.min((deathFade || 0) + 0.03, 0.7);
+  ctx.fillStyle = `rgba(5, 10, 20, ${deathFade})`;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.textAlign = 'center';
+
+  // Game Over
+  ctx.font = 'bold 34px "Segoe UI", sans-serif';
+  ctx.fillStyle = `hsla(0, 70%, 60%, 0.9)`;
+  ctx.fillText('GAME OVER', W / 2, H * 0.32);
+
+  // Score
+  ctx.font = 'bold 48px "Segoe UI", sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.fillText(Math.floor(score), W / 2, H * 0.44);
+
+  ctx.font = '13px "Segoe UI", sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  ctx.fillText('SCORE', W / 2, H * 0.48);
+
+  // Best
+  ctx.font = 'bold 24px "Segoe UI", sans-serif';
+  ctx.fillStyle = `hsla(50, 80%, 60%, ${score >= bestScore ? 0.95 : 0.6})`;
+  ctx.fillText(bestScore, W / 2, H * 0.57);
+
+  ctx.font = '13px "Segoe UI", sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.fillText(score >= bestScore ? 'NEW BEST!' : 'BEST', W / 2, H * 0.61);
+
+  // Retry
+  const pulseA = 0.35 + Math.sin(Date.now() * 0.004) * 0.3;
+  ctx.font = '18px "Segoe UI", sans-serif';
+  ctx.fillStyle = `rgba(255,255,255,${pulseA})`;
+  ctx.fillText('Tap to Retry', W / 2, H * 0.74);
+}
+
+// ── Main draw ──
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+
+  if (state === 'start') {
+    drawStartScreen();
+    return;
+  }
+
+  // Apply shake
+  const shake = getShakeOffset();
+  ctx.save();
+  ctx.translate(shake.x, shake.y);
+
+  drawBackground();
+
+  // Draw vines
+  for (const v of vines) drawVine(v);
+
+  // Draw gates
+  for (const g of gates) drawGate(g);
+
+  // Draw bars
+  for (const b of bars) drawBar(b);
+
+  // Draw player
+  if (currentVine) drawPlayer();
+
+  // Draw particles
+  drawParticles();
+  drawPopTexts();
+
+  // UI
+  drawUI();
+
+  ctx.restore();
+
+  if (state === 'gameover') {
+    drawGameOverScreen();
+  }
+}
+
+// ── Game loop ──
+let lastTime = 0;
+function loop(time) {
+  requestAnimationFrame(loop);
+  let dt = (time - lastTime) / 1000;
+  lastTime = time;
+  dt = Math.min(dt, 1 / 20); // clamp
+  if (dt <= 0) return;
+
+  if (state === 'gameover') {
+    // Just update fade particles
+    updateParticles(dt);
+    shakeTrauma = Math.max(0, shakeTrauma - dt * 2.5);
+  }
+
+  update(dt);
+  draw();
+}
+
+// ── Input ──
+function handleInput() {
+  if (state === 'start') {
+    state = 'playing';
+    initGame();
+  } else if (state === 'playing') {
+    if (inputReady) doBlink();
+  } else if (state === 'gameover') {
+    state = 'playing';
+    initGame();
+  }
+}
+
+canvas.addEventListener('pointerdown', e => { e.preventDefault(); handleInput(); });
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    handleInput();
+  }
+});
+
+// ── Start ──
+hue = 160;
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

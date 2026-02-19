@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Lava Sprint - Free HTML5 Game</title>
+<meta name="description" content="Play Lava Sprint - Dodge multiplying volcanic rocks in an endless blazing lava run.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#1a0a00">
+
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="Lava Sprint - Free HTML5 Game">
+<meta property="og:description" content="Play Lava Sprint - Dodge multiplying volcanic rocks in an endless blazing lava run.">
+<meta property="og:url" content="https://balinti.github.io/lava-sprint/">
+<meta property="og:image" content="https://balinti.github.io/lava-sprint/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Lava Sprint - Free HTML5 Game">
+<meta name="twitter:description" content="Play Lava Sprint - Dodge multiplying volcanic rocks in an endless blazing lava run.">
+<meta name="twitter:image" content="https://balinti.github.io/lava-sprint/og-image.png">
+
+<!-- JSON-LD VideoGame Schema -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "VideoGame",
+  "name": "Lava Sprint",
+  "description": "Dodge multiplying volcanic rocks in an endless blazing lava run. A free hyper-casual HTML5 browser game.",
+  "url": "https://balinti.github.io/lava-sprint/",
+  "genre": "Casual",
+  "gamePlatform": "Web Browser",
+  "applicationCategory": "Game",
+  "operatingSystem": "Any",
+  "playMode": "SinglePlayer",
+  "numberOfPlayers": { "@type": "QuantitativeValue", "value": 1 }
+}
+</script>
+
+<!-- AdSense -->
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+html,body{
+  width:100%;height:100%;overflow:hidden;
+  background:#0a0200;
+  font-family:'Segoe UI',system-ui,sans-serif;
+  touch-action:manipulation;
+  -webkit-tap-highlight-color:transparent;
+  user-select:none;-webkit-user-select:none;
+}
+body{
+  display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(180deg,#1a0800 0%,#0d0300 50%,#000 100%);
+}
+#shell{
+  position:relative;
+  width:100%;max-width:420px;
+  height:100vh;max-height:750px;
+  overflow:hidden;
+  border-radius:8px;
+  box-shadow:0 0 40px rgba(255,80,0,.25);
+}
+canvas{
+  display:block;width:100%;height:100%;
+  touch-action:manipulation;
+}
+</style>
+</head>
+<body>
+<div id="shell">
+  <canvas id="gc"></canvas>
+</div>
+
+<script>
+"use strict";
+// ── Lava Sprint ─────────────────────────────────────────────────
+
+// ── Canvas & scaling ────────────────────────────────────────────
+const BASE_W = 420, BASE_H = 750;
+const shell = document.getElementById("shell");
+const cv = document.getElementById("gc");
+const cx = cv.getContext("2d");
+
+let W, H, scale, dpr;
+
+function resize() {
+  const r = shell.getBoundingClientRect();
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = r.width; H = r.height;
+  cv.width  = W * dpr;
+  cv.height = H * dpr;
+  scale = Math.min(W / BASE_W, H / BASE_H);
+  cx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
+}
+window.addEventListener("resize", resize);
+resize();
+
+// ── Constants ───────────────────────────────────────────────────
+const LANE_COUNT  = 3;
+const LANE_W      = 100;
+const LANE_GAP    = 10;
+const BRIDGE_W    = LANE_COUNT * LANE_W + (LANE_COUNT - 1) * LANE_GAP;
+const BRIDGE_X    = (BASE_W - BRIDGE_W) / 2;
+const PLAYER_Y    = BASE_H - 180;
+const PLAYER_R    = 22;
+
+// ── State ───────────────────────────────────────────────────────
+const STATE = { START: 0, PLAY: 1, OVER: 2 };
+let state = STATE.START;
+
+let lane = 1;           // current player lane (0,1,2)
+let dist = 0;           // distance score
+let combo = 0;          // combo meter (0..maxCombo)
+let mult = 1;           // multiplier from combo
+let bestScore = +localStorage.getItem("ls_best") || 0;
+let score = 0;
+let elapsed = 0;        // seconds survived
+let speed = 1;          // difficulty multiplier
+
+let shakeX = 0, shakeY = 0, shakeMag = 0;
+let particles = [];
+let floatingTexts = [];
+let hazards = [];
+let heatlineLane = 1;
+let heatlineTimer = 0;
+let nearMissCooldown = 0;
+let prevLane = 1;
+let prevLaneTime = 0;
+
+// timing
+let lastTime = 0;
+
+// ── Helpers ─────────────────────────────────────────────────────
+const rand  = (a, b) => a + Math.random() * (b - a);
+const irand = (a, b) => Math.floor(rand(a, b + 1));
+const lerp  = (a, b, t) => a + (b - a) * t;
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+function laneX(l) {
+  return BRIDGE_X + l * (LANE_W + LANE_GAP) + LANE_W / 2;
+}
+
+// ── Input ───────────────────────────────────────────────────────
+function handleTap() {
+  if (state === STATE.START) { startGame(); return; }
+  if (state === STATE.OVER)  { startGame(); return; }
+  cycleLane();
+}
+
+function cycleLane() {
+  prevLane = lane;
+  prevLaneTime = elapsed;
+  lane = (lane + 1) % LANE_COUNT;
+}
+
+shell.addEventListener("pointerdown", e => { e.preventDefault(); handleTap(); });
+document.addEventListener("keydown", e => {
+  if (e.code === "Space" || e.code === "Enter") { e.preventDefault(); handleTap(); }
+});
+
+// ── Game init ───────────────────────────────────────────────────
+function startGame() {
+  state = STATE.PLAY;
+  lane = 1; dist = 0; combo = 0; mult = 1; score = 0;
+  elapsed = 0; speed = 1;
+  shakeMag = 0; shakeX = 0; shakeY = 0;
+  particles = []; floatingTexts = []; hazards = [];
+  heatlineLane = 1; heatlineTimer = 0;
+  nearMissCooldown = 0; prevLane = 1; prevLaneTime = 0;
+  lastTime = performance.now();
+}
+
+function gameOver() {
+  state = STATE.OVER;
+  score = Math.floor(dist + combo * 10);
+  if (score > bestScore) { bestScore = score; localStorage.setItem("ls_best", bestScore); }
+  addShake(18);
+  // big burst
+  for (let i = 0; i < 40; i++) {
+    spawnParticle(laneX(lane), PLAYER_Y, rand(0, 360), rand(1, 5), rand(.4, 1.2), `hsl(${irand(0,40)},100%,60%)`);
+  }
+}
+
+// ── Hazard system ───────────────────────────────────────────────
+let spawnTimer = 0;
+
+function spawnHazard() {
+  // pick 1 or 2 lanes (never all 3)
+  const count = Math.random() < 0.3 + elapsed * 0.002 ? 2 : 1;
+  const lanes = [];
+  while (lanes.length < count) {
+    const l = irand(0, 2);
+    if (!lanes.includes(l)) lanes.push(l);
+  }
+  // telegraph time scales down with difficulty, floor at 0.6s
+  const telegraph = Math.max(0.6, 1.8 - elapsed * 0.008);
+  // eruption duration
+  const eruptDur = 0.45;
+  lanes.forEach(l => {
+    hazards.push({ lane: l, phase: "warn", timer: telegraph, telegraph, eruptDur, eruptTimer: 0, ringSize: 0 });
+  });
+}
+
+function updateHazards(dt) {
+  // spawn interval decreases with time, floor at 0.5s
+  const interval = Math.max(0.5, 1.6 - elapsed * 0.006);
+  spawnTimer -= dt;
+  if (spawnTimer <= 0) { spawnTimer = interval; spawnHazard(); }
+
+  for (let i = hazards.length - 1; i >= 0; i--) {
+    const h = hazards[i];
+    if (h.phase === "warn") {
+      h.timer -= dt;
+      h.ringSize = 1 - h.timer / h.telegraph;
+      if (h.timer <= 0) {
+        h.phase = "erupt";
+        h.eruptTimer = h.eruptDur;
+        addShake(5);
+        // eruption particles
+        const hx = laneX(h.lane);
+        for (let j = 0; j < 12; j++) {
+          spawnParticle(hx, PLAYER_Y, rand(0, 360), rand(1, 4), rand(.3, .8), `hsl(${irand(10,50)},100%,55%)`);
+        }
+        // check near-miss for previous lane
+        checkNearMiss(h.lane);
+      }
+    } else if (h.phase === "erupt") {
+      h.eruptTimer -= dt;
+      // collision check
+      if (h.lane === lane) { gameOver(); return; }
+      if (h.eruptTimer <= 0) { hazards.splice(i, 1); }
+    }
+  }
+}
+
+// ── Near-miss ───────────────────────────────────────────────────
+function checkNearMiss(eruptLane) {
+  if (nearMissCooldown > 0) return;
+  // player just left that lane within 0.4s
+  if (prevLane === eruptLane && (elapsed - prevLaneTime) < 0.4) {
+    nearMissCooldown = 0.5;
+    dist += 25 * mult;
+    addShake(7);
+    spawnFloatingText(laneX(lane), PLAYER_Y - 50, `NEAR MISS +${25 * mult}`, "#ffee55");
+    for (let j = 0; j < 8; j++) {
+      spawnParticle(laneX(lane), PLAYER_Y, rand(0, 360), rand(1, 3), rand(.3, .6), "#ffee55");
+    }
+  }
+}
+
+// ── Heatline ────────────────────────────────────────────────────
+function updateHeatline(dt) {
+  heatlineTimer -= dt;
+  if (heatlineTimer <= 0) {
+    heatlineTimer = rand(2, 4);
+    let next;
+    do { next = irand(0, 2); } while (next === heatlineLane);
+    heatlineLane = next;
+  }
+  // combo
+  if (lane === heatlineLane) {
+    combo = Math.min(combo + dt * 2.5, 8);
+  } else {
+    combo = Math.max(combo - dt * 4, 0);
+  }
+  mult = 1 + Math.floor(combo);
+}
+
+// ── Particles ───────────────────────────────────────────────────
+function spawnParticle(x, y, angle, spd, life, color) {
+  const rad = angle * Math.PI / 180;
+  particles.push({ x, y, vx: Math.cos(rad) * spd * 60, vy: Math.sin(rad) * spd * 60, life, maxLife: life, color, size: rand(2, 5) });
+}
+
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx * dt; p.y += p.vy * dt;
+    p.vy += 80 * dt; // gravity
+    p.life -= dt;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+// ambient embers
+let emberTimer = 0;
+function spawnEmbers(dt) {
+  emberTimer -= dt;
+  if (emberTimer <= 0) {
+    emberTimer = rand(0.03, 0.1);
+    particles.push({
+      x: rand(0, BASE_W), y: BASE_H + 10,
+      vx: rand(-15, 15), vy: rand(-80, -180),
+      life: rand(1, 3), maxLife: 3,
+      color: `hsl(${irand(10, 40)}, 100%, ${irand(50, 70)}%)`,
+      size: rand(1.5, 3.5)
+    });
+  }
+}
+
+// ── Floating text ───────────────────────────────────────────────
+function spawnFloatingText(x, y, text, color) {
+  floatingTexts.push({ x, y, text, color, life: 1.2, maxLife: 1.2 });
+}
+
+function updateFloatingTexts(dt) {
+  for (let i = floatingTexts.length - 1; i >= 0; i--) {
+    const ft = floatingTexts[i];
+    ft.y -= 50 * dt;
+    ft.life -= dt;
+    if (ft.life <= 0) floatingTexts.splice(i, 1);
+  }
+}
+
+// ── Screen shake ────────────────────────────────────────────────
+function addShake(mag) { shakeMag = Math.max(shakeMag, mag); }
+
+function updateShake(dt) {
+  if (shakeMag > 0.1) {
+    shakeX = rand(-shakeMag, shakeMag);
+    shakeY = rand(-shakeMag, shakeMag);
+    shakeMag *= Math.pow(0.05, dt); // fast decay
+  } else {
+    shakeX = shakeY = shakeMag = 0;
+  }
+}
+
+// ── Draw helpers ────────────────────────────────────────────────
+function drawRoundRect(x, y, w, h, r) {
+  cx.beginPath();
+  cx.moveTo(x + r, y);
+  cx.lineTo(x + w - r, y);
+  cx.quadraticCurveTo(x + w, y, x + w, y + r);
+  cx.lineTo(x + w, y + h - r);
+  cx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  cx.lineTo(x + r, y + h);
+  cx.quadraticCurveTo(x, y + h, x, y + h - r);
+  cx.lineTo(x, y + r);
+  cx.quadraticCurveTo(x, y, x + r, y);
+  cx.closePath();
+}
+
+// ── Render ──────────────────────────────────────────────────────
+function drawBackground() {
+  // dark gradient
+  const g = cx.createLinearGradient(0, 0, 0, BASE_H);
+  g.addColorStop(0, "#1a0800");
+  g.addColorStop(0.5, "#120400");
+  g.addColorStop(1, "#080100");
+  cx.fillStyle = g;
+  cx.fillRect(0, 0, BASE_W, BASE_H);
+}
+
+function drawHeatShimmer() {
+  // cheap sine wave overlay
+  cx.save();
+  cx.globalAlpha = 0.04;
+  cx.globalCompositeOperation = "lighter";
+  const t = elapsed * 2;
+  for (let y = 0; y < BASE_H; y += 6) {
+    const off = Math.sin(y * 0.02 + t) * 8;
+    cx.fillStyle = `hsl(${20 + Math.sin(y * 0.01 + t * 0.5) * 10}, 100%, 50%)`;
+    cx.fillRect(off, y, BASE_W, 3);
+  }
+  cx.restore();
+}
+
+function drawBridge() {
+  // lava beneath
+  const lavaY = PLAYER_Y + 60;
+  cx.save();
+  cx.globalAlpha = 0.6;
+  const lg = cx.createLinearGradient(0, lavaY, 0, BASE_H);
+  lg.addColorStop(0, "#ff4400");
+  lg.addColorStop(0.5, "#cc2200");
+  lg.addColorStop(1, "#660800");
+  cx.fillStyle = lg;
+  cx.fillRect(0, lavaY, BASE_W, BASE_H - lavaY);
+  cx.restore();
+
+  // bridge lanes
+  for (let i = 0; i < LANE_COUNT; i++) {
+    const lx = BRIDGE_X + i * (LANE_W + LANE_GAP);
+    // lane bg
+    cx.fillStyle = "#1e1008";
+    drawRoundRect(lx, 80, LANE_W, BASE_H - 160, 8);
+    cx.fill();
+    // lane border
+    cx.strokeStyle = "#3a1a08";
+    cx.lineWidth = 2;
+    drawRoundRect(lx, 80, LANE_W, BASE_H - 160, 8);
+    cx.stroke();
+  }
+}
+
+function drawHeatline() {
+  const lx = BRIDGE_X + heatlineLane * (LANE_W + LANE_GAP);
+  const pulse = 0.7 + 0.3 * Math.sin(elapsed * 6);
+  // glow
+  cx.save();
+  cx.globalAlpha = 0.15 * pulse;
+  cx.fillStyle = "#00ffcc";
+  drawRoundRect(lx - 4, 80, LANE_W + 8, BASE_H - 160, 10);
+  cx.fill();
+  cx.restore();
+  // neon strip at player height
+  cx.save();
+  cx.globalAlpha = 0.8 * pulse;
+  cx.shadowColor = "#00ffcc";
+  cx.shadowBlur = 20;
+  cx.fillStyle = "#00ffcc";
+  cx.fillRect(lx + 5, PLAYER_Y - 30, LANE_W - 10, 60);
+  cx.restore();
+  // stripe lines
+  cx.save();
+  cx.globalAlpha = 0.3;
+  cx.strokeStyle = "#00ffcc";
+  cx.lineWidth = 1;
+  cx.setLineDash([8, 12]);
+  cx.lineDashOffset = -elapsed * 100;
+  cx.beginPath();
+  cx.moveTo(lx + 4, 80);
+  cx.lineTo(lx + 4, BASE_H - 80);
+  cx.moveTo(lx + LANE_W - 4, 80);
+  cx.lineTo(lx + LANE_W - 4, BASE_H - 80);
+  cx.stroke();
+  cx.setLineDash([]);
+  cx.restore();
+}
+
+function drawHazards() {
+  hazards.forEach(h => {
+    const hx = laneX(h.lane);
+    const lx = BRIDGE_X + h.lane * (LANE_W + LANE_GAP);
+    if (h.phase === "warn") {
+      // warning ring
+      const r = h.ringSize;
+      cx.save();
+      cx.globalAlpha = 0.4 + 0.3 * r;
+      cx.strokeStyle = `hsl(${30 - r * 20}, 100%, 55%)`;
+      cx.lineWidth = 3;
+      cx.beginPath();
+      cx.arc(hx, PLAYER_Y, LANE_W * 0.4 * r, 0, Math.PI * 2);
+      cx.stroke();
+      // inner fill
+      cx.globalAlpha = 0.1 + 0.15 * r;
+      cx.fillStyle = `hsl(${20 - r * 15}, 100%, 50%)`;
+      cx.beginPath();
+      cx.arc(hx, PLAYER_Y, LANE_W * 0.35 * r, 0, Math.PI * 2);
+      cx.fill();
+      // exclamation mark when close
+      if (r > 0.5) {
+        cx.globalAlpha = r;
+        cx.fillStyle = "#ffcc00";
+        cx.font = `bold ${20 + r * 8}px sans-serif`;
+        cx.textAlign = "center";
+        cx.textBaseline = "middle";
+        cx.fillText("!", hx, PLAYER_Y);
+      }
+      cx.restore();
+    } else {
+      // eruption
+      const a = h.eruptTimer / h.eruptDur;
+      cx.save();
+      // column of fire
+      cx.globalAlpha = a * 0.7;
+      const fg = cx.createRadialGradient(hx, PLAYER_Y, 0, hx, PLAYER_Y, LANE_W * 0.5);
+      fg.addColorStop(0, "#ffffff");
+      fg.addColorStop(0.3, "#ff6600");
+      fg.addColorStop(0.7, "#cc2200");
+      fg.addColorStop(1, "transparent");
+      cx.fillStyle = fg;
+      cx.beginPath();
+      cx.arc(hx, PLAYER_Y, LANE_W * 0.5, 0, Math.PI * 2);
+      cx.fill();
+      // outer ring
+      cx.globalAlpha = a;
+      cx.strokeStyle = "#ff3300";
+      cx.lineWidth = 4;
+      cx.beginPath();
+      cx.arc(hx, PLAYER_Y, LANE_W * 0.45 * (2 - a), 0, Math.PI * 2);
+      cx.stroke();
+      cx.restore();
+    }
+  });
+}
+
+function drawPlayer() {
+  const px = laneX(lane);
+  const py = PLAYER_Y;
+  // outer glow
+  cx.save();
+  cx.shadowColor = "#ff8800";
+  cx.shadowBlur = 18;
+  // body
+  cx.fillStyle = "#ff9922";
+  cx.strokeStyle = "#ffcc44";
+  cx.lineWidth = 3;
+  cx.beginPath();
+  cx.arc(px, py, PLAYER_R, 0, Math.PI * 2);
+  cx.fill();
+  cx.stroke();
+  // inner highlight
+  cx.fillStyle = "#ffdd88";
+  cx.beginPath();
+  cx.arc(px - 5, py - 6, 8, 0, Math.PI * 2);
+  cx.fill();
+  // eyes
+  cx.fillStyle = "#1a0800";
+  cx.beginPath();
+  cx.arc(px - 6, py - 3, 3, 0, Math.PI * 2);
+  cx.fill();
+  cx.beginPath();
+  cx.arc(px + 6, py - 3, 3, 0, Math.PI * 2);
+  cx.fill();
+  cx.restore();
+}
+
+function drawParticles() {
+  particles.forEach(p => {
+    const a = p.life / p.maxLife;
+    cx.save();
+    cx.globalAlpha = a;
+    cx.fillStyle = p.color;
+    cx.beginPath();
+    cx.arc(p.x, p.y, p.size * a, 0, Math.PI * 2);
+    cx.fill();
+    cx.restore();
+  });
+}
+
+function drawFloatingTexts() {
+  floatingTexts.forEach(ft => {
+    const a = ft.life / ft.maxLife;
+    cx.save();
+    cx.globalAlpha = a;
+    cx.fillStyle = ft.color;
+    cx.font = "bold 16px sans-serif";
+    cx.textAlign = "center";
+    cx.textBaseline = "middle";
+    cx.shadowColor = ft.color;
+    cx.shadowBlur = 10;
+    cx.fillText(ft.text, ft.x, ft.y);
+    cx.restore();
+  });
+}
+
+function drawHUD() {
+  cx.save();
+  cx.fillStyle = "#ffffff";
+  cx.font = "bold 18px sans-serif";
+  cx.textAlign = "left";
+  cx.textBaseline = "top";
+  const displayScore = Math.floor(dist + combo * 10);
+  cx.fillText(`Score: ${displayScore}`, 15, 20);
+  cx.fillStyle = "#aaa";
+  cx.font = "14px sans-serif";
+  cx.fillText(`Best: ${bestScore}`, 15, 44);
+
+  // multiplier
+  if (mult > 1) {
+    cx.fillStyle = "#00ffcc";
+    cx.font = "bold 22px sans-serif";
+    cx.textAlign = "right";
+    cx.shadowColor = "#00ffcc";
+    cx.shadowBlur = 12;
+    cx.fillText(`x${mult}`, BASE_W - 15, 20);
+    cx.shadowBlur = 0;
+  }
+
+  // combo bar
+  const barW = 120, barH = 6, barX = BASE_W - 15 - barW, barY = 50;
+  cx.fillStyle = "#221408";
+  drawRoundRect(barX, barY, barW, barH, 3);
+  cx.fill();
+  const fill = combo / 8;
+  if (fill > 0) {
+    const cg = cx.createLinearGradient(barX, 0, barX + barW * fill, 0);
+    cg.addColorStop(0, "#00ffcc");
+    cg.addColorStop(1, "#00cc99");
+    cx.fillStyle = cg;
+    drawRoundRect(barX, barY, barW * fill, barH, 3);
+    cx.fill();
+  }
+  cx.restore();
+}
+
+// ── Screens ─────────────────────────────────────────────────────
+function drawStartScreen() {
+  drawBackground();
+  drawHeatShimmer();
+  spawnEmbers(1 / 60);
+  updateParticles(1 / 60);
+  drawParticles();
+
+  cx.save();
+  // title
+  cx.fillStyle = "#ff8800";
+  cx.font = "bold 52px sans-serif";
+  cx.textAlign = "center";
+  cx.textBaseline = "middle";
+  cx.shadowColor = "#ff4400";
+  cx.shadowBlur = 30;
+  cx.fillText("LAVA", BASE_W / 2, BASE_H / 2 - 60);
+  cx.fillStyle = "#ffcc44";
+  cx.fillText("SPRINT", BASE_W / 2, BASE_H / 2 - 5);
+  cx.shadowBlur = 0;
+
+  // subtitle
+  cx.fillStyle = "#cc8844";
+  cx.font = "18px sans-serif";
+  cx.fillText("Heatline Hop", BASE_W / 2, BASE_H / 2 + 40);
+
+  // tap prompt
+  const pulse = 0.5 + 0.5 * Math.sin(performance.now() * 0.004);
+  cx.globalAlpha = 0.6 + 0.4 * pulse;
+  cx.fillStyle = "#ffffff";
+  cx.font = "bold 20px sans-serif";
+  cx.fillText("Tap to Start", BASE_W / 2, BASE_H / 2 + 110);
+
+  // instructions
+  cx.globalAlpha = 0.4;
+  cx.font = "13px sans-serif";
+  cx.fillStyle = "#cc9966";
+  cx.fillText("Tap / Space / Enter to switch lanes", BASE_W / 2, BASE_H / 2 + 160);
+  cx.fillText("Dodge eruptions \u2022 Ride the heatline", BASE_W / 2, BASE_H / 2 + 180);
+
+  cx.restore();
+}
+
+function drawGameOverScreen() {
+  // dim overlay
+  cx.save();
+  cx.fillStyle = "rgba(0,0,0,0.65)";
+  cx.fillRect(0, 0, BASE_W, BASE_H);
+
+  cx.fillStyle = "#ff4400";
+  cx.font = "bold 44px sans-serif";
+  cx.textAlign = "center";
+  cx.textBaseline = "middle";
+  cx.shadowColor = "#ff2200";
+  cx.shadowBlur = 25;
+  cx.fillText("GAME OVER", BASE_W / 2, BASE_H / 2 - 70);
+  cx.shadowBlur = 0;
+
+  cx.fillStyle = "#ffffff";
+  cx.font = "bold 28px sans-serif";
+  cx.fillText(`Score: ${score}`, BASE_W / 2, BASE_H / 2 - 10);
+
+  cx.fillStyle = "#ffcc44";
+  cx.font = "20px sans-serif";
+  cx.fillText(`Best: ${bestScore}`, BASE_W / 2, BASE_H / 2 + 30);
+
+  if (score >= bestScore && score > 0) {
+    cx.fillStyle = "#00ffcc";
+    cx.font = "bold 18px sans-serif";
+    cx.fillText("NEW BEST!", BASE_W / 2, BASE_H / 2 + 65);
+  }
+
+  const pulse = 0.5 + 0.5 * Math.sin(performance.now() * 0.004);
+  cx.globalAlpha = 0.6 + 0.4 * pulse;
+  cx.fillStyle = "#ffffff";
+  cx.font = "bold 20px sans-serif";
+  cx.fillText("Tap to Retry", BASE_W / 2, BASE_H / 2 + 120);
+  cx.restore();
+}
+
+// ── Main loop ───────────────────────────────────────────────────
+function frame(now) {
+  requestAnimationFrame(frame);
+
+  // reset transform with shake
+  cx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
+
+  if (state === STATE.START) {
+    drawStartScreen();
+    return;
+  }
+
+  const dt = Math.min((now - lastTime) / 1000, 0.05);
+  lastTime = now;
+
+  if (state === STATE.PLAY) {
+    elapsed += dt;
+    nearMissCooldown = Math.max(0, nearMissCooldown - dt);
+    // distance scoring
+    speed = 1 + elapsed * 0.02;
+    dist += 10 * speed * mult * dt;
+    // update systems
+    updateHazards(dt);
+    if (state !== STATE.PLAY) { /* died during update */ }
+    updateHeatline(dt);
+    updateShake(dt);
+    spawnEmbers(dt);
+    updateParticles(dt);
+    updateFloatingTexts(dt);
+  } else {
+    // game over - still animate particles
+    updateShake(dt);
+    updateParticles(dt);
+    updateFloatingTexts(dt);
+    spawnEmbers(dt);
+  }
+
+  // apply shake
+  cx.setTransform(scale * dpr, 0, 0, scale * dpr, shakeX * scale * dpr, shakeY * scale * dpr);
+
+  // draw
+  drawBackground();
+  drawHeatShimmer();
+  drawBridge();
+  drawHeatline();
+  drawHazards();
+  if (state === STATE.PLAY) drawPlayer();
+  drawParticles();
+  drawFloatingTexts();
+  if (state === STATE.PLAY) drawHUD();
+
+  if (state === STATE.OVER) {
+    drawPlayer();
+    drawHUD();
+    drawGameOverScreen();
+  }
+}
+
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

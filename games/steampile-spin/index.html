@@ -1,0 +1,1061 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Steampile Spin - Free HTML5 Game</title>
+<meta name="description" content="Play Steampile Spin - Stack quirky steampunk contraptions as the entire screen rotates unpredictably.">
+<meta name="theme-color" content="#1a1a2e">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Steampile Spin - Free HTML5 Game">
+<meta property="og:description" content="Stack quirky steampunk contraptions as the entire screen rotates unpredictably. One-tap timing stacker with gravity flips!">
+<meta property="og:url" content="https://balinti.github.io/steampile-spin/">
+<meta property="og:image" content="https://balinti.github.io/steampile-spin/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Steampile Spin - Free HTML5 Game">
+<meta name="twitter:description" content="Stack quirky steampunk contraptions as the entire screen rotates unpredictably.">
+<meta name="twitter:image" content="https://balinti.github.io/steampile-spin/og-image.png">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{width:100%;height:100%;overflow:hidden;background:#0a0a1a;font-family:'Courier New',monospace;touch-action:none;user-select:none;-webkit-user-select:none;}
+#wrap{position:relative;width:100%;max-width:420px;height:100vh;max-height:750px;margin:0 auto;overflow:hidden;}
+canvas{display:block;width:100%;height:100%;}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="c"></canvas></div>
+<script>
+'use strict';
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const wrap = document.getElementById('wrap');
+
+let W, H, DPR;
+function resize() {
+  DPR = window.devicePixelRatio || 1;
+  const r = wrap.getBoundingClientRect();
+  W = r.width;
+  H = r.height;
+  canvas.width = W * DPR;
+  canvas.height = H * DPR;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+// Game constants
+const PERFECT_TOLERANCE = 4;
+const NEAR_MISS_TOLERANCE = 12;
+const BASE_SPEED = 2.2;
+const GRAVITY_FLIP_BASE = 600; // frames before first flip
+const STACK_HEIGHT = 18;
+const BLOCK_H = 22;
+const BASE_WIDTH = 140;
+
+// Game state
+let state = 'start'; // start, playing, gameover
+let score = 0;
+let combo = 0;
+let bestScore = parseInt(localStorage.getItem('steampile_best') || '0', 10);
+let placements = 0;
+let hueBase = 20;
+
+// Stack
+let stack = [];
+let activeBlock = null;
+let gDir = 0; // 0=down, 1=right, 2=up, 3=left
+let flipAnim = { active: false, from: 0, to: 0, t: 0, dur: 40 };
+let flipCountdown = 0;
+let flipInterval = GRAVITY_FLIP_BASE;
+let steamSurge = false;
+let steamSurgeTimer = 0;
+
+// Camera / shake
+let shakeX = 0, shakeY = 0, shakeMag = 0, shakeDecay = 0.9;
+let camY = 0;
+
+// Particles
+let particles = [];
+
+// Speed
+let speed = BASE_SPEED;
+
+// Dial
+let dialAngle = 0;
+let dialTarget = 0;
+
+// Hub center for rotation
+let hubX, hubY;
+
+function initGame() {
+  score = 0;
+  combo = 0;
+  placements = 0;
+  hueBase = 20;
+  gDir = 0;
+  flipAnim.active = false;
+  flipCountdown = GRAVITY_FLIP_BASE;
+  flipInterval = GRAVITY_FLIP_BASE;
+  speed = BASE_SPEED;
+  steamSurge = false;
+  steamSurgeTimer = 0;
+  shakeMag = 0;
+  shakeX = 0;
+  shakeY = 0;
+  camY = 0;
+  particles = [];
+  dialAngle = 0;
+  dialTarget = 0;
+  hubX = W / 2;
+  hubY = H / 2;
+
+  stack = [];
+  // Base block
+  stack.push({
+    x: W / 2 - BASE_WIDTH / 2,
+    y: H - 80 - BLOCK_H,
+    w: BASE_WIDTH,
+    h: BLOCK_H,
+    hue: hueBase
+  });
+
+  spawnActive();
+  state = 'playing';
+}
+
+function spawnActive() {
+  const top = stack[stack.length - 1];
+  const w = top.w;
+  hueBase = (hueBase + 15) % 360;
+  const dir = (placements % 2 === 0) ? 1 : -1; // alternate direction
+
+  // Based on gravity direction, slide axis changes
+  // gDir 0 (down): slide horizontally on top
+  // gDir 1 (right): slide vertically on right side
+  // gDir 2 (up): slide horizontally on bottom
+  // gDir 3 (left): slide vertically on left side
+
+  let ax, ay;
+  if (gDir === 0) {
+    ax = dir > 0 ? -w : W;
+    ay = top.y - BLOCK_H;
+  } else if (gDir === 2) {
+    ax = dir > 0 ? -w : W;
+    ay = top.y + BLOCK_H;
+  } else if (gDir === 1) {
+    ax = top.x + top.w;
+    ay = dir > 0 ? -BLOCK_H : H;
+  } else {
+    ax = top.x - w;
+    ay = dir > 0 ? -BLOCK_H : H;
+  }
+
+  activeBlock = {
+    x: gDir === 0 || gDir === 2 ? (dir > 0 ? -w : W) : top.x,
+    y: gDir === 1 || gDir === 3 ? (dir > 0 ? -BLOCK_H : H) : top.y - BLOCK_H,
+    w: w,
+    h: BLOCK_H,
+    hue: hueBase,
+    dir: dir,
+    speed: speed * dir
+  };
+
+  // For horizontal sliding (gDir 0 or 2), block slides in x
+  // For vertical sliding (gDir 1 or 3), block slides in y
+}
+
+function getSlideAxis() {
+  return (gDir === 0 || gDir === 2) ? 'x' : 'y';
+}
+
+function getStackAxis() {
+  return (gDir === 0 || gDir === 2) ? 'y' : 'x';
+}
+
+function lockBlock() {
+  if (!activeBlock || flipAnim.active) return;
+  const top = stack[stack.length - 1];
+  const axis = getSlideAxis();
+
+  let overlap, pos, size;
+  if (axis === 'x') {
+    const aLeft = activeBlock.x;
+    const aRight = activeBlock.x + activeBlock.w;
+    const tLeft = top.x;
+    const tRight = top.x + top.w;
+    const overlapLeft = Math.max(aLeft, tLeft);
+    const overlapRight = Math.min(aRight, tRight);
+    overlap = overlapRight - overlapLeft;
+    pos = overlapLeft;
+    size = overlap;
+  } else {
+    const aTop = activeBlock.y;
+    const aBot = activeBlock.y + activeBlock.h;
+    const tTop = top.y;
+    const tBot = top.y + top.h;
+    const overlapTop = Math.max(aTop, tTop);
+    const overlapBot = Math.min(aBot, tBot);
+    overlap = overlapBot - overlapTop;
+    pos = overlapTop;
+    size = overlap;
+  }
+
+  if (overlap <= 0) {
+    // Missed completely
+    gameOver();
+    return;
+  }
+
+  const diff = axis === 'x'
+    ? Math.abs((activeBlock.x + activeBlock.w / 2) - (top.x + top.w / 2))
+    : Math.abs((activeBlock.y + activeBlock.h / 2) - (top.y + top.h / 2));
+
+  let perfect = diff <= PERFECT_TOLERANCE;
+  let nearMiss = !perfect && diff <= NEAR_MISS_TOLERANCE;
+
+  let newBlock;
+  if (axis === 'x') {
+    if (perfect) {
+      // Snap to perfect
+      newBlock = {
+        x: top.x,
+        y: gDir === 0 ? top.y - BLOCK_H : top.y + BLOCK_H,
+        w: top.w,
+        h: BLOCK_H,
+        hue: activeBlock.hue
+      };
+    } else {
+      newBlock = {
+        x: pos,
+        y: gDir === 0 ? top.y - BLOCK_H : top.y + BLOCK_H,
+        w: size,
+        h: BLOCK_H,
+        hue: activeBlock.hue
+      };
+    }
+  } else {
+    if (perfect) {
+      newBlock = {
+        x: gDir === 1 ? top.x + top.w : top.x - BLOCK_H,
+        y: top.y,
+        w: BLOCK_H,
+        h: top.h,
+        hue: activeBlock.hue
+      };
+    } else {
+      newBlock = {
+        x: gDir === 1 ? top.x + top.w : top.x - BLOCK_H,
+        y: pos,
+        w: BLOCK_H,
+        h: size,
+        hue: activeBlock.hue
+      };
+    }
+  }
+
+  // Spawn cut-off particles
+  if (!perfect) {
+    const cutAmount = axis === 'x' ? (activeBlock.w - size) : (activeBlock.h - size);
+    if (cutAmount > 2) {
+      spawnCutParticles(activeBlock, axis, top);
+    }
+  }
+
+  // Perfect feedback
+  if (perfect) {
+    combo++;
+    score += 10 * combo;
+    shakeMag = 4;
+    spawnPerfectParticles(newBlock);
+  } else {
+    combo = 0;
+    score += 10;
+    if (nearMiss) {
+      shakeMag = 2;
+      spawnSparkParticles(newBlock);
+    } else {
+      shakeMag = 1;
+    }
+  }
+
+  // Check if block too small
+  const blockSize = axis === 'x' ? newBlock.w : newBlock.h;
+  if (blockSize < 4) {
+    gameOver();
+    return;
+  }
+
+  stack.push(newBlock);
+  placements++;
+
+  // Difficulty ramp
+  speed = BASE_SPEED + placements * 0.08;
+  if (speed > 8) speed = 8;
+  flipInterval = Math.max(180, GRAVITY_FLIP_BASE - placements * 15);
+
+  // Steam surge every 10
+  if (placements > 0 && placements % 10 === 0) {
+    steamSurge = true;
+    steamSurgeTimer = 90;
+    speed *= 1.5;
+    spawnSmokeParticles(W / 2, H / 2);
+  }
+
+  // Camera follow
+  if (gDir === 0 && stack.length > 6) {
+    camY += BLOCK_H;
+  }
+
+  activeBlock = null;
+  setTimeout(() => {
+    if (state === 'playing') spawnActive();
+  }, 100);
+}
+
+function triggerGravityFlip() {
+  const from = gDir;
+  gDir = (gDir + 1) % 4;
+  flipAnim = { active: true, from: from * 90, to: gDir * 90, t: 0, dur: 45 };
+  spawnSmokeParticles(W / 2, H / 2);
+  // Recalculate stack positions for new gravity
+  rebuildStackForGravity();
+}
+
+function rebuildStackForGravity() {
+  // After gravity flip, reinterpret the stack
+  // Keep it simple: maintain positions but the active piece will spawn on new axis
+  // The visual rotation handles the appearance
+}
+
+function gameOver() {
+  state = 'gameover';
+  shakeMag = 15;
+  if (score > bestScore) {
+    bestScore = score;
+    localStorage.setItem('steampile_best', bestScore.toString());
+  }
+  // Explosion particles
+  for (let i = 0; i < 40; i++) {
+    particles.push({
+      x: W / 2,
+      y: H / 2,
+      vx: (Math.random() - 0.5) * 12,
+      vy: (Math.random() - 0.5) * 12,
+      life: 60 + Math.random() * 40,
+      maxLife: 100,
+      size: 3 + Math.random() * 5,
+      hue: Math.random() * 60 + 10,
+      type: 'spark'
+    });
+  }
+}
+
+// Particles
+function spawnPerfectParticles(block) {
+  const cx = block.x + block.w / 2;
+  const cy = block.y + block.h / 2;
+  for (let i = 0; i < 20; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const spd = 2 + Math.random() * 4;
+    particles.push({
+      x: cx, y: cy,
+      vx: Math.cos(angle) * spd,
+      vy: Math.sin(angle) * spd,
+      life: 40 + Math.random() * 20,
+      maxLife: 60,
+      size: 2 + Math.random() * 3,
+      hue: 40 + Math.random() * 30,
+      type: 'spark'
+    });
+  }
+}
+
+function spawnSparkParticles(block) {
+  const cx = block.x + block.w / 2;
+  const cy = block.y + block.h / 2;
+  for (let i = 0; i < 8; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const spd = 1 + Math.random() * 2;
+    particles.push({
+      x: cx, y: cy,
+      vx: Math.cos(angle) * spd,
+      vy: Math.sin(angle) * spd,
+      life: 25 + Math.random() * 15,
+      maxLife: 40,
+      size: 1.5 + Math.random() * 2,
+      hue: 30 + Math.random() * 20,
+      type: 'spark'
+    });
+  }
+}
+
+function spawnCutParticles(block, axis, top) {
+  for (let i = 0; i < 12; i++) {
+    const px = block.x + Math.random() * block.w;
+    const py = block.y + Math.random() * block.h;
+    particles.push({
+      x: px, y: py,
+      vx: (Math.random() - 0.5) * 3,
+      vy: Math.random() * 2 + 1,
+      life: 30 + Math.random() * 20,
+      maxLife: 50,
+      size: 2 + Math.random() * 3,
+      hue: 0, sat: 0, light: 60,
+      type: 'dust'
+    });
+  }
+}
+
+function spawnSmokeParticles(cx, cy) {
+  for (let i = 0; i < 15; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const spd = 0.5 + Math.random() * 2;
+    particles.push({
+      x: cx + (Math.random() - 0.5) * 60,
+      y: cy + (Math.random() - 0.5) * 60,
+      vx: Math.cos(angle) * spd,
+      vy: Math.sin(angle) * spd,
+      life: 50 + Math.random() * 30,
+      maxLife: 80,
+      size: 8 + Math.random() * 12,
+      hue: 0, sat: 0, light: 40,
+      type: 'smoke'
+    });
+  }
+}
+
+function updateParticles() {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.life--;
+    if (p.type === 'smoke') {
+      p.vx *= 0.96;
+      p.vy *= 0.96;
+      p.size *= 1.01;
+    } else if (p.type === 'dust') {
+      p.vy += 0.1;
+    }
+    if (p.life <= 0) {
+      particles.splice(i, 1);
+    }
+  }
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    const alpha = Math.max(0, p.life / p.maxLife);
+    if (p.type === 'smoke') {
+      ctx.fillStyle = `hsla(30, 10%, ${p.light || 40}%, ${alpha * 0.3})`;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (p.type === 'dust') {
+      ctx.fillStyle = `hsla(30, 20%, ${p.light || 60}%, ${alpha * 0.6})`;
+      ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+    } else {
+      // spark
+      ctx.fillStyle = `hsla(${p.hue}, 90%, 60%, ${alpha})`;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size * alpha, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+// Shake
+function updateShake() {
+  if (shakeMag > 0.1) {
+    shakeX = (Math.random() - 0.5) * shakeMag * 2;
+    shakeY = (Math.random() - 0.5) * shakeMag * 2;
+    shakeMag *= shakeDecay;
+  } else {
+    shakeX = 0;
+    shakeY = 0;
+    shakeMag = 0;
+  }
+}
+
+// Dial drawing
+function drawDial(x, y, radius, progress) {
+  // Brass dial background
+  ctx.save();
+  ctx.translate(x, y);
+
+  // Outer ring
+  const grad = ctx.createRadialGradient(0, 0, radius * 0.7, 0, 0, radius);
+  grad.addColorStop(0, '#8B7355');
+  grad.addColorStop(0.5, '#D4A843');
+  grad.addColorStop(1, '#6B5335');
+  ctx.beginPath();
+  ctx.arc(0, 0, radius, 0, Math.PI * 2);
+  ctx.fillStyle = grad;
+  ctx.fill();
+  ctx.strokeStyle = '#3a2a15';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Inner dark
+  ctx.beginPath();
+  ctx.arc(0, 0, radius * 0.75, 0, Math.PI * 2);
+  ctx.fillStyle = '#1a1520';
+  ctx.fill();
+
+  // Progress arc
+  const startA = -Math.PI / 2;
+  const endA = startA + Math.PI * 2 * progress;
+  ctx.beginPath();
+  ctx.arc(0, 0, radius * 0.6, startA, endA);
+  ctx.strokeStyle = progress > 0.75 ? `hsl(0, 80%, 55%)` : `hsl(40, 80%, 55%)`;
+  ctx.lineWidth = 4;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+
+  // Tick marks
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2 - Math.PI / 2;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(a) * radius * 0.78, Math.sin(a) * radius * 0.78);
+    ctx.lineTo(Math.cos(a) * radius * 0.9, Math.sin(a) * radius * 0.9);
+    ctx.strokeStyle = '#D4A843';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+
+  // Needle
+  const needleA = startA + Math.PI * 2 * progress;
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(Math.cos(needleA) * radius * 0.55, Math.sin(needleA) * radius * 0.55);
+  ctx.strokeStyle = '#ff4444';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Center rivet
+  ctx.beginPath();
+  ctx.arc(0, 0, 3, 0, Math.PI * 2);
+  ctx.fillStyle = '#D4A843';
+  ctx.fill();
+
+  ctx.restore();
+}
+
+// Block drawing
+function drawBlock(block, highlight = false) {
+  const hue = block.hue;
+  // Steampunk block: metallic with rivets
+  const grad = ctx.createLinearGradient(block.x, block.y, block.x, block.y + block.h);
+  grad.addColorStop(0, `hsl(${hue}, 45%, 45%)`);
+  grad.addColorStop(0.5, `hsl(${hue}, 50%, 35%)`);
+  grad.addColorStop(1, `hsl(${hue}, 40%, 25%)`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(block.x, block.y, block.w, block.h);
+
+  // Border
+  ctx.strokeStyle = `hsl(${hue}, 30%, 55%)`;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(block.x + 0.5, block.y + 0.5, block.w - 1, block.h - 1);
+
+  // Highlight line on top
+  ctx.strokeStyle = `hsla(${hue}, 60%, 65%, 0.5)`;
+  ctx.beginPath();
+  ctx.moveTo(block.x + 2, block.y + 2);
+  ctx.lineTo(block.x + block.w - 2, block.y + 2);
+  ctx.stroke();
+
+  // Rivets
+  if (block.w > 20) {
+    const rivetY = block.y + block.h / 2;
+    ctx.fillStyle = `hsl(${hue}, 20%, 55%)`;
+    ctx.beginPath();
+    ctx.arc(block.x + 5, rivetY, 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(block.x + block.w - 5, rivetY, 2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  if (highlight) {
+    ctx.fillStyle = `hsla(50, 100%, 80%, 0.15)`;
+    ctx.fillRect(block.x, block.y, block.w, block.h);
+  }
+}
+
+// Easing
+function easeInOutCubic(t) {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+// Background
+function drawBackground() {
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, '#0a0a1e');
+  grad.addColorStop(0.5, '#12122a');
+  grad.addColorStop(1, '#1a0a1e');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Gear decorations in background
+  const time = Date.now() * 0.0003;
+  ctx.save();
+  ctx.globalAlpha = 0.04;
+  drawGear(W * 0.15, H * 0.2, 40, 10, time);
+  drawGear(W * 0.85, H * 0.7, 55, 12, -time * 0.7);
+  drawGear(W * 0.7, H * 0.15, 30, 8, time * 1.3);
+  ctx.restore();
+}
+
+function drawGear(cx, cy, r, teeth, angle) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(angle);
+  ctx.beginPath();
+  for (let i = 0; i < teeth; i++) {
+    const a1 = (i / teeth) * Math.PI * 2;
+    const a2 = ((i + 0.3) / teeth) * Math.PI * 2;
+    const a3 = ((i + 0.5) / teeth) * Math.PI * 2;
+    const a4 = ((i + 0.8) / teeth) * Math.PI * 2;
+    if (i === 0) {
+      ctx.moveTo(Math.cos(a1) * r, Math.sin(a1) * r);
+    }
+    ctx.lineTo(Math.cos(a2) * (r + 8), Math.sin(a2) * (r + 8));
+    ctx.lineTo(Math.cos(a3) * (r + 8), Math.sin(a3) * (r + 8));
+    ctx.lineTo(Math.cos(a4) * r, Math.sin(a4) * r);
+  }
+  ctx.closePath();
+  ctx.strokeStyle = '#D4A843';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  // center hole
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.25, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// Text helpers
+function drawText(text, x, y, size, color = '#D4A843', align = 'center') {
+  ctx.font = `bold ${size}px 'Courier New', monospace`;
+  ctx.textAlign = align;
+  ctx.textBaseline = 'middle';
+  // Shadow
+  ctx.fillStyle = '#000';
+  ctx.fillText(text, x + 2, y + 2);
+  ctx.fillStyle = color;
+  ctx.fillText(text, x, y);
+}
+
+// Clank text animation
+let clankText = { active: false, t: 0, x: 0, y: 0, text: '' };
+function showClank(x, y) {
+  const texts = ['CLANK!', 'PERFECT!', 'STEAM!', 'BRASS!'];
+  clankText = {
+    active: true,
+    t: 0,
+    x: x,
+    y: y,
+    text: texts[Math.floor(Math.random() * texts.length)]
+  };
+}
+
+function updateClank() {
+  if (clankText.active) {
+    clankText.t++;
+    if (clankText.t > 40) clankText.active = false;
+  }
+}
+
+function drawClank() {
+  if (!clankText.active) return;
+  const alpha = 1 - clankText.t / 40;
+  const scale = 1 + clankText.t * 0.02;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.font = `bold ${18 * scale}px 'Courier New', monospace`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#FFD700';
+  ctx.fillText(clankText.text, clankText.x, clankText.y - clankText.t * 1.5);
+  ctx.restore();
+}
+
+// Steam surge visual
+function drawSteamSurge() {
+  if (!steamSurge) return;
+  const alpha = steamSurgeTimer / 90;
+  ctx.save();
+  ctx.globalAlpha = alpha * 0.15;
+  ctx.fillStyle = '#ff6600';
+  ctx.fillRect(0, 0, W, H);
+  ctx.restore();
+
+  // Warning text
+  if (steamSurgeTimer > 60) {
+    ctx.save();
+    ctx.globalAlpha = Math.sin(steamSurgeTimer * 0.3) * 0.5 + 0.5;
+    drawText('STEAM SURGE!', W / 2, H / 2 - 60, 20, '#ff4400');
+    ctx.restore();
+  }
+}
+
+// Main update
+let frameCount = 0;
+function update() {
+  frameCount++;
+  updateShake();
+  updateParticles();
+  updateClank();
+
+  if (state === 'playing') {
+    // Update active block movement
+    if (activeBlock && !flipAnim.active) {
+      const axis = getSlideAxis();
+      if (axis === 'x') {
+        activeBlock.x += activeBlock.speed;
+        // Bounce
+        if (activeBlock.x + activeBlock.w > W) {
+          activeBlock.x = W - activeBlock.w;
+          activeBlock.speed = -Math.abs(activeBlock.speed);
+        } else if (activeBlock.x < 0) {
+          activeBlock.x = 0;
+          activeBlock.speed = Math.abs(activeBlock.speed);
+        }
+      } else {
+        activeBlock.y += activeBlock.speed;
+        if (activeBlock.y + activeBlock.h > H) {
+          activeBlock.y = H - activeBlock.h;
+          activeBlock.speed = -Math.abs(activeBlock.speed);
+        } else if (activeBlock.y < 0) {
+          activeBlock.y = 0;
+          activeBlock.speed = Math.abs(activeBlock.speed);
+        }
+      }
+    }
+
+    // Gravity flip countdown
+    if (!flipAnim.active && placements > 2) {
+      flipCountdown--;
+      if (flipCountdown <= 0) {
+        triggerGravityFlip();
+        flipCountdown = flipInterval;
+      }
+    }
+
+    // Flip animation
+    if (flipAnim.active) {
+      flipAnim.t++;
+      if (flipAnim.t >= flipAnim.dur) {
+        flipAnim.active = false;
+        // Rebuild stack positions for new gravity
+        rebuildStackPositions();
+        if (!activeBlock) spawnActive();
+      }
+    }
+
+    // Steam surge timer
+    if (steamSurge) {
+      steamSurgeTimer--;
+      if (steamSurgeTimer <= 0) {
+        steamSurge = false;
+        speed = BASE_SPEED + placements * 0.08;
+        if (speed > 8) speed = 8;
+      }
+    }
+  }
+}
+
+function rebuildStackPositions() {
+  // After gravity flip, reposition stack blocks for new gravity direction
+  // Keep the widths/heights but restack them along the new gravity axis
+  if (stack.length === 0) return;
+
+  const baseX = W / 2;
+  const baseY = H - 80;
+
+  if (gDir === 0) {
+    // Stacking upward
+    let curY = baseY;
+    for (let i = 0; i < stack.length; i++) {
+      const b = stack[i];
+      b.x = baseX - b.w / 2;
+      b.y = curY - BLOCK_H;
+      b.h = BLOCK_H;
+      curY -= BLOCK_H;
+    }
+  } else if (gDir === 1) {
+    // Stacking rightward
+    let curX = 40;
+    for (let i = 0; i < stack.length; i++) {
+      const b = stack[i];
+      const size = b.w > BLOCK_H ? b.w : (b.h > BLOCK_H ? b.h : b.w);
+      b.x = curX;
+      b.y = H / 2 - size / 2;
+      b.w = BLOCK_H;
+      b.h = size;
+      curX += BLOCK_H;
+    }
+  } else if (gDir === 2) {
+    // Stacking downward
+    let curY = 40;
+    for (let i = 0; i < stack.length; i++) {
+      const b = stack[i];
+      b.x = W / 2 - b.w / 2;
+      b.y = curY;
+      b.h = BLOCK_H;
+      curY += BLOCK_H;
+    }
+  } else {
+    // Stacking leftward
+    let curX = W - 40;
+    for (let i = 0; i < stack.length; i++) {
+      const b = stack[i];
+      const size = b.w > BLOCK_H ? b.w : (b.h > BLOCK_H ? b.h : b.w);
+      b.x = curX - BLOCK_H;
+      b.y = H / 2 - size / 2;
+      b.w = BLOCK_H;
+      b.h = size;
+      curX -= BLOCK_H;
+    }
+  }
+
+  camY = 0;
+}
+
+// Main draw
+function draw() {
+  ctx.save();
+  ctx.clearRect(0, 0, W, H);
+  drawBackground();
+
+  // Apply shake
+  ctx.translate(shakeX, shakeY);
+
+  if (state === 'start') {
+    drawStartScreen();
+  } else if (state === 'playing') {
+    drawPlayingScreen();
+  } else if (state === 'gameover') {
+    drawGameOverScreen();
+  }
+
+  ctx.restore();
+}
+
+function drawStartScreen() {
+  // Big gears
+  const time = Date.now() * 0.001;
+  ctx.save();
+  ctx.globalAlpha = 0.1;
+  drawGear(W / 2 - 60, H / 2 - 20, 80, 14, time);
+  drawGear(W / 2 + 70, H / 2 + 40, 60, 10, -time * 0.8);
+  ctx.restore();
+
+  // Title
+  const pulse = Math.sin(time * 2) * 3;
+  drawText('STEAMPILE', W / 2, H / 2 - 80 + pulse, 36, '#D4A843');
+  drawText('SPIN', W / 2, H / 2 - 40 + pulse, 44, '#FFD700');
+
+  // Decorative line
+  ctx.strokeStyle = '#D4A84380';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(W / 2 - 80, H / 2);
+  ctx.lineTo(W / 2 + 80, H / 2);
+  ctx.stroke();
+
+  // Instructions
+  const tapAlpha = Math.sin(time * 3) * 0.3 + 0.7;
+  ctx.globalAlpha = tapAlpha;
+  drawText('TAP TO START', W / 2, H / 2 + 50, 16, '#aaa');
+  ctx.globalAlpha = 1;
+
+  drawText('Space / Enter / Tap', W / 2, H / 2 + 80, 11, '#666');
+
+  // Best score
+  if (bestScore > 0) {
+    drawText(`BEST: ${bestScore}`, W / 2, H / 2 + 130, 14, '#888');
+  }
+
+  // Small gear animation at bottom
+  ctx.save();
+  ctx.globalAlpha = 0.08;
+  drawGear(W / 2, H - 60, 35, 8, time * 1.5);
+  ctx.restore();
+}
+
+function drawPlayingScreen() {
+  ctx.save();
+
+  // Apply rotation for flip animation
+  if (flipAnim.active) {
+    const progress = easeInOutCubic(flipAnim.t / flipAnim.dur);
+    const angle = (flipAnim.from + (flipAnim.to - flipAnim.from) * progress) * Math.PI / 180;
+    ctx.translate(W / 2, H / 2);
+    ctx.rotate(angle);
+    ctx.translate(-W / 2, -H / 2);
+  } else {
+    // Apply current rotation
+    const angle = gDir * 90 * Math.PI / 180;
+    if (angle !== 0) {
+      ctx.translate(W / 2, H / 2);
+      ctx.rotate(angle);
+      ctx.translate(-W / 2, -H / 2);
+    }
+  }
+
+  // Camera offset
+  ctx.translate(0, camY);
+
+  // Draw stack
+  const visibleStart = Math.max(0, stack.length - STACK_HEIGHT);
+  for (let i = visibleStart; i < stack.length; i++) {
+    drawBlock(stack[i], i === stack.length - 1);
+  }
+
+  // Draw active block
+  if (activeBlock) {
+    drawBlock(activeBlock);
+
+    // Guide line from active to top of stack
+    if (stack.length > 0 && !flipAnim.active) {
+      const top = stack[stack.length - 1];
+      ctx.save();
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = 'rgba(212, 168, 67, 0.2)';
+      ctx.lineWidth = 1;
+      if (getSlideAxis() === 'x') {
+        ctx.beginPath();
+        ctx.moveTo(top.x, activeBlock.y + BLOCK_H);
+        ctx.lineTo(top.x, top.y);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(top.x + top.w, activeBlock.y + BLOCK_H);
+        ctx.lineTo(top.x + top.w, top.y);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+
+  ctx.restore(); // undo rotation + camera
+
+  // Draw particles (in screen space)
+  drawParticles();
+  drawClank();
+  drawSteamSurge();
+
+  // UI: Score
+  drawText(`${score}`, W / 2, 35, 28, '#D4A843');
+
+  // Combo
+  if (combo > 1) {
+    const comboHue = (combo * 30 + 40) % 360;
+    drawText(`x${combo}`, W / 2, 62, 16, `hsl(${comboHue}, 80%, 60%)`);
+  }
+
+  // Gravity flip dial
+  if (placements > 2 && !flipAnim.active) {
+    const progress = 1 - (flipCountdown / flipInterval);
+    drawDial(W - 35, 35, 22, progress);
+  }
+
+  // Steam surge indicator
+  if (steamSurge) {
+    drawText('SURGE!', W / 2, H - 30, 14, '#ff4400');
+  }
+}
+
+function drawGameOverScreen() {
+  // Dim background with last frame's stack visible
+  ctx.save();
+  ctx.globalAlpha = 0.3;
+  // Draw stack faded
+  for (let i = Math.max(0, stack.length - STACK_HEIGHT); i < stack.length; i++) {
+    drawBlock(stack[i]);
+  }
+  ctx.restore();
+
+  drawParticles();
+
+  // Overlay
+  ctx.fillStyle = 'rgba(10, 10, 30, 0.6)';
+  ctx.fillRect(0, 0, W, H);
+
+  // Game over text
+  const time = Date.now() * 0.001;
+  drawText('GAME OVER', W / 2, H / 2 - 70, 30, '#D4A843');
+
+  // Score
+  drawText(`SCORE: ${score}`, W / 2, H / 2 - 20, 22, '#FFD700');
+  drawText(`BEST: ${bestScore}`, W / 2, H / 2 + 15, 16, '#888');
+
+  if (score === bestScore && score > 0) {
+    const newAlpha = Math.sin(time * 4) * 0.3 + 0.7;
+    ctx.globalAlpha = newAlpha;
+    drawText('NEW BEST!', W / 2, H / 2 + 45, 14, '#ff6600');
+    ctx.globalAlpha = 1;
+  }
+
+  // Retry
+  const tapAlpha = Math.sin(time * 3) * 0.3 + 0.7;
+  ctx.globalAlpha = tapAlpha;
+  drawText('TAP TO RETRY', W / 2, H / 2 + 85, 16, '#aaa');
+  ctx.globalAlpha = 1;
+}
+
+// Game loop
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// Input
+function handleInput() {
+  if (state === 'start') {
+    initGame();
+  } else if (state === 'playing') {
+    if (activeBlock && !flipAnim.active) {
+      // Check for perfect
+      const top = stack[stack.length - 1];
+      const axis = getSlideAxis();
+      const diff = axis === 'x'
+        ? Math.abs((activeBlock.x + activeBlock.w / 2) - (top.x + top.w / 2))
+        : Math.abs((activeBlock.y + activeBlock.h / 2) - (top.y + top.h / 2));
+      if (diff <= PERFECT_TOLERANCE) {
+        showClank(
+          axis === 'x' ? activeBlock.x + activeBlock.w / 2 : W / 2,
+          axis === 'x' ? activeBlock.y : activeBlock.y + activeBlock.h / 2
+        );
+      }
+      lockBlock();
+    }
+  } else if (state === 'gameover') {
+    initGame();
+  }
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  handleInput();
+});
+
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    handleInput();
+  }
+});
+
+// Prevent scrolling
+document.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+
+// Start
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

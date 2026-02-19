@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Tide Twist - Free HTML5 Game</title>
+<meta name="description" content="Play Tide Twist - Bounce to reverse gravity and connect ocean creatures of matching colors during tidal flows.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#05070c">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Tide Twist - Free HTML5 Game">
+<meta property="og:description" content="Play Tide Twist - Bounce to reverse gravity and connect ocean creatures of matching colors during tidal flows.">
+<meta property="og:url" content="https://balinti.github.io/tide-twist/">
+<meta property="og:image" content="https://balinti.github.io/tide-twist/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Tide Twist - Free HTML5 Game">
+<meta name="twitter:description" content="Play Tide Twist - Bounce to reverse gravity and connect ocean creatures of matching colors during tidal flows.">
+<meta name="twitter:image" content="https://balinti.github.io/tide-twist/og-image.png">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#05070c;font-family:'Segoe UI',system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;touch-action:none;user-select:none;-webkit-user-select:none}
+#wrap{position:relative;width:100%;max-width:420px;max-height:750px;aspect-ratio:420/750;margin:8px auto}
+canvas{display:block;width:100%;height:100%;border-radius:12px}
+#how{color:#6688aa;font-size:11px;text-align:center;max-width:420px;padding:8px 16px;line-height:1.5;opacity:.7}
+#how strong{color:#88aacc}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="c"></canvas></div>
+<div id="how"><strong>How to play Tide Twist:</strong> Tap or press Space to flip gravity between the top and bottom lanes. Match your diver's color to the gate color to pass through safely. Build combos for bonus points! Wrong color = game over. Speed increases as you score higher. Challenge your friends!</div>
+<script>
+(()=>{
+'use strict';
+const W=420,H=750;
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+const wrap=document.getElementById('wrap');
+
+// Hi-DPI
+function resize(){
+  const dpr=window.devicePixelRatio||1;
+  const r=wrap.getBoundingClientRect();
+  canvas.width=r.width*dpr;
+  canvas.height=r.height*dpr;
+  canvas.style.width=r.width+'px';
+  canvas.style.height=r.height+'px';
+  ctx.setTransform(canvas.width/W,0,0,canvas.height/H,0,0);
+}
+window.addEventListener('resize',resize);
+resize();
+
+// States
+const START=0,PLAYING=1,GAMEOVER=2;
+let state=START;
+
+// Challenge
+const urlP=new URLSearchParams(window.location.search);
+const challengeScore=urlP.has('challenge')?parseInt(urlP.get('challenge'),10):0;
+
+// Colors - ocean palette
+const COLORS=[
+  {h:190,s:85,l:55,name:'cyan'},
+  {h:320,s:75,l:60,name:'magenta'},
+  {h:45,s:90,l:60,name:'gold'},
+  {h:140,s:70,l:50,name:'green'}
+];
+function hsl(c,a){return `hsla(${c.h},${c.s}%,${c.l}%,${a!==undefined?a:1})`}
+
+// Game vars
+let score,best,combo,maxCombo,diverY,diverTargetY,diverColor,diverColorIdx;
+let gates,particles,bubbles;
+let scrollSpeed,spawnTimer,spawnInterval;
+let bgHue,shakeX,shakeY,shakeDur,shakeStr;
+let hitStop,hitStopTimer;
+let tidePhase;
+let diverX;
+let gameTime;
+let lastTime=0;
+let flashAlpha=0;
+let perfectFlash=0;
+
+// Lanes
+const LANE_TOP=160;
+const LANE_BOT=590;
+const LANE_MID=(LANE_TOP+LANE_BOT)/2;
+
+// Load best
+best=parseInt(localStorage.getItem('tideTwistBest'))||0;
+
+function init(){
+  score=0;combo=0;maxCombo=0;
+  diverY=LANE_BOT;diverTargetY=LANE_BOT;
+  diverColorIdx=0;diverColor=COLORS[0];
+  gates=[];particles=[];bubbles=[];
+  scrollSpeed=2.5;spawnTimer=0;spawnInterval=180;
+  bgHue=210;shakeX=0;shakeY=0;shakeDur=0;shakeStr=0;
+  hitStop=0;hitStopTimer=0;
+  tidePhase=0;diverX=100;gameTime=0;
+  flashAlpha=0;perfectFlash=0;
+}
+init();
+
+function nextColor(exclude){
+  let idx;
+  do{ idx=Math.floor(Math.random()*COLORS.length); }while(idx===exclude);
+  return idx;
+}
+
+function spawnGate(){
+  const correctLane=diverTargetY<=LANE_MID?'top':'bot';
+  const ci=diverColorIdx;
+  const wi=nextColor(ci);
+
+  // Fakeout chance increases with score
+  const fakeoutChance=Math.min(0.4,score*0.008);
+  let topColorIdx,botColorIdx;
+
+  if(Math.random()<fakeoutChance){
+    // Fakeout: correct color on wrong lane
+    if(correctLane==='top'){
+      topColorIdx=wi;
+      botColorIdx=ci;
+    }else{
+      topColorIdx=ci;
+      botColorIdx=wi;
+    }
+  }else{
+    // Normal: correct color on correct lane
+    if(correctLane==='top'){
+      topColorIdx=ci;
+      botColorIdx=wi;
+    }else{
+      topColorIdx=wi;
+      botColorIdx=ci;
+    }
+  }
+
+  const gateW=Math.max(50,80-score*0.3);
+  gates.push({
+    x:W+60,
+    w:gateW,
+    topColor:topColorIdx,
+    botColor:botColorIdx,
+    passed:false,
+    scored:false
+  });
+}
+
+function changeColor(){
+  const old=diverColorIdx;
+  diverColorIdx=nextColor(old);
+  diverColor=COLORS[diverColorIdx];
+}
+
+function flip(){
+  if(state===START){
+    state=PLAYING;
+    init();
+    state=PLAYING;
+    return;
+  }
+  if(state===GAMEOVER){
+    state=START;
+    init();
+    return;
+  }
+  if(state===PLAYING){
+    diverTargetY=diverTargetY<=LANE_MID?LANE_BOT:LANE_TOP;
+  }
+}
+
+// Input
+canvas.addEventListener('pointerdown',e=>{e.preventDefault();flip()});
+document.addEventListener('keydown',e=>{
+  if(e.code==='Space'||e.code==='Enter'){e.preventDefault();flip()}
+});
+
+// Particles
+function addParticle(x,y,c,count,speed,life){
+  for(let i=0;i<count;i++){
+    const a=Math.random()*Math.PI*2;
+    const s=Math.random()*speed+1;
+    particles.push({
+      x,y,
+      vx:Math.cos(a)*s,vy:Math.sin(a)*s,
+      life:life||40+Math.random()*20,
+      maxLife:life||40+Math.random()*20,
+      color:c,
+      r:3+Math.random()*4
+    });
+  }
+}
+
+function addBubble(x,y){
+  bubbles.push({
+    x:x-5+Math.random()*10,
+    y:y+Math.random()*10-5,
+    vx:-0.5-Math.random()*0.5,
+    vy:-0.3+Math.random()*0.6,
+    life:25+Math.random()*15,
+    maxLife:25+Math.random()*15,
+    r:2+Math.random()*3
+  });
+}
+
+function shake(str,dur){
+  shakeStr=str;shakeDur=dur;
+}
+
+function crash(){
+  state=GAMEOVER;
+  if(score>best){best=score;localStorage.setItem('tideTwistBest',best)}
+  addParticle(diverX,diverY,{h:240,s:30,l:20},30,5,50);
+  shake(12,30);
+  flashAlpha=0.6;
+}
+
+// Share
+function shareScore(){
+  const url=`https://balinti.github.io/tide-twist/?challenge=${score}`;
+  const text=`I scored ${score} in Tide Twist! Can you beat me?`;
+  if(navigator.share){
+    navigator.share({title:'Tide Twist',text,url}).catch(()=>{});
+  }else{
+    navigator.clipboard.writeText(`${text} ${url}`).then(()=>{
+      flashAlpha=0.3;
+    }).catch(()=>{});
+  }
+}
+
+let shareBtn={x:W/2-60,y:520,w:120,h:36};
+
+canvas.addEventListener('pointerdown',e=>{
+  if(state===GAMEOVER){
+    const r=wrap.getBoundingClientRect();
+    const sx=(e.clientX-r.left)/r.width*W;
+    const sy=(e.clientY-r.top)/r.height*H;
+    if(sx>=shareBtn.x&&sx<=shareBtn.x+shareBtn.w&&sy>=shareBtn.y&&sy<=shareBtn.y+shareBtn.h){
+      e.stopPropagation();
+      shareScore();
+      return;
+    }
+  }
+},{capture:true});
+
+// Main loop
+function update(dt){
+  if(hitStop>0){hitStop-=dt;return}
+
+  gameTime+=dt;
+  tidePhase+=dt*0.02;
+
+  // Difficulty
+  scrollSpeed=2.5+score*0.08;
+  if(scrollSpeed>8)scrollSpeed=8;
+  spawnInterval=Math.max(60,180-score*2);
+
+  // Diver movement
+  const diverSpeed=0.12;
+  diverY+=(diverTargetY-diverY)*diverSpeed;
+
+  // Tide drift
+  const tideDrift=Math.sin(tidePhase)*8;
+  diverX=100+tideDrift;
+
+  // Bubble trail
+  if(Math.random()<0.4){
+    addBubble(diverX-12,diverY);
+  }
+
+  // Spawn gates
+  spawnTimer+=dt;
+  if(spawnTimer>=spawnInterval/scrollSpeed){
+    spawnTimer=0;
+    spawnGate();
+  }
+
+  // Update gates
+  const checkLine=diverX+15;
+  for(let i=gates.length-1;i>=0;i--){
+    const g=gates[i];
+    g.x-=scrollSpeed;
+
+    // Check pass
+    if(!g.passed&&g.x+g.w/2<checkLine){
+      g.passed=true;
+
+      const inTop=diverY<LANE_MID;
+      const laneColor=inTop?g.topColor:g.botColor;
+
+      if(laneColor===diverColorIdx){
+        // Correct!
+        score++;combo++;
+        if(combo>maxCombo)maxCombo=combo;
+
+        // Perfect timing bonus
+        const dist=Math.abs(g.x+g.w/2-checkLine);
+        if(dist<10){
+          score++;
+          perfectFlash=15;
+          hitStop=3;
+          shake(3,8);
+        }
+
+        g.scored=true;
+        addParticle(g.x+g.w/2,diverY,COLORS[diverColorIdx],12,3,30);
+
+        // Change diver color after scoring
+        changeColor();
+      }else{
+        crash();
+        return;
+      }
+    }
+
+    // Remove offscreen
+    if(g.x+g.w<-20){
+      if(!g.passed){
+        // Missed gate entirely
+        crash();
+        return;
+      }
+      gates.splice(i,1);
+    }
+  }
+
+  // Particles
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    p.x+=p.vx;p.y+=p.vy;
+    p.vx*=0.96;p.vy*=0.96;
+    p.life-=dt;
+    if(p.life<=0)particles.splice(i,1);
+  }
+
+  // Bubbles
+  for(let i=bubbles.length-1;i>=0;i--){
+    const b=bubbles[i];
+    b.x+=b.vx;b.y+=b.vy;
+    b.life-=dt;
+    if(b.life<=0)bubbles.splice(i,1);
+  }
+
+  // Shake decay
+  if(shakeDur>0){
+    shakeDur-=dt;
+    shakeX=(Math.random()-0.5)*shakeStr;
+    shakeY=(Math.random()-0.5)*shakeStr;
+    if(shakeDur<=0){shakeX=0;shakeY=0}
+  }
+
+  // Background hue
+  bgHue=(210+score*2)%360;
+
+  // Flash decay
+  if(flashAlpha>0)flashAlpha-=0.02;
+  if(perfectFlash>0)perfectFlash-=dt;
+}
+
+function drawBackground(){
+  const g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,`hsl(${bgHue},40%,8%)`);
+  g.addColorStop(0.5,`hsl(${(bgHue+20)%360},35%,12%)`);
+  g.addColorStop(1,`hsl(${(bgHue+40)%360},30%,6%)`);
+  ctx.fillStyle=g;
+  ctx.fillRect(0,0,W,H);
+
+  // Water caustics
+  ctx.globalAlpha=0.04;
+  for(let i=0;i<6;i++){
+    const cx=W/2+Math.sin(gameTime*0.01+i*1.2)*150;
+    const cy=H/2+Math.cos(gameTime*0.008+i*0.8)*200;
+    const rg=ctx.createRadialGradient(cx,cy,0,cx,cy,120);
+    rg.addColorStop(0,`hsl(${(bgHue+i*30)%360},60%,50%)`);
+    rg.addColorStop(1,'transparent');
+    ctx.fillStyle=rg;
+    ctx.fillRect(0,0,W,H);
+  }
+  ctx.globalAlpha=1;
+}
+
+function drawLanes(){
+  // Lane lines
+  ctx.strokeStyle=`hsla(${bgHue},40%,30%,0.3)`;
+  ctx.lineWidth=1;
+  ctx.setLineDash([8,8]);
+  ctx.beginPath();
+  ctx.moveTo(0,LANE_TOP);ctx.lineTo(W,LANE_TOP);
+  ctx.moveTo(0,LANE_BOT);ctx.lineTo(W,LANE_BOT);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Lane indicators
+  ctx.globalAlpha=0.08;
+  ctx.fillStyle=`hsl(${bgHue},50%,40%)`;
+  ctx.fillRect(0,LANE_TOP-25,W,50);
+  ctx.fillRect(0,LANE_BOT-25,W,50);
+  ctx.globalAlpha=1;
+}
+
+function drawGates(){
+  for(const g of gates){
+    const gx=g.x;
+    const gw=g.w;
+
+    // Top gate bar
+    const tc=COLORS[g.topColor];
+    ctx.fillStyle=hsl(tc,0.85);
+    ctx.shadowColor=hsl(tc,0.5);
+    ctx.shadowBlur=15;
+    roundRect(gx,LANE_TOP-28,gw,56,8);
+    ctx.fill();
+    ctx.shadowBlur=0;
+
+    // Inner glow top
+    ctx.fillStyle=hsl(tc,0.3);
+    roundRect(gx+4,LANE_TOP-20,gw-8,40,4);
+    ctx.fill();
+
+    // Bottom gate bar
+    const bc=COLORS[g.botColor];
+    ctx.fillStyle=hsl(bc,0.85);
+    ctx.shadowColor=hsl(bc,0.5);
+    ctx.shadowBlur=15;
+    roundRect(gx,LANE_BOT-28,gw,56,8);
+    ctx.fill();
+    ctx.shadowBlur=0;
+
+    // Inner glow bottom
+    ctx.fillStyle=hsl(bc,0.3);
+    roundRect(gx+4,LANE_BOT-20,gw-8,40,4);
+    ctx.fill();
+
+    // Connection line between gates
+    ctx.strokeStyle=`hsla(${bgHue},20%,40%,0.15)`;
+    ctx.lineWidth=2;
+    ctx.beginPath();
+    ctx.moveTo(gx+gw/2,LANE_TOP+28);
+    ctx.lineTo(gx+gw/2,LANE_BOT-28);
+    ctx.stroke();
+  }
+}
+
+function roundRect(x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.lineTo(x+w-r,y);
+  ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+  ctx.lineTo(x+w,y+h-r);
+  ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  ctx.lineTo(x+r,y+h);
+  ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+  ctx.lineTo(x,y+r);
+  ctx.quadraticCurveTo(x,y,x+r,y);
+  ctx.closePath();
+}
+
+function drawDiver(){
+  const x=diverX;
+  const y=diverY;
+  const c=diverColor;
+  const pulse=1+Math.sin(gameTime*0.1)*0.08;
+  const r=18*pulse;
+
+  // Outer glow
+  ctx.shadowColor=hsl(c,0.8);
+  ctx.shadowBlur=25;
+
+  // Body
+  ctx.fillStyle=hsl(c,0.9);
+  ctx.beginPath();
+  ctx.arc(x,y,r,0,Math.PI*2);
+  ctx.fill();
+  ctx.shadowBlur=0;
+
+  // Inner highlight
+  const ig=ctx.createRadialGradient(x-4,y-4,0,x,y,r);
+  ig.addColorStop(0,`hsla(${c.h},${c.s}%,${Math.min(100,c.l+30)}%,0.6)`);
+  ig.addColorStop(1,'transparent');
+  ctx.fillStyle=ig;
+  ctx.beginPath();
+  ctx.arc(x,y,r,0,Math.PI*2);
+  ctx.fill();
+
+  // Eye
+  const eyeDir=diverTargetY<LANE_MID?-1:1;
+  ctx.fillStyle='#fff';
+  ctx.beginPath();
+  ctx.arc(x+5,y+eyeDir*3,5,0,Math.PI*2);
+  ctx.fill();
+  ctx.fillStyle='#111';
+  ctx.beginPath();
+  ctx.arc(x+6.5,y+eyeDir*3.5,2.5,0,Math.PI*2);
+  ctx.fill();
+
+  // Color indicator ring
+  ctx.strokeStyle=hsl(c,0.6);
+  ctx.lineWidth=2;
+  ctx.beginPath();
+  ctx.arc(x,y,r+4,0,Math.PI*2);
+  ctx.stroke();
+}
+
+function drawParticles(){
+  for(const p of particles){
+    const a=p.life/p.maxLife;
+    ctx.globalAlpha=a;
+    ctx.fillStyle=hsl(p.color,a);
+    ctx.beginPath();
+    ctx.arc(p.x,p.y,p.r*a,0,Math.PI*2);
+    ctx.fill();
+  }
+  ctx.globalAlpha=1;
+}
+
+function drawBubbles(){
+  for(const b of bubbles){
+    const a=b.life/b.maxLife*0.4;
+    ctx.strokeStyle=`hsla(${bgHue},50%,70%,${a})`;
+    ctx.lineWidth=1;
+    ctx.beginPath();
+    ctx.arc(b.x,b.y,b.r*(b.life/b.maxLife),0,Math.PI*2);
+    ctx.stroke();
+  }
+}
+
+function drawHUD(){
+  // Score
+  ctx.fillStyle='#fff';
+  ctx.font='bold 28px "Segoe UI",system-ui,sans-serif';
+  ctx.textAlign='center';
+  ctx.fillText(score,W/2,50);
+
+  // Best
+  ctx.font='13px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle='hsla(0,0%,100%,0.5)';
+  ctx.fillText(`BEST: ${best}`,W/2,72);
+
+  // Combo
+  if(combo>1){
+    ctx.font='bold 18px "Segoe UI",system-ui,sans-serif';
+    const comboHue=(bgHue+120)%360;
+    ctx.fillStyle=`hsl(${comboHue},80%,65%)`;
+    ctx.fillText(`${combo}x COMBO`,W/2,100);
+  }
+
+  // Color indicator at diver
+  ctx.font='bold 11px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle=hsl(diverColor,0.8);
+  ctx.fillText('MATCH THIS COLOR',diverX,diverY-(diverTargetY<=LANE_MID?-35:35));
+
+  // Perfect flash
+  if(perfectFlash>0){
+    ctx.font='bold 22px "Segoe UI",system-ui,sans-serif';
+    ctx.fillStyle=`hsla(50,100%,70%,${perfectFlash/15})`;
+    ctx.fillText('PERFECT!',W/2,H/2);
+  }
+}
+
+function drawStartScreen(){
+  drawBackground();
+
+  // Title
+  ctx.textAlign='center';
+  ctx.fillStyle='#fff';
+  ctx.font='bold 42px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText('TIDE TWIST',W/2,250);
+
+  ctx.font='16px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle=`hsl(${(bgHue+60)%360},70%,65%)`;
+  ctx.fillText('Color Gates',W/2,280);
+
+  // Animated diver preview
+  const previewY=380+Math.sin(Date.now()*0.003)*20;
+  const previewC=COLORS[Math.floor(Date.now()/1000)%COLORS.length];
+  ctx.fillStyle=hsl(previewC,0.8);
+  ctx.shadowColor=hsl(previewC,0.6);
+  ctx.shadowBlur=20;
+  ctx.beginPath();
+  ctx.arc(W/2,previewY,22,0,Math.PI*2);
+  ctx.fill();
+  ctx.shadowBlur=0;
+
+  // Tap to start
+  const tapA=0.5+Math.sin(Date.now()*0.004)*0.3;
+  ctx.globalAlpha=tapA;
+  ctx.font='18px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle='#fff';
+  ctx.fillText('TAP TO START',W/2,500);
+  ctx.globalAlpha=1;
+
+  // Controls hint
+  ctx.font='12px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle='hsla(0,0%,100%,0.4)';
+  ctx.fillText('Tap / Space / Enter to flip gravity',W/2,530);
+
+  // Best score
+  if(best>0){
+    ctx.font='14px "Segoe UI",system-ui,sans-serif';
+    ctx.fillStyle='hsla(0,0%,100%,0.6)';
+    ctx.fillText(`Best: ${best}`,W/2,570);
+  }
+
+  // Challenge banner
+  if(challengeScore>0){
+    ctx.fillStyle='hsla(45,100%,50%,0.15)';
+    roundRect(W/2-130,600,260,40,10);
+    ctx.fill();
+    ctx.font='bold 15px "Segoe UI",system-ui,sans-serif';
+    ctx.fillStyle='hsl(45,100%,65%)';
+    ctx.textAlign='center';
+    ctx.fillText(`Challenge: beat ${challengeScore}!`,W/2,626);
+  }
+}
+
+function drawGameOver(){
+  // Dim overlay
+  ctx.fillStyle='rgba(5,7,12,0.8)';
+  ctx.fillRect(0,0,W,H);
+
+  ctx.textAlign='center';
+
+  // Game over title
+  ctx.font='bold 36px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle='#ff6666';
+  ctx.fillText('GAME OVER',W/2,280);
+
+  // Score
+  ctx.font='bold 52px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle='#fff';
+  ctx.fillText(score,W/2,360);
+  ctx.font='13px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle='hsla(0,0%,100%,0.5)';
+  ctx.fillText('SCORE',W/2,380);
+
+  // Best
+  ctx.font='bold 22px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle=score>=best?'hsl(50,100%,65%)':'hsla(0,0%,100%,0.7)';
+  ctx.fillText(`Best: ${best}`,W/2,420);
+  if(score>=best&&score>0){
+    ctx.font='12px "Segoe UI",system-ui,sans-serif';
+    ctx.fillStyle='hsl(50,100%,65%)';
+    ctx.fillText('NEW RECORD!',W/2,442);
+  }
+
+  // Max combo
+  ctx.font='16px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle='hsla(0,0%,100%,0.6)';
+  ctx.fillText(`Max Combo: ${maxCombo}x`,W/2,475);
+
+  // Challenge result
+  if(challengeScore>0){
+    ctx.font='bold 14px "Segoe UI",system-ui,sans-serif';
+    if(score>=challengeScore){
+      ctx.fillStyle='hsl(120,70%,55%)';
+      ctx.fillText('CHALLENGE BEATEN!',W/2,500);
+    }else{
+      ctx.fillStyle='hsl(0,60%,55%)';
+      ctx.fillText(`Needed ${challengeScore} to beat challenge`,W/2,500);
+    }
+  }
+
+  // Share button
+  ctx.fillStyle='hsla(210,60%,50%,0.8)';
+  roundRect(shareBtn.x,shareBtn.y,shareBtn.w,shareBtn.h,8);
+  ctx.fill();
+  ctx.font='bold 13px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle='#fff';
+  ctx.fillText('SHARE',W/2,shareBtn.y+23);
+
+  // Tap to retry
+  const tapA=0.5+Math.sin(Date.now()*0.004)*0.3;
+  ctx.globalAlpha=tapA;
+  ctx.font='16px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle='#fff';
+  ctx.fillText('TAP TO RETRY',W/2,600);
+  ctx.globalAlpha=1;
+}
+
+function frame(ts){
+  requestAnimationFrame(frame);
+
+  let dt=(ts-lastTime)/16.667;
+  lastTime=ts;
+  if(dt>3)dt=3;
+  if(dt<0)dt=1;
+
+  // Recalc transform with shake
+  const dpr=window.devicePixelRatio||1;
+  const r=wrap.getBoundingClientRect();
+  const sx=r.width*dpr/W;
+  const sy=r.height*dpr/H;
+  ctx.setTransform(sx,0,0,sy,shakeX*sx,shakeY*sy);
+
+  if(state===START){
+    tidePhase+=dt*0.02;
+    gameTime+=dt;
+    drawStartScreen();
+  }else if(state===PLAYING){
+    update(dt);
+    drawBackground();
+    drawLanes();
+    drawBubbles();
+    drawGates();
+    drawDiver();
+    drawParticles();
+    drawHUD();
+
+    // Flash overlay
+    if(flashAlpha>0){
+      ctx.fillStyle=`rgba(255,255,255,${flashAlpha})`;
+      ctx.fillRect(0,0,W,H);
+    }
+  }else if(state===GAMEOVER){
+    // Still draw background and existing elements
+    gameTime+=dt*0.3;
+    drawBackground();
+    drawLanes();
+    drawBubbles();
+    drawGates();
+
+    // Update particles even in game over
+    for(let i=particles.length-1;i>=0;i--){
+      const p=particles[i];
+      p.x+=p.vx;p.y+=p.vy;
+      p.vx*=0.96;p.vy*=0.96;
+      p.life-=dt;
+      if(p.life<=0)particles.splice(i,1);
+    }
+    drawParticles();
+
+    // Shake decay in gameover
+    if(shakeDur>0){
+      shakeDur-=dt;
+      shakeX=(Math.random()-0.5)*shakeStr;
+      shakeY=(Math.random()-0.5)*shakeStr;
+      shakeStr*=0.92;
+      if(shakeDur<=0){shakeX=0;shakeY=0}
+    }
+
+    if(flashAlpha>0){
+      ctx.fillStyle=`rgba(255,50,50,${flashAlpha})`;
+      ctx.fillRect(0,0,W,H);
+      flashAlpha-=0.015;
+    }
+
+    drawGameOver();
+  }
+}
+
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
