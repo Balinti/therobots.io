@@ -532,6 +532,236 @@
       50%       { transform: rotate(45deg) translateY(5px); }
     }
 
+    /* ── MODAL ── */
+    #modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 200;
+      background: rgba(0,0,0,0.75);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    #modal-overlay.open { display: flex; }
+
+    #modal {
+      background: var(--bg2);
+      border: 1px solid var(--border-h);
+      border-radius: 20px;
+      width: 100%;
+      max-width: 680px;
+      max-height: 88vh;
+      overflow-y: auto;
+      position: relative;
+      box-shadow: 0 0 60px rgba(157,78,221,0.25), 0 20px 60px rgba(0,0,0,0.6);
+      animation: modalIn 0.28s cubic-bezier(0.34,1.56,0.64,1);
+    }
+    @keyframes modalIn {
+      from { opacity:0; transform: scale(0.9) translateY(20px); }
+      to   { opacity:1; transform: scale(1) translateY(0); }
+    }
+
+    .modal-thumb {
+      height: 180px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 5rem;
+      border-radius: 20px 20px 0 0;
+      position: relative;
+      overflow: hidden;
+    }
+    .modal-thumb::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(to bottom, transparent 50%, var(--bg2));
+    }
+
+    .modal-body { padding: 1.5rem 2rem 2rem; }
+
+    .modal-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 1.25rem;
+      gap: 1rem;
+    }
+    .modal-title {
+      font-family: 'Orbitron', monospace;
+      font-size: clamp(1.3rem, 3vw, 1.8rem);
+      font-weight: 900;
+      color: #fff;
+      line-height: 1.2;
+    }
+    .modal-close {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 1.1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: all 0.2s;
+    }
+    .modal-close:hover { background: rgba(255,255,255,0.12); color: #fff; }
+
+    .modal-section { margin-bottom: 1.5rem; }
+    .modal-section-title {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--purple-lt);
+      margin-bottom: 0.65rem;
+      padding-bottom: 0.4rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .modal-desc {
+      font-size: 0.92rem;
+      color: var(--text-dim);
+      line-height: 1.75;
+    }
+    .modal-steps {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.55rem;
+    }
+    .modal-steps li {
+      display: flex;
+      gap: 0.75rem;
+      font-size: 0.88rem;
+      color: var(--text-dim);
+      line-height: 1.55;
+    }
+    .modal-steps li .step-num {
+      flex-shrink: 0;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: rgba(157,78,221,0.2);
+      border: 1px solid rgba(157,78,221,0.4);
+      color: var(--purple-lt);
+      font-size: 0.7rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 1px;
+    }
+
+    .modal-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+    .ctrl-chip {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 0.8rem;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .ctrl-key {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 4px;
+      padding: 1px 6px;
+      font-size: 0.72rem;
+      font-family: monospace;
+      color: #fff;
+    }
+
+    .modal-features {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.5rem;
+    }
+    .modal-feature {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.5rem;
+      font-size: 0.83rem;
+      color: var(--text-dim);
+      line-height: 1.45;
+    }
+    .modal-feature::before {
+      content: '✦';
+      color: var(--purple);
+      font-size: 0.65rem;
+      margin-top: 3px;
+      flex-shrink: 0;
+    }
+
+    .modal-tips {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .modal-tip {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.6rem;
+      font-size: 0.85rem;
+      color: var(--text-dim);
+      line-height: 1.55;
+    }
+    .tip-icon { flex-shrink: 0; font-size: 0.9rem; }
+
+    .modal-play {
+      display: flex;
+      gap: 0.75rem;
+      margin-top: 1.75rem;
+      flex-wrap: wrap;
+    }
+    .btn-play {
+      flex: 1;
+      min-width: 160px;
+      background: linear-gradient(135deg, var(--purple), #5a189a);
+      color: #fff;
+      font-family: 'Inter', sans-serif;
+      font-size: 1rem;
+      font-weight: 700;
+      padding: 14px 24px;
+      border: none;
+      border-radius: 50px;
+      cursor: pointer;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: 0 0 30px rgba(157,78,221,0.35);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .btn-play:hover { transform: translateY(-2px); box-shadow: 0 0 45px rgba(157,78,221,0.5); }
+    .btn-secondary {
+      background: transparent;
+      border: 1px solid var(--border-h);
+      color: var(--text-dim);
+      font-family: 'Inter', sans-serif;
+      font-size: 0.9rem;
+      font-weight: 500;
+      padding: 14px 20px;
+      border-radius: 50px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-secondary:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+
     /* ── RESPONSIVE ── */
     @media (max-width: 600px) {
       .hero-stats { gap: 1.2rem; }
@@ -627,6 +857,52 @@
       <p>Try a different search term or category.</p>
     </div>
   </section>
+
+  <!-- MODAL -->
+  <div id="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title-text">
+    <div id="modal">
+      <div class="modal-thumb" id="modal-thumb"></div>
+      <div class="modal-body">
+        <div class="modal-header">
+          <h2 class="modal-title" id="modal-title-text"></h2>
+          <button class="modal-close" onclick="closeModal()" aria-label="Close">✕</button>
+        </div>
+
+        <div class="modal-section">
+          <div class="modal-section-title">About this game</div>
+          <p class="modal-desc" id="modal-desc"></p>
+        </div>
+
+        <div class="modal-section">
+          <div class="modal-section-title">How to Play</div>
+          <ol class="modal-steps" id="modal-steps"></ol>
+        </div>
+
+        <div class="modal-section">
+          <div class="modal-section-title">Controls</div>
+          <div class="modal-controls" id="modal-controls"></div>
+        </div>
+
+        <div class="modal-section">
+          <div class="modal-section-title">Game Features</div>
+          <div class="modal-features" id="modal-features"></div>
+        </div>
+
+        <div class="modal-section">
+          <div class="modal-section-title">Tips & Tricks</div>
+          <div class="modal-tips" id="modal-tips"></div>
+        </div>
+
+        <div class="modal-play">
+          <a class="btn-play" id="modal-play-btn" href="#" target="_blank">
+            <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            Play Now — Free
+          </a>
+          <button class="btn-secondary" onclick="closeModal()">Back to Games</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <footer>
     <p>&copy; 2025 TheRobots.io &nbsp;·&nbsp; <a href="/auth/login.html">Sign In</a> &nbsp;·&nbsp; All games free to play in your browser.</p>
@@ -937,11 +1213,11 @@
 
     const CAT_LABEL = { action: 'Action', arcade: 'Arcade', puzzle: 'Puzzle', rhythm: 'Rhythm' };
 
-    function buildCard(g) {
+    function buildCard(g, idx) {
       const [slug, name, desc, cat, theme] = g;
       const emoji = getEmoji(slug, theme);
       const catLabel = CAT_LABEL[cat] || cat;
-      return `<a class="game-card theme-${theme}" href="/games/${slug}/" data-cat="${cat}" data-name="${name.toLowerCase()}" data-desc="${desc.toLowerCase()}">
+      return `<div class="game-card theme-${theme}" role="button" tabindex="0" onclick="openModal(${idx})" onkeydown="if(event.key==='Enter')openModal(${idx})" data-cat="${cat}" data-name="${name.toLowerCase()}" data-desc="${desc.toLowerCase()}">
         <div class="game-card-thumb">
           <span class="emoji" aria-hidden="true">${emoji}</span>
         </div>
@@ -950,10 +1226,10 @@
           <div class="game-card-desc">${desc}</div>
           <div class="game-card-foot">
             <span class="cat-badge">${catLabel}</span>
-            <span class="play-arrow">Play <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
+            <span class="play-arrow">Info + Play <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
           </div>
         </div>
-      </a>`;
+      </div>`;
     }
 
     const grid = document.getElementById('games-grid');
@@ -983,7 +1259,9 @@
       }
       grid.style.display = 'grid';
       empty.style.display = 'none';
-      grid.innerHTML = filtered.map(buildCard).join('');
+      // Pass real index into GAMES for modal lookup
+      const indexMap = new Map(GAMES.map((g,i) => [g[0], i]));
+      grid.innerHTML = filtered.map(g => buildCard(g, indexMap.get(g[0]))).join('');
 
       // Scroll reveal
       const cards = grid.querySelectorAll('.game-card');
@@ -1020,6 +1298,180 @@
 
     // Initial render
     render();
+
+    // ── MODAL CONTENT ENGINE ──
+    const STEPS = {
+      action: [
+        "Launch the game and get familiar with the environment — notice the obstacles, terrain, and your character's movement range.",
+        "Start moving and react to incoming hazards as quickly as possible. Your reflexes are your main tool.",
+        "Collect any power-ups or bonuses that appear — they give you temporary advantages like speed boosts or shields.",
+        "As you survive longer, the pace increases and obstacle patterns become more complex. Stay focused.",
+        "Aim to beat your personal best score each run. Share your score and challenge friends to do better."
+      ],
+      arcade: [
+        "Start the game and observe the play area — understand where items spawn and how the scoring system works.",
+        "Execute each action with precision. In arcade games, consistency beats speed every time.",
+        "Chain successful moves together to build combos and earn bonus multipliers.",
+        "Watch for special items or events that offer big point rewards — prioritize these when safe.",
+        "The difficulty ramps up progressively. Adapt your strategy and push for a new high score every session."
+      ],
+      puzzle: [
+        "Take a moment to survey the board before making your first move — the optimal solution is rarely the first one you see.",
+        "Identify the main mechanic — whether it's matching, linking, aligning, or stacking — and plan around it.",
+        "Think two to three moves ahead. Every action should set up your next move, not just solve the immediate problem.",
+        "Look for chain reactions: a single well-placed move can trigger cascades that clear large portions of the board.",
+        "If you get stuck, step back and look at the big picture. The answer is usually simpler than it seems."
+      ],
+      rhythm: [
+        "Before playing, listen to the background music or beat indicators for a few seconds to internalize the tempo.",
+        "Tap, click, or press in time with the beat — focus on the rhythm, not just the visuals.",
+        "Build a streak of perfect timing hits to activate combo multipliers and rocket your score.",
+        "As the tempo increases, stay relaxed. Tension causes mistimed inputs — breathe and trust your rhythm.",
+        "Practice the difficult sections repeatedly. Rhythm games reward muscle memory above all else."
+      ]
+    };
+
+    const CONTROLS = {
+      action: [
+        {key:'Tap / Click', desc:'Jump or dodge'},
+        {key:'Spacebar', desc:'Primary action'},
+        {key:'← →', desc:'Move left / right'},
+        {key:'↑ ↓', desc:'Move up / down'}
+      ],
+      arcade: [
+        {key:'Tap / Click', desc:'Shoot or interact'},
+        {key:'Mouse / Touch', desc:'Aim and target'},
+        {key:'Spacebar', desc:'Fire or confirm'},
+        {key:'← →', desc:'Move paddle / character'}
+      ],
+      puzzle: [
+        {key:'Click / Tap', desc:'Select a piece'},
+        {key:'Drag', desc:'Move or swap pieces'},
+        {key:'Spacebar', desc:'Confirm selection'},
+        {key:'Esc', desc:'Deselect / cancel'}
+      ],
+      rhythm: [
+        {key:'Tap / Click', desc:'Hit the beat'},
+        {key:'Spacebar', desc:'Primary beat tap'},
+        {key:'← → ↑ ↓', desc:'Directional beats'},
+        {key:'Hold', desc:'Sustained note / hold beat'}
+      ]
+    };
+
+    const FEATURES = {
+      fire:    ['Intense volcanic environments with lava flows and eruptions','Dynamic obstacle patterns that shift with heat intensity','Escalating difficulty as magma levels rise','Explosive visual effects and particle fire systems'],
+      ocean:   ['Immersive underwater and wave environments','Fluid physics that affect player movement and strategy','Marine life obstacles with unique movement patterns','Depth-based challenge progression with tidal mechanics'],
+      space:   ['Zero-gravity simulation with orbital drift mechanics','Cosmic backdrop with asteroid fields and nebulae','Planetary gravity wells that affect trajectory','Star collection and deep-space exploration elements'],
+      neon:    ['Vibrant neon visuals with glowing particle effects','High-speed reflex-based gameplay in electric environments','Laser and beam obstacle systems that react to movement','Synthwave-inspired atmosphere with pulsing light effects'],
+      forest:  ['Lush natural environments with canopy and undergrowth layers','Wind and physics-based movement through forest terrain','Wildlife and creature obstacles with behavioral patterns','Branch-to-branch traversal and vine-swing mechanics'],
+      ice:     ['Slippery ice physics that affect momentum and control','Freezing hazards and cracking platform mechanics','Blizzard visibility challenges and frost effects','Glacial environment with avalanche and collapse events'],
+      candy:   ['Vibrant sweet-themed worlds bursting with color','Sugar physics — melting surfaces and sticky mechanics','Flavor-matching and candy-combo systems','Cheerful environments filled with confectionery obstacles'],
+      desert:  ['Expansive desert terrain with shifting sand dunes','Heat haze and sandstorm visibility effects','Wind mechanics that push or assist player movement','Oasis reward zones hidden across the arid landscape'],
+      rhythm:  ['Beat-synchronized gameplay tied to a dynamic soundtrack','Escalating tempo with increasingly complex patterns','Combo multiplier system that rewards perfect timing streaks','Multiple rhythm tracks unlocked through progression'],
+      pixel:   ['Retro 8-bit pixel art aesthetic with nostalgic charm','Classic arcade gameplay mechanics refined for modern play','Chiptune-inspired soundtrack and authentic sound effects','Pixel-perfect hitboxes for precise and fair challenge'],
+      default: ['Dynamically generated obstacle patterns for endless variety','Smooth control system optimized for both mobile and desktop','Progressive difficulty scaling that grows with your skill','Global score tracking and personal best achievements']
+    };
+
+    const TIPS = {
+      action: [
+        {icon:'⚡', tip:'Stay near the center of the play area so you can react to threats from any direction.'},
+        {icon:'👁️', tip:'Watch the spawn patterns — obstacles tend to repeat. Learning the cycle gives you a huge advantage.'},
+        {icon:'🎯', tip:'Don\'t chase power-ups that put you in danger. Surviving is always worth more than a bonus.'}
+      ],
+      arcade: [
+        {icon:'🔗', tip:'Chain your actions deliberately — a calm, consistent chain always beats frantic mashing.'},
+        {icon:'⏱️', tip:'Timing beats speed. A perfectly timed action scores more than three rushed attempts.'},
+        {icon:'💡', tip:'Learn the scoring system. Understanding what earns the most points is the fastest route to a high score.'}
+      ],
+      puzzle: [
+        {icon:'🧠', tip:'Always look for chain reactions before committing to a move — they can solve the board in one go.'},
+        {icon:'⏳', tip:'Don\'t rush. The timer, if any, rarely matters as much as making the right move at the right time.'},
+        {icon:'🔄', tip:'If you\'re stuck, try working backwards from the goal state to figure out which move unlocks it.'}
+      ],
+      rhythm: [
+        {icon:'🎵', tip:'Listen more than you look. Your ears pick up the beat faster than your eyes track the visuals.'},
+        {icon:'😌', tip:'Keep your hand and wrist relaxed. Tension causes inconsistent timing — loosen up between beats.'},
+        {icon:'🔁', tip:'Replay difficult sections intentionally. Rhythm mastery comes from deliberate repetition, not luck.'}
+      ]
+    };
+
+    const THEME_EXTENDED = {
+      fire:    (name) => `${name} takes place in a blazing volcanic world where every second counts. The environment is hostile and ever-changing — rivers of lava shift course, volcanic rocks rain from above, and the ground itself can give way at any moment. Players must harness their instincts and develop a sharp sense of timing to survive the relentless heat. The deeper you venture into the volcanic zone, the more intense and rewarding the challenge becomes.`,
+      ocean:   (name) => `${name} immerses you in the fluid, unpredictable world of the ocean. Wave mechanics and underwater currents constantly push against your intentions, creating a game that rewards adaptability over rigidity. Navigating through marine life, coral hazards, and tidal forces requires both quick reactions and a feel for the flow of the water. Every dive is different, and every wave brings a new challenge to overcome.`,
+      space:   (name) => `${name} launches you into the vast expanse of deep space where the rules of physics bend around gravity wells, asteroid clusters, and cosmic phenomena. The silence of space belies the intense challenge ahead — orbital drift, interstellar debris, and the sheer scale of the cosmos conspire to test your precision. Mastering space movement is the key to climbing the leaderboard and exploring further into the unknown.`,
+      neon:    (name) => `${name} exists in a high-energy neon dimension where light moves at the speed of reflex. Electric grids, laser barriers, and glowing obstacles demand razor-sharp attention and split-second decisions. The visual feedback is immediate and satisfying — every near-miss and perfect dodge looks and feels incredible. This is a game built for players who thrive on speed and precision in a dazzling electronic world.`,
+      forest:  (name) => `${name} sends you deep into a vibrant living forest where every branch, vine, and canopy layer presents a new challenge. The forest is alive — wind moves the trees, creatures patrol the undergrowth, and the terrain shifts with the time of day. Moving through this natural obstacle course rewards players who can read the environment and plan their path through the canopy with fluid, flowing movement.`,
+      ice:     (name) => `${name} drops you into a frozen world where the laws of friction are negotiable. Ice surfaces send you sliding unpredictably, platforms crack and collapse under sustained weight, and blizzard conditions reduce visibility at the worst moments. Surviving in this glacial environment means planning your movements with the knowledge that stopping on a dime isn't always possible — momentum is your enemy and your ally.`,
+      candy:   (name) => `${name} unfolds in a wonderfully chaotic candy world where the environment is as sweet as it is dangerous. Melting lollipops, sticky caramel surfaces, and bouncing gum bubbles create an obstacle course that's as unpredictable as it is colorful. Beneath the sugary charm lies a genuinely challenging game that demands timing, pattern recognition, and a love for confectionery chaos.`,
+      desert:  (name) => `${name} places you in a vast, sun-scorched desert landscape where survival is the ultimate prize. Shifting sand dunes destabilize your footing, sandstorms strip away visibility, and the relentless sun creates heat mirage effects that make the path ahead uncertain. Finding oases and mastering the desert wind mechanics are the skills that separate survivors from those swallowed by the sand.`,
+      rhythm:  (name) => `${name} is built entirely around the beat — a game where your timing is your talent. The soundtrack drives every mechanic, and falling out of sync with the rhythm means falling behind in score. As the tempo escalates and patterns grow more complex, the satisfaction of maintaining a perfect streak becomes one of the most rewarding feelings in casual gaming. This game turns music into a challenge you can feel.`,
+      pixel:   (name) => `${name} is a love letter to classic arcade gaming, rendered in crisp pixel art with the kind of tight, precise controls that defined the golden age of arcades. Every mechanic has been distilled to its purest form — no unnecessary complexity, just you, the controller, and the challenge. Chiptune audio and authentic visual style complete the retro package, delivering modern challenge through a timeless aesthetic lens.`,
+      default: (name) => `${name} is a fast-paced browser game that keeps you engaged from the first second to the last. With dynamically scaling difficulty, smooth controls optimized for both desktop and mobile, and a scoring system that always gives you something to chase, it's the kind of game that's easy to start but hard to put down. Whether you're playing for two minutes or two hours, every session feels rewarding.`
+    };
+
+    function openModal(idx) {
+      const g = GAMES[idx];
+      const [slug, name, desc, cat, theme] = g;
+      const emoji = getEmoji(slug, theme);
+      const themeKey = THEME_EXTENDED[theme] ? theme : 'default';
+
+      // Thumb
+      const thumb = document.getElementById('modal-thumb');
+      thumb.className = `modal-thumb theme-${theme}`;
+      thumb.innerHTML = `<span style="font-size:5rem;position:relative;z-index:1;">${emoji}</span>`;
+
+      // Title
+      document.getElementById('modal-title-text').textContent = name;
+
+      // Description — original + extended paragraph
+      const extended = THEME_EXTENDED[themeKey](name);
+      document.getElementById('modal-desc').innerHTML = `${desc}<br><br>${extended}`;
+
+      // Steps
+      const steps = STEPS[cat] || STEPS.action;
+      document.getElementById('modal-steps').innerHTML = steps.map((s,i) =>
+        `<li><span class="step-num">${i+1}</span><span>${s}</span></li>`
+      ).join('');
+
+      // Controls
+      const ctrls = CONTROLS[cat] || CONTROLS.action;
+      document.getElementById('modal-controls').innerHTML = ctrls.map(c =>
+        `<div class="ctrl-chip"><span class="ctrl-key">${c.key}</span> ${c.desc}</div>`
+      ).join('');
+
+      // Features
+      const feats = FEATURES[themeKey] || FEATURES.default;
+      document.getElementById('modal-features').innerHTML = feats.map(f =>
+        `<div class="modal-feature">${f}</div>`
+      ).join('');
+
+      // Tips
+      const tips = TIPS[cat] || TIPS.action;
+      document.getElementById('modal-tips').innerHTML = tips.map(t =>
+        `<div class="modal-tip"><span class="tip-icon">${t.icon}</span><span>${t.tip}</span></div>`
+      ).join('');
+
+      // Play button
+      document.getElementById('modal-play-btn').href = `/games/${slug}/`;
+
+      // Open
+      const overlay = document.getElementById('modal-overlay');
+      overlay.classList.add('open');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closeModal() {
+      document.getElementById('modal-overlay').classList.remove('open');
+      document.body.style.overflow = '';
+    }
+
+    // Close on overlay click
+    document.getElementById('modal-overlay').addEventListener('click', function(e) {
+      if (e.target === this) closeModal();
+    });
+
+    // Close on Escape
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
   </script>
 </body>
 </html>
