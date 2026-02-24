@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Split Snacker - Free HTML5 Game</title>
+<meta name="description" content="Play Split Snacker - Swipe to split your candy and dodge falling sweets in a fast-paced frenzy.">
+<meta name="theme-color" content="#ff4fa3">
+<meta name="robots" content="index, follow">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Split Snacker - Free HTML5 Game">
+<meta property="og:description" content="Play Split Snacker - Swipe to split your candy and dodge falling sweets in a fast-paced frenzy.">
+<meta property="og:url" content="https://balinti.github.io/split-snacker/">
+<meta property="og:image" content="https://balinti.github.io/split-snacker/og.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Split Snacker - Free HTML5 Game">
+<meta name="twitter:description" content="Play Split Snacker - Swipe to split your candy and dodge falling sweets in a fast-paced frenzy.">
+<meta name="twitter:image" content="https://balinti.github.io/split-snacker/og.jpg">
+<link rel="preconnect" href="https://pagead2.googlesyndication.com">
+<link rel="preconnect" href="https://googleads.g.doubleclick.net">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#1a0a2e;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;touch-action:none;user-select:none;-webkit-user-select:none}
+body{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100dvh;min-height:-webkit-fill-available}
+#gameShell{position:relative;width:min(420px,100vw);height:min(750px,100dvh);max-width:420px;max-height:750px;border-radius:12px;overflow:hidden;box-shadow:0 0 40px rgba(255,79,163,.3);padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+canvas{display:block;width:100%;height:100%;touch-action:none}
+#info{width:min(420px,100vw);max-width:420px;margin-top:8px;color:#c8b0e8;font-size:13px}
+#info summary{cursor:pointer;padding:8px 12px;background:rgba(255,255,255,.06);border-radius:8px;font-weight:600;color:#e8d0ff}
+#info .content{padding:10px 12px;line-height:1.5;background:rgba(255,255,255,.03);border-radius:0 0 8px 8px}
+#info h3{color:#ff8fd4;margin:8px 0 4px;font-size:14px}
+#info p,#info li{font-size:12px;color:#a898c8}
+#info ul{padding-left:18px}
+</style>
+</head>
+<body>
+<div id="gameShell"><canvas id="c"></canvas></div>
+<details id="info">
+<summary>About / How to Play</summary>
+<div class="content">
+<h3>What is Split Snacker?</h3>
+<p>Split Snacker: Sugar Gates is a free hyper-casual HTML5 game. Guide your candy through falling sugar gates by splitting and merging at the right moment. How far can you go?</p>
+<h3>How to Play</h3>
+<ul>
+<li><strong>Tap &amp; Hold</strong> or press <strong>Space/Enter</strong> to split your candy into two halves.</li>
+<li><strong>Release</strong> to merge back together.</li>
+<li>Move left/right by dragging or using <strong>Arrow Keys</strong>.</li>
+<li>Pass through gates to score points. Tight passes earn bonus points!</li>
+<li>Your sugar meter drains while split — merge to refill it.</li>
+<li>If your sugar runs out, you're forced to merge. Plan your splits wisely!</li>
+</ul>
+<h3>Tips</h3>
+<ul>
+<li>Build streaks by passing gates without missing — multiplier goes up to 4x!</li>
+<li>Gates get faster and trickier as you progress.</li>
+<li>Watch the sugar bar — don't get caught split with no sugar left.</li>
+</ul>
+<h3>FAQ</h3>
+<p><strong>Is it free?</strong> Yes, 100% free to play in any modern browser.</p>
+<p><strong>Does it work on mobile?</strong> Yes! Designed for both mobile and desktop.</p>
+<p><strong>How is my score saved?</strong> Your best score is saved locally in your browser.</p>
+</div>
+</details>
+<script>
+'use strict';
+(function(){
+const canvas=document.getElementById('c');
+const shell=document.getElementById('gameShell');
+const ctx=canvas.getContext('2d');
+const dpr=Math.min(2,devicePixelRatio||1);
+let W,H;
+function resize(){
+  const r=shell.getBoundingClientRect();
+  W=r.width;H=r.height;
+  canvas.width=W*dpr;canvas.height=H*dpr;
+  canvas.style.width=W+'px';canvas.style.height=H+'px';
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+resize();
+window.addEventListener('resize',resize);
+
+// States
+const START=0,PLAYING=1,GAMEOVER=2;
+let state=START;
+let score=0,best=parseInt(localStorage.getItem('ss_best'))||0;
+let gatesPassed=0,tightPasses=0,longestStreak=0,currentStreak=0;
+let hue=0;
+
+// Challenge
+const params=new URLSearchParams(location.search);
+const isChallenge=params.get('challenge')==='1';
+const challengeScore=parseInt(params.get('score'))||0;
+
+// Shake
+let shakeX=0,shakeY=0,shakeMag=0,shakeDecay=0.9;
+function addShake(m){shakeMag=Math.max(shakeMag,m)}
+function updateShake(){
+  if(shakeMag>0.5){
+    shakeX=(Math.random()-.5)*shakeMag*2;
+    shakeY=(Math.random()-.5)*shakeMag*2;
+    shakeMag*=shakeDecay;
+  }else{shakeX=shakeY=shakeMag=0}
+}
+
+// Particles
+const particles=[];
+function spawnParticles(x,y,count,color,size,speed){
+  for(let i=0;i<count;i++){
+    const a=Math.random()*Math.PI*2;
+    const v=speed*(0.5+Math.random());
+    particles.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,life:1,decay:0.015+Math.random()*0.02,size:size*(0.5+Math.random()),color});
+  }
+}
+function updateParticles(dt){
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    p.x+=p.vx*dt*60;p.y+=p.vy*dt*60;
+    p.vy+=0.1*dt*60;
+    p.life-=p.decay*dt*60;
+    if(p.life<=0)particles.splice(i,1);
+  }
+}
+function drawParticles(){
+  for(const p of particles){
+    ctx.globalAlpha=p.life*0.8;
+    ctx.fillStyle=p.color;
+    ctx.beginPath();
+    // Crystal shape
+    const s=p.size*p.life;
+    ctx.moveTo(p.x,p.y-s);
+    ctx.lineTo(p.x+s*0.6,p.y);
+    ctx.lineTo(p.x,p.y+s);
+    ctx.lineTo(p.x-s*0.6,p.y);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.globalAlpha=1;
+}
+
+// Player
+const player={
+  x:0,y:0,
+  split:false,
+  splitAnim:0, // 0=merged, 1=full split
+  sugar:1,
+  leftX:0,rightX:0,
+  radius:18,
+  splitDist:40,
+  moveX:0
+};
+
+function resetPlayer(){
+  player.x=W/2;
+  player.y=H-100;
+  player.split=false;
+  player.splitAnim=0;
+  player.sugar=1;
+  player.moveX=0;
+}
+
+// Gates
+const WIDE=0,TWIN=1,OFFSET=2,COMBO=3;
+let gates=[];
+let gateSpeed=120;
+let spawnTimer=0;
+let spawnInterval=2.2;
+
+function gateTypeForCount(n){
+  if(n<5)return WIDE;
+  if(n<10){
+    const r=Math.random();
+    return r<0.5?WIDE:TWIN;
+  }
+  if(n<20){
+    const r=Math.random();
+    return r<0.3?WIDE:r<0.6?TWIN:r<0.85?OFFSET:COMBO;
+  }
+  const r=Math.random();
+  return r<0.15?WIDE:r<0.4?TWIN:r<0.7?OFFSET:COMBO;
+}
+
+function spawnGate(){
+  const type=gateTypeForCount(gatesPassed);
+  const gapW=Math.max(50,80-gatesPassed*0.5);
+  const gate={type,y:-30,h:18,gaps:[],passed:false,hue:hue+60};
+  const margin=30;
+  switch(type){
+    case WIDE:{
+      const gx=margin+Math.random()*(W-margin*2-gapW);
+      gate.gaps=[{x:gx,w:gapW}];
+      break;
+    }
+    case TWIN:{
+      const w2=gapW*0.7;
+      const x1=margin+Math.random()*(W/2-margin-w2);
+      const x2=W/2+Math.random()*(W/2-margin-w2);
+      gate.gaps=[{x:x1,w:w2},{x:x2,w:w2}];
+      break;
+    }
+    case OFFSET:{
+      const w1=gapW*0.8;
+      const x1=margin+Math.random()*(W*0.35);
+      gate.gaps=[{x:x1,w:w1}];
+      break;
+    }
+    case COMBO:{
+      const w1=gapW*0.65;
+      const spacing=W/3;
+      const x1=margin+Math.random()*spacing*0.5;
+      const x2=x1+spacing+Math.random()*30;
+      gate.gaps=[{x:x1,w:w1},{x:Math.min(x2,W-margin-w1),w:w1}];
+      break;
+    }
+  }
+  gates.push(gate);
+}
+
+function getSpeed(){return 120+gatesPassed*3}
+function getSpawnInterval(){return Math.max(0.7,2.2-gatesPassed*0.04)}
+
+// Collision: circle vs rect (gate bar segment)
+function circleRectCollide(cx,cy,cr,rx,ry,rw,rh){
+  const nearX=Math.max(rx,Math.min(cx,rx+rw));
+  const nearY=Math.max(ry,Math.min(cy,ry+rh));
+  const dx=cx-nearX,dy=cy-nearY;
+  return dx*dx+dy*dy<cr*cr;
+}
+
+function checkGateCollision(gate,px,py,pr){
+  // Build solid segments from gaps
+  const segments=[];
+  let prevEnd=0;
+  const sortedGaps=[...gate.gaps].sort((a,b)=>a.x-b.x);
+  for(const g of sortedGaps){
+    if(g.x>prevEnd)segments.push({x:prevEnd,w:g.x-prevEnd});
+    prevEnd=g.x+g.w;
+  }
+  if(prevEnd<W)segments.push({x:prevEnd,w:W-prevEnd});
+  for(const s of segments){
+    if(circleRectCollide(px,py,pr,s.x,gate.y,s.w,gate.h))return true;
+  }
+  return false;
+}
+
+function getMinClearance(gate,px,py){
+  let minDist=Infinity;
+  const sortedGaps=[...gate.gaps].sort((a,b)=>a.x-b.x);
+  for(const g of sortedGaps){
+    // Distance from player center to gap edges
+    const dLeft=Math.abs(px-(g.x));
+    const dRight=Math.abs(px-(g.x+g.w));
+    minDist=Math.min(minDist,dLeft,dRight);
+  }
+  return minDist;
+}
+
+// Input
+let pointerDown=false;
+let pointerX=0;
+let tapHandled=false;
+
+function hitButton(ex,ey){
+  const rect=canvas.getBoundingClientRect();
+  const mx=ex-rect.left;
+  const my=ey-rect.top;
+  for(const b of buttonAreas){
+    if(mx>=b.x&&mx<=b.x+b.w&&my>=b.y&&my<=b.y+b.h)return b;
+  }
+  return null;
+}
+
+canvas.addEventListener('pointerdown',e=>{
+  e.preventDefault();
+  pointerDown=true;
+  pointerX=e.offsetX;
+  tapHandled=false;
+  if(state===START){startGame();tapHandled=true;return}
+  if(state===GAMEOVER){
+    // Check buttons first - defer restart to pointerup if on a button
+    const b=hitButton(e.clientX,e.clientY);
+    if(b){
+      if(b.action==='share')doShare();
+      if(b.action==='challenge')doChallenge();
+      tapHandled=true;
+      return;
+    }
+    startGame();tapHandled=true;return;
+  }
+  player.split=true;
+});
+canvas.addEventListener('pointermove',e=>{
+  e.preventDefault();
+  if(pointerDown&&state===PLAYING){
+    const dx=e.offsetX-pointerX;
+    player.moveX=dx*0.15;
+    pointerX=e.offsetX;
+  }
+});
+canvas.addEventListener('pointerup',e=>{
+  e.preventDefault();
+  pointerDown=false;
+  if(state===PLAYING){
+    player.split=false;
+    player.moveX=0;
+  }
+});
+canvas.addEventListener('pointerleave',()=>{
+  pointerDown=false;
+  if(state===PLAYING){
+    player.split=false;
+    player.moveX=0;
+  }
+});
+
+document.addEventListener('keydown',e=>{
+  if(e.code==='Space'||e.code==='Enter'){
+    e.preventDefault();
+    if(state===START){startGame();return}
+    if(state===GAMEOVER){startGame();return}
+    player.split=true;
+  }
+  if(state===PLAYING){
+    if(e.code==='ArrowLeft')player.moveX=-4;
+    if(e.code==='ArrowRight')player.moveX=4;
+  }
+});
+document.addEventListener('keyup',e=>{
+  if(e.code==='Space'||e.code==='Enter'){
+    player.split=false;
+  }
+  if(e.code==='ArrowLeft'||e.code==='ArrowRight')player.moveX=0;
+});
+
+function startGame(){
+  state=PLAYING;
+  score=0;gatesPassed=0;tightPasses=0;longestStreak=0;currentStreak=0;
+  gates=[];particles.length=0;
+  spawnTimer=0;
+  shakeMag=0;shakeX=shakeY=0;
+  resetPlayer();
+}
+
+function gameOver(){
+  state=GAMEOVER;
+  if(score>best){best=score;localStorage.setItem('ss_best',best)}
+  addShake(20);
+  spawnParticles(player.x,player.y,40,`hsl(${hue},100%,70%)`,6,4);
+}
+
+let lastTime=0;
+
+function updateGame(dt){
+  if(state!==PLAYING&&state!==GAMEOVER)return;
+  if(state===GAMEOVER){
+    // Still let particles/gates drift
+    for(const g of gates)g.y+=getSpeed()*dt*0.3;
+    updateParticles(dt);
+    return;
+  }
+
+  // Player movement
+  player.x+=player.moveX*dt*60;
+  player.x=Math.max(player.radius,Math.min(W-player.radius,player.x));
+
+  // Split animation
+  const splitTarget=player.split?1:0;
+  player.splitAnim+=(splitTarget-player.splitAnim)*Math.min(1,dt*12);
+
+  // Sugar
+  if(player.split){
+    player.sugar-=dt*0.25;
+    if(player.sugar<=0){
+      player.sugar=0;
+      player.split=false; // forced merge
+    }
+  }else{
+    player.sugar=Math.min(1,player.sugar+dt*0.15);
+  }
+
+  // Compute split positions
+  const sd=player.splitDist*player.splitAnim;
+  player.leftX=player.x-sd;
+  player.rightX=player.x+sd;
+
+  // Gates
+  spawnTimer-=dt;
+  if(spawnTimer<=0){
+    spawnGate();
+    spawnTimer=getSpawnInterval();
+  }
+
+  const speed=getSpeed();
+  for(let i=gates.length-1;i>=0;i--){
+    const g=gates[i];
+    g.y+=speed*dt;
+
+    // Check pass
+    if(!g.passed&&g.y>player.y){
+      // Collision check
+      let hit=false;
+      const pr=player.radius*0.8;
+      if(player.splitAnim>0.3){
+        hit=checkGateCollision(g,player.leftX,player.y,pr)||
+            checkGateCollision(g,player.rightX,player.y,pr);
+      }else{
+        hit=checkGateCollision(g,player.x,player.y,pr);
+      }
+
+      if(hit){
+        gameOver();
+        return;
+      }
+
+      g.passed=true;
+      gatesPassed++;
+      currentStreak++;
+      longestStreak=Math.max(longestStreak,currentStreak);
+      const mult=Math.min(4,1+Math.floor(currentStreak/3));
+      let pts=1*mult;
+
+      // Tight pass bonus
+      let clearance;
+      if(player.splitAnim>0.3){
+        clearance=Math.min(
+          getMinClearance(g,player.leftX,player.y),
+          getMinClearance(g,player.rightX,player.y)
+        );
+      }else{
+        clearance=getMinClearance(g,player.x,player.y);
+      }
+      if(clearance<player.radius+8){
+        pts+=2;
+        tightPasses++;
+        addShake(3);
+        spawnParticles(player.x,g.y,8,`hsl(${g.hue+30},100%,80%)`,3,2);
+      }
+
+      score+=pts;
+      spawnParticles(player.x,g.y,5,`hsl(${g.hue},90%,75%)`,2.5,1.5);
+    }
+
+    if(g.y>H+50)gates.splice(i,1);
+  }
+
+  updateParticles(dt);
+}
+
+function drawWorld(){
+  // Gates
+  for(const g of gates){
+    const segments=[];
+    let prevEnd=0;
+    const sortedGaps=[...g.gaps].sort((a,b)=>a.x-b.x);
+    for(const gap of sortedGaps){
+      if(gap.x>prevEnd)segments.push({x:prevEnd,w:gap.x-prevEnd});
+      prevEnd=gap.x+gap.w;
+    }
+    if(prevEnd<W)segments.push({x:prevEnd,w:W-prevEnd});
+
+    for(const s of segments){
+      const grad=ctx.createLinearGradient(s.x,g.y,s.x+s.w,g.y+g.h);
+      grad.addColorStop(0,`hsl(${g.hue},70%,55%)`);
+      grad.addColorStop(1,`hsl(${g.hue+30},80%,45%)`);
+      ctx.fillStyle=grad;
+      roundRect(ctx,s.x,g.y,s.w,g.h,4);
+      ctx.fill();
+      // Shine
+      ctx.fillStyle='rgba(255,255,255,0.15)';
+      roundRect(ctx,s.x+2,g.y+2,s.w-4,g.h*0.4,2);
+      ctx.fill();
+    }
+
+    // Gap sparkle
+    for(const gap of g.gaps){
+      ctx.fillStyle=`hsla(${g.hue+60},100%,80%,0.1)`;
+      ctx.fillRect(gap.x,g.y-2,gap.w,g.h+4);
+    }
+  }
+
+  // Player
+  drawPlayer();
+}
+
+function drawPlayer(){
+  const anim=player.splitAnim;
+  const sd=player.splitDist*anim;
+  const r=player.radius;
+  const py=player.y;
+
+  // Warning outline when sugar low
+  const lowSugar=player.sugar<0.3;
+
+  if(anim>0.05){
+    // Draw two halves
+    drawCandy(player.leftX,py,r*(0.7+0.3*(1-anim)),hue,lowSugar);
+    drawCandy(player.rightX,py,r*(0.7+0.3*(1-anim)),hue+40,lowSugar);
+    // Connection line
+    if(anim<0.8){
+      ctx.strokeStyle=`hsla(${hue+20},80%,70%,${1-anim})`;
+      ctx.lineWidth=2;
+      ctx.beginPath();
+      ctx.moveTo(player.leftX,py);
+      ctx.lineTo(player.rightX,py);
+      ctx.stroke();
+    }
+  }else{
+    drawCandy(player.x,py,r,hue,lowSugar);
+  }
+}
+
+function drawCandy(x,y,r,h,warn){
+  // Outer glow
+  const grd=ctx.createRadialGradient(x,y,r*0.2,x,y,r*1.5);
+  grd.addColorStop(0,`hsla(${h},100%,70%,0.3)`);
+  grd.addColorStop(1,`hsla(${h},100%,70%,0)`);
+  ctx.fillStyle=grd;
+  ctx.beginPath();ctx.arc(x,y,r*1.5,0,Math.PI*2);ctx.fill();
+
+  // Body
+  const bg=ctx.createRadialGradient(x-r*0.3,y-r*0.3,r*0.1,x,y,r);
+  bg.addColorStop(0,`hsl(${h},90%,75%)`);
+  bg.addColorStop(0.7,`hsl(${h},80%,55%)`);
+  bg.addColorStop(1,`hsl(${h+20},70%,40%)`);
+  ctx.fillStyle=bg;
+  ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();
+
+  // Shine
+  ctx.fillStyle='rgba(255,255,255,0.35)';
+  ctx.beginPath();ctx.arc(x-r*0.25,y-r*0.25,r*0.35,0,Math.PI*2);ctx.fill();
+
+  // Warning pulse
+  if(warn){
+    const pulse=0.5+0.5*Math.sin(Date.now()*0.01);
+    ctx.strokeStyle=`hsla(0,100%,60%,${pulse*0.8})`;
+    ctx.lineWidth=3;
+    ctx.beginPath();ctx.arc(x,y,r+4,0,Math.PI*2);ctx.stroke();
+  }
+}
+
+function drawHUD(){
+  // Score
+  ctx.fillStyle='#fff';
+  ctx.font='bold 28px "Segoe UI",system-ui,sans-serif';
+  ctx.textAlign='center';
+  ctx.fillText(score,W/2,45);
+
+  // Best
+  ctx.font='12px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle='rgba(255,255,255,0.5)';
+  ctx.fillText('BEST: '+best,W/2,62);
+
+  // Streak
+  if(currentStreak>=3){
+    ctx.font='bold 16px "Segoe UI",system-ui,sans-serif';
+    const mult=Math.min(4,1+Math.floor(currentStreak/3));
+    ctx.fillStyle=`hsl(${hue+120},90%,70%)`;
+    ctx.fillText(mult+'x STREAK',W/2,82);
+  }
+
+  // Sugar bar
+  const barW=100,barH=8,barX=W/2-barW/2,barY=14;
+  ctx.fillStyle='rgba(0,0,0,0.3)';
+  roundRect(ctx,barX,barY,barW,barH,4);ctx.fill();
+
+  const sH=player.sugar<0.3?0:hue+180;
+  const sL=player.sugar<0.3?'50%':'65%';
+  ctx.fillStyle=player.sugar<0.3?`hsl(0,90%,${50+20*Math.sin(Date.now()*0.008)}%)`:`hsl(${sH},80%,${sL})`;
+  roundRect(ctx,barX,barY,barW*player.sugar,barH,4);ctx.fill();
+
+  // Sugar label
+  ctx.font='9px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle='rgba(255,255,255,0.6)';
+  ctx.textAlign='center';
+  ctx.fillText('SUGAR',W/2,barY+barH+10);
+}
+
+function drawStart(){
+  // Animated bg circles
+  const t=Date.now()*0.001;
+  for(let i=0;i<5;i++){
+    const cx=W/2+Math.sin(t+i*1.3)*60;
+    const cy=H/2+Math.cos(t+i*0.9)*80;
+    const gr=ctx.createRadialGradient(cx,cy,0,cx,cy,120);
+    gr.addColorStop(0,`hsla(${hue+i*60},70%,50%,0.08)`);
+    gr.addColorStop(1,'transparent');
+    ctx.fillStyle=gr;
+    ctx.beginPath();ctx.arc(cx,cy,120,0,Math.PI*2);ctx.fill();
+  }
+
+  ctx.textAlign='center';
+
+  // Title
+  ctx.font='bold 42px "Segoe UI",system-ui,sans-serif';
+  const tGrad=ctx.createLinearGradient(W/2-100,H*0.3,W/2+100,H*0.3);
+  tGrad.addColorStop(0,`hsl(${hue},90%,70%)`);
+  tGrad.addColorStop(0.5,`hsl(${hue+60},90%,80%)`);
+  tGrad.addColorStop(1,`hsl(${hue+120},90%,70%)`);
+  ctx.fillStyle=tGrad;
+  ctx.fillText('Split Snacker',W/2,H*0.32);
+
+  ctx.font='18px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle=`hsl(${hue+40},70%,75%)`;
+  ctx.fillText('Sugar Gates',W/2,H*0.38);
+
+  // Challenge banner
+  if(isChallenge){
+    ctx.font='bold 16px "Segoe UI",system-ui,sans-serif';
+    ctx.fillStyle='#ffcc00';
+    ctx.fillText(`Challenge: Beat ${challengeScore} pts!`,W/2,H*0.45);
+  }
+
+  // Animated candy preview
+  const bobY=H*0.55+Math.sin(t*2)*8;
+  drawCandy(W/2,bobY,24,hue,false);
+
+  // Instructions
+  const pulse=0.6+0.4*Math.sin(t*3);
+  ctx.font='bold 20px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle=`rgba(255,255,255,${pulse})`;
+  ctx.fillText('Tap to Start',W/2,H*0.72);
+
+  ctx.font='13px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle='rgba(255,255,255,0.4)';
+  ctx.fillText('Hold = Split  |  Release = Merge',W/2,H*0.78);
+  ctx.fillText('Drag or Arrow Keys to move',W/2,H*0.82);
+
+  if(best>0){
+    ctx.font='14px "Segoe UI",system-ui,sans-serif';
+    ctx.fillStyle='rgba(255,255,255,0.35)';
+    ctx.fillText('Best: '+best,W/2,H*0.88);
+  }
+}
+
+function drawGameOver(){
+  // Overlay
+  ctx.fillStyle='rgba(0,0,0,0.6)';
+  ctx.fillRect(0,0,W,H);
+
+  ctx.textAlign='center';
+
+  ctx.font='bold 36px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle='#fff';
+  ctx.fillText('Game Over',W/2,H*0.22);
+
+  ctx.font='bold 52px "Segoe UI",system-ui,sans-serif';
+  const sGrad=ctx.createLinearGradient(W/2-60,H*0.32,W/2+60,H*0.32);
+  sGrad.addColorStop(0,`hsl(${hue},90%,70%)`);
+  sGrad.addColorStop(1,`hsl(${hue+80},90%,80%)`);
+  ctx.fillStyle=sGrad;
+  ctx.fillText(score,W/2,H*0.34);
+
+  ctx.font='14px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle='rgba(255,255,255,0.5)';
+  ctx.fillText('BEST: '+best,W/2,H*0.39);
+
+  // Challenge result
+  if(isChallenge){
+    ctx.font='bold 18px "Segoe UI",system-ui,sans-serif';
+    if(score>=challengeScore){
+      ctx.fillStyle='#00ff88';
+      ctx.fillText('Challenge BEATEN!',W/2,H*0.44);
+    }else{
+      ctx.fillStyle='#ff6688';
+      ctx.fillText(`Need ${challengeScore-score} more to win!`,W/2,H*0.44);
+    }
+  }
+
+  // Stats
+  const statsY=isChallenge?H*0.50:H*0.46;
+  ctx.font='13px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle='rgba(255,255,255,0.45)';
+  ctx.fillText(`Tight Passes: ${tightPasses}   |   Longest Streak: ${longestStreak}`,W/2,statsY);
+
+  // Retry
+  const pulse=0.6+0.4*Math.sin(Date.now()*0.003);
+  ctx.font='bold 20px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle=`rgba(255,255,255,${pulse})`;
+  ctx.fillText('Tap to Retry',W/2,H*0.58);
+
+  // Buttons
+  drawButton(W/2-70,H*0.64,120,38,'Share',`hsl(${hue+200},70%,50%)`);
+  drawButton(W/2+70-60,H*0.64,120,38,'Challenge',`hsl(${hue+280},70%,50%)`);
+}
+
+let buttonAreas=[];
+function drawButton(x,y,w,h,text,color){
+  ctx.fillStyle=color;
+  roundRect(ctx,x,y,w,h,8);ctx.fill();
+  ctx.fillStyle='#fff';
+  ctx.font='bold 14px "Segoe UI",system-ui,sans-serif';
+  ctx.textAlign='center';
+  ctx.fillText(text,x+w/2,y+h/2+5);
+  buttonAreas.push({x,y,w,h,action:text.toLowerCase()});
+}
+
+
+function doShare(){
+  const text=`I scored ${score} in Split Snacker: Sugar Gates! Can you beat me?\nhttps://balinti.github.io/split-snacker/`;
+  if(navigator.share){
+    navigator.share({title:'Split Snacker',text}).catch(()=>{});
+  }else{
+    navigator.clipboard.writeText(text).then(()=>{
+      showToast('Score copied!');
+    }).catch(()=>{});
+  }
+}
+
+function doChallenge(){
+  const url=`https://balinti.github.io/split-snacker/?challenge=1&score=${score}`;
+  const text=`I challenge you to beat my ${score} pts in Split Snacker!\n${url}`;
+  if(navigator.share){
+    navigator.share({title:'Split Snacker Challenge',text,url}).catch(()=>{});
+  }else{
+    navigator.clipboard.writeText(text).then(()=>{
+      showToast('Challenge link copied!');
+    }).catch(()=>{});
+  }
+}
+
+let toastMsg='',toastTimer=0;
+function showToast(msg){toastMsg=msg;toastTimer=2}
+
+function roundRect(c,x,y,w,h,r){
+  c.beginPath();
+  c.moveTo(x+r,y);
+  c.lineTo(x+w-r,y);
+  c.quadraticCurveTo(x+w,y,x+w,y+r);
+  c.lineTo(x+w,y+h-r);
+  c.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  c.lineTo(x+r,y+h);
+  c.quadraticCurveTo(x,y+h,x,y+h-r);
+  c.lineTo(x,y+r);
+  c.quadraticCurveTo(x,y,x+r,y);
+  c.closePath();
+}
+
+lastTime=performance.now();
+requestAnimationFrame(function run(ts){
+  requestAnimationFrame(run);
+  buttonAreas=[];
+  const dt=Math.min((ts-lastTime)/1000,0.033);
+  lastTime=ts;
+  hue=(hue+dt*30)%360;
+  updateShake();
+
+  ctx.save();
+  const bgH=Math.floor(hue)%360;
+  ctx.fillStyle=`hsl(${bgH},30%,8%)`;
+  ctx.fillRect(0,0,W,H);
+
+  if(state===START){
+    drawStart();
+  }else if(state===GAMEOVER){
+    ctx.save();
+    ctx.translate(shakeX,shakeY);
+    updateGame(dt);
+    drawWorld();
+    ctx.restore();
+    drawParticles();
+    drawHUD();
+    drawGameOver();
+  }else{
+    ctx.save();
+    ctx.translate(shakeX,shakeY);
+    updateGame(dt);
+    drawWorld();
+    ctx.restore();
+    drawParticles();
+    drawHUD();
+  }
+
+  // Toast
+  if(toastTimer>0){
+    toastTimer-=dt;
+    const a=Math.min(1,toastTimer*2);
+    ctx.globalAlpha=a;
+    ctx.fillStyle='rgba(0,0,0,0.7)';
+    roundRect(ctx,W/2-80,H-80,160,32,8);ctx.fill();
+    ctx.fillStyle='#fff';
+    ctx.font='13px "Segoe UI",system-ui,sans-serif';
+    ctx.textAlign='center';
+    ctx.fillText(toastMsg,W/2,H-60);
+    ctx.globalAlpha=1;
+  }
+
+  ctx.restore();
+});
+})();
+</script>
+</body>
+</html>

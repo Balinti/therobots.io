@@ -1,0 +1,1090 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Lava Leap - Free HTML5 Game</title>
+  <meta name="description" content="Play Lava Leap - Tap to link ascending lava bubbles while gravity flips to avoid falling hazards.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0b0a1f">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Lava Leap - Free HTML5 Game">
+  <meta property="og:description" content="Play Lava Leap - Tap to snap ascending lava bubbles while avoiding rising lava and obsidian spikes!">
+  <meta property="og:url" content="https://balinti.github.io/lava-leap/">
+  <meta property="og:image" content="https://balinti.github.io/lava-leap/og-image.png">
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Lava Leap - Free HTML5 Game">
+  <meta name="twitter:description" content="Play Lava Leap - Tap to snap ascending lava bubbles while avoiding rising lava and obsidian spikes!">
+  <meta name="twitter:image" content="https://balinti.github.io/lava-leap/og-image.png">
+
+  <link rel="canonical" href="https://balinti.github.io/lava-leap/">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%; height: 100%;
+      background: #0b0a1f;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      color: #e0d4ff;
+      overflow-x: hidden;
+    }
+
+    #game-wrap {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      /* Full viewport height on mobile, capped at 750px on desktop */
+      height: 100vh;
+      max-height: 750px;
+      flex-shrink: 0;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: manipulation;
+      cursor: pointer;
+    }
+
+    /* Privacy modal */
+    #privacy-modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.75);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+    #privacy-modal.open { display: flex; }
+    #privacy-box {
+      background: #1a1830;
+      border: 1px solid #4a3a7a;
+      border-radius: 12px;
+      padding: 24px;
+      max-width: 360px;
+      width: 90%;
+      color: #c0b0e8;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    #privacy-box h3 { color: #ff6b35; margin-bottom: 10px; }
+    #privacy-close {
+      margin-top: 16px;
+      background: #ff6b35;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 20px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    /* Below-canvas info section */
+    #info-section {
+      width: 100%;
+      max-width: 420px;
+      padding: 12px 16px 24px;
+    }
+    #info-toggle {
+      background: none;
+      border: 1px solid #4a3a7a;
+      color: #9080c0;
+      border-radius: 8px;
+      padding: 6px 14px;
+      font-size: 12px;
+      cursor: pointer;
+      width: 100%;
+      text-align: left;
+    }
+    #info-toggle:hover { color: #c0b0e8; border-color: #7060a0; }
+    #info-content {
+      display: none;
+      margin-top: 10px;
+      font-size: 12px;
+      color: #9080c0;
+      line-height: 1.7;
+    }
+    #info-content.open { display: block; }
+    #info-content h4 { color: #ff6b35; margin: 8px 0 4px; font-size: 13px; }
+    #info-content ul { padding-left: 18px; }
+
+    #footer-links {
+      margin-top: 12px;
+      font-size: 11px;
+      color: #6050a0;
+    }
+    #footer-links a {
+      color: #7060b0;
+      text-decoration: none;
+      cursor: pointer;
+      margin-right: 12px;
+    }
+    #footer-links a:hover { color: #c0b0e8; }
+  </style>
+</head>
+<body>
+
+<div id="game-wrap">
+  <canvas id="c"></canvas>
+</div>
+
+<section id="info-section" aria-label="How to play">
+  <button id="info-toggle" aria-expanded="false" aria-controls="info-content">
+    ▶ How to Play / About
+  </button>
+  <div id="info-content" role="region">
+    <h4>How to Play</h4>
+    <ul>
+      <li>Tap or press Space/Enter to snap to the next bubble above.</li>
+      <li>Survive the rising lava as long as possible.</li>
+      <li>Land on glowing <strong style="color:#ffe066">Bonus</strong> bubbles to boost your multiplier.</li>
+      <li>Beware <strong style="color:#ff8844">Cracked</strong> bubbles — they pop after landing!</li>
+      <li>Dodge obsidian spikes sliding between lanes.</li>
+      <li>Build a combo with perfect snaps for a higher score.</li>
+    </ul>
+    <h4>About</h4>
+    <p>Lava Leap is a free hyper-casual HTML5 game. No download needed — play instantly in your browser on mobile or desktop.</p>
+  </div>
+  <div id="footer-links">
+    <a id="privacy-link">Privacy Policy</a>
+    <span>© 2025 Lava Leap</span>
+  </div>
+</section>
+
+<!-- Privacy Modal -->
+<div id="privacy-modal" role="dialog" aria-modal="true" aria-labelledby="privacy-title">
+  <div id="privacy-box">
+    <h3 id="privacy-title">Privacy Policy</h3>
+    <p>Lava Leap uses Google AdSense to display advertisements. AdSense may use cookies to serve ads based on your prior visits to this website or other websites. You can opt out of personalised advertising by visiting <a href="https://www.google.com/settings/ads" target="_blank" rel="noopener" style="color:#ff8844">Google Ads Settings</a>.</p>
+    <p style="margin-top:10px">High scores are stored locally in your browser using localStorage and are never sent to any server. No personal data is collected by this game.</p>
+    <button id="privacy-close">Close</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ─── Constants ──────────────────────────────────────────────────────────────
+  const LS_KEY = 'lavaLeap_highScore_v1';
+  const MAX_DPR = 2;
+  const LANE_COUNT = 5;
+  const BUBBLE_RADIUS = 22;
+  const PLAYER_RADIUS = 10;
+  const SNAP_CONE_HALF_ANGLE = Math.PI / 3; // 60° half-angle upward cone
+  const PERFECT_WINDOW_MS = 200; // ms after landing for perfect snap
+  const CRACKED_POP_MS = 500;    // ms until cracked bubble pops (early game 800ms)
+  const NEAR_MISS_DIST = 14;     // px beyond spike hitbox for mercy trigger
+  const MERCY_COOLDOWN_MS = 12000;
+  const SLOW_MO_DURATION_MS = 150;
+  const SLOW_MO_FACTOR = 0.85;
+  const TIMESCALE_PERFECT = 0.85;
+
+  const STATE = { START: 'start', PLAYING: 'playing', GAMEOVER: 'gameover' };
+
+  // ─── Canvas & DPR setup ─────────────────────────────────────────────────────
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+  const wrap = document.getElementById('game-wrap');
+
+  let W = 0, H = 0, DPR = 1;
+
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, MAX_DPR);
+    const rect = wrap.getBoundingClientRect();
+    W = rect.width;
+    H = rect.height;
+    canvas.width = Math.round(W * DPR);
+    canvas.height = Math.round(H * DPR);
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+
+  window.addEventListener('resize', () => { resize(); if (state !== STATE.PLAYING) drawStatic(); });
+  resize();
+
+  // ─── State ──────────────────────────────────────────────────────────────────
+  let state = STATE.START;
+  let score = 0;
+  let hiScore = parseInt(localStorage.getItem(LS_KEY) || '0', 10);
+  let combo = 0;
+  let bestCombo = 0;
+  let multiplier = 1;
+  let hue = 200; // HSL color cycling base
+
+  // ─── World scroll ───────────────────────────────────────────────────────────
+  let worldY = 0;        // how many px the world has scrolled
+  let scrollSpeed = 60;  // px/s, increases over time
+  let difficulty = 0;    // 0..1 ramp over first ~120s
+
+  // ─── Lava ───────────────────────────────────────────────────────────────────
+  let lavaY = 0;         // top of lava surface in world coords
+  let lavaSpeed = 55;    // px/s world coords; slightly slower than scroll at first
+
+  // ─── Screen shake ───────────────────────────────────────────────────────────
+  let shakeAmt = 0;
+  let shakeDecay = 0;
+
+  // ─── Time scale ─────────────────────────────────────────────────────────────
+  let timeScale = 1;
+  let timeScaleTimer = 0;
+
+  // ─── Particles ──────────────────────────────────────────────────────────────
+  const POOL_SIZE = 300;
+  const particles = [];
+  for (let i = 0; i < POOL_SIZE; i++) particles.push({ active: false });
+
+  function spawnParticle(x, y, vx, vy, life, size, hue, alpha) {
+    for (let i = 0; i < POOL_SIZE; i++) {
+      const p = particles[i];
+      if (!p.active) {
+        p.active = true; p.x = x; p.y = y;
+        p.vx = vx; p.vy = vy;
+        p.life = p.maxLife = life;
+        p.size = size; p.hue = hue; p.alpha = alpha;
+        return;
+      }
+    }
+  }
+
+  function burstParticles(x, y, count, hueVal, bigBurst) {
+    for (let i = 0; i < count; i++) {
+      const ang = (Math.PI * 2 * i / count) + Math.random() * 0.5;
+      const spd = bigBurst ? (60 + Math.random() * 120) : (30 + Math.random() * 80);
+      spawnParticle(x, y,
+        Math.cos(ang) * spd, Math.sin(ang) * spd,
+        0.4 + Math.random() * 0.5,
+        bigBurst ? (3 + Math.random() * 4) : (2 + Math.random() * 3),
+        hueVal + Math.random() * 40 - 20,
+        0.9
+      );
+    }
+  }
+
+  function spawnRing(x, y, hueVal) {
+    // Encode as a special "ring" particle
+    spawnParticle(x, y, 0, 0, 0.35, 30, hueVal, 0.8);
+    particles[particles.findLastIndex(p => p.active)].isRing = true;
+  }
+
+  // ─── Bubbles ────────────────────────────────────────────────────────────────
+  const BTYPE = { SAFE: 'safe', CRACKED: 'cracked', BONUS: 'bonus' };
+  let bubbles = [];
+  let nextBubbleY = 0; // next spawn Y in world coords (negative = above current view)
+
+  function laneX(lane) {
+    const padding = BUBBLE_RADIUS + 8;
+    const usable = W - padding * 2;
+    return padding + (lane / (LANE_COUNT - 1)) * usable;
+  }
+
+  function spawnBubbleRow(worldYPos) {
+    // Pick 2-4 bubbles per row, spread across lanes
+    const count = 2 + Math.floor(Math.random() * 3);
+    const lanes = [];
+    const avail = Array.from({ length: LANE_COUNT }, (_, i) => i);
+    for (let i = 0; i < count; i++) {
+      const idx = Math.floor(Math.random() * avail.length);
+      lanes.push(avail.splice(idx, 1)[0]);
+    }
+    const rowHue = (hue + Math.random() * 60) % 360;
+    lanes.forEach(lane => {
+      let type = BTYPE.SAFE;
+      const r = Math.random();
+      if (difficulty > 0.2 && r < 0.15 + difficulty * 0.15) type = BTYPE.CRACKED;
+      else if (difficulty > 0.5 && r > 0.92) type = BTYPE.BONUS;
+      bubbles.push({
+        lane, x: laneX(lane), y: worldYPos,
+        r: BUBBLE_RADIUS,
+        type,
+        hue: rowHue,
+        popTimer: -1,
+        popped: false,
+        wobble: Math.random() * Math.PI * 2,
+        wobbleSpeed: 0.8 + Math.random() * 0.8,
+      });
+    });
+  }
+
+  function initBubbles() {
+    bubbles = [];
+    // Seed rows from bottom of screen upward
+    const rowSpacing = 90;
+    for (let y = H - 100; y > -200; y -= rowSpacing) {
+      spawnBubbleRow(y);
+    }
+    nextBubbleY = -250;
+  }
+
+  // ─── Player ─────────────────────────────────────────────────────────────────
+  let player = { x: 0, y: 0, r: PLAYER_RADIUS, onBubble: null, snapAnim: 0 };
+  let landingTime = -9999; // ms timestamp of last landing (for perfect window)
+  let perfectsThisCombo = 0;
+
+  function placePlayerOnBubble(b) {
+    player.x = b.x;
+    player.y = b.y - b.r - player.r;
+    player.onBubble = b;
+    landingTime = performance.now();
+    player.snapAnim = 1;
+    if (b.type === BTYPE.CRACKED) {
+      const popMs = difficulty < 0.2 ? 800 : CRACKED_POP_MS;
+      b.popTimer = popMs / 1000;
+    }
+  }
+
+  // ─── Spikes ─────────────────────────────────────────────────────────────────
+  let spikes = [];
+  let nextSpikeTime = 3; // s into game before first spike
+
+  function spawnSpike() {
+    const dir = Math.random() < 0.5 ? 1 : -1;
+    const yPos = H * 0.3 + Math.random() * H * 0.4; // world-relative spawn in view
+    spikes.push({
+      x: dir === 1 ? -60 : W + 60,
+      y: yPos,
+      vx: dir * (80 + difficulty * 100),
+      w: 40, h: 18,
+      telegraphTimer: 0.6,  // s of flashing before moving
+      moving: false,
+      hue: 260 + Math.random() * 30,
+    });
+  }
+
+  // ─── Near miss ──────────────────────────────────────────────────────────────
+  let mercyCooldown = 0;
+  let nearMissFlash = 0;
+  let nearMissText = '';
+
+  // ─── Slow-mo / timescale ───────────────────────────────────────────────────
+  function triggerSlowMo(dur, factor) {
+    timeScale = factor;
+    timeScaleTimer = dur;
+  }
+
+  // ─── Input ──────────────────────────────────────────────────────────────────
+  function handleInput() {
+    if (state === STATE.START) { startGame(); return; }
+    if (state === STATE.GAMEOVER) { startGame(); return; }
+    if (state === STATE.PLAYING) doSnap();
+  }
+
+  canvas.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    handleInput();
+  }, { passive: false });
+
+  window.addEventListener('keydown', e => {
+    if (e.code === 'Space' || e.code === 'Enter') {
+      e.preventDefault();
+      handleInput();
+    }
+  });
+
+  // ─── Game start / reset ─────────────────────────────────────────────────────
+  function startGame() {
+    state = STATE.PLAYING;
+    score = 0; combo = 0; bestCombo = 0; multiplier = 1;
+    worldY = 0; scrollSpeed = 60; difficulty = 0; lavaSpeed = 55;
+    timeScale = 1; timeScaleTimer = 0;
+    shakeAmt = 0; nearMissFlash = 0; mercyCooldown = 0;
+    hue = 200; perfectsThisCombo = 0; landingTime = -9999;
+    spikes = []; nextSpikeTime = 3;
+    // Lava starts below screen
+    lavaY = H + 200;
+    initBubbles();
+    // Place player on a safe bottom bubble
+    const startBubble = bubbles.find(b => b.y > H * 0.6 && b.type === BTYPE.SAFE);
+    if (startBubble) placePlayerOnBubble(startBubble);
+    else {
+      // fallback
+      player.x = W / 2; player.y = H - 120; player.onBubble = null;
+    }
+  }
+
+  // ─── Snap logic ─────────────────────────────────────────────────────────────
+  function doSnap() {
+    if (!player) return;
+    const now = performance.now();
+    const isPerfect = (now - landingTime) < PERFECT_WINDOW_MS && player.onBubble;
+
+    // Find best bubble in upward cone
+    const target = findSnapTarget();
+    if (!target) return;
+
+    // Check perfect
+    if (isPerfect) {
+      combo++;
+      perfectsThisCombo++;
+      multiplier = Math.min(8, 1 + Math.floor(perfectsThisCombo / 2));
+      triggerSlowMo(SLOW_MO_DURATION_MS / 1000, TIMESCALE_PERFECT);
+    } else {
+      // Non-perfect: continue but reset combo multiplier
+      combo++;
+      perfectsThisCombo = 0;
+      multiplier = 1;
+    }
+    if (combo > bestCombo) bestCombo = combo;
+
+    // Snap burst
+    burstParticles(player.x, player.y, 10, target.hue, false);
+    spawnRing(player.x, player.y, target.hue);
+    shakeAmt = Math.max(shakeAmt, 1.5);
+
+    placePlayerOnBubble(target);
+
+    // Score: height relative to lava + multiplier
+    score += Math.round(10 * multiplier);
+  }
+
+  function findSnapTarget() {
+    let best = null, bestScore = -Infinity;
+    const px = player.x, py = player.y;
+    for (const b of bubbles) {
+      if (b.popped || b === player.onBubble) continue;
+      const dx = b.x - px, dy = b.y - py;
+      // Must be above player (dy negative means higher on screen = lower y value)
+      if (dy >= 0) continue;
+      // Within cone: angle from straight up
+      const ang = Math.abs(Math.atan2(dx, -dy));
+      if (ang > SNAP_CONE_HALF_ANGLE) continue;
+      const dist = Math.hypot(dx, dy);
+      // Score: prefer closer, prefer more upward
+      const sc = -dist - ang * 50;
+      if (sc > bestScore) { bestScore = sc; best = b; }
+    }
+    return best;
+  }
+
+  // ─── Game Over ──────────────────────────────────────────────────────────────
+  function gameOver() {
+    state = STATE.GAMEOVER;
+    if (score > hiScore) { hiScore = score; localStorage.setItem(LS_KEY, hiScore); }
+    shakeAmt = 14;
+    shakeDecay = 8;
+    burstParticles(player.x, player.y, 40, 20, true);
+    spawnRing(player.x, player.y, 20);
+  }
+
+  // ─── Main loop ──────────────────────────────────────────────────────────────
+  let lastTime = 0;
+  function loop(ts) {
+    requestAnimationFrame(loop);
+    const rawDt = Math.min((ts - lastTime) / 1000, 0.05);
+    lastTime = ts;
+    if (rawDt <= 0) return;
+
+    // Time scale
+    if (timeScaleTimer > 0) {
+      timeScaleTimer -= rawDt;
+      if (timeScaleTimer <= 0) { timeScale = 1; timeScaleTimer = 0; }
+    }
+    const dt = rawDt * timeScale;
+
+    // HSL cycling
+    hue = (hue + dt * 15) % 360;
+
+    // Screen shake decay
+    if (shakeAmt > 0) {
+      shakeAmt -= (shakeDecay || 12) * rawDt;
+      if (shakeAmt < 0) { shakeAmt = 0; shakeDecay = 0; }
+    }
+
+    if (state === STATE.PLAYING) update(dt, rawDt);
+    draw(dt);
+  }
+
+  // ─── Update ─────────────────────────────────────────────────────────────────
+  function update(dt, rawDt) {
+    // Ramp difficulty
+    difficulty = Math.min(1, difficulty + rawDt / 120);
+    scrollSpeed = 60 + difficulty * 120;
+    lavaSpeed = 50 + difficulty * 110;
+
+    // Scroll world
+    worldY += scrollSpeed * dt;
+
+    // Lava rises (in screen coords, lavaY moves up)
+    lavaY -= lavaSpeed * dt;
+
+    // Near-miss cooldown
+    if (mercyCooldown > 0) mercyCooldown -= rawDt;
+    if (nearMissFlash > 0) nearMissFlash -= rawDt;
+
+    // Spawn more bubble rows
+    while (nextBubbleY > worldY - H - 200) {
+      nextBubbleY -= 80 + Math.random() * 40;
+      spawnBubbleRow(nextBubbleY);
+    }
+
+    // Update bubbles (wobble, pop timers, scroll)
+    for (const b of bubbles) {
+      if (b.popped) continue;
+      b.wobble += b.wobbleSpeed * dt;
+      // Convert world y to screen y
+      // (higher worldY means we've scrolled more, so screenY increases)
+      if (b.popTimer > 0) {
+        b.popTimer -= dt;
+        if (b.popTimer <= 0) {
+          b.popped = true;
+          burstParticles(b.x, worldToScreenY(b.y), 16, b.hue, false);
+          shakeAmt = Math.max(shakeAmt, 4);
+          // If player was on this bubble, throw them off
+          if (player.onBubble === b) {
+            player.onBubble = null;
+            // Start falling — handled by gravity below
+          }
+        }
+      }
+    }
+
+    // Remove off-screen bubbles
+    bubbles = bubbles.filter(b => {
+      const sy = worldToScreenY(b.y);
+      return sy < H + 100 && !b.popped;
+    });
+
+    // Player movement when not on bubble (falling after pop)
+    if (!player.onBubble) {
+      player.vy = (player.vy || 0) + 600 * dt;
+      player.y += player.vy * dt;
+    } else {
+      player.vy = 0;
+      // Follow bubble (bubbles don't move in world but scroll)
+      player.x = player.onBubble.x;
+      player.y = player.onBubble.y - player.onBubble.r - player.r;
+    }
+
+    // Screen snap anim
+    if (player.snapAnim > 0) player.snapAnim = Math.max(0, player.snapAnim - dt * 8);
+
+    // Spikes
+    nextSpikeTime -= dt;
+    if (nextSpikeTime <= 0) {
+      spawnSpike();
+      nextSpikeTime = Math.max(1.2, 3.5 - difficulty * 2);
+    }
+
+    for (let i = spikes.length - 1; i >= 0; i--) {
+      const sp = spikes[i];
+      if (!sp.moving) {
+        sp.telegraphTimer -= dt;
+        if (sp.telegraphTimer <= 0) sp.moving = true;
+      } else {
+        sp.x += sp.vx * dt;
+      }
+      // Remove off-screen
+      if (sp.x < -200 || sp.x > W + 200) { spikes.splice(i, 1); continue; }
+
+      // Collision with player
+      const psx = player.x, psy = worldToScreenY(player.y);
+      const halfW = sp.w / 2, halfH = sp.h / 2;
+      const spScreenY = worldToScreenY(sp.y);
+      // Circle vs AABB
+      const nearX = Math.max(sp.x - halfW, Math.min(psx, sp.x + halfW));
+      const nearY = Math.max(spScreenY - halfH, Math.min(psy, spScreenY + halfH));
+      const dist = Math.hypot(psx - nearX, psy - nearY);
+      if (dist < player.r) {
+        // Near-miss mercy check
+        if (mercyCooldown <= 0 && dist > player.r - NEAR_MISS_DIST) {
+          mercyCooldown = MERCY_COOLDOWN_MS / 1000;
+          nearMissFlash = 0.5;
+          nearMissText = 'CLOSE!';
+          triggerSlowMo(0.4, 0.5);
+        } else {
+          gameOver(); return;
+        }
+      }
+    }
+
+    // Death: lava reached player
+    const playerScreenY = worldToScreenY(player.y);
+    const lavaScreenY = lavaY;
+    if (playerScreenY + player.r > lavaScreenY) {
+      gameOver(); return;
+    }
+
+    // Death: player off-screen top (shouldn't happen) or too far below
+    if (playerScreenY > H + 60) {
+      gameOver(); return;
+    }
+  }
+
+  function worldToScreenY(wy) {
+    return wy + worldY;
+  }
+
+  // ─── Draw ───────────────────────────────────────────────────────────────────
+  function draw(dt) {
+    // Apply shake
+    const sx = shakeAmt > 0 ? (Math.random() - 0.5) * shakeAmt * 2 : 0;
+    const sy = shakeAmt > 0 ? (Math.random() - 0.5) * shakeAmt * 2 : 0;
+    ctx.save();
+    ctx.translate(sx, sy);
+
+    // Background gradient
+    const bg = ctx.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, `hsl(${(hue + 180) % 360},40%,6%)`);
+    bg.addColorStop(1, `hsl(${hue},50%,10%)`);
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, H);
+
+    // Stars / subtle bg dots
+    drawStars();
+
+    // Particles (behind bubbles)
+    updateAndDrawParticles(dt);
+
+    // Bubbles
+    for (const b of bubbles) {
+      const sy2 = worldToScreenY(b.y);
+      if (sy2 < -60 || sy2 > H + 60) continue;
+      drawBubble(b, sy2);
+    }
+
+    // Highlight next target bubble
+    if (state === STATE.PLAYING || state === STATE.START) {
+      const target = findSnapTarget();
+      if (target) {
+        const ty = worldToScreenY(target.y);
+        ctx.save();
+        ctx.globalAlpha = 0.5 + 0.3 * Math.sin(performance.now() / 200);
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(target.x, ty, target.r + 6, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    // Spikes
+    for (const sp of spikes) {
+      const spScreenY = worldToScreenY(sp.y);
+      drawSpike(sp, spScreenY);
+    }
+
+    // Player
+    if (state !== STATE.START) {
+      const py = worldToScreenY(player.y);
+      drawPlayer(player.x, py);
+    }
+
+    // Lava
+    drawLava();
+
+    // HUD
+    if (state === STATE.PLAYING) drawHUD();
+
+    // Near-miss
+    if (nearMissFlash > 0) {
+      ctx.save();
+      ctx.globalAlpha = nearMissFlash * 1.5;
+      ctx.fillStyle = `hsl(50,100%,70%)`;
+      ctx.font = `bold ${Math.round(W * 0.08)}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('CLOSE!', W / 2, H * 0.35);
+      ctx.restore();
+    }
+
+    // Overlays
+    if (state === STATE.START) drawStartOverlay();
+    if (state === STATE.GAMEOVER) drawGameOverOverlay();
+
+    ctx.restore();
+  }
+
+  // Draw star-like specks
+  const STARS = Array.from({ length: 60 }, () => ({
+    x: Math.random(), y: Math.random(), r: Math.random() * 1.2 + 0.3,
+    a: Math.random() * 0.6 + 0.1
+  }));
+  function drawStars() {
+    ctx.save();
+    STARS.forEach(s => {
+      ctx.globalAlpha = s.a;
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.arc(s.x * W, s.y * H, s.r, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    ctx.restore();
+  }
+
+  function drawBubble(b, sy) {
+    const isOnBubble = player.onBubble === b;
+    const wobX = Math.sin(b.wobble) * 2;
+    const wobY = Math.cos(b.wobble * 0.7) * 1.5;
+    const cx = b.x + wobX, cy = sy + wobY;
+    const r = b.r;
+    const pct = b.popTimer > 0 ? Math.max(0, 1 - b.popTimer / 0.8) : 0;
+
+    ctx.save();
+    // Cracked flicker
+    if (b.type === BTYPE.CRACKED && b.popTimer > 0) {
+      ctx.globalAlpha = 0.6 + 0.4 * Math.sin(performance.now() / 60);
+    }
+
+    // Bubble body
+    const grad = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.3, r * 0.1, cx, cy, r);
+    let col1, col2;
+    if (b.type === BTYPE.BONUS) {
+      col1 = `hsl(50,100%,80%)`; col2 = `hsl(40,100%,45%)`;
+    } else if (b.type === BTYPE.CRACKED) {
+      col1 = `hsl(${b.hue},60%,55%)`; col2 = `hsl(${b.hue},40%,30%)`;
+    } else {
+      col1 = `hsl(${b.hue},70%,70%)`; col2 = `hsl(${b.hue},50%,40%)`;
+    }
+    grad.addColorStop(0, col1);
+    grad.addColorStop(1, col2);
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * (1 - pct * 0.2), 0, Math.PI * 2);
+    ctx.fill();
+
+    // Cracked cracks
+    if (b.type === BTYPE.CRACKED) {
+      ctx.strokeStyle = `rgba(0,0,0,0.5)`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(cx - r * 0.3, cy - r * 0.2);
+      ctx.lineTo(cx + r * 0.1, cy + r * 0.3);
+      ctx.moveTo(cx + r * 0.2, cy - r * 0.3);
+      ctx.lineTo(cx - r * 0.1, cy + r * 0.1);
+      ctx.stroke();
+    }
+
+    // Bonus glow
+    if (b.type === BTYPE.BONUS) {
+      ctx.shadowColor = 'hsl(50,100%,70%)';
+      ctx.shadowBlur = 16;
+      ctx.strokeStyle = 'hsl(50,100%,80%)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    // Shine highlight
+    ctx.fillStyle = 'rgba(255,255,255,0.25)';
+    ctx.beginPath();
+    ctx.ellipse(cx - r * 0.25, cy - r * 0.25, r * 0.35, r * 0.2, -Math.PI / 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // On-bubble pulse ring
+    if (isOnBubble) {
+      ctx.strokeStyle = `hsla(${b.hue},100%,80%,0.6)`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r + 5 + Math.sin(performance.now() / 120) * 3, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  function drawPlayer(px, py) {
+    ctx.save();
+    const pulse = player.snapAnim;
+    const scale = 1 + pulse * 0.4;
+    ctx.translate(px, py);
+    ctx.scale(scale, scale);
+
+    // Ember glow
+    ctx.shadowColor = `hsl(${hue + 30},100%,70%)`;
+    ctx.shadowBlur = 14 + pulse * 10;
+
+    // Body
+    const grad = ctx.createRadialGradient(-2, -3, 1, 0, 0, player.r);
+    grad.addColorStop(0, `hsl(${hue + 40},100%,95%)`);
+    grad.addColorStop(0.5, `hsl(${hue + 20},100%,70%)`);
+    grad.addColorStop(1, `hsl(${hue},80%,40%)`);
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(0, 0, player.r, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Tiny flame tip
+    ctx.fillStyle = `hsl(${hue + 50},100%,90%)`;
+    ctx.beginPath();
+    ctx.ellipse(0, -player.r - 3, 3, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  function drawSpike(sp, sy) {
+    ctx.save();
+    const halfW = sp.w / 2, halfH = sp.h / 2;
+    const flash = !sp.moving && (Math.floor(performance.now() / 120) % 2 === 0);
+    if (flash) {
+      ctx.shadowColor = `hsl(${sp.hue},80%,70%)`;
+      ctx.shadowBlur = 20;
+    }
+
+    // Spike body (obsidian-ish)
+    const grad = ctx.createLinearGradient(sp.x - halfW, sy - halfH, sp.x + halfW, sy + halfH);
+    grad.addColorStop(0, flash ? `hsl(${sp.hue},60%,60%)` : `hsl(${sp.hue},40%,25%)`);
+    grad.addColorStop(1, flash ? `hsl(${sp.hue},40%,40%)` : `hsl(${sp.hue},30%,15%)`);
+    ctx.fillStyle = grad;
+
+    // Draw as a spiky diamond/bar with pointed ends
+    ctx.beginPath();
+    ctx.moveTo(sp.x - halfW - 10, sy);           // left point
+    ctx.lineTo(sp.x - halfW + 5, sy - halfH);     // top-left
+    ctx.lineTo(sp.x + halfW - 5, sy - halfH);     // top-right
+    ctx.lineTo(sp.x + halfW + 10, sy);            // right point
+    ctx.lineTo(sp.x + halfW - 5, sy + halfH);     // bottom-right
+    ctx.lineTo(sp.x - halfW + 5, sy + halfH);     // bottom-left
+    ctx.closePath();
+    ctx.fill();
+
+    // Glint
+    if (sp.moving) {
+      ctx.fillStyle = 'rgba(255,255,255,0.15)';
+      ctx.beginPath();
+      ctx.ellipse(sp.x, sy - halfH * 0.5, halfW * 0.6, halfH * 0.3, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Telegraph arrow
+    if (!sp.moving) {
+      const arrowX = sp.vx > 0 ? sp.x + halfW + 20 : sp.x - halfW - 20;
+      ctx.fillStyle = `hsla(${sp.hue},100%,80%,${0.4 + 0.4 * Math.sin(performance.now() / 120)})`;
+      ctx.font = `bold 18px sans-serif`;
+      ctx.textAlign = sp.vx > 0 ? 'right' : 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(sp.vx > 0 ? '→' : '←', arrowX, sy);
+    }
+
+    ctx.restore();
+  }
+
+  const LAVA_POINTS = 12;
+  function drawLava() {
+    const ly = lavaY;
+    const t = performance.now() / 800;
+
+    ctx.save();
+
+    // Glow
+    ctx.shadowColor = 'hsl(15,100%,50%)';
+    ctx.shadowBlur = 30;
+
+    // Wave line
+    ctx.beginPath();
+    ctx.moveTo(0, H);
+    for (let i = 0; i <= LAVA_POINTS; i++) {
+      const xp = (i / LAVA_POINTS) * W;
+      const yp = ly + Math.sin(t + i * 0.8) * 6 + Math.sin(t * 1.3 + i * 1.4) * 3;
+      if (i === 0) ctx.moveTo(xp, yp);
+      else ctx.lineTo(xp, yp);
+    }
+    ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.closePath();
+
+    const lavaGrad = ctx.createLinearGradient(0, ly - 10, 0, H);
+    lavaGrad.addColorStop(0, 'hsl(25,100%,55%)');
+    lavaGrad.addColorStop(0.15, 'hsl(15,100%,45%)');
+    lavaGrad.addColorStop(0.5, 'hsl(5,90%,30%)');
+    lavaGrad.addColorStop(1, 'hsl(0,80%,15%)');
+    ctx.fillStyle = lavaGrad;
+    ctx.fill();
+
+    // Lava surface line
+    ctx.strokeStyle = 'hsl(40,100%,70%)';
+    ctx.lineWidth = 2.5;
+    ctx.shadowColor = 'hsl(40,100%,60%)';
+    ctx.shadowBlur = 12;
+    ctx.beginPath();
+    for (let i = 0; i <= LAVA_POINTS; i++) {
+      const xp = (i / LAVA_POINTS) * W;
+      const yp = ly + Math.sin(t + i * 0.8) * 6 + Math.sin(t * 1.3 + i * 1.4) * 3;
+      if (i === 0) ctx.moveTo(xp, yp);
+      else ctx.lineTo(xp, yp);
+    }
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  function updateAndDrawParticles(dt) {
+    ctx.save();
+    for (const p of particles) {
+      if (!p.active) continue;
+      p.life -= dt;
+      if (p.life <= 0) { p.active = false; continue; }
+      const t = 1 - p.life / p.maxLife;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy += 120 * dt; // slight gravity
+      if (p.isRing) {
+        const rr = p.size + t * 60;
+        ctx.globalAlpha = p.alpha * (1 - t);
+        ctx.strokeStyle = `hsl(${p.hue},100%,80%)`;
+        ctx.lineWidth = 2.5 * (1 - t) + 0.5;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, rr, 0, Math.PI * 2);
+        ctx.stroke();
+      } else {
+        ctx.globalAlpha = p.alpha * (1 - t);
+        ctx.fillStyle = `hsl(${p.hue},100%,70%)`;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size * (1 - t * 0.5), 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawHUD() {
+    ctx.save();
+    ctx.textBaseline = 'top';
+    const sz = Math.round(W * 0.042);
+    ctx.font = `bold ${sz}px sans-serif`;
+
+    // Score
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fillRect(8, 8, 160, sz + 12);
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'left';
+    ctx.fillText(`Score  ${score}`, 14, 14);
+
+    // High
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fillRect(W - 168, 8, 160, sz + 12);
+    ctx.fillStyle = `hsl(50,100%,70%)`;
+    ctx.textAlign = 'right';
+    ctx.fillText(`Best  ${hiScore}`, W - 14, 14);
+
+    // Combo + multiplier
+    if (combo > 1) {
+      ctx.textAlign = 'center';
+      const alpha = Math.min(1, combo / 5);
+      ctx.fillStyle = `hsla(${hue + 60},100%,75%,${alpha})`;
+      ctx.font = `bold ${Math.round(W * 0.05)}px sans-serif`;
+      ctx.fillText(`×${multiplier}  COMBO ${combo}`, W / 2, 10);
+    }
+
+    ctx.restore();
+  }
+
+  function drawStartOverlay() {
+    // Semi-transparent backdrop
+    ctx.save();
+    ctx.fillStyle = 'rgba(5,4,20,0.72)';
+    ctx.fillRect(0, 0, W, H);
+
+    // Title
+    const titleSize = Math.round(W * 0.13);
+    ctx.font = `bold ${titleSize}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = `hsl(${hue},100%,60%)`;
+    ctx.shadowBlur = 30;
+    ctx.fillStyle = `hsl(${hue + 40},100%,80%)`;
+    ctx.fillText('LAVA', W / 2, H * 0.3);
+    ctx.fillStyle = `hsl(20,100%,65%)`;
+    ctx.fillText('LEAP', W / 2, H * 0.3 + titleSize * 1.1);
+
+    ctx.shadowBlur = 0;
+    ctx.font = `${Math.round(W * 0.05)}px sans-serif`;
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.fillText('Snap bubbles. Outrun the lava.', W / 2, H * 0.56);
+
+    // Tap to snap pulsing
+    const pulse = 0.6 + 0.4 * Math.sin(performance.now() / 400);
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = '#fff';
+    ctx.font = `bold ${Math.round(W * 0.065)}px sans-serif`;
+    ctx.fillText('TAP TO SNAP', W / 2, H * 0.7);
+
+    ctx.restore();
+  }
+
+  function drawGameOverOverlay() {
+    ctx.save();
+    ctx.fillStyle = 'rgba(5,4,20,0.82)';
+    ctx.fillRect(0, 0, W, H);
+
+    const cx2 = W / 2;
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = 'hsl(15,100%,50%)';
+    ctx.shadowBlur = 25;
+    ctx.fillStyle = 'hsl(15,100%,65%)';
+    ctx.font = `bold ${Math.round(W * 0.11)}px sans-serif`;
+    ctx.fillText('GAME OVER', cx2, H * 0.28);
+    ctx.shadowBlur = 0;
+
+    const rowSz = Math.round(W * 0.055);
+    ctx.font = `${rowSz}px sans-serif`;
+    const lineH = rowSz * 1.7;
+    const startY = H * 0.44;
+
+    ctx.fillStyle = '#fff';
+    ctx.fillText(`Score: ${score}`, cx2, startY);
+    ctx.fillStyle = `hsl(50,100%,70%)`;
+    ctx.fillText(`Best: ${hiScore}`, cx2, startY + lineH);
+    ctx.fillStyle = `hsl(${hue + 60},100%,75%)`;
+    ctx.fillText(`Max Combo: ${bestCombo}`, cx2, startY + lineH * 2);
+
+    // Retry pulse
+    const pulse = 0.65 + 0.35 * Math.sin(performance.now() / 380);
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = '#fff';
+    ctx.font = `bold ${Math.round(W * 0.065)}px sans-serif`;
+    ctx.fillText('TAP TO RETRY', cx2, H * 0.75);
+
+    ctx.restore();
+  }
+
+  function drawStatic() {
+    draw(0);
+  }
+
+  // ─── Info toggle ─────────────────────────────────────────────────────────────
+  document.getElementById('info-toggle').addEventListener('click', () => {
+    const btn = document.getElementById('info-toggle');
+    const content = document.getElementById('info-content');
+    const open = content.classList.toggle('open');
+    btn.textContent = (open ? '▼' : '▶') + ' How to Play / About';
+    btn.setAttribute('aria-expanded', String(open));
+  });
+
+  // ─── Privacy modal ───────────────────────────────────────────────────────────
+  document.getElementById('privacy-link').addEventListener('click', () => {
+    document.getElementById('privacy-modal').classList.add('open');
+  });
+  document.getElementById('privacy-close').addEventListener('click', () => {
+    document.getElementById('privacy-modal').classList.remove('open');
+  });
+  document.getElementById('privacy-modal').addEventListener('click', e => {
+    if (e.target === e.currentTarget) e.currentTarget.classList.remove('open');
+  });
+
+  // ─── Boot ────────────────────────────────────────────────────────────────────
+  initBubbles();
+  // Place player in center for start screen
+  player.x = W / 2;
+  player.y = H * 0.65;
+  player.onBubble = null;
+
+  requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

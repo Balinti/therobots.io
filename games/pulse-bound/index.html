@@ -1,0 +1,1040 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Pulse Bound - Free HTML5 Game</title>
+  <meta name="description" content="Play Pulse Bound - Bounce the ball through an electrified neon city as the screen rhythmically zooms with the beat.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a0a1a">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Pulse Bound - Free HTML5 Game">
+  <meta property="og:description" content="Play Pulse Bound - Bounce the ball through an electrified neon city as the screen rhythmically zooms with the beat.">
+  <meta property="og:url" content="https://balinti.github.io/pulse-bound/">
+  <meta property="og:image" content="https://balinti.github.io/pulse-bound/preview.png">
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #04040f;
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      touch-action: none;
+    }
+    #wrap {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      height: 100%;
+      max-height: 750px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+<div id="wrap"><canvas id="c"></canvas></div>
+<script>
+(function() {
+'use strict';
+
+// ── Constants ──────────────────────────────────────────────────────────────
+const W = 420, H = 750;
+const DPR = Math.min(window.devicePixelRatio || 1, 2);
+const GRAVITY = 2200;
+const JUMP_VEL = -760;
+const COYOTE_TIME = 0.08;
+const FLIP_COOLDOWN = 0.08;
+const PLAYER_X = 120;
+const PLAYER_R = 14;
+const LS_KEY = 'pulsebound_highscore';
+
+// ── Canvas setup ───────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+function resize() {
+  const wrap = document.getElementById('wrap');
+  const rect = wrap.getBoundingClientRect();
+  canvas.width = rect.width * DPR;
+  canvas.height = rect.height * DPR;
+  canvas.style.width = rect.width + 'px';
+  canvas.style.height = rect.height + 'px';
+}
+resize();
+window.addEventListener('resize', resize);
+
+// Scale from design coords to canvas coords
+function sx(x) { return x * (canvas.width / W); }
+function sy(y) { return y * (canvas.height / H); }
+function sr(r) { return r * (canvas.width / W); }
+
+// ── State ──────────────────────────────────────────────────────────────────
+let state = 'start'; // 'start' | 'playing' | 'gameover'
+let score = 0;
+let bestScore = parseInt(localStorage.getItem(LS_KEY) || '0');
+let runTime = 0;
+let hue = 180;
+
+// Player
+let player = {};
+// World scroll
+let scrollX = 0;
+// Platforms & gates
+let platforms = [];
+let gates = [];
+// Particles
+let particles = [];
+// Shake
+let shake = { amp: 0, dur: 0, t: 0 };
+// Beat ring
+let beatRings = [];
+// Beat bar
+let beatBar = { pulse: 0 };
+// Score display
+let displayScore = 0;
+let chain = 0;
+let mult = 1;
+let lastFlipTime = -99;
+let flipCooldownT = 0;
+// Coyote
+let coyoteT = 0;
+let onGround = false;
+
+// ── Difficulty ─────────────────────────────────────────────────────────────
+function scrollSpeed(s) { return 220 + 2.2 * s; }
+function gatePeriod(s) { return Math.max(0.72, 1.10 - 0.0045 * s); }
+function segLen(s) { return 260 - Math.min(80, 0.9 * s); }
+function perfectWindow(s) { return Math.max(0.045, 0.090 - 0.0005 * s); }
+
+// ── World gen ──────────────────────────────────────────────────────────────
+let genX = 0; // right edge of generated world (in world coords)
+let worldOffset = 0; // how much world has scrolled (px)
+
+function resetWorld() {
+  scrollX = 0;
+  worldOffset = 0;
+  platforms = [];
+  gates = [];
+  particles = [];
+  beatRings = [];
+  genX = 0;
+
+  // Starter safe platform
+  platforms.push({ x: -60, y: 490, w: 280, h: 18 });
+  genX = 220;
+  generateSegments(W * 3);
+}
+
+function generateSegments(until) {
+  const s = Math.min(runTime, 90);
+  while (genX - worldOffset < until) {
+    addSegment(s);
+  }
+}
+
+let lastGateY = 350;
+let lastPlatY = 490;
+
+function addSegment(s) {
+  const sl = segLen(s);
+  const gapW = 30 + Math.random() * 30;
+  const platH = 18;
+
+  // Vary platform height
+  let newPlatY = lastPlatY + (Math.random() < 0.5 ? -1 : 1) * (40 + Math.random() * 60);
+  newPlatY = Math.max(300, Math.min(640, newPlatY));
+  lastPlatY = newPlatY;
+
+  // Platform
+  const pw = sl - gapW;
+  platforms.push({ x: genX, y: newPlatY, w: pw, h: platH });
+
+  // Gate (maybe)
+  if (Math.random() < 0.7) {
+    const gx = genX + pw * 0.4 + Math.random() * pw * 0.2;
+    const gy = newPlatY - 140;
+    const gp = gatePeriod(s);
+    const phase = Math.random() * gp;
+    gates.push({
+      x: gx, y: gy, w: 26, h: 120,
+      period: gp,
+      phase: phase,
+      markerPassed: false,
+      nearMissed: false
+    });
+    lastGateY = gy;
+  }
+
+  genX += sl;
+}
+
+// ── Gate ON/OFF ────────────────────────────────────────────────────────────
+function gateOn(gate, t) {
+  const cycle = ((t + gate.phase) % gate.period) / gate.period;
+  return cycle < 0.5;
+}
+
+function gateEdgeTime(gate, t) {
+  // Time since last edge (ON->OFF or OFF->ON)
+  const cycle = ((t + gate.phase) % gate.period);
+  const half = gate.period * 0.5;
+  return Math.min(cycle % half, half - (cycle % half));
+}
+
+// ── Player ─────────────────────────────────────────────────────────────────
+function resetPlayer() {
+  player = {
+    x: PLAYER_X,
+    y: 440,
+    vy: 0,
+    phase: false, // false=SOLID(blue), true=PHASE(pink)
+    trailPoints: []
+  };
+}
+
+// ── Input ──────────────────────────────────────────────────────────────────
+function handleInput() {
+  if (state === 'start' || state === 'gameover') {
+    startGame();
+    return;
+  }
+  if (state === 'playing') {
+    doAction();
+  }
+}
+
+document.addEventListener('pointerdown', handleInput);
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    handleInput();
+  }
+});
+
+// ── Game start/over ────────────────────────────────────────────────────────
+function startGame() {
+  state = 'playing';
+  score = 0;
+  displayScore = 0;
+  runTime = 0;
+  chain = 0;
+  mult = 1;
+  lastFlipTime = -99;
+  flipCooldownT = 0;
+  hue = 180;
+  shake = { amp: 0, dur: 0, t: 0 };
+  lastPlatY = 490;
+  lastGateY = 350;
+  resetPlayer();
+  resetWorld();
+}
+
+function doAction() {
+  const now = runTime;
+  if (flipCooldownT > 0) return;
+
+  // Try jump if SOLID and on ground / coyote
+  if (!player.phase && (onGround || coyoteT > 0)) {
+    player.vy = JUMP_VEL;
+    coyoteT = 0;
+    onGround = false;
+    spawnParticles(player.x, player.y + PLAYER_R, 5, player.phase ? '#ff69b4' : '#4af', 80, -200);
+  } else {
+    // Flip phase
+    player.phase = !player.phase;
+    lastFlipTime = now;
+    flipCooldownT = FLIP_COOLDOWN;
+    spawnFlipBurst(player.x, player.y);
+  }
+}
+
+// ── Particles ──────────────────────────────────────────────────────────────
+function spawnParticles(x, y, n, color, speed, vy_offset) {
+  for (let i = 0; i < n; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const spd = speed * (0.4 + Math.random() * 0.6);
+    particles.push({
+      x: sx(x), y: sy(y),
+      vx: Math.cos(angle) * sr(spd),
+      vy: Math.sin(angle) * sr(spd) + (vy_offset ? sr(vy_offset) * 0.3 : 0),
+      life: 0.5 + Math.random() * 0.3,
+      maxLife: 0.5 + Math.random() * 0.3,
+      r: sr(2 + Math.random() * 3),
+      color: color
+    });
+  }
+}
+
+function spawnFlipBurst(x, y) {
+  const color = player.phase ? '#ff69b4' : '#4af';
+  spawnParticles(x, y, 12, color, 120, 0);
+  beatRings.push({ x: sx(x), y: sy(y), r: sr(PLAYER_R), maxR: sr(80), life: 1, maxLife: 1, color });
+}
+
+function spawnPerfectBurst(x, y) {
+  spawnParticles(x, y, 20, '#ffe066', 180, 0);
+  beatRings.push({ x: sx(x), y: sy(y), r: sr(10), maxR: sr(100), life: 1, maxLife: 1, color: '#ffe066' });
+  triggerShake(3, 0.08);
+}
+
+function spawnNearMissSparks(x, y) {
+  for (let i = 0; i < 8; i++) {
+    const angle = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI;
+    const spd = 100 + Math.random() * 120;
+    particles.push({
+      x: sx(x), y: sy(y),
+      vx: Math.cos(angle) * sr(spd),
+      vy: Math.sin(angle) * sr(spd),
+      life: 0.25 + Math.random() * 0.15,
+      maxLife: 0.25 + Math.random() * 0.15,
+      r: sr(1.5 + Math.random() * 2),
+      color: '#ffaa00'
+    });
+  }
+  triggerShake(2, 0.06);
+}
+
+// ── Shake ──────────────────────────────────────────────────────────────────
+function triggerShake(amp, dur) {
+  if (amp > shake.amp || shake.t >= shake.dur) {
+    shake.amp = amp;
+    shake.dur = dur;
+    shake.t = 0;
+  }
+}
+
+// ── Beat ring ──────────────────────────────────────────────────────────────
+let beatT = 0;
+let beatPeriodBase = 1.0;
+
+// ── Update ─────────────────────────────────────────────────────────────────
+function update(dt) {
+  if (state !== 'playing') return;
+
+  runTime += dt;
+  flipCooldownT = Math.max(0, flipCooldownT - dt);
+  const s = Math.min(runTime, 90);
+  const spd = scrollSpeed(s);
+
+  // Scroll world
+  worldOffset += spd * dt;
+
+  // Generate more world
+  generateSegments(worldOffset + W * 2.5);
+
+  // Player gravity
+  player.vy += GRAVITY * dt;
+  player.y += player.vy * dt;
+
+  // Trail
+  player.trailPoints.unshift({ x: player.x, y: player.y, phase: player.phase });
+  if (player.trailPoints.length > 12) player.trailPoints.pop();
+
+  // Collision: platforms (only SOLID)
+  onGround = false;
+  if (!player.phase) {
+    for (const p of platforms) {
+      const px = p.x - worldOffset;
+      if (px + p.w < player.x - PLAYER_R - 10) continue;
+      if (px > player.x + PLAYER_R + 10) continue;
+      // Top surface
+      if (player.x + PLAYER_R > px && player.x - PLAYER_R < px + p.w) {
+        const prevY = player.y - player.vy * dt;
+        const topY = p.y;
+        if (prevY + PLAYER_R <= topY + 4 && player.y + PLAYER_R >= topY) {
+          player.y = topY - PLAYER_R;
+          player.vy = 0;
+          onGround = true;
+          coyoteT = COYOTE_TIME;
+        }
+      }
+    }
+  }
+  if (!onGround && coyoteT > 0) coyoteT -= dt;
+
+  // Gate logic
+  const pw = perfectWindow(s);
+  for (const g of gates) {
+    const gx = g.x - worldOffset;
+    const on = gateOn(g, runTime);
+    const edgeT = gateEdgeTime(g, runTime);
+
+    // Collision: SOLID + ON gate
+    if (!player.phase && on) {
+      if (
+        player.x + PLAYER_R > gx &&
+        player.x - PLAYER_R < gx + g.w &&
+        player.y + PLAYER_R > g.y &&
+        player.y - PLAYER_R < g.y + g.h
+      ) {
+        die();
+        return;
+      }
+    }
+
+    // Near-miss: SOLID passes close to ON gate without touching
+    if (!player.phase && on && !g.nearMissed) {
+      const nearDist = 30;
+      if (
+        Math.abs(player.x - (gx + g.w / 2)) < PLAYER_R + nearDist &&
+        player.y + PLAYER_R > g.y - 10 &&
+        player.y - PLAYER_R < g.y + g.h + 10 &&
+        !(player.x + PLAYER_R > gx && player.x - PLAYER_R < gx + g.w)
+      ) {
+        g.nearMissed = true;
+        spawnNearMissSparks(player.x + PLAYER_R, player.y);
+      }
+    }
+
+    // Perfect eval: marker at gate center passes player.x
+    if (!g.markerPassed && gx + g.w / 2 <= player.x) {
+      g.markerPassed = true;
+      const timeSinceFlip = runTime - lastFlipTime;
+      const isPerfect = timeSinceFlip <= pw && edgeT <= pw;
+
+      if (on && player.phase && isPerfect) {
+        // Perfect PHASE through ON gate
+        chain++;
+        mult = 1 + Math.min(5, Math.floor(chain / 3));
+        score += 120 * mult;
+        spawnPerfectBurst(player.x, player.y);
+        beatBar.pulse = 1;
+      } else if (!on && !player.phase && isPerfect) {
+        // Perfect SOLID through OFF gate
+        chain++;
+        mult = 1 + Math.min(5, Math.floor(chain / 3));
+        score += 80 * mult;
+        spawnPerfectBurst(player.x, player.y);
+        beatBar.pulse = 1;
+      } else {
+        // Miss or wrong phase
+        chain = 0;
+        mult = 1;
+      }
+    }
+  }
+
+  // Score: distance
+  score += spd * dt * 0.08;
+  displayScore += (score - displayScore) * Math.min(1, dt * 8);
+
+  // Fall off screen
+  if (player.y - PLAYER_R > H + 40) {
+    die();
+    return;
+  }
+
+  // Hue cycle
+  hue = (hue + dt * 20) % 360;
+
+  // Beat timing
+  beatT += dt;
+  const bp = gatePeriod(s);
+  if (beatT >= bp) {
+    beatT -= bp;
+    // Spawn beat ring behind ball
+    beatRings.push({
+      x: sx(player.x), y: sy(player.y),
+      r: sr(PLAYER_R + 2), maxR: sr(60),
+      life: 0.5, maxLife: 0.5,
+      color: `hsla(${hue},80%,65%,0.5)`
+    });
+    beatBar.pulse = 0.7;
+  }
+
+  // Update beat rings
+  for (let i = beatRings.length - 1; i >= 0; i--) {
+    const br = beatRings[i];
+    br.life -= dt;
+    if (br.life <= 0) beatRings.splice(i, 1);
+  }
+
+  // Beat bar decay
+  beatBar.pulse = Math.max(0, beatBar.pulse - dt * 3);
+
+  // Update particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy += sr(400) * dt;
+    p.life -= dt;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+
+  // Shake
+  shake.t += dt;
+
+  // Cull off-screen objects
+  for (let i = platforms.length - 1; i >= 0; i--) {
+    if (platforms[i].x - worldOffset + platforms[i].w < -100) platforms.splice(i, 1);
+  }
+  for (let i = gates.length - 1; i >= 0; i--) {
+    if (gates[i].x - worldOffset + gates[i].w < -100) gates.splice(i, 1);
+  }
+}
+
+function die() {
+  state = 'gameover';
+  if (score > bestScore) {
+    bestScore = Math.floor(score);
+    localStorage.setItem(LS_KEY, bestScore);
+  }
+  triggerShake(10, 0.15);
+  spawnParticles(player.x, player.y, 30, '#ff4444', 200, 0);
+  // Death flash particles
+  for (let i = 0; i < 15; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const spd = 60 + Math.random() * 160;
+    particles.push({
+      x: sx(player.x), y: sy(player.y),
+      vx: Math.cos(angle) * sr(spd),
+      vy: Math.sin(angle) * sr(spd),
+      life: 0.6 + Math.random() * 0.4,
+      maxLife: 0.6 + Math.random() * 0.4,
+      r: sr(3 + Math.random() * 5),
+      color: `hsl(${Math.random() * 30 + 10}, 100%, 60%)`
+    });
+  }
+}
+
+// ── Draw ───────────────────────────────────────────────────────────────────
+function draw() {
+  const cw = canvas.width;
+  const ch = canvas.height;
+
+  // Shake offset
+  let ox = 0, oy = 0;
+  if (shake.t < shake.dur) {
+    const progress = shake.t / shake.dur;
+    const amp = sr(shake.amp) * (1 - progress);
+    ox = (Math.random() - 0.5) * amp * 2;
+    oy = (Math.random() - 0.5) * amp * 2;
+  }
+
+  ctx.save();
+  ctx.translate(ox, oy);
+
+  // Background
+  const grad = ctx.createLinearGradient(0, 0, 0, ch);
+  grad.addColorStop(0, '#060614');
+  grad.addColorStop(1, '#0a0a22');
+  ctx.fillStyle = grad;
+  ctx.fillRect(-Math.abs(ox) - 2, -Math.abs(oy) - 2, cw + 4, ch + 4);
+
+  // Grid lines (subtle)
+  ctx.save();
+  ctx.strokeStyle = 'rgba(80,80,180,0.07)';
+  ctx.lineWidth = 1;
+  const gridSpacing = sr(60);
+  const gridOffX = (sx(worldOffset) % gridSpacing);
+  for (let x = -gridOffX; x < cw; x += gridSpacing) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, ch); ctx.stroke();
+  }
+  for (let y = 0; y < ch; y += gridSpacing) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(cw, y); ctx.stroke();
+  }
+  ctx.restore();
+
+  if (state === 'playing' || state === 'gameover') {
+    drawWorld();
+    drawPlayer();
+    drawParticles();
+    drawBeatRings();
+    drawHUD();
+  }
+
+  if (state === 'start') drawStart();
+  if (state === 'gameover') drawGameOver();
+
+  ctx.restore();
+}
+
+function drawWorld() {
+  // Platforms
+  for (const p of platforms) {
+    const px = sx(p.x - worldOffset);
+    const py = sy(p.y);
+    const pw = sx(p.w);
+    const ph = sy(p.h);
+
+    // Glow
+    ctx.save();
+    ctx.shadowColor = `hsl(${hue + 60}, 70%, 60%)`;
+    ctx.shadowBlur = sr(8);
+    const pg = ctx.createLinearGradient(px, py, px, py + ph);
+    pg.addColorStop(0, `hsl(${hue + 40}, 60%, 45%)`);
+    pg.addColorStop(1, `hsl(${hue + 80}, 50%, 25%)`);
+    ctx.fillStyle = pg;
+    ctx.fillRect(px, py, pw, ph);
+    ctx.restore();
+
+    // Top edge highlight
+    ctx.strokeStyle = `hsl(${hue + 40}, 80%, 70%)`;
+    ctx.lineWidth = sr(1.5);
+    ctx.beginPath();
+    ctx.moveTo(px, py);
+    ctx.lineTo(px + pw, py);
+    ctx.stroke();
+  }
+
+  // Gates
+  for (const g of gates) {
+    const gx = sx(g.x - worldOffset);
+    const gy = sy(g.y);
+    const gw = sr(g.w);
+    const gh = sy(g.h);
+    const on = gateOn(g, runTime);
+    const cycle = ((runTime + g.phase) % g.period) / g.period;
+    const edgePulse = Math.pow(Math.sin(cycle * Math.PI * 2), 2);
+
+    if (on) {
+      // Electric gate ON - vivid magenta/yellow
+      const intensity = 0.7 + edgePulse * 0.3;
+      ctx.save();
+      ctx.shadowColor = `rgba(255, 80, 220, ${intensity})`;
+      ctx.shadowBlur = sr(20);
+
+      // Gate body
+      const gg = ctx.createLinearGradient(gx, gy, gx + gw, gy);
+      gg.addColorStop(0, `rgba(220, 0, 200, ${0.3 * intensity})`);
+      gg.addColorStop(0.5, `rgba(255, 100, 255, ${0.9 * intensity})`);
+      gg.addColorStop(1, `rgba(220, 0, 200, ${0.3 * intensity})`);
+      ctx.fillStyle = gg;
+      ctx.fillRect(gx, gy, gw, gh);
+
+      // Electric arcs
+      ctx.strokeStyle = `rgba(255, 220, 255, ${0.8 * intensity})`;
+      ctx.lineWidth = sr(1.5);
+      const numArcs = 4;
+      for (let i = 0; i < numArcs; i++) {
+        const ty = gy + (gh / numArcs) * i + (gh / numArcs) * (Math.random() * 0.5);
+        ctx.beginPath();
+        ctx.moveTo(gx, ty);
+        const midX = gx + gw / 2 + (Math.random() - 0.5) * sr(8);
+        const midY = ty + (Math.random() - 0.5) * sr(12);
+        ctx.quadraticCurveTo(midX, midY, gx + gw, ty + (Math.random() - 0.5) * sr(8));
+        ctx.stroke();
+      }
+
+      // Border
+      ctx.strokeStyle = `rgba(255, 100, 255, ${intensity})`;
+      ctx.lineWidth = sr(2);
+      ctx.strokeRect(gx, gy, gw, gh);
+
+      ctx.restore();
+    } else {
+      // Gate OFF - dim outline
+      ctx.save();
+      ctx.strokeStyle = `rgba(180, 0, 180, 0.25)`;
+      ctx.lineWidth = sr(1);
+      ctx.setLineDash([sr(4), sr(4)]);
+      ctx.strokeRect(gx, gy, gw, gh);
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+
+    // Marker line (telegraphing center)
+    const markerX = gx + gw / 2;
+    ctx.save();
+    ctx.strokeStyle = on ? 'rgba(255,100,255,0.3)' : 'rgba(150,80,150,0.15)';
+    ctx.lineWidth = sr(1);
+    ctx.setLineDash([sr(3), sr(5)]);
+    ctx.beginPath(); ctx.moveTo(markerX, 0); ctx.lineTo(markerX, canvas.height); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+}
+
+function drawPlayer() {
+  if (state === 'gameover' && shake.t < shake.dur) return; // brief flicker on death
+
+  const px = sx(player.x);
+  const py = sy(player.y);
+  const pr = sr(PLAYER_R);
+
+  // Trail
+  for (let i = player.trailPoints.length - 1; i >= 0; i--) {
+    const tp = player.trailPoints[i];
+    const alpha = (1 - i / player.trailPoints.length) * 0.35;
+    const r = pr * (1 - i / player.trailPoints.length) * 0.8;
+    ctx.beginPath();
+    ctx.arc(sx(tp.x), sy(tp.y), r, 0, Math.PI * 2);
+    ctx.fillStyle = tp.phase
+      ? `rgba(255, 100, 200, ${alpha})`
+      : `rgba(60, 170, 255, ${alpha})`;
+    ctx.fill();
+  }
+
+  // Glow
+  const isPhase = player.phase;
+  const baseColor = isPhase ? '255,80,200' : '60,160,255';
+  const glowColor = isPhase ? '#ff50c8' : '#3ca0ff';
+
+  ctx.save();
+  ctx.shadowColor = glowColor;
+  ctx.shadowBlur = sr(isPhase ? 28 : 22);
+
+  // Outer ring (phase shimmer)
+  if (isPhase) {
+    ctx.beginPath();
+    ctx.arc(px, py, pr + sr(4), 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(255,80,200,0.4)`;
+    ctx.lineWidth = sr(2);
+    ctx.stroke();
+  }
+
+  // Ball
+  const ballGrad = ctx.createRadialGradient(px - pr * 0.3, py - pr * 0.3, sr(2), px, py, pr);
+  ballGrad.addColorStop(0, isPhase ? '#ffb0e8' : '#a0d8ff');
+  ballGrad.addColorStop(0.5, glowColor);
+  ballGrad.addColorStop(1, isPhase ? '#aa0088' : '#0055aa');
+  ctx.beginPath();
+  ctx.arc(px, py, pr, 0, Math.PI * 2);
+  ctx.fillStyle = ballGrad;
+  ctx.fill();
+
+  // Inner highlight
+  ctx.beginPath();
+  ctx.arc(px - pr * 0.3, py - pr * 0.35, pr * 0.3, 0, Math.PI * 2);
+  ctx.fillStyle = `rgba(255,255,255,${isPhase ? 0.5 : 0.6})`;
+  ctx.fill();
+
+  ctx.restore();
+
+  // Phase indicator text (tiny)
+  ctx.save();
+  ctx.font = `bold ${sr(8)}px monospace`;
+  ctx.fillStyle = isPhase ? 'rgba(255,160,230,0.9)' : 'rgba(140,210,255,0.9)';
+  ctx.textAlign = 'center';
+  ctx.fillText(isPhase ? 'PHASE' : 'SOLID', px, py - pr - sr(5));
+  ctx.restore();
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    const alpha = p.life / p.maxLife;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r * alpha, 0, Math.PI * 2);
+    ctx.fillStyle = p.color;
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur = p.r * 2;
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawBeatRings() {
+  for (const br of beatRings) {
+    const progress = 1 - br.life / br.maxLife;
+    const r = br.r + (br.maxR - br.r) * progress;
+    const alpha = br.life / br.maxLife * 0.6;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(br.x, br.y, r, 0, Math.PI * 2);
+    ctx.strokeStyle = br.color;
+    ctx.lineWidth = sr(2) * (1 - progress * 0.7);
+    ctx.globalAlpha = alpha;
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function drawHUD() {
+  const cw = canvas.width;
+  // Score
+  ctx.save();
+  ctx.font = `bold ${sr(28)}px 'Segoe UI', system-ui, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ffffff';
+  ctx.shadowColor = `hsl(${hue}, 80%, 70%)`;
+  ctx.shadowBlur = sr(10);
+  ctx.fillText(Math.floor(displayScore), cw / 2, sy(44));
+  ctx.restore();
+
+  // Chain & mult
+  if (chain > 0) {
+    ctx.save();
+    ctx.font = `${sr(13)}px 'Segoe UI', system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ffe066';
+    ctx.shadowColor = '#ffe066';
+    ctx.shadowBlur = sr(8);
+    ctx.fillText(`CHAIN x${chain}  MULT x${mult}`, cw / 2, sy(66));
+    ctx.restore();
+  }
+
+  // Beat bar (top strip)
+  const barW = sx(200);
+  const barH = sy(5);
+  const barX = cw / 2 - barW / 2;
+  const barY = sy(12);
+  const s = Math.min(runTime, 90);
+  const pw = perfectWindow(s);
+  const gp = gatePeriod(s);
+  const beatProgress = (beatT / gp);
+
+  ctx.save();
+  // Background
+  ctx.fillStyle = 'rgba(255,255,255,0.06)';
+  ctx.beginPath();
+  ctx.roundRect(barX, barY, barW, barH, sr(3));
+  ctx.fill();
+
+  // Beat fill
+  const pulseAlpha = 0.4 + beatBar.pulse * 0.5;
+  ctx.fillStyle = `hsla(${hue + 40}, 90%, 65%, ${pulseAlpha})`;
+  ctx.beginPath();
+  ctx.roundRect(barX, barY, barW * beatProgress, barH, sr(3));
+  ctx.fill();
+
+  // Perfect window markers
+  // Show timing window at each gate approaching
+  const winFrac = pw / gp;
+  ctx.fillStyle = 'rgba(255, 230, 80, 0.5)';
+  // Near beat edge
+  const edgeFrac1 = 0.5 - winFrac;
+  const edgeFrac2 = 0.5 + winFrac;
+  if (edgeFrac1 > 0) {
+    ctx.fillRect(barX + barW * edgeFrac1, barY, barW * winFrac * 2, barH);
+    ctx.fillRect(barX + barW * (1 - edgeFrac2), barY, barW * winFrac * 2, barH);
+  }
+
+  ctx.restore();
+
+  // Flip cooldown arc
+  if (flipCooldownT > 0) {
+    const frac = flipCooldownT / FLIP_COOLDOWN;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+    ctx.lineWidth = sr(2);
+    ctx.beginPath();
+    ctx.arc(sx(player.x), sy(player.y), sr(PLAYER_R + 8), -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * frac);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Phase indicator pill
+  const ph = player.phase;
+  const pillW = sx(70);
+  const pillH = sy(20);
+  const pillX = sx(8);
+  const pillY = sy(8);
+  ctx.save();
+  ctx.fillStyle = ph ? 'rgba(220,60,180,0.25)' : 'rgba(40,140,255,0.25)';
+  ctx.strokeStyle = ph ? '#dd40b4' : '#28a0ff';
+  ctx.lineWidth = sr(1.5);
+  ctx.beginPath();
+  ctx.roundRect(pillX, pillY, pillW, pillH, sr(10));
+  ctx.fill();
+  ctx.stroke();
+  ctx.font = `bold ${sr(9)}px monospace`;
+  ctx.textAlign = 'center';
+  ctx.fillStyle = ph ? '#ff80d0' : '#80ccff';
+  ctx.shadowColor = ph ? '#ff80d0' : '#80ccff';
+  ctx.shadowBlur = sr(6);
+  ctx.fillText(ph ? '◈ PHASE' : '◉ SOLID', pillX + pillW / 2, pillY + pillH * 0.65);
+  ctx.restore();
+}
+
+function drawStart() {
+  const cw = canvas.width, ch = canvas.height;
+
+  // Overlay
+  ctx.save();
+  ctx.fillStyle = 'rgba(5,5,20,0.85)';
+  ctx.fillRect(0, 0, cw, ch);
+
+  // Title glow
+  const t = Date.now() / 1000;
+  const pulse = Math.sin(t * 2) * 0.15 + 0.85;
+
+  ctx.shadowColor = '#4af';
+  ctx.shadowBlur = sr(30) * pulse;
+  ctx.font = `bold ${sr(52)}px 'Segoe UI', system-ui, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillStyle = `rgba(255,255,255,${pulse})`;
+  ctx.fillText('PULSE', cw / 2, ch * 0.34);
+
+  ctx.shadowColor = '#ff69b4';
+  ctx.shadowBlur = sr(30) * pulse;
+  ctx.fillStyle = `rgba(255,180,230,${pulse})`;
+  ctx.fillText('BOUND', cw / 2, ch * 0.34 + sr(58));
+  ctx.restore();
+
+  // Subtitle
+  ctx.save();
+  ctx.font = `${sr(14)}px 'Segoe UI', system-ui, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(180,200,255,0.7)';
+  ctx.fillText('Phase Flip Runner', cw / 2, ch * 0.34 + sr(90));
+  ctx.restore();
+
+  // Instructions
+  const instrY = ch * 0.57;
+  ctx.save();
+  ctx.font = `${sr(12)}px 'Segoe UI', system-ui, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(140,180,255,0.8)';
+  const lines = [
+    '◉ SOLID (blue) — land on platforms',
+    '◈ PHASE (pink) — pass through gates',
+    '',
+    'Tap to JUMP (when SOLID)',
+    'Tap mid-air to FLIP phases',
+    '',
+    '⚡ Switch on the beat for PERFECT!'
+  ];
+  lines.forEach((line, i) => {
+    if (line === '') return;
+    ctx.fillStyle = line.startsWith('◉') ? 'rgba(80,180,255,0.9)'
+      : line.startsWith('◈') ? 'rgba(255,120,200,0.9)'
+      : line.includes('PERFECT') ? 'rgba(255,220,60,0.9)'
+      : 'rgba(160,190,255,0.75)';
+    ctx.shadowColor = ctx.fillStyle;
+    ctx.shadowBlur = sr(4);
+    ctx.fillText(line, cw / 2, instrY + i * sr(20));
+  });
+  ctx.restore();
+
+  // Tap to Start
+  const tapPulse = Math.abs(Math.sin(t * 2.5));
+  ctx.save();
+  ctx.font = `bold ${sr(18)}px 'Segoe UI', system-ui, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillStyle = `rgba(255,255,255,${0.5 + tapPulse * 0.5})`;
+  ctx.shadowColor = '#ffffff';
+  ctx.shadowBlur = sr(12) * tapPulse;
+  ctx.fillText('TAP TO START', cw / 2, ch * 0.88);
+  ctx.restore();
+
+  // Best score
+  if (bestScore > 0) {
+    ctx.save();
+    ctx.font = `${sr(12)}px 'Segoe UI', system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(255,220,80,0.7)';
+    ctx.fillText(`Best: ${bestScore}`, cw / 2, ch * 0.92);
+    ctx.restore();
+  }
+}
+
+function drawGameOver() {
+  const cw = canvas.width, ch = canvas.height;
+  const t = Date.now() / 1000;
+
+  // Overlay
+  ctx.save();
+  ctx.fillStyle = 'rgba(10,5,20,0.88)';
+  ctx.fillRect(0, 0, cw, ch);
+
+  // GAME OVER
+  ctx.font = `bold ${sr(44)}px 'Segoe UI', system-ui, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ff4466';
+  ctx.shadowColor = '#ff2244';
+  ctx.shadowBlur = sr(25);
+  ctx.fillText('GAME OVER', cw / 2, ch * 0.32);
+  ctx.restore();
+
+  // Score
+  ctx.save();
+  ctx.font = `bold ${sr(36)}px 'Segoe UI', system-ui, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ffffff';
+  ctx.shadowColor = `hsl(${hue}, 80%, 70%)`;
+  ctx.shadowBlur = sr(15);
+  ctx.fillText(Math.floor(score), cw / 2, ch * 0.46);
+  ctx.restore();
+
+  // Labels
+  ctx.save();
+  ctx.font = `${sr(12)}px 'Segoe UI', system-ui, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(180,200,255,0.65)';
+  ctx.fillText('SCORE', cw / 2, ch * 0.46 + sr(18));
+  ctx.restore();
+
+  // Best score
+  const isNew = Math.floor(score) >= bestScore && score > 0;
+  ctx.save();
+  ctx.font = `bold ${sr(22)}px 'Segoe UI', system-ui, sans-serif`;
+  ctx.textAlign = 'center';
+  if (isNew) {
+    const pulse = Math.abs(Math.sin(t * 4));
+    ctx.fillStyle = `rgba(255, 220, 60, ${0.7 + pulse * 0.3})`;
+    ctx.shadowColor = '#ffe040';
+    ctx.shadowBlur = sr(15);
+    ctx.fillText('★ NEW BEST! ★', cw / 2, ch * 0.57);
+  } else {
+    ctx.fillStyle = 'rgba(255,220,80,0.8)';
+    ctx.fillText(`Best: ${bestScore}`, cw / 2, ch * 0.57);
+  }
+  ctx.restore();
+
+  // Chain info
+  if (chain > 0) {
+    ctx.save();
+    ctx.font = `${sr(13)}px 'Segoe UI', system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(255,180,60,0.75)';
+    ctx.fillText(`Max Chain: ${chain}`, cw / 2, ch * 0.63);
+    ctx.restore();
+  }
+
+  // Tap to Retry
+  const tapPulse = Math.abs(Math.sin(t * 2.5));
+  ctx.save();
+  ctx.font = `bold ${sr(18)}px 'Segoe UI', system-ui, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillStyle = `rgba(255,255,255,${0.5 + tapPulse * 0.5})`;
+  ctx.shadowColor = '#ffffff';
+  ctx.shadowBlur = sr(12) * tapPulse;
+  ctx.fillText('TAP TO RETRY', cw / 2, ch * 0.78);
+  ctx.restore();
+}
+
+// ── Main loop ──────────────────────────────────────────────────────────────
+let lastTime = null;
+
+function loop(timestamp) {
+  if (!lastTime) lastTime = timestamp;
+  let dt = (timestamp - lastTime) / 1000;
+  lastTime = timestamp;
+  dt = Math.min(dt, 0.05); // cap at 50ms
+
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// ── Boot ───────────────────────────────────────────────────────────────────
+// Draw start screen immediately
+function drawFirstFrame() {
+  const cw = canvas.width, ch = canvas.height;
+  const grad = ctx.createLinearGradient(0, 0, 0, ch);
+  grad.addColorStop(0, '#060614');
+  grad.addColorStop(1, '#0a0a22');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, cw, ch);
+  draw();
+}
+
+drawFirstFrame();
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

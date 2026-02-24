@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Frost Split - Free HTML5 Game</title>
+<meta name="description" content="Play Frost Split - Bounce the ball on icy platforms while splitting it to navigate parallel arctic paths.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0a1628">
+<meta property="og:title" content="Frost Split - Free HTML5 Game">
+<meta property="og:description" content="Bounce the ball on icy platforms while splitting it to navigate parallel arctic paths. Hyper-casual HTML5 game.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://balinti.github.io/frost-split/">
+<meta property="og:image" content="https://balinti.github.io/frost-split/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Frost Split - Free HTML5 Game">
+<meta name="twitter:description" content="Bounce the ball on icy platforms while splitting it to navigate parallel arctic paths.">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#0a1628;touch-action:manipulation;overscroll-behavior:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;font-family:'Segoe UI',system-ui,sans-serif}
+body{display:flex;align-items:center;justify-content:center}
+#wrap{position:relative;width:min(420px,100vw);height:min(750px,100vh);aspect-ratio:420/750;max-width:420px;max-height:750px}
+canvas{display:block;width:100%;height:100%;border-radius:6px}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="c"></canvas></div>
+<script>
+'use strict';
+(()=>{
+// === Constants ===
+const W=420,H=750;
+const LANE_LEFT=W*0.33,LANE_RIGHT=W*0.67;
+const BALL_R=14,BALL_Y=H*0.75;
+const LS_KEY='fs_gf_highscore_v1';
+const PERFECT_WINDOW=34;
+const GHOST_DURATION=1.0;
+const HIT_STOP_MS=50;
+const DEBOUNCE_MS=80;
+
+// === Canvas Setup ===
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+let dpr=Math.min(window.devicePixelRatio||1,2);
+
+function resize(){
+  const wrap=document.getElementById('wrap');
+  const rect=wrap.getBoundingClientRect();
+  dpr=Math.min(window.devicePixelRatio||1,2);
+  canvas.width=W*dpr;
+  canvas.height=H*dpr;
+  canvas.style.width=rect.width+'px';
+  canvas.style.height=rect.height+'px';
+}
+resize();
+window.addEventListener('resize',resize);
+
+// === State ===
+let state='start'; // start, playing, gameover
+let score=0,bestScore=0,distance=0,elapsed=0;
+let speed=260;
+let lane=0; // 0=left,1=right
+let perfectStreak=0,mult=1;
+let shakeTimer=0,shakeIntensity=0;
+let hitStopTimer=0;
+let lastInputTime=0;
+let hue=200;
+
+// Ghost
+let ghost={active:false,lane:0,timer:0,shardsCollected:0,y:BALL_Y,opacity:1};
+
+// Entities
+let hazards=[],gates=[],shards=[],particles=[];
+let hazardTimer=0,gateTimer=0,shardTimer=0;
+
+// Ball bob
+let bobPhase=0;
+
+// Trail
+let trail=[];
+
+// Load best
+try{bestScore=parseInt(localStorage.getItem(LS_KEY))||0}catch(e){}
+
+// === Helpers ===
+function clamp(v,lo,hi){return Math.max(lo,Math.min(hi,v))}
+function lerp(a,b,t){return a+(b-a)*t}
+function rand(a,b){return a+Math.random()*(b-a)}
+function randInt(a,b){return Math.floor(rand(a,b+1))}
+function laneX(l){return l===0?LANE_LEFT:LANE_RIGHT}
+function otherLane(l){return l===0?1:0}
+
+// === Particles ===
+function spawnParticles(x,y,count,color,spdMul=1){
+  for(let i=0;i<count;i++){
+    const ang=rand(0,Math.PI*2);
+    const sp=rand(60,200)*spdMul;
+    particles.push({x,y,vx:Math.cos(ang)*sp,vy:Math.sin(ang)*sp,life:rand(0.3,0.8),maxLife:0.8,r:rand(2,5),color});
+  }
+}
+
+function spawnRing(x,y,color,count=16){
+  for(let i=0;i<count;i++){
+    const ang=(i/count)*Math.PI*2;
+    const sp=rand(120,220);
+    particles.push({x,y,vx:Math.cos(ang)*sp,vy:Math.sin(ang)*sp,life:rand(0.4,0.7),maxLife:0.7,r:rand(3,6),color,ring:true});
+  }
+}
+
+// === Screen Shake ===
+function triggerShake(intensity,duration){
+  shakeIntensity=intensity;
+  shakeTimer=duration;
+}
+
+// === Input ===
+function handleInput(){
+  const now=performance.now();
+  if(now-lastInputTime<DEBOUNCE_MS)return;
+  lastInputTime=now;
+
+  if(state==='start'){
+    startGame();
+  }else if(state==='playing'){
+    flipLane();
+  }else if(state==='gameover'){
+    resetToStart();
+  }
+}
+
+canvas.addEventListener('pointerdown',e=>{e.preventDefault();handleInput()});
+document.addEventListener('keydown',e=>{
+  if(e.code==='Space'||e.code==='Enter'){e.preventDefault();handleInput()}
+});
+
+// === Game Logic ===
+function startGame(){
+  state='playing';
+  score=0;distance=0;elapsed=0;speed=260;
+  lane=0;perfectStreak=0;mult=1;
+  shakeTimer=0;hitStopTimer=0;
+  ghost={active:false,lane:0,timer:0,shardsCollected:0,y:BALL_Y,opacity:1};
+  hazards=[];gates=[];shards=[];particles=[];trail=[];
+  hazardTimer=0;gateTimer=0;shardTimer=0;
+  bobPhase=0;hue=200;
+}
+
+function resetToStart(){
+  state='start';
+}
+
+function flipLane(){
+  const oldLane=lane;
+  lane=otherLane(lane);
+
+  // Check perfect flip
+  let nearestDist=Infinity;
+  const bx=laneX(lane);
+  [...hazards,...gates].forEach(o=>{
+    if(o.lane===oldLane||o.lane===lane){
+      const d=Math.abs(o.y-BALL_Y);
+      if(d<nearestDist)nearestDist=d;
+    }
+  });
+
+  if(nearestDist<=PERFECT_WINDOW){
+    perfectStreak++;
+    hitStopTimer=HIT_STOP_MS/1000;
+    spawnParticles(laneX(oldLane),BALL_Y,8,`hsl(${hue},90%,70%)`);
+    triggerShake(3,0.1);
+  }else{
+    perfectStreak=Math.max(0,perfectStreak-1);
+  }
+  mult=1+Math.min(3,Math.floor(perfectStreak/5));
+
+  // Flip shatter particles
+  spawnParticles(laneX(oldLane),BALL_Y,12,`hsl(${hue+30},80%,80%)`,0.6);
+}
+
+function gameOver(){
+  state='gameover';
+  const finalScore=Math.floor(score);
+  if(finalScore>bestScore){
+    bestScore=finalScore;
+    try{localStorage.setItem(LS_KEY,bestScore.toString())}catch(e){}
+  }
+  triggerShake(8,0.4);
+  spawnParticles(laneX(lane),BALL_Y,30,'#ff4466',1.5);
+}
+
+// === Spawning ===
+function spawnHazard(){
+  const l=randInt(0,1);
+  const type=Math.random()<0.5?'spike':'crack';
+  hazards.push({lane:l,y:-40,type,w:36,h:30});
+}
+
+function spawnGate(){
+  const l=randInt(0,1);
+  const type=Math.random()<0.55?'split':'seal';
+  gates.push({lane:l,y:-40,type,w:50,h:24,triggered:false});
+}
+
+function spawnShard(){
+  const l=randInt(0,1);
+  shards.push({lane:l,y:-30,collected:false,r:8,glow:0});
+}
+
+// === Update ===
+function update(dt){
+  if(state!=='playing')return;
+
+  if(hitStopTimer>0){hitStopTimer-=dt;return;}
+
+  elapsed+=dt;
+  const t=elapsed;
+
+  // Speed formula
+  speed=260+10*t+0.9*Math.sqrt(distance);
+  distance+=speed*dt;
+
+  // Score
+  score+=(speed*dt)*0.12*mult;
+
+  // Hue cycling
+  hue=(hue+dt*15)%360;
+
+  // Bob
+  bobPhase+=dt*6;
+
+  // Trail
+  trail.unshift({x:laneX(lane),y:BALL_Y+Math.sin(bobPhase)*4,a:1});
+  if(trail.length>12)trail.pop();
+  trail.forEach((t,i)=>t.a=1-i/12);
+
+  // Spawn timers
+  const hazardEvery=clamp(0.95-0.012*t,0.38,0.95);
+  const gateEvery=clamp(1.60-0.010*t,0.70,1.60);
+  const shardEvery=clamp(0.80-0.006*t,0.35,0.80);
+
+  hazardTimer+=dt;
+  if(hazardTimer>=hazardEvery){hazardTimer=0;spawnHazard();}
+
+  gateTimer+=dt;
+  if(gateTimer>=gateEvery){gateTimer=0;spawnGate();}
+
+  shardTimer+=dt;
+  if(shardTimer>=shardEvery){shardTimer=0;spawnShard();}
+
+  // Move entities
+  const dy=speed*dt;
+
+  hazards.forEach(h=>h.y+=dy);
+  gates.forEach(g=>g.y+=dy);
+  shards.forEach(s=>s.y+=dy);
+
+  // Cleanup offscreen
+  hazards=hazards.filter(h=>h.y<H+60);
+  gates=gates.filter(g=>g.y<H+60);
+  shards=shards.filter(s=>s.y<H+60&&!s.collected);
+
+  // Collision: hazards vs ball
+  const bx=laneX(lane);
+  hazards.forEach(h=>{
+    if(h.lane===lane){
+      const hx=laneX(h.lane);
+      if(Math.abs(h.y-BALL_Y)<(h.h/2+BALL_R)&&Math.abs(hx-bx)<(h.w/2+BALL_R)){
+        gameOver();
+      }
+    }
+  });
+
+  if(state!=='playing')return;
+
+  // Collision: gates vs ball
+  gates.forEach(g=>{
+    if(g.triggered)return;
+    const gx=laneX(g.lane);
+    if(g.lane===lane&&Math.abs(g.y-BALL_Y)<(g.h/2+BALL_R)&&Math.abs(gx-bx)<(g.w/2+BALL_R)){
+      g.triggered=true;
+      if(g.type==='split'){
+        // Activate ghost
+        ghost={active:true,lane:otherLane(lane),timer:GHOST_DURATION,shardsCollected:0,y:BALL_Y,opacity:1};
+        spawnRing(gx,g.y,`hsl(${hue},90%,70%)`);
+        triggerShake(2,0.08);
+      }else{
+        // Seal gate = lethal
+        gameOver();
+      }
+    }
+  });
+
+  if(state!=='playing')return;
+
+  // Collision: shards vs ball
+  shards.forEach(s=>{
+    if(s.collected)return;
+    const sx=laneX(s.lane);
+    if(s.lane===lane&&Math.abs(s.y-BALL_Y)<(s.r+BALL_R)&&Math.abs(sx-bx)<(s.r+BALL_R)){
+      s.collected=true;
+      score+=25*mult;
+      spawnParticles(sx,s.y,6,`hsl(${hue+60},90%,80%)`);
+    }
+  });
+
+  // Ghost update
+  if(ghost.active){
+    ghost.timer-=dt;
+    ghost.opacity=clamp(ghost.timer/0.3,0,1);
+
+    // Ghost collects shards in its lane
+    shards.forEach(s=>{
+      if(s.collected)return;
+      const sx=laneX(s.lane);
+      if(s.lane===ghost.lane&&Math.abs(s.y-ghost.y)<(s.r+10)){
+        s.collected=true;
+        ghost.shardsCollected++;
+        spawnParticles(sx,s.y,4,`hsl(${hue+120},80%,70%)`);
+      }
+    });
+
+    if(ghost.timer<=0){
+      // Merge: award burst bonus
+      const burst=ghost.shardsCollected*40;
+      score+=burst*mult;
+      ghost.active=false;
+      if(burst>0){
+        spawnRing(laneX(lane),BALL_Y,'#fff',20);
+        triggerShake(4,0.15);
+      }
+    }
+  }
+
+  // Shake
+  if(shakeTimer>0)shakeTimer-=dt;
+
+  // Particles
+  particles.forEach(p=>{
+    p.x+=p.vx*dt;
+    p.y+=p.vy*dt;
+    p.vy+=300*dt;
+    p.life-=dt;
+  });
+  particles=particles.filter(p=>p.life>0);
+}
+
+// === Rendering ===
+function drawBG(){
+  const grd=ctx.createLinearGradient(0,0,0,H);
+  grd.addColorStop(0,'#0a1628');
+  grd.addColorStop(0.5,'#0f2040');
+  grd.addColorStop(1,'#0a1628');
+  ctx.fillStyle=grd;
+  ctx.fillRect(0,0,W,H);
+
+  // Vignette
+  const vgrd=ctx.createRadialGradient(W/2,H/2,W*0.25,W/2,H/2,W*0.9);
+  vgrd.addColorStop(0,'rgba(0,0,0,0)');
+  vgrd.addColorStop(1,'rgba(0,0,0,0.55)');
+  ctx.fillStyle=vgrd;
+  ctx.fillRect(0,0,W,H);
+}
+
+function drawLanes(){
+  // Lane rails
+  ctx.strokeStyle='rgba(100,180,255,0.15)';
+  ctx.lineWidth=2;
+  const cx=W/2;
+  const laneW=W*0.22;
+
+  // Left lane borders
+  ctx.beginPath();
+  ctx.moveTo(LANE_LEFT-laneW,0);ctx.lineTo(LANE_LEFT-laneW,H);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(LANE_LEFT+laneW,0);ctx.lineTo(LANE_LEFT+laneW,H);
+  ctx.stroke();
+
+  // Right lane borders
+  ctx.beginPath();
+  ctx.moveTo(LANE_RIGHT-laneW,0);ctx.lineTo(LANE_RIGHT-laneW,H);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(LANE_RIGHT+laneW,0);ctx.lineTo(LANE_RIGHT+laneW,H);
+  ctx.stroke();
+
+  // Center divider
+  ctx.strokeStyle='rgba(100,180,255,0.25)';
+  ctx.setLineDash([12,18]);
+  ctx.beginPath();
+  ctx.moveTo(cx,0);ctx.lineTo(cx,H);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Icy texture lines (scrolling)
+  ctx.strokeStyle='rgba(150,210,255,0.06)';
+  ctx.lineWidth=1;
+  const scrollOff=(distance*0.3)%60;
+  for(let y=-60+scrollOff;y<H+60;y+=60){
+    ctx.beginPath();
+    ctx.moveTo(0,y);ctx.lineTo(W,y);
+    ctx.stroke();
+  }
+}
+
+function drawHazard(h){
+  const x=laneX(h.lane);
+  ctx.save();
+  ctx.translate(x,h.y);
+
+  if(h.type==='spike'){
+    // Spike triangle
+    ctx.fillStyle='#ff2244';
+    ctx.strokeStyle='rgba(150,220,255,0.6)';
+    ctx.lineWidth=2;
+    ctx.beginPath();
+    ctx.moveTo(0,-h.h/2-4);
+    ctx.lineTo(-h.w/2,h.h/2);
+    ctx.lineTo(h.w/2,h.h/2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Glow
+    ctx.shadowColor='#ff2244';
+    ctx.shadowBlur=12;
+    ctx.fill();
+    ctx.shadowBlur=0;
+  }else{
+    // Crack - jagged line
+    ctx.strokeStyle='#ff4466';
+    ctx.lineWidth=3;
+    ctx.shadowColor='#ff4466';
+    ctx.shadowBlur=8;
+    ctx.beginPath();
+    ctx.moveTo(-h.w/2,0);
+    ctx.lineTo(-h.w/4,-6);
+    ctx.lineTo(-4,4);
+    ctx.lineTo(6,-8);
+    ctx.lineTo(h.w/4,2);
+    ctx.lineTo(h.w/2,0);
+    ctx.stroke();
+    ctx.shadowBlur=0;
+
+    // Ice outline
+    ctx.strokeStyle='rgba(150,220,255,0.4)';
+    ctx.lineWidth=1;
+    ctx.strokeRect(-h.w/2-2,-h.h/2,h.w+4,h.h);
+  }
+  ctx.restore();
+}
+
+function drawGate(g){
+  const x=laneX(g.lane);
+  ctx.save();
+  ctx.translate(x,g.y);
+
+  if(g.type==='split'){
+    // Cool bright gate
+    const gc=`hsl(${hue},85%,65%)`;
+    ctx.fillStyle=gc;
+    ctx.shadowColor=gc;
+    ctx.shadowBlur=16;
+    ctx.fillRect(-g.w/2,-g.h/2,g.w,g.h);
+    ctx.shadowBlur=0;
+
+    // Inner symbol
+    ctx.fillStyle='#fff';
+    ctx.font='bold 14px sans-serif';
+    ctx.textAlign='center';
+    ctx.textBaseline='middle';
+    ctx.fillText('SPLIT',0,1);
+  }else{
+    // Seal gate - hot magenta/red
+    ctx.fillStyle='#dd2266';
+    ctx.shadowColor='#ff0044';
+    ctx.shadowBlur=16;
+    ctx.fillRect(-g.w/2,-g.h/2,g.w,g.h);
+    ctx.shadowBlur=0;
+
+    ctx.fillStyle='#fff';
+    ctx.font='bold 13px sans-serif';
+    ctx.textAlign='center';
+    ctx.textBaseline='middle';
+    ctx.fillText('SEAL',0,1);
+  }
+  ctx.restore();
+}
+
+function drawShard(s){
+  const x=laneX(s.lane);
+  const pulse=0.8+0.2*Math.sin(elapsed*8+s.y*0.1);
+  ctx.save();
+  ctx.translate(x,s.y);
+  ctx.rotate(elapsed*3);
+
+  ctx.fillStyle=`hsl(${(hue+60)%360},90%,75%)`;
+  ctx.shadowColor=`hsl(${(hue+60)%360},90%,75%)`;
+  ctx.shadowBlur=10*pulse;
+
+  // Diamond shape
+  ctx.beginPath();
+  ctx.moveTo(0,-s.r*pulse);
+  ctx.lineTo(s.r*0.7*pulse,0);
+  ctx.lineTo(0,s.r*pulse);
+  ctx.lineTo(-s.r*0.7*pulse,0);
+  ctx.closePath();
+  ctx.fill();
+  ctx.shadowBlur=0;
+  ctx.restore();
+}
+
+function drawBall(){
+  const bx=laneX(lane);
+  const by=BALL_Y+Math.sin(bobPhase)*4;
+
+  // Trail afterimages
+  trail.forEach((t,i)=>{
+    if(i===0)return;
+    ctx.beginPath();
+    ctx.arc(t.x,t.y,BALL_R*(1-i*0.06),0,Math.PI*2);
+    ctx.fillStyle=`hsla(${hue},80%,70%,${t.a*0.25})`;
+    ctx.fill();
+  });
+
+  // Glow
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(bx,by,BALL_R+8,0,Math.PI*2);
+  ctx.fillStyle=`hsla(${hue},90%,70%,0.25)`;
+  ctx.fill();
+
+  // Ball
+  ctx.beginPath();
+  ctx.arc(bx,by,BALL_R,0,Math.PI*2);
+  const bgrd=ctx.createRadialGradient(bx-4,by-4,2,bx,by,BALL_R);
+  bgrd.addColorStop(0,`hsl(${hue},80%,85%)`);
+  bgrd.addColorStop(1,`hsl(${hue},70%,55%)`);
+  ctx.fillStyle=bgrd;
+  ctx.fill();
+  ctx.strokeStyle='rgba(255,255,255,0.5)';
+  ctx.lineWidth=1.5;
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawGhost(){
+  if(!ghost.active)return;
+  const gx=laneX(ghost.lane);
+  const gy=ghost.y+Math.sin(bobPhase*1.3)*3;
+  const a=ghost.opacity*0.55;
+
+  ctx.save();
+  ctx.globalAlpha=a;
+  // Glow
+  ctx.beginPath();
+  ctx.arc(gx,gy,10+5,0,Math.PI*2);
+  ctx.fillStyle=`hsla(${(hue+120)%360},80%,70%,0.3)`;
+  ctx.fill();
+
+  // Ghost ball
+  ctx.beginPath();
+  ctx.arc(gx,gy,10,0,Math.PI*2);
+  ctx.fillStyle=`hsl(${(hue+120)%360},70%,65%)`;
+  ctx.fill();
+  ctx.strokeStyle='rgba(255,255,255,0.4)';
+  ctx.lineWidth=1;
+  ctx.stroke();
+  ctx.globalAlpha=1;
+  ctx.restore();
+}
+
+function drawParticles(){
+  particles.forEach(p=>{
+    const a=clamp(p.life/p.maxLife,0,1);
+    ctx.save();
+    ctx.globalAlpha=a;
+    ctx.fillStyle=p.color;
+    ctx.beginPath();
+    ctx.arc(p.x,p.y,p.r*a,0,Math.PI*2);
+    ctx.fill();
+    ctx.globalAlpha=1;
+    ctx.restore();
+  });
+}
+
+function drawHUD(){
+  // Score
+  ctx.fillStyle='rgba(255,255,255,0.9)';
+  ctx.font='bold 28px "Segoe UI",system-ui,sans-serif';
+  ctx.textAlign='center';
+  ctx.textBaseline='top';
+  ctx.fillText(Math.floor(score),W/2,20);
+
+  // Multiplier
+  if(mult>1){
+    ctx.fillStyle=`hsl(${hue},90%,70%)`;
+    ctx.font='bold 18px "Segoe UI",system-ui,sans-serif';
+    ctx.fillText('x'+mult,W/2,52);
+  }
+
+  // Perfect streak
+  if(perfectStreak>=3){
+    ctx.fillStyle='rgba(255,255,255,0.5)';
+    ctx.font='14px "Segoe UI",system-ui,sans-serif';
+    ctx.fillText('streak '+perfectStreak,W/2,mult>1?74:54);
+  }
+
+  // Ghost indicator
+  if(ghost.active){
+    ctx.fillStyle=`hsla(${(hue+120)%360},80%,70%,${ghost.opacity})`;
+    ctx.font='bold 13px "Segoe UI",system-ui,sans-serif';
+    ctx.textAlign='right';
+    ctx.fillText('GHOST +'+ghost.shardsCollected,W-16,24);
+  }
+}
+
+function drawStartScreen(){
+  drawBG();
+  drawLanes();
+
+  // Title
+  ctx.fillStyle='#fff';
+  ctx.font='bold 52px "Segoe UI",system-ui,sans-serif';
+  ctx.textAlign='center';
+  ctx.textBaseline='middle';
+  ctx.shadowColor='hsl(200,90%,60%)';
+  ctx.shadowBlur=30;
+  ctx.fillText('FROST',W/2,H*0.32);
+  ctx.fillStyle='hsl(200,90%,70%)';
+  ctx.fillText('SPLIT',W/2,H*0.32+56);
+  ctx.shadowBlur=0;
+
+  // Subtitle
+  ctx.fillStyle='rgba(255,255,255,0.5)';
+  ctx.font='16px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText('Gate Flip',W/2,H*0.32+100);
+
+  // Tap prompt
+  const pulse=0.6+0.4*Math.sin(performance.now()/400);
+  ctx.fillStyle=`rgba(255,255,255,${pulse})`;
+  ctx.font='20px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText('Tap to Start',W/2,H*0.62);
+
+  // Best score
+  if(bestScore>0){
+    ctx.fillStyle='rgba(255,255,255,0.4)';
+    ctx.font='15px "Segoe UI",system-ui,sans-serif';
+    ctx.fillText('Best: '+bestScore,W/2,H*0.70);
+  }
+
+  // Instructions
+  ctx.fillStyle='rgba(150,200,255,0.35)';
+  ctx.font='13px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText('Tap or Space to flip lanes',W/2,H*0.85);
+  ctx.fillText('Dodge hazards \u2022 Hit Split gates \u2022 Avoid Seal gates',W/2,H*0.85+20);
+}
+
+function drawGameOverScreen(){
+  // Dim overlay
+  ctx.fillStyle='rgba(5,10,20,0.7)';
+  ctx.fillRect(0,0,W,H);
+
+  const finalScore=Math.floor(score);
+  const isNewBest=finalScore>=bestScore&&finalScore>0;
+
+  ctx.fillStyle='#ff4466';
+  ctx.font='bold 40px "Segoe UI",system-ui,sans-serif';
+  ctx.textAlign='center';
+  ctx.textBaseline='middle';
+  ctx.shadowColor='#ff2244';
+  ctx.shadowBlur=20;
+  ctx.fillText('GAME OVER',W/2,H*0.30);
+  ctx.shadowBlur=0;
+
+  ctx.fillStyle='#fff';
+  ctx.font='bold 48px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText(finalScore,W/2,H*0.42);
+
+  if(isNewBest){
+    ctx.fillStyle='hsl(50,90%,65%)';
+    ctx.font='bold 18px "Segoe UI",system-ui,sans-serif';
+    ctx.fillText('NEW BEST!',W/2,H*0.50);
+  }
+
+  ctx.fillStyle='rgba(255,255,255,0.5)';
+  ctx.font='16px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText('Best: '+bestScore,W/2,H*0.56);
+
+  const pulse=0.5+0.5*Math.sin(performance.now()/500);
+  ctx.fillStyle=`rgba(255,255,255,${pulse})`;
+  ctx.font='20px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText('Tap to Retry',W/2,H*0.68);
+}
+
+// === Main Loop ===
+let lastTime=0;
+
+function frame(time){
+  requestAnimationFrame(frame);
+  const dt=Math.min((time-lastTime)/1000,0.05);
+  lastTime=time;
+
+  // Canvas transform
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+
+  if(state==='start'){
+    drawStartScreen();
+    return;
+  }
+
+  update(dt);
+
+  // Apply screen shake
+  ctx.save();
+  if(shakeTimer>0){
+    const sx=(Math.random()-0.5)*2*shakeIntensity;
+    const sy=(Math.random()-0.5)*2*shakeIntensity;
+    ctx.translate(sx,sy);
+  }
+
+  drawBG();
+  drawLanes();
+
+  // Draw entities
+  hazards.forEach(drawHazard);
+  gates.forEach(drawGate);
+  shards.forEach(s=>{if(!s.collected)drawShard(s)});
+
+  drawGhost();
+  drawBall();
+  drawParticles();
+  drawHUD();
+
+  ctx.restore();
+
+  if(state==='gameover'){
+    drawGameOverScreen();
+    // Keep updating particles
+    particles.forEach(p=>{
+      p.x+=p.vx*dt;
+      p.y+=p.vy*dt;
+      p.vy+=300*dt;
+      p.life-=dt;
+    });
+    particles=particles.filter(p=>p.life>0);
+  }
+}
+
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

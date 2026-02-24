@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Pixel Plunge – Hyper-Casual Lane-Switching Game</title>
+<meta name="description" content="Pixel Plunge is a free hyper-casual HTML5 game. Tap to switch lanes, catch cyan drops, dodge magenta corruption, and bank gold for massive combos. Play now in your browser!">
+<meta name="theme-color" content="#0a0a1a">
+<meta property="og:title" content="Pixel Plunge – Hyper-Casual Lane-Switching Game">
+<meta property="og:description" content="Tap to switch lanes, catch cyan drops, dodge magenta corruption, and bank gold for massive combos. Free browser game!">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://balinti.github.io/pixel-plunge/og-preview.png">
+<meta property="og:url" content="https://balinti.github.io/pixel-plunge/">
+<link rel="canonical" href="https://balinti.github.io/pixel-plunge/">
+<script type="application/ld+json">
+{
+  "@context":"https://schema.org",
+  "@type":"VideoGame",
+  "name":"Pixel Plunge",
+  "description":"Hyper-casual lane-switching HTML5 game with combo multipliers, gold banking, and corruption mechanics.",
+  "genre":"Casual",
+  "gamePlatform":"Web Browser",
+  "operatingSystem":"Any",
+  "applicationCategory":"Game",
+  "url":"https://balinti.github.io/pixel-plunge/",
+  "author":{"@type":"Person","name":"Balinti"},
+  "playMode":"SinglePlayer",
+  "numberOfPlayers":{"@type":"QuantitativeValue","value":1}
+}
+</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXXXXXXXXXX" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow-x:hidden;background:#0a0a1a;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;color:#ccc;-webkit-tap-highlight-color:transparent;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+body{display:flex;flex-direction:column;align-items:center;min-height:100vh;min-height:100dvh}
+#wrap{position:relative;width:100%;max-width:420px;display:flex;flex-direction:column;align-items:center;flex:1}
+canvas{display:block;width:100%;max-width:420px;touch-action:none;border-radius:0 0 10px 10px}
+.info{max-width:420px;width:100%;padding:18px 16px 12px;font-size:13px;line-height:1.55;color:#667;text-align:center}
+.info h3{font-size:14px;color:#889;margin-bottom:6px}
+.info p{margin-bottom:8px}
+.info span.cy{color:#0ff}
+.info span.mg{color:#f0a}
+.info span.gd{color:#ffd700}
+.footer-spacer{height:90px;width:100%}
+</style>
+</head>
+<body>
+<div id="wrap">
+<canvas id="c"></canvas>
+</div>
+<div class="info">
+<h3>How to Play Pixel Plunge</h3>
+<p>Tap the screen or press <b>Space / Enter</b> to cycle through 5 lanes. Catch <span class="cy">cyan drops</span> to score points and build your combo multiplier. Avoid <span class="mg">magenta corruption</span> — 3 strikes and it's game over!</p>
+<p>Grab <span class="gd">gold drops</span> to bank your current combo tier, trigger slow-motion, and earn bonus points. A banked tier protects your multiplier when you get hit.</p>
+<p><b>Tips:</b> Focus on building long combos for massive scores. Gold drops are rare but powerful — never miss one! Missing a cyan drop only costs one combo tier, so stay aggressive.</p>
+</div>
+<div class="footer-spacer"></div>
+
+<script>
+(()=>{
+'use strict';
+
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+
+/* ── High-DPI ── */
+const MAX_DPR=2.5;
+let dpr=Math.min(window.devicePixelRatio||1,MAX_DPR);
+const BASE_W=420,BASE_H=750;
+let W,H;
+
+function resize(){
+  const wrap=document.getElementById('wrap');
+  const vw=Math.min(wrap.clientWidth,BASE_W);
+  const vh=Math.min(window.innerHeight,BASE_H);
+  dpr=Math.min(window.devicePixelRatio||1,MAX_DPR);
+  W=vw;H=vh;
+  canvas.width=W*dpr;
+  canvas.height=H*dpr;
+  canvas.style.width=W+'px';
+  canvas.style.height=H+'px';
+}
+resize();
+window.addEventListener('resize',resize);
+
+/* ── Constants ── */
+const LANES=5;
+const LANE_W=()=>W/LANES;
+const CATCHER_H=18;
+const CATCHER_Y=()=>H-110;
+const DROP_R=14;
+const CORRUPTION_MAX=3;
+
+/* ── State ── */
+let state='start'; // start | playing | gameover
+let score=0,bestScore=+(localStorage.getItem('pp_best')||0);
+let currentLane=2;
+let corruption=0;
+let comboCount=0,comboTier=0,bankedTier=0;
+let maxMult=1,goldCaught=0;
+let gameTime=0,tier=0;
+let slowMo=1,slowMoTimer=0;
+let hitStopTimer=0;
+let shakeX=0,shakeY=0,shakeDecay=0;
+let hueShift=0;
+let drops=[];
+let particles=[];
+let flashAlpha=0,flashColor='#fff';
+let glitchAlpha=0;
+let tierUpMsg='',tierUpTimer=0;
+
+/* ── Pattern scheduler ── */
+let patternTimer=0,patternQueue=[];
+let spawnAccum=0;
+const PATTERNS=['stream','alternate','sweep','stagger','glitchBurst','doubleDrop','syncopation'];
+const TIER_WEIGHTS=[
+  [4,2,1,0,0,0,0],[3,3,2,1,0,0,0],[2,3,3,2,1,0,0],[1,2,3,3,2,1,0],
+  [1,1,2,3,3,2,1],[0,1,2,2,3,3,2],[0,0,1,2,3,3,3],[0,0,1,1,2,3,3],[0,0,0,1,2,3,3]
+];
+
+function pickPattern(){
+  const w=TIER_WEIGHTS[Math.min(tier,8)];
+  const total=w.reduce((a,b)=>a+b,0);
+  let r=Math.random()*total;
+  for(let i=0;i<w.length;i++){r-=w[i];if(r<=0)return PATTERNS[i];}
+  return PATTERNS[0];
+}
+
+function dropSpeed(){return Math.min(720,220+18*(gameTime/1)+22*Math.sqrt(score));}
+function spawnInterval(){return Math.max(0.22,0.62-0.0065*gameTime);}
+function pGold(){return Math.min(0.08,Math.max(0.03,0.03+0.0006*gameTime));}
+function pBad(){return Math.min(0.22,Math.max(0.10,0.10+0.0012*gameTime));}
+
+function pickType(forceBad){
+  if(forceBad)return'bad';
+  const r=Math.random();
+  if(r<pGold())return'gold';
+  if(r<pGold()+pBad())return'bad';
+  return'good';
+}
+
+function spawnDrop(lane,type){
+  drops.push({x:lane*LANE_W()+LANE_W()/2,y:-DROP_R-Math.random()*20,lane,type,speed:dropSpeed(),alpha:1});
+}
+
+function generatePattern(name){
+  const q=[];
+  const si=spawnInterval();
+  switch(name){
+    case'stream':{
+      const l=Math.floor(Math.random()*LANES);
+      for(let i=0;i<4+Math.floor(Math.random()*3);i++)q.push({delay:si*i,lane:l,type:pickType()});
+      break;}
+    case'alternate':{
+      const a=Math.floor(Math.random()*LANES),b=(a+2)%LANES;
+      for(let i=0;i<6;i++)q.push({delay:si*i,lane:i%2===0?a:b,type:pickType()});
+      break;}
+    case'sweep':{
+      const dir=Math.random()>0.5?1:-1;
+      const start=dir>0?0:LANES-1;
+      for(let i=0;i<LANES;i++)q.push({delay:si*i,lane:start+dir*i,type:pickType()});
+      break;}
+    case'stagger':{
+      for(let i=0;i<4;i++){const l=Math.floor(Math.random()*LANES);q.push({delay:si*1.2*i,lane:l,type:pickType()});}
+      break;}
+    case'glitchBurst':{
+      for(let i=0;i<3+Math.floor(Math.random()*3);i++){
+        const l=Math.floor(Math.random()*LANES);
+        const t=Math.random()<0.45?'bad':pickType();
+        q.push({delay:si*0.6*i,lane:l,type:t});
+      }
+      break;}
+    case'doubleDrop':{
+      for(let i=0;i<3;i++){
+        const l1=Math.floor(Math.random()*LANES);
+        let l2=(l1+1+Math.floor(Math.random()*(LANES-1)))%LANES;
+        q.push({delay:si*1.5*i,lane:l1,type:pickType()});
+        q.push({delay:si*1.5*i+0.05,lane:l2,type:pickType()});
+      }
+      break;}
+    case'syncopation':{
+      for(let i=0;i<5;i++){
+        const l=Math.floor(Math.random()*LANES);
+        q.push({delay:si*(i<3?i:i+0.5),lane:l,type:pickType()});
+      }
+      break;}
+  }
+  return q;
+}
+
+/* ── Tutorial ── */
+let tutorialPhase=0,tutorialTimer=0;
+function tutorialSpawn(){
+  if(tutorialPhase===0){spawnDrop(2,'good');tutorialPhase=1;}
+  else if(tutorialPhase===1){spawnDrop(currentLane,'good');tutorialPhase=2;}
+  else if(tutorialPhase===2){
+    let bl=(currentLane+2)%LANES;
+    spawnDrop(bl,'bad');spawnDrop(currentLane,'good');tutorialPhase=3;
+  }else if(tutorialPhase===3){spawnDrop(currentLane,'gold');tutorialPhase=4;}
+}
+
+/* ── Particles ── */
+const PARTICLE_POOL=200;
+function addParticle(x,y,type,count){
+  for(let i=0;i<count&&particles.length<PARTICLE_POOL;i++){
+    const angle=Math.random()*Math.PI*2;
+    const spd=type==='gold'?80+Math.random()*120:60+Math.random()*100;
+    particles.push({
+      x,y,vx:Math.cos(angle)*spd,vy:Math.sin(angle)*spd-(type==='good'?40:0),
+      life:type==='gold'?0.8:0.6,maxLife:type==='gold'?0.8:0.6,
+      type,size:type==='gold'?3+Math.random()*3:2+Math.random()*3
+    });
+  }
+  if(type==='gold'){
+    for(let i=0;i<8&&particles.length<PARTICLE_POOL;i++){
+      const a=Math.PI*2*i/8;
+      particles.push({x,y,vx:Math.cos(a)*160,vy:Math.sin(a)*160,life:0.5,maxLife:0.5,type:'goldRing',size:2});
+    }
+  }
+}
+
+function updateParticles(dt){
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    p.x+=p.vx*dt;p.y+=p.vy*dt;
+    p.vy+=200*dt;
+    p.life-=dt;
+    if(p.life<=0)particles.splice(i,1);
+  }
+}
+
+function drawParticles(){
+  ctx.save();
+  ctx.globalCompositeOperation='lighter';
+  for(const p of particles){
+    const a=Math.max(0,p.life/p.maxLife);
+    if(p.type==='good'){
+      ctx.fillStyle=`hsla(180,100%,70%,${a*0.8})`;
+      ctx.fillRect(p.x-p.size/2,p.y-p.size/2,p.size,p.size);
+    }else if(p.type==='bad'){
+      ctx.fillStyle=`hsla(320,100%,60%,${a*0.6})`;
+      ctx.fillRect(p.x-p.size/2,p.y-p.size/2,p.size,p.size);
+    }else if(p.type==='gold'||p.type==='goldRing'){
+      ctx.fillStyle=`hsla(45,100%,60%,${a*0.9})`;
+      ctx.fillRect(p.x-p.size/2,p.y-p.size/2,p.size,p.size);
+    }
+  }
+  ctx.restore();
+}
+
+/* ── Shake ── */
+function triggerShake(intensity,dur){
+  shakeDecay=dur;
+  shakeX=(Math.random()-0.5)*intensity;
+  shakeY=(Math.random()-0.5)*intensity;
+}
+
+/* ── Input ── */
+function onInput(){
+  if(state==='start'){startGame();return;}
+  if(state==='gameover'){resetGame();return;}
+  currentLane=(currentLane+1)%LANES;
+}
+canvas.addEventListener('pointerdown',e=>{e.preventDefault();onInput();});
+document.addEventListener('keydown',e=>{
+  if(e.code==='Space'||e.code==='Enter'){e.preventDefault();onInput();}
+});
+
+/* ── Game Logic ── */
+function startGame(){
+  state='playing';score=0;corruption=0;comboCount=0;comboTier=0;bankedTier=0;
+  maxMult=1;goldCaught=0;gameTime=0;tier=0;currentLane=2;
+  slowMo=1;slowMoTimer=0;hitStopTimer=0;drops=[];particles=[];
+  patternTimer=0;patternQueue=[];tutorialPhase=0;tutorialTimer=0;
+  shakeX=0;shakeY=0;shakeDecay=0;flashAlpha=0;glitchAlpha=0;
+  tierUpMsg='';tierUpTimer=0;spawnAccum=0;
+}
+
+function resetGame(){startGame();}
+
+function catchDrop(drop){
+  if(drop.type==='good'){
+    const mult=1+comboTier;
+    score+=1*mult;
+    comboCount++;
+    const newTier=Math.min(6,Math.floor(comboCount/8));
+    if(newTier>comboTier){
+      comboTier=newTier;
+      tierUpMsg='x'+(1+comboTier)+' COMBO!';
+      tierUpTimer=1.2;
+      triggerShake(4,0.15);
+    }
+    if(1+comboTier>maxMult)maxMult=1+comboTier;
+    addParticle(drop.x,drop.y,'good',8);
+    flashAlpha=0.15;flashColor='rgba(0,255,255,0.15)';
+  }else if(drop.type==='bad'){
+    corruption++;
+    comboCount=bankedTier*8;
+    comboTier=bankedTier;
+    addParticle(drop.x,drop.y,'bad',12);
+    glitchAlpha=0.4;
+    flashAlpha=0.25;flashColor='rgba(255,0,170,0.25)';
+    triggerShake(corruption>=CORRUPTION_MAX?18:8,corruption>=CORRUPTION_MAX?0.5:0.25);
+    if(corruption>=CORRUPTION_MAX){
+      state='gameover';
+      if(score>bestScore){bestScore=score;localStorage.setItem('pp_best',bestScore);}
+      triggerShake(25,0.7);
+    }
+  }else if(drop.type==='gold'){
+    goldCaught++;
+    bankedTier=Math.max(bankedTier,comboTier);
+    score+=8+2*comboTier;
+    slowMo=0.55;slowMoTimer=1.25;
+    hitStopTimer=0.075;
+    addParticle(drop.x,drop.y,'gold',15);
+    flashAlpha=0.3;flashColor='rgba(255,215,0,0.3)';
+    triggerShake(5,0.18);
+    tierUpMsg='GOLD BANKED!';tierUpTimer=1.0;
+  }
+}
+
+function missDrop(drop){
+  if(drop.type==='good'){
+    comboTier=Math.max(0,comboTier-1);
+    comboCount=comboTier*8;
+    score=Math.max(0,score-2);
+    flashAlpha=0.08;flashColor='rgba(100,100,200,0.1)';
+  }
+  // bad/gold miss: no penalty
+}
+
+/* ── Update ── */
+let lastTime=0;
+function update(ts){
+  requestAnimationFrame(update);
+  if(!lastTime){lastTime=ts;return;}
+  let rawDt=Math.min((ts-lastTime)/1000,0.05);
+  lastTime=ts;
+
+  if(hitStopTimer>0){hitStopTimer-=rawDt;return;}
+
+  const dt=rawDt*(state==='playing'?slowMo:1);
+
+  // Shake decay
+  if(shakeDecay>0){
+    shakeDecay-=rawDt;
+    shakeX*=0.88;shakeY*=0.88;
+    if(shakeDecay<=0){shakeX=0;shakeY=0;}
+  }
+
+  // Flash/glitch decay
+  if(flashAlpha>0)flashAlpha=Math.max(0,flashAlpha-rawDt*2);
+  if(glitchAlpha>0)glitchAlpha=Math.max(0,glitchAlpha-rawDt*1.5);
+  if(tierUpTimer>0)tierUpTimer-=rawDt;
+
+  // SlowMo decay
+  if(slowMoTimer>0){slowMoTimer-=rawDt;if(slowMoTimer<=0)slowMo=1;}
+
+  // HSL cycling
+  hueShift+=rawDt*12+comboTier*2*rawDt;
+
+  if(state==='playing'){
+    gameTime+=dt;
+    tier=Math.min(8,Math.floor(gameTime/10));
+
+    // Tutorial first 3 seconds
+    if(gameTime<3.5&&tutorialPhase<4){
+      tutorialTimer+=dt;
+      if(tutorialTimer>0.9){tutorialTimer=0;tutorialSpawn();}
+    }else{
+      // Pattern spawning
+      if(patternQueue.length===0){
+        patternTimer-=dt;
+        if(patternTimer<=0){
+          const pat=pickPattern();
+          patternQueue=generatePattern(pat);
+          patternTimer=0;
+        }
+      }
+      if(patternQueue.length>0){
+        patternQueue[0].delay-=dt;
+        while(patternQueue.length>0&&patternQueue[0].delay<=0){
+          const p=patternQueue.shift();
+          spawnDrop(Math.max(0,Math.min(LANES-1,p.lane)),p.type);
+        }
+        if(patternQueue.length===0){
+          patternTimer=spawnInterval()*0.5+Math.random()*spawnInterval()*1.5;
+        }
+      }
+    }
+
+    // Update drops
+    const cy=CATCHER_Y();
+    const lw=LANE_W();
+    for(let i=drops.length-1;i>=0;i--){
+      const d=drops[i];
+      d.y+=d.speed*dt;
+      // Check catch
+      if(d.y>=cy-CATCHER_H/2&&d.y<=cy+CATCHER_H/2+8){
+        if(d.lane===currentLane){
+          catchDrop(d);
+          drops.splice(i,1);
+          continue;
+        }
+      }
+      // Missed
+      if(d.y>H+DROP_R){
+        missDrop(d);
+        drops.splice(i,1);
+      }
+    }
+  }
+
+  // Update particles
+  updateParticles(rawDt);
+
+  draw();
+}
+
+/* ── Draw ── */
+function draw(){
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,W,H);
+
+  // Apply shake
+  ctx.save();
+  ctx.translate(shakeX,shakeY);
+
+  // Background gradient with HSL cycling
+  const bgHue=(220+hueShift*0.5)%360;
+  const grad=ctx.createLinearGradient(0,0,0,H);
+  grad.addColorStop(0,`hsl(${bgHue},30%,6%)`);
+  grad.addColorStop(0.5,`hsl(${(bgHue+20)%360},25%,8%)`);
+  grad.addColorStop(1,`hsl(${(bgHue+40)%360},20%,4%)`);
+  ctx.fillStyle=grad;
+  ctx.fillRect(0,0,W,H);
+
+  // Lane lines
+  const lw=LANE_W();
+  ctx.strokeStyle='rgba(255,255,255,0.04)';
+  ctx.lineWidth=1;
+  for(let i=1;i<LANES;i++){
+    ctx.beginPath();ctx.moveTo(i*lw,0);ctx.lineTo(i*lw,H);ctx.stroke();
+  }
+
+  // Current lane highlight
+  const accentHue=(180+comboTier*25)%360;
+  ctx.fillStyle=`hsla(${accentHue},60%,50%,0.04)`;
+  ctx.fillRect(currentLane*lw,0,lw,H);
+
+  if(state==='playing'||state==='gameover'){
+    // Drops
+    for(const d of drops){
+      ctx.save();
+      const cy=d.y;
+      if(d.type==='good'){
+        ctx.fillStyle=`hsla(180,100%,65%,${d.alpha})`;
+        ctx.shadowColor='rgba(0,255,255,0.5)';ctx.shadowBlur=10;
+        ctx.beginPath();ctx.arc(d.x,cy,DROP_R,0,Math.PI*2);ctx.fill();
+        ctx.fillStyle=`hsla(180,100%,85%,${d.alpha*0.6})`;
+        ctx.beginPath();ctx.arc(d.x,cy,DROP_R*0.5,0,Math.PI*2);ctx.fill();
+      }else if(d.type==='bad'){
+        ctx.fillStyle=`hsla(320,100%,55%,${d.alpha})`;
+        ctx.shadowColor='rgba(255,0,170,0.5)';ctx.shadowBlur=10;
+        // Diamond shape
+        ctx.beginPath();
+        ctx.moveTo(d.x,cy-DROP_R);ctx.lineTo(d.x+DROP_R,cy);
+        ctx.lineTo(d.x,cy+DROP_R);ctx.lineTo(d.x-DROP_R,cy);ctx.closePath();ctx.fill();
+      }else if(d.type==='gold'){
+        ctx.fillStyle=`hsla(45,100%,60%,${d.alpha})`;
+        ctx.shadowColor='rgba(255,215,0,0.6)';ctx.shadowBlur=14;
+        // Star shape
+        const spikes=5,outerR=DROP_R+2,innerR=DROP_R*0.5;
+        ctx.beginPath();
+        for(let s=0;s<spikes*2;s++){
+          const r=s%2===0?outerR:innerR;
+          const a=-Math.PI/2+Math.PI*s/spikes;
+          if(s===0)ctx.moveTo(d.x+Math.cos(a)*r,cy+Math.sin(a)*r);
+          else ctx.lineTo(d.x+Math.cos(a)*r,cy+Math.sin(a)*r);
+        }
+        ctx.closePath();ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    // Catcher
+    const catcherY=CATCHER_Y();
+    const cx=currentLane*lw+lw/2;
+    ctx.fillStyle=`hsla(${accentHue},80%,60%,0.9)`;
+    ctx.shadowColor=`hsla(${accentHue},100%,60%,0.5)`;ctx.shadowBlur=12;
+    const cw=lw*0.7;
+    ctx.beginPath();
+    ctx.roundRect(cx-cw/2,catcherY-CATCHER_H/2,cw,CATCHER_H,6);
+    ctx.fill();
+    ctx.shadowBlur=0;
+
+    // Catcher glow line
+    ctx.strokeStyle=`hsla(${accentHue},100%,80%,0.6)`;
+    ctx.lineWidth=2;
+    ctx.beginPath();
+    ctx.moveTo(cx-cw/2+4,catcherY);ctx.lineTo(cx+cw/2-4,catcherY);ctx.stroke();
+
+    // Corruption indicators
+    for(let i=0;i<CORRUPTION_MAX;i++){
+      const ix=W-40+i*14;
+      const iy=42;
+      if(i<corruption){
+        ctx.fillStyle='hsla(320,100%,55%,0.9)';
+        ctx.shadowColor='rgba(255,0,170,0.5)';ctx.shadowBlur=6;
+      }else{
+        ctx.fillStyle='rgba(255,255,255,0.15)';
+        ctx.shadowBlur=0;
+      }
+      ctx.beginPath();
+      ctx.moveTo(ix,iy-6);ctx.lineTo(ix+5,iy);ctx.lineTo(ix,iy+6);ctx.lineTo(ix-5,iy);ctx.closePath();ctx.fill();
+      ctx.shadowBlur=0;
+    }
+
+    // Score
+    ctx.fillStyle='#fff';
+    ctx.font='bold 28px "Segoe UI",system-ui,sans-serif';
+    ctx.textAlign='left';
+    ctx.fillText(score,16,40);
+
+    // Combo
+    if(comboTier>0){
+      ctx.fillStyle=`hsla(${accentHue},100%,70%,0.9)`;
+      ctx.font='bold 16px "Segoe UI",system-ui,sans-serif';
+      ctx.fillText('x'+(1+comboTier),16,62);
+
+      // Combo bar
+      const barW=80,barH=4;
+      const progress=(comboCount%8)/8;
+      ctx.fillStyle='rgba(255,255,255,0.1)';
+      ctx.fillRect(16,68,barW,barH);
+      ctx.fillStyle=`hsla(${accentHue},100%,60%,0.7)`;
+      ctx.fillRect(16,68,barW*progress,barH);
+    }else if(comboCount>0){
+      ctx.fillStyle='rgba(255,255,255,0.4)';
+      ctx.font='14px "Segoe UI",system-ui,sans-serif';
+      ctx.fillText('combo: '+comboCount,16,62);
+      const barW=80,barH=4;
+      const progress=(comboCount%8)/8;
+      ctx.fillStyle='rgba(255,255,255,0.1)';
+      ctx.fillRect(16,68,barW,barH);
+      ctx.fillStyle=`hsla(${accentHue},100%,60%,0.4)`;
+      ctx.fillRect(16,68,barW*progress,barH);
+    }
+
+    // Banked tier indicator
+    if(bankedTier>0){
+      ctx.fillStyle='hsla(45,100%,60%,0.7)';
+      ctx.font='12px "Segoe UI",system-ui,sans-serif';
+      ctx.textAlign='left';
+      ctx.fillText('banked: x'+(1+bankedTier),16,84);
+    }
+
+    // SlowMo indicator
+    if(slowMoTimer>0){
+      ctx.fillStyle=`hsla(45,100%,60%,${0.3+0.3*Math.sin(Date.now()*0.01)})`;
+      ctx.font='12px "Segoe UI",system-ui,sans-serif';
+      ctx.textAlign='center';
+      ctx.fillText('STABILIZED',W/2,20);
+    }
+  }
+
+  // Particles
+  drawParticles();
+
+  // Flash overlay
+  if(flashAlpha>0){
+    ctx.fillStyle=flashColor;
+    ctx.globalAlpha=flashAlpha;
+    ctx.fillRect(0,0,W,H);
+    ctx.globalAlpha=1;
+  }
+
+  // Glitch overlay
+  if(glitchAlpha>0){
+    ctx.save();
+    ctx.globalAlpha=glitchAlpha;
+    for(let i=0;i<6;i++){
+      const gy=Math.random()*H;
+      const gh=2+Math.random()*8;
+      ctx.fillStyle=`hsla(320,100%,50%,0.3)`;
+      ctx.fillRect(0,gy,W,gh);
+    }
+    ctx.restore();
+  }
+
+  // Tier-up message
+  if(tierUpTimer>0){
+    ctx.save();
+    const ta=Math.min(1,tierUpTimer*2);
+    ctx.globalAlpha=ta;
+    ctx.fillStyle=`hsla(${accentHue},100%,70%,1)`;
+    ctx.font='bold 22px "Segoe UI",system-ui,sans-serif';
+    ctx.textAlign='center';
+    ctx.fillText(tierUpMsg,W/2,H/2-60+(1-ta)*20);
+    ctx.restore();
+  }
+
+  // ── Start Screen ──
+  if(state==='start'){
+    ctx.fillStyle='rgba(10,10,26,0.75)';
+    ctx.fillRect(0,0,W,H);
+
+    ctx.fillStyle='#fff';
+    ctx.font='bold 38px "Segoe UI",system-ui,sans-serif';
+    ctx.textAlign='center';
+    ctx.fillText('PIXEL',W/2,H/2-80);
+    ctx.fillStyle=`hsl(180,100%,65%)`;
+    ctx.fillText('PLUNGE',W/2,H/2-38);
+
+    ctx.fillStyle='rgba(255,255,255,0.5)';
+    ctx.font='16px "Segoe UI",system-ui,sans-serif';
+    ctx.fillText('Tap or press Space to start',W/2,H/2+20);
+
+    if(bestScore>0){
+      ctx.fillStyle='rgba(255,215,0,0.6)';
+      ctx.font='14px "Segoe UI",system-ui,sans-serif';
+      ctx.fillText('Best: '+bestScore,W/2,H/2+50);
+    }
+
+    // Animated drops preview
+    const previewTime=Date.now()*0.001;
+    for(let i=0;i<3;i++){
+      const py=(previewTime*60+i*90)%H;
+      const px=W*0.2+i*W*0.3;
+      ctx.fillStyle=i===1?'hsla(320,100%,55%,0.3)':'hsla(180,100%,65%,0.3)';
+      ctx.beginPath();ctx.arc(px,py,8,0,Math.PI*2);ctx.fill();
+    }
+  }
+
+  // ── Game Over Screen ──
+  if(state==='gameover'){
+    ctx.fillStyle='rgba(10,10,26,0.82)';
+    ctx.fillRect(0,0,W,H);
+
+    ctx.fillStyle='hsla(320,100%,60%,0.9)';
+    ctx.font='bold 32px "Segoe UI",system-ui,sans-serif';
+    ctx.textAlign='center';
+    ctx.fillText('CORRUPTED',W/2,H/2-110);
+
+    ctx.fillStyle='#fff';
+    ctx.font='bold 48px "Segoe UI",system-ui,sans-serif';
+    ctx.fillText(score,W/2,H/2-55);
+
+    ctx.fillStyle='rgba(255,255,255,0.5)';
+    ctx.font='14px "Segoe UI",system-ui,sans-serif';
+    ctx.fillText('best: '+bestScore,W/2,H/2-28);
+
+    // Stats
+    ctx.font='13px "Segoe UI",system-ui,sans-serif';
+    ctx.fillStyle='rgba(255,255,255,0.4)';
+    ctx.fillText('max mult: x'+maxMult+'  |  gold: '+goldCaught+'  |  strikes: '+CORRUPTION_MAX,W/2,H/2);
+
+    // Share button
+    ctx.fillStyle='hsla(180,80%,50%,0.85)';
+    ctx.beginPath();
+    ctx.roundRect(W/2-70,H/2+25,140,38,8);
+    ctx.fill();
+    ctx.fillStyle='#fff';
+    ctx.font='bold 14px "Segoe UI",system-ui,sans-serif';
+    ctx.fillText('Share / Challenge',W/2,H/2+49);
+
+    // Retry
+    ctx.fillStyle='rgba(255,255,255,0.45)';
+    ctx.font='15px "Segoe UI",system-ui,sans-serif';
+    ctx.fillText('Tap to Retry',W/2,H/2+95);
+
+    // Glitch lines on gameover
+    ctx.globalAlpha=0.1+0.05*Math.sin(Date.now()*0.005);
+    for(let i=0;i<4;i++){
+      ctx.fillStyle='hsla(320,100%,50%,0.4)';
+      ctx.fillRect(0,Math.random()*H,W,1+Math.random()*3);
+    }
+    ctx.globalAlpha=1;
+  }
+
+  ctx.restore();
+}
+
+// Share button handler
+canvas.addEventListener('pointerdown',e=>{
+  if(state!=='gameover')return;
+  const rect=canvas.getBoundingClientRect();
+  const sx=(e.clientX-rect.left)*(W/rect.width);
+  const sy=(e.clientY-rect.top)*(H/rect.height);
+  // Check share button bounds
+  if(sx>=W/2-70&&sx<=W/2+70&&sy>=H/2+25&&sy<=H/2+63){
+    e.stopPropagation();
+    const text=`I scored ${score} in Pixel Plunge! 🎮 Max combo: x${maxMult} | Gold: ${goldCaught}\nCan you beat me? https://balinti.github.io/pixel-plunge/`;
+    if(navigator.share){
+      navigator.share({title:'Pixel Plunge',text}).catch(()=>{});
+    }else{
+      navigator.clipboard.writeText(text).then(()=>{
+        tierUpMsg='COPIED!';tierUpTimer=1.0;
+      }).catch(()=>{});
+    }
+    return;
+  }
+},{capture:true});
+
+// Prevent double-tap zoom
+let lastTap=0;
+canvas.addEventListener('touchend',e=>{
+  const now=Date.now();
+  if(now-lastTap<300)e.preventDefault();
+  lastTap=now;
+});
+
+requestAnimationFrame(update);
+})();
+</script>
+</body>
+</html>

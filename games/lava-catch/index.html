@@ -1,0 +1,1039 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Lava Catch - Free HTML5 Game</title>
+  <meta name="description" content="Play Lava Catch - Tap to catch cooling lava drops before they hit the ground as speed escalates.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0b0b12">
+  <link rel="canonical" href="https://balinti.github.io/lava-catch/">
+  <!-- Open Graph -->
+  <meta property="og:title" content="Lava Catch - Free HTML5 Game">
+  <meta property="og:description" content="Tap to catch cooling lava drops before they hit the ground. How long can you last?">
+  <meta property="og:url" content="https://balinti.github.io/lava-catch/">
+  <meta property="og:image" content="https://balinti.github.io/lava-catch/og-image.png">
+  <meta property="og:type" content="website">
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Lava Catch - Free HTML5 Game">
+  <meta name="twitter:description" content="Tap to catch cooling lava drops before they hit the ground. How long can you last?">
+  <meta name="twitter:image" content="https://balinti.github.io/lava-catch/og-image.png">
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+  <!-- JSON-LD Schema -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "VideoGame",
+        "name": "Lava Catch",
+        "description": "Tap to catch cooling lava drops before they hit the ground as speed escalates. Avoid overheating with hot drops or losing points with cold ones.",
+        "url": "https://balinti.github.io/lava-catch/",
+        "genre": ["Arcade", "Hyper-casual"],
+        "gamePlatform": "Web Browser",
+        "applicationCategory": "Game",
+        "operatingSystem": "Any",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        }
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "How do you play Lava Catch?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Tap the screen or press Space/Enter to activate a magnetic burst. Catch lava drops in the OK temperature zone for points. Avoid hot drops (overheat) and cold drops (no score)."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What is the Magnet Burst mechanic?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Tapping activates a 150ms magnetic field around your core that attracts nearby lava drops. The burst has a cooldown that decreases as difficulty increases."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What are cracks in Lava Catch?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Cracks represent damage to your core. Missing a drop adds 1-2 cracks; catching a hot drop adds 2 cracks. At 12 cracks the game ends."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What is a Golden Ember?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Golden Embers are rare special drops that are always safe to catch, award big bonus points, and repair one crack on your core."
+            }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #0b0b12;
+      color: #e0d8c8;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      overscroll-behavior: none;
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100dvh;
+    }
+    #topbar {
+      width: 100%;
+      height: 56px;
+      background: linear-gradient(180deg, #1a1020 0%, #0b0b12 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      pointer-events: none;
+      user-select: none;
+    }
+    #topbar h2 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      color: #ff6030;
+      text-shadow: 0 0 12px #ff4010aa;
+    }
+    #wrap {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    #gameCanvas {
+      display: block;
+      width: 100%;
+      touch-action: none;
+      cursor: pointer;
+    }
+    #info {
+      width: 100%;
+      max-width: 420px;
+      padding: 24px 20px 40px;
+      color: #a09880;
+      font-size: 0.88rem;
+      line-height: 1.65;
+    }
+    #info h1 {
+      font-size: 1.4rem;
+      color: #ff7040;
+      margin-bottom: 10px;
+      letter-spacing: 0.05em;
+    }
+    #info h3 {
+      font-size: 1rem;
+      color: #cc9060;
+      margin: 18px 0 6px;
+    }
+    #info p { margin-bottom: 8px; }
+    #info ul { padding-left: 1.2em; margin-bottom: 8px; }
+    #info ul li { margin-bottom: 4px; }
+    .faq-q { color: #e0b080; font-weight: 600; margin-top: 12px; }
+    .faq-a { color: #887060; }
+  </style>
+</head>
+<body>
+  <div id="topbar"><h2>LAVA CATCH</h2></div>
+  <div id="wrap">
+    <canvas id="gameCanvas"></canvas>
+  </div>
+  <section id="info">
+    <h1>Lava Catch: Magnet Burst</h1>
+    <p>A hyper-casual arcade game where you harness magnetic bursts to catch cooling lava drops. Master the temperature window, build combos, and survive as long as possible.</p>
+    <h3>How to Play</h3>
+    <ul>
+      <li><strong>Tap / Space / Enter</strong> — activate a 150ms magnetic burst</li>
+      <li>Catch <strong>OK (orange)</strong> drops for points and combo</li>
+      <li>Avoid <strong>HOT (red)</strong> drops — they crack your core (+2 cracks, combo reset)</li>
+      <li>Avoid <strong>COLD (blue)</strong> drops — combo reduced, no score</li>
+      <li>Miss a drop? <strong>+1 crack</strong> (later +2 per miss)</li>
+      <li><strong>Golden Embers</strong> repair 1 crack and award big bonus points</li>
+      <li>Reach <strong>12 cracks</strong> and the game ends</li>
+    </ul>
+    <h3>Scoring</h3>
+    <ul>
+      <li>OK capture: <strong>100 × multiplier</strong> (multiplier = 1 + floor(combo / 5))</li>
+      <li>Combo builds by chaining OK captures</li>
+      <li>Every 15 perfect captures triggers a <strong>Repair Spark</strong> (−1 crack)</li>
+    </ul>
+    <h3>FAQ</h3>
+    <p class="faq-q">What is the Magnet Burst?</p>
+    <p class="faq-a">Tapping activates a short 150ms magnetic field that pulls nearby lava drops into your core. It has a cooldown that increases with difficulty.</p>
+    <p class="faq-q">What are Golden Embers?</p>
+    <p class="faq-a">Rare golden drops that are always safe, repair 1 crack, and award a large bonus. Catch them whenever possible for a comeback!</p>
+    <p class="faq-q">Does difficulty increase?</p>
+    <p class="faq-a">Yes. Drop speed, fall rate, and lane count all increase over time. After 45 seconds each missed drop deals 2 cracks instead of 1.</p>
+    <p class="faq-q">Is there a daily challenge?</p>
+    <p class="faq-a">Yes! Add ?challenge=daily to the URL for a daily seeded run. Your results can be shared via the in-game share button.</p>
+    <p style="margin-top:16px;font-size:0.8em;color:#554840;">Keywords: lava catch game, magnet burst, hyper casual, html5 game, arcade, temperature, combo, high score, browser game, free game</p>
+  </section>
+
+  <script>
+  (function() {
+    'use strict';
+
+    // ── Constants ──────────────────────────────────────────────────────────
+    const CANVAS_W = 420;
+    const CANVAS_H = 750;
+    const DPR = Math.min(window.devicePixelRatio || 1, 2);
+    const LS_KEY = 'lavaCatch_best';
+    const MAX_CRACKS = 12;
+    const BURST_DURATION = 150;   // ms
+    const DROP_BASE_SCORE = 100;
+    const PERFECT_REPAIR_EVERY = 15;
+    const GOLDEN_CHANCE = 0.04;   // 4% per spawn
+
+    // ── Seeded RNG (Mulberry32) ─────────────────────────────────────────────
+    function makePRNG(seed) {
+      let s = seed >>> 0;
+      return function() {
+        s += 0x6D2B79F5;
+        let t = Math.imul(s ^ (s >>> 15), 1 | s);
+        t ^= t + Math.imul(t ^ (t >>> 7), 61 | t);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    function getDailySeed() {
+      const d = new Date();
+      return (d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate()) >>> 0;
+    }
+
+    // Parse URL params
+    const params = new URLSearchParams(location.search);
+    const isDaily = params.get('challenge') === 'daily';
+    const urlSeed = params.get('seed') ? parseInt(params.get('seed'), 10) : null;
+    const SEED = urlSeed || (isDaily ? getDailySeed() : (Math.random() * 0xFFFFFFFF) | 0);
+    let rng = makePRNG(SEED);
+
+    // ── Canvas Setup ────────────────────────────────────────────────────────
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const wrap = document.getElementById('wrap');
+
+    function resizeCanvas() {
+      const ww = Math.min(wrap.clientWidth, CANVAS_W);
+      const wh = window.innerHeight - 56;
+      const aspect = CANVAS_W / CANVAS_H;
+      let cw = ww, ch = ww / aspect;
+      if (ch > wh) { ch = wh; cw = ch * aspect; }
+      canvas.style.width = cw + 'px';
+      canvas.style.height = ch + 'px';
+      canvas.width = Math.round(cw * DPR);
+      canvas.height = Math.round(ch * DPR);
+      ctx.setTransform(DPR * (cw / CANVAS_W), 0, 0, DPR * (ch / CANVAS_H), 0, 0);
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // ── State ───────────────────────────────────────────────────────────────
+    let state = 'start'; // start | playing | gameover
+    let score = 0, best = parseInt(localStorage.getItem(LS_KEY) || '0', 10);
+    let combo = 0, multiplier = 1;
+    let cracks = 0;
+    let elapsed = 0;         // seconds since game start
+    let perfectCount = 0;    // for repair spark
+    let hue = 20;            // base hue, shifts with combo
+
+    // Burst state
+    let burstActive = false;
+    let burstTimer = 0;
+    let burstCooldown = 0;
+    let burstX = CANVAS_W / 2, burstY = CANVAS_H / 2;
+
+    // Screen shake
+    let shakeAmt = 0, shakeDur = 0;
+
+    // Particles
+    let particles = [];
+    // Float texts
+    let floats = [];
+    // Drops
+    let drops = [];
+    // Drop spawn timer
+    let spawnTimer = 0;
+
+    // ── Helpers ─────────────────────────────────────────────────────────────
+    function lerp(a, b, t) { return a + (b - a) * t; }
+    function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+    function getLaneCount() {
+      if (elapsed >= 30) return 5;
+      if (elapsed >= 10) return 4;
+      return 3;
+    }
+
+    function getDropSpeed() {
+      // 120 at start → ~320 at 60s
+      return 120 + elapsed * 3.3;
+    }
+
+    function getSpawnInterval() {
+      // 1.8s → 0.65s
+      return Math.max(0.65, 1.8 - elapsed * 0.019);
+    }
+
+    function getBurstCooldown() {
+      // 0.85s → 0.55s
+      return Math.max(0.55, 0.85 - elapsed * 0.005);
+    }
+
+    function getBurstRadius() {
+      // 90 → 65
+      return Math.max(65, 90 - elapsed * 0.4);
+    }
+
+    // Temperature window: p = progress 0..1 within session "danger ramp"
+    // Returns {hot: bool, cold: bool, ok: bool}
+    function classifyDrop(temp) {
+      // Narrowing OK window
+      const p = clamp(elapsed / 90, 0, 1);
+      const hotThresh = lerp(0.75, 0.85, p);
+      const coldThresh = lerp(0.25, 0.15, p);
+      if (temp > hotThresh) return 'hot';
+      if (temp < coldThresh) return 'cold';
+      return 'ok';
+    }
+
+    function spawnDrop() {
+      const lanes = getLaneCount();
+      const laneW = CANVAS_W / lanes;
+      const lane = Math.floor(rng() * lanes);
+      const x = laneW * lane + laneW / 2 + (rng() - 0.5) * laneW * 0.35;
+      const isGolden = rng() < GOLDEN_CHANCE;
+      const temp = isGolden ? 0.5 : rng(); // golden always ok temp
+      const radius = 14 + rng() * 8;
+      drops.push({
+        x, y: -radius,
+        radius,
+        temp,
+        type: isGolden ? 'golden' : classifyDrop(temp),
+        speed: getDropSpeed() * (0.85 + rng() * 0.3),
+        captured: false,
+        missed: false,
+        flicker: rng() * Math.PI * 2,
+      });
+    }
+
+    // Particles
+    function spawnParticles(x, y, count, colorFn) {
+      for (let i = 0; i < count; i++) {
+        const angle = rng() * Math.PI * 2;
+        const speed = 60 + rng() * 140;
+        const life = 0.4 + rng() * 0.5;
+        particles.push({
+          x, y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          life, maxLife: life,
+          r: 3 + rng() * 4,
+          color: colorFn(),
+        });
+      }
+    }
+
+    function spawnFloat(x, y, text, color) {
+      floats.push({ x, y, text, color, life: 1.2, maxLife: 1.2, vy: -60 });
+    }
+
+    function triggerShake(amount, duration) {
+      if (amount > shakeAmt) { shakeAmt = amount; shakeDur = duration; }
+    }
+
+    // ── Input ────────────────────────────────────────────────────────────────
+    function onTap(clientX, clientY) {
+      if (state === 'start') { startGame(); return; }
+      if (state === 'gameover') {
+        // Check if share button area tapped — handled in draw; just restart
+        state = 'start'; return;
+      }
+      if (state !== 'playing') return;
+      if (burstCooldown > 0) return;
+
+      // Convert client coords to canvas game coords
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = CANVAS_W / rect.width;
+      const scaleY = CANVAS_H / rect.height;
+      burstX = (clientX - rect.left) * scaleX;
+      burstY = (clientY - rect.top) * scaleY;
+
+      activateBurst();
+    }
+
+    canvas.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      onTap(e.clientX, e.clientY);
+    });
+
+    document.addEventListener('keydown', e => {
+      if (e.code === 'Space' || e.code === 'Enter') {
+        e.preventDefault();
+        if (state === 'start') { startGame(); return; }
+        if (state === 'gameover') { state = 'start'; return; }
+        // Keyboard burst at center
+        burstX = CANVAS_W / 2;
+        burstY = CANVAS_H * 0.5;
+        activateBurst();
+      }
+    });
+
+    function activateBurst() {
+      if (burstCooldown > 0) return;
+      burstActive = true;
+      burstTimer = BURST_DURATION;
+      burstCooldown = getBurstCooldown() * 1000;
+
+      // Check hits
+      const radius = getBurstRadius();
+      for (const d of drops) {
+        if (d.captured || d.missed) continue;
+        const dx = d.x - burstX, dy = d.y - burstY;
+        if (Math.sqrt(dx * dx + dy * dy) <= radius + d.radius) {
+          captureDropWithBurst(d, burstX, burstY);
+        }
+      }
+
+      triggerShake(2, 80);
+    }
+
+    function captureDropWithBurst(drop, bx, by) {
+      drop.captured = true;
+      const cx = drop.x, cy = drop.y;
+
+      if (drop.type === 'golden') {
+        // Golden ember
+        const pts = DROP_BASE_SCORE * 5 * multiplier;
+        score += pts;
+        combo++;
+        multiplier = 1 + Math.floor(combo / 5);
+        if (cracks > 0) cracks--;
+        perfectCount++;
+        spawnParticles(cx, cy, 20, () => `hsl(${45 + rng()*30},100%,${55+rng()*20}%)`);
+        spawnFloat(cx, cy - 20, `✦ +${pts} REPAIR`, '#ffd700');
+        triggerShake(4, 150);
+      } else if (drop.type === 'ok') {
+        const pts = DROP_BASE_SCORE * multiplier;
+        score += pts;
+        combo++;
+        multiplier = 1 + Math.floor(combo / 5);
+        perfectCount++;
+        spawnParticles(cx, cy, 10, () => `hsl(${hue + rng()*30},90%,${55+rng()*20}%)`);
+        spawnFloat(cx, cy - 20, `+${pts}`, '#88ff88');
+
+        // Repair spark
+        if (perfectCount % PERFECT_REPAIR_EVERY === 0 && cracks > 0) {
+          cracks--;
+          spawnFloat(cx, cy - 50, 'REPAIR ✦', '#ffd700');
+        }
+      } else if (drop.type === 'hot') {
+        cracks = Math.min(MAX_CRACKS, cracks + 2);
+        combo = 0; multiplier = 1;
+        spawnParticles(cx, cy, 18, () => `hsl(${rng()*20},100%,${50+rng()*30}%)`);
+        spawnFloat(cx, cy - 20, 'OVERHEAT!', '#ff3300');
+        triggerShake(8, 250);
+      } else if (drop.type === 'cold') {
+        combo = Math.max(0, combo - 2);
+        multiplier = 1 + Math.floor(combo / 5);
+        spawnParticles(cx, cy, 8, () => `hsl(${200+rng()*40},80%,${55+rng()*20}%)`);
+        spawnFloat(cx, cy - 20, 'COLD', '#88aaff');
+      }
+
+      if (cracks >= MAX_CRACKS) {
+        endGame();
+      }
+    }
+
+    // ── Game lifecycle ────────────────────────────────────────────────────────
+    function startGame() {
+      state = 'playing';
+      score = 0; combo = 0; multiplier = 1;
+      cracks = 0; elapsed = 0; perfectCount = 0;
+      hue = 20;
+      drops = []; particles = []; floats = [];
+      burstActive = false; burstTimer = 0; burstCooldown = 0;
+      shakeAmt = 0; shakeDur = 0;
+      spawnTimer = 0;
+      rng = makePRNG(SEED);
+    }
+
+    function endGame() {
+      state = 'gameover';
+      if (score > best) {
+        best = score;
+        localStorage.setItem(LS_KEY, best);
+      }
+      triggerShake(14, 500);
+      spawnParticles(CANVAS_W / 2, CANVAS_H / 2, 40, () => `hsl(${rng()*360},90%,55%)`);
+    }
+
+    // ── Update ────────────────────────────────────────────────────────────────
+    let lastTime = 0;
+    function update(ts) {
+      const rawDt = lastTime ? (ts - lastTime) / 1000 : 0;
+      lastTime = ts;
+      const dt = clamp(rawDt, 0, 0.05); // cap at 50ms
+
+      if (state !== 'playing') return;
+
+      elapsed += dt;
+      hue = (20 + combo * 2) % 360;
+
+      // Burst
+      if (burstActive) {
+        burstTimer -= dt * 1000;
+        if (burstTimer <= 0) burstActive = false;
+      }
+      if (burstCooldown > 0) burstCooldown -= dt * 1000;
+
+      // Shake
+      if (shakeDur > 0) {
+        shakeDur -= dt * 1000;
+        if (shakeDur <= 0) { shakeDur = 0; shakeAmt = 0; }
+      }
+
+      // Spawn drops
+      spawnTimer -= dt;
+      if (spawnTimer <= 0) {
+        spawnDrop();
+        spawnTimer = getSpawnInterval();
+      }
+
+      // Update drops
+      for (const d of drops) {
+        if (d.captured) continue;
+        d.y += d.speed * dt;
+        d.flicker += dt * 6;
+        if (d.y - d.radius > CANVAS_H && !d.missed) {
+          d.missed = true;
+          const dmg = elapsed >= 45 ? 2 : 1;
+          cracks = Math.min(MAX_CRACKS, cracks + dmg);
+          combo = Math.max(0, combo - 1);
+          multiplier = 1 + Math.floor(combo / 5);
+          spawnParticles(d.x, CANVAS_H - 10, 6, () => `hsl(${10+rng()*20},80%,50%)`);
+          spawnFloat(d.x, CANVAS_H - 40, `MISS -${dmg}`, '#ff6644');
+          triggerShake(3, 120);
+          if (cracks >= MAX_CRACKS) endGame();
+        }
+      }
+      // Remove old
+      drops = drops.filter(d => !(d.missed && d.y > CANVAS_H + 60) && !(d.captured && d.y > CANVAS_H + 60));
+
+      // Particles
+      for (const p of particles) {
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.vy += 200 * dt;
+        p.life -= dt;
+      }
+      particles = particles.filter(p => p.life > 0);
+
+      // Float texts
+      for (const f of floats) {
+        f.y += f.vy * dt;
+        f.life -= dt;
+      }
+      floats = floats.filter(f => f.life > 0);
+    }
+
+    // ── Draw ──────────────────────────────────────────────────────────────────
+    function draw(ts) {
+      ctx.save();
+
+      // Screen shake
+      let sx = 0, sy = 0;
+      if (shakeAmt > 0 && shakeDur > 0) {
+        sx = (rng() - 0.5) * shakeAmt * 2;
+        sy = (rng() - 0.5) * shakeAmt * 2;
+        ctx.translate(sx, sy);
+      }
+
+      // Background
+      const bgGrad = ctx.createLinearGradient(0, 0, 0, CANVAS_H);
+      const bgHue = (hue + 200) % 360;
+      bgGrad.addColorStop(0, `hsl(${bgHue},30%,7%)`);
+      bgGrad.addColorStop(1, `hsl(${bgHue+20},25%,4%)`);
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+
+      // Lane lines (subtle)
+      const lanes = getLaneCount();
+      const laneW = CANVAS_W / lanes;
+      ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+      ctx.lineWidth = 1;
+      for (let i = 1; i < lanes; i++) {
+        ctx.beginPath();
+        ctx.moveTo(i * laneW, 0);
+        ctx.lineTo(i * laneW, CANVAS_H);
+        ctx.stroke();
+      }
+
+      // Core / ground glow
+      const coreY = CANVAS_H - 30;
+      const coreGrad = ctx.createRadialGradient(CANVAS_W / 2, coreY, 0, CANVAS_W / 2, coreY, 80);
+      const crackRatio = cracks / MAX_CRACKS;
+      const coreHue = lerp(20, 0, crackRatio);
+      coreGrad.addColorStop(0, `hsla(${coreHue},90%,55%,0.3)`);
+      coreGrad.addColorStop(1, 'transparent');
+      ctx.fillStyle = coreGrad;
+      ctx.fillRect(0, CANVAS_H - 80, CANVAS_W, 80);
+
+      // Burst ring
+      if (burstActive) {
+        const progress = 1 - (burstTimer / BURST_DURATION);
+        const br = getBurstRadius() * (1 + progress * 0.5);
+        const alpha = 1 - progress;
+        ctx.save();
+        ctx.strokeStyle = `hsla(${hue},100%,70%,${alpha})`;
+        ctx.lineWidth = 3 + (1 - progress) * 5;
+        ctx.beginPath();
+        ctx.arc(burstX, burstY, br, 0, Math.PI * 2);
+        ctx.stroke();
+        // Streak lines
+        const streaks = 8;
+        for (let i = 0; i < streaks; i++) {
+          const angle = (i / streaks) * Math.PI * 2 + progress;
+          const r0 = br * 0.6;
+          const r1 = br;
+          ctx.strokeStyle = `hsla(${hue+i*10},100%,80%,${alpha * 0.7})`;
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(burstX + Math.cos(angle) * r0, burstY + Math.sin(angle) * r0);
+          ctx.lineTo(burstX + Math.cos(angle) * r1, burstY + Math.sin(angle) * r1);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      // Drops
+      for (const d of drops) {
+        if (d.captured || d.missed) continue;
+        ctx.save();
+        const t = d.temp;
+        let color, outlineColor, glow = false;
+
+        if (d.type === 'golden') {
+          color = `hsl(45,100%,60%)`;
+          outlineColor = `hsl(50,100%,80%)`;
+          glow = true;
+        } else if (d.type === 'hot') {
+          const flicker = Math.sin(d.flicker) * 0.15;
+          color = `hsl(${5 + flicker * 30},100%,${52 + flicker * 15}%)`;
+          outlineColor = `hsl(20,100%,70%)`;
+          glow = true;
+        } else if (d.type === 'cold') {
+          color = `hsl(210,70%,55%)`;
+          outlineColor = `hsl(200,60%,75%)`;
+        } else {
+          // ok
+          const pulse = Math.sin(d.flicker * 2) * 0.1;
+          color = `hsl(${hue + 10},90%,${55 + pulse * 10}%)`;
+          outlineColor = `hsl(${hue + 30},100%,75%)`;
+          glow = true;
+        }
+
+        if (glow) {
+          ctx.shadowColor = color;
+          ctx.shadowBlur = 10;
+        }
+
+        // Drop body
+        ctx.beginPath();
+        ctx.arc(d.x, d.y, d.radius, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.strokeStyle = outlineColor;
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // Cold crust specks
+        if (d.type === 'cold') {
+          for (let i = 0; i < 4; i++) {
+            const a = (i / 4) * Math.PI * 2 + d.flicker * 0.3;
+            const sx2 = d.x + Math.cos(a) * d.radius * 0.6;
+            const sy2 = d.y + Math.sin(a) * d.radius * 0.6;
+            ctx.beginPath();
+            ctx.arc(sx2, sy2, 2, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(180,220,255,0.6)';
+            ctx.fill();
+          }
+        }
+
+        // Golden sparkle
+        if (d.type === 'golden') {
+          for (let i = 0; i < 5; i++) {
+            const a = (i / 5) * Math.PI * 2 + d.flicker * 0.5;
+            const sr = d.radius + 4 + Math.sin(d.flicker + i) * 4;
+            ctx.beginPath();
+            ctx.arc(d.x + Math.cos(a) * sr, d.y + Math.sin(a) * sr, 2.5, 0, Math.PI * 2);
+            ctx.fillStyle = `hsla(55,100%,80%,${0.5 + Math.sin(d.flicker + i) * 0.4})`;
+            ctx.fill();
+          }
+        }
+
+        ctx.restore();
+      }
+
+      // Particles
+      for (const p of particles) {
+        const alpha = p.life / p.maxLife;
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r * alpha, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // Float texts
+      for (const f of floats) {
+        const alpha = Math.min(1, f.life / f.maxLife * 2);
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = f.color;
+        ctx.font = 'bold 18px "Segoe UI", system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(f.text, f.x, f.y);
+        ctx.restore();
+      }
+
+      // HUD
+      drawHUD(ts);
+
+      // Crack meter
+      drawCrackMeter();
+
+      // Overlays
+      if (state === 'start') drawStartScreen();
+      if (state === 'gameover') drawGameoverScreen();
+
+      ctx.restore();
+    }
+
+    function drawHUD(ts) {
+      // Top strip
+      ctx.save();
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fillRect(0, 0, CANVAS_W, 52);
+
+      // Score
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 26px "Segoe UI", system-ui, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(score.toString(), 14, 35);
+
+      // Multiplier
+      if (multiplier > 1) {
+        ctx.fillStyle = `hsl(${hue},100%,70%)`;
+        ctx.font = 'bold 18px "Segoe UI", system-ui, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(`×${multiplier}`, 14 + ctx.measureText(score.toString()).width + 8, 35);
+      }
+
+      // Combo
+      if (combo > 0) {
+        ctx.fillStyle = `hsl(${hue+20},90%,65%)`;
+        ctx.font = '15px "Segoe UI", system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(`COMBO ${combo}`, CANVAS_W / 2, 32);
+      }
+
+      // Best
+      ctx.fillStyle = '#888';
+      ctx.font = '14px "Segoe UI", system-ui, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText(`BEST ${best}`, CANVAS_W - 14, 22);
+
+      // Time
+      ctx.fillStyle = '#666';
+      ctx.font = '13px "Segoe UI", system-ui, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText(formatTime(elapsed), CANVAS_W - 14, 38);
+
+      // Burst cooldown indicator
+      if (state === 'playing') {
+        const cdMax = getBurstCooldown() * 1000;
+        const cdPct = burstCooldown > 0 ? (1 - burstCooldown / cdMax) : 1;
+        const barW = 80, barH = 5;
+        const bx = CANVAS_W / 2 - barW / 2;
+        const by = 44;
+        ctx.fillStyle = 'rgba(255,255,255,0.1)';
+        ctx.fillRect(bx, by, barW, barH);
+        ctx.fillStyle = cdPct >= 1 ? `hsl(${hue},100%,65%)` : `hsl(${hue},60%,45%)`;
+        ctx.fillRect(bx, by, barW * cdPct, barH);
+      }
+
+      // Challenge badge
+      if (isDaily) {
+        ctx.fillStyle = '#ffd700';
+        ctx.font = 'bold 11px "Segoe UI", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('★ DAILY CHALLENGE', CANVAS_W / 2, 14);
+      }
+
+      ctx.restore();
+    }
+
+    function drawCrackMeter() {
+      const segW = CANVAS_W / MAX_CRACKS;
+      const segH = 8;
+      const y = CANVAS_H - segH;
+      const crackRatio = cracks / MAX_CRACKS;
+
+      for (let i = 0; i < MAX_CRACKS; i++) {
+        const filled = i < cracks;
+        const dangerPulse = crackRatio > 0.7 && filled
+          ? 0.5 + 0.5 * Math.sin(Date.now() * 0.006 + i * 0.5) : 0;
+        const alpha = filled ? 0.9 + dangerPulse * 0.1 : 0.15;
+        const h = filled ? lerp(20, 0, crackRatio) : 0;
+        const s = filled ? 90 : 0;
+        const l = filled ? lerp(55, 45, crackRatio) : 40;
+
+        ctx.save();
+        if (filled && crackRatio > 0.7) {
+          ctx.shadowColor = `hsl(${h},${s}%,${l}%)`;
+          ctx.shadowBlur = 6;
+        }
+        ctx.fillStyle = `hsla(${h},${s}%,${l}%,${alpha})`;
+        ctx.fillRect(i * segW + 1, y, segW - 2, segH);
+        ctx.restore();
+      }
+    }
+
+    function drawStartScreen() {
+      ctx.save();
+
+      // Dim
+      ctx.fillStyle = 'rgba(0,0,0,0.65)';
+      ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+
+      const cx = CANVAS_W / 2;
+
+      // Title
+      ctx.fillStyle = '#ff6030';
+      ctx.font = 'bold 46px "Segoe UI", system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.shadowColor = '#ff3010';
+      ctx.shadowBlur = 20;
+      ctx.fillText('LAVA CATCH', cx, 200);
+      ctx.shadowBlur = 0;
+
+      ctx.fillStyle = '#cc8860';
+      ctx.font = '20px "Segoe UI", system-ui, sans-serif';
+      ctx.fillText('Magnet Burst', cx, 234);
+
+      // Instructions
+      ctx.fillStyle = '#a09880';
+      ctx.font = '16px "Segoe UI", system-ui, sans-serif';
+      ctx.fillText('Tap / Space / Enter to burst', cx, 310);
+      ctx.fillText('Catch OK drops · Avoid HOT & COLD', cx, 335);
+
+      // Color legend
+      const items = [
+        { color: '#ff7040', label: 'OK — catch for points' },
+        { color: '#ff2200', label: 'HOT — +2 cracks, reset' },
+        { color: '#4488ff', label: 'COLD — combo −2' },
+        { color: '#ffd700', label: '★ GOLDEN — repair crack' },
+      ];
+      items.forEach((item, i) => {
+        const y2 = 380 + i * 34;
+        ctx.beginPath();
+        ctx.arc(cx - 90, y2, 10, 0, Math.PI * 2);
+        ctx.fillStyle = item.color;
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.fillStyle = '#c0a890';
+        ctx.font = '14px "Segoe UI", system-ui, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(item.label, cx - 74, y2 + 5);
+      });
+
+      // Best score
+      if (best > 0) {
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#666';
+        ctx.font = '14px "Segoe UI", sans-serif';
+        ctx.fillText(`Best Score: ${best}`, cx, 536);
+      }
+
+      // Tap to start
+      const pulse = 0.7 + 0.3 * Math.sin(Date.now() * 0.003);
+      ctx.globalAlpha = pulse;
+      ctx.fillStyle = '#ff8050';
+      ctx.font = 'bold 22px "Segoe UI", system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('TAP TO START', cx, 600);
+      ctx.globalAlpha = 1;
+
+      // Daily challenge note
+      if (isDaily) {
+        ctx.fillStyle = '#ffd700';
+        ctx.font = 'bold 15px "Segoe UI", sans-serif';
+        ctx.fillText('★ Daily Challenge — Seed: ' + SEED, cx, 640);
+      }
+
+      ctx.restore();
+    }
+
+    function drawGameoverScreen() {
+      ctx.save();
+
+      ctx.fillStyle = 'rgba(0,0,0,0.70)';
+      ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+
+      const cx = CANVAS_W / 2;
+      const newBest = score >= best && score > 0;
+
+      ctx.textAlign = 'center';
+
+      ctx.fillStyle = '#ff3010';
+      ctx.font = 'bold 42px "Segoe UI", system-ui, sans-serif';
+      ctx.shadowColor = '#ff1000';
+      ctx.shadowBlur = 15;
+      ctx.fillText('GAME OVER', cx, 180);
+      ctx.shadowBlur = 0;
+
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 36px "Segoe UI", system-ui, sans-serif';
+      ctx.fillText(score.toLocaleString(), cx, 260);
+
+      if (newBest && score > 0) {
+        ctx.fillStyle = '#ffd700';
+        ctx.font = 'bold 18px "Segoe UI", sans-serif';
+        ctx.fillText('★ NEW BEST ★', cx, 294);
+      } else {
+        ctx.fillStyle = '#666';
+        ctx.font = '16px "Segoe UI", sans-serif';
+        ctx.fillText(`Best: ${best.toLocaleString()}`, cx, 294);
+      }
+
+      // Stats
+      ctx.fillStyle = '#a09880';
+      ctx.font = '16px "Segoe UI", sans-serif';
+      ctx.fillText(`Survived: ${formatTime(elapsed)}   Combo peak: × ${multiplier}`, cx, 340);
+
+      if (isDaily) {
+        ctx.fillStyle = '#ffd700';
+        ctx.font = 'bold 15px "Segoe UI", sans-serif';
+        ctx.fillText('★ Daily Challenge ★', cx, 375);
+      }
+
+      // Share button
+      const btnW = 200, btnH = 48;
+      const btnX = cx - btnW / 2, btnY = 400;
+      ctx.fillStyle = '#1a1a2e';
+      ctx.strokeStyle = '#ff6030';
+      ctx.lineWidth = 2;
+      roundRect(ctx, btnX, btnY, btnW, btnH, 12);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#ff8050';
+      ctx.font = 'bold 18px "Segoe UI", sans-serif';
+      ctx.fillText('SHARE SCORE', cx, btnY + 31);
+
+      // Share tap handler stored in canvas click (one-time check)
+      canvas._shareBtn = { x: btnX, y: btnY, w: btnW, h: btnH };
+
+      // Restart
+      const pulse = 0.7 + 0.3 * Math.sin(Date.now() * 0.003);
+      ctx.globalAlpha = pulse;
+      ctx.fillStyle = '#a09880';
+      ctx.font = '18px "Segoe UI", sans-serif';
+      ctx.fillText('Tap anywhere to restart', cx, 490);
+      ctx.globalAlpha = 1;
+
+      ctx.restore();
+    }
+
+    // Override onTap for gameover to handle share button
+    canvas.addEventListener('pointerdown', e => {
+      if (state !== 'gameover') return;
+      if (!canvas._shareBtn) return;
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = CANVAS_W / rect.width;
+      const scaleY = CANVAS_H / rect.height;
+      const gx = (e.clientX - rect.left) * scaleX;
+      const gy = (e.clientY - rect.top) * scaleY;
+      const b = canvas._shareBtn;
+      if (gx >= b.x && gx <= b.x + b.w && gy >= b.y && gy <= b.y + b.h) {
+        e.stopImmediatePropagation();
+        shareScore();
+      }
+    }, { capture: true });
+
+    function shareScore() {
+      const url = `https://balinti.github.io/lava-catch/?seed=${SEED}&challenge=${isDaily ? 'daily' : 'custom'}`;
+      const text = `I scored ${score.toLocaleString()} in Lava Catch! Can you beat me? ${url}`;
+      if (navigator.share) {
+        navigator.share({ title: 'Lava Catch', text, url }).catch(() => fallbackShare(text));
+      } else {
+        fallbackShare(text);
+      }
+    }
+
+    function fallbackShare(text) {
+      try {
+        navigator.clipboard.writeText(text).then(() => {
+          spawnFloat(CANVAS_W / 2, 460, 'Link copied!', '#88ff88');
+        });
+      } catch (e) { /* silent */ }
+    }
+
+    function roundRect(ctx2, x, y, w, h, r) {
+      ctx2.beginPath();
+      ctx2.moveTo(x + r, y);
+      ctx2.lineTo(x + w - r, y);
+      ctx2.quadraticCurveTo(x + w, y, x + w, y + r);
+      ctx2.lineTo(x + w, y + h - r);
+      ctx2.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      ctx2.lineTo(x + r, y + h);
+      ctx2.quadraticCurveTo(x, y + h, x, y + h - r);
+      ctx2.lineTo(x, y + r);
+      ctx2.quadraticCurveTo(x, y, x + r, y);
+      ctx2.closePath();
+    }
+
+    function formatTime(s) {
+      const m = Math.floor(s / 60);
+      const sec = Math.floor(s % 60);
+      return `${m}:${sec.toString().padStart(2, '0')}`;
+    }
+
+    // ── Loop ──────────────────────────────────────────────────────────────────
+    function loop(ts) {
+      update(ts);
+      draw(ts);
+      requestAnimationFrame(loop);
+    }
+
+    requestAnimationFrame(loop);
+
+  })();
+  </script>
+</body>
+</html>

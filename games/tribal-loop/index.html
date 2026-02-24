@@ -1,0 +1,973 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Tribal Loop - Free HTML5 Game</title>
+  <meta name="description" content="Play Tribal Loop - Swipe to switch between shrinking circular tribes as speed intensifies.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#1a0a00">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Tribal Loop - Free HTML5 Game">
+  <meta property="og:description" content="Tap to hop between tribal rings. Time your jump through the gate or face the spirit world!">
+  <meta property="og:url" content="https://balinti.github.io/tribal-loop/">
+  <meta property="og:image" content="https://balinti.github.io/tribal-loop/preview.png">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Tribal Loop - Free HTML5 Game">
+  <meta name="twitter:description" content="Tap to hop between tribal rings. Time your jump through the gate or face the spirit world!">
+  <meta name="twitter:image" content="https://balinti.github.io/tribal-loop/preview.png">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: radial-gradient(ellipse at center, #1a0800 0%, #0d0400 60%, #000 100%);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      font-family: 'Georgia', serif;
+      color: #e8c97a;
+      overflow-x: hidden;
+    }
+
+    #game-wrap {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      margin: 0 auto;
+    }
+
+    #game-canvas {
+      display: block;
+      width: 100%;
+      cursor: pointer;
+      touch-action: none;
+    }
+
+    #seo-section {
+      width: 100%;
+      max-width: 420px;
+      padding: 20px 16px 40px;
+      color: #9a7840;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    #seo-section h1 {
+      font-size: 18px;
+      color: #e8c97a;
+      margin-bottom: 8px;
+    }
+
+    #seo-section h2 {
+      font-size: 14px;
+      color: #c8a85a;
+      margin: 12px 0 6px;
+    }
+
+    #seo-section ul {
+      padding-left: 18px;
+    }
+
+    #seo-section a {
+      color: #c8a85a;
+    }
+
+    @media (max-height: 700px) {
+      #seo-section { display: none; }
+    }
+  </style>
+</head>
+<body>
+<div id="game-wrap">
+  <canvas id="game-canvas"></canvas>
+</div>
+
+<section id="seo-section">
+  <h1>Tribal Loop</h1>
+  <p>A hyper-casual browser game of rhythm, timing, and tribal spirit. Orbit the sacred campfire and hop between rings — but only through the gate!</p>
+
+  <h2>How to Play</h2>
+  <ul>
+    <li>Your totem orbits a central campfire along a rotating ring.</li>
+    <li>Each ring has spikes everywhere <em>except</em> one safe gate gap.</li>
+    <li>Tap / click / press Space to hop to the next ring.</li>
+    <li>You must be aligned with the gate when you hop — or it's game over.</li>
+    <li>Speed increases as you score more hops.</li>
+    <li>Perfect hops (dead center) build your combo multiplier!</li>
+    <li>Collect ember pickups for bonus points.</li>
+    <li>Tribe effects (War, River, Wind) shake things up after ~25 seconds.</li>
+  </ul>
+
+  <h2>Controls</h2>
+  <ul>
+    <li><strong>Mobile:</strong> Tap anywhere to hop.</li>
+    <li><strong>Desktop:</strong> Click, or press Space / Enter.</li>
+  </ul>
+
+  <h2>Tips</h2>
+  <ul>
+    <li>Watch the gate, not your totem — anticipate where you'll be.</li>
+    <li>Perfect hops glow orange and boost your multiplier.</li>
+    <li>RIVER tribe slows the rings — use it to rack up perfects!</li>
+  </ul>
+
+  <p style="margin-top:16px;font-size:11px;color:#6a5030;">
+    <a href="#privacy">Privacy Policy</a> — This game uses localStorage only to save your best score. No personal data is collected.
+    <span id="privacy"></span>
+  </p>
+</section>
+
+<script>
+(function() {
+'use strict';
+
+// ─── CONSTANTS ────────────────────────────────────────────────────────────────
+const STATE = { START: 0, PLAYING: 1, GAMEOVER: 2 };
+const LS_KEY = 'tth_best';
+const MAX_PARTICLES = 200;
+const TAU = Math.PI * 2;
+const BASE_OMEGA = 1.2;          // rad/s at start
+const MAX_OMEGA  = 4.5;          // rad/s cap
+const BASE_GATE  = Math.PI * 0.45; // gate half-width start
+const MIN_GATE   = Math.PI * 0.18; // gate half-width floor
+const PERFECT_THRESHOLD = Math.PI * 0.08;
+const MAX_COMBO  = 8;
+const RING_COUNT = 5;            // visible rings
+const EMBER_INTERVAL = 7000;     // ms between ember spawns
+const TRIBE_INTERVAL = 25000;    // ms to first tribe effect
+
+// ─── STATE ────────────────────────────────────────────────────────────────────
+let canvas, ctx;
+let W, H, cx, cy, dpr;
+let gameState = STATE.START;
+let score = 0, bestScore = 0, combo = 1;
+let playerAngle = 0;             // current orbit angle
+let playerRing = 0;              // 0 = innermost active ring index
+let playerR = 0;                 // current radius
+let targetR = 0;
+let hopProgress = 1;             // 0→1 animation
+let hopDir = 1;                  // +1 = outward, -1 = inward
+let alive = true;
+let lastTime = 0;
+let elapsed = 0;                 // total playing seconds
+let hueShift = 0;
+let shakeAmt = 0, shakeDur = 0;
+let freezeTimer = 0;
+let particles = [];
+let emberActive = false, emberAngle = 0, emberRing = 0, emberTimer = 0;
+let nextEmberIn = EMBER_INTERVAL;
+let tribeEffect = null;          // { type, timer, duration }
+let nextTribeIn = TRIBE_INTERVAL;
+let firstTribe = true;
+
+// Ring data: angle of gate center, rotation speed multiplier
+let rings = [];
+
+// ─── CANVAS SETUP ─────────────────────────────────────────────────────────────
+function setupCanvas() {
+  canvas = document.getElementById('game-canvas');
+  ctx = canvas.getContext('2d');
+
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+  const wrap = document.getElementById('game-wrap');
+  const maxW = Math.min(wrap.clientWidth, 420);
+  const maxH = Math.min(window.innerHeight * 0.88, 750);
+  const aspect = 420 / 750;
+  let cw, ch;
+  if (maxW / maxH < aspect) {
+    cw = maxW;
+    ch = cw / aspect;
+  } else {
+    ch = maxH;
+    cw = ch * aspect;
+  }
+
+  canvas.style.width  = cw + 'px';
+  canvas.style.height = ch + 'px';
+  canvas.width  = Math.round(cw * dpr);
+  canvas.height = Math.round(ch * dpr);
+
+  W = canvas.width;
+  H = canvas.height;
+  cx = W / 2;
+  cy = H / 2;
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+// Logical width/height (CSS pixels)
+function lw() { return W / dpr; }
+function lh() { return H / dpr; }
+
+// ─── MATH UTILS ───────────────────────────────────────────────────────────────
+function angleDelta(a, b) {
+  let d = ((b - a) % TAU + TAU) % TAU;
+  if (d > Math.PI) d -= TAU;
+  return d;
+}
+
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+
+// ─── DIFFICULTY ───────────────────────────────────────────────────────────────
+function omega(t) {
+  // radians/sec rotation speed of rings
+  let base = BASE_OMEGA + t * 0.04;
+  if (tribeEffect) {
+    if (tribeEffect.type === 'RIVER') base *= 0.55;
+    if (tribeEffect.type === 'WAR')   base *= 1.35;
+  }
+  return clamp(base, BASE_OMEGA, MAX_OMEGA);
+}
+
+function gateW(t) {
+  // gate half-width in radians
+  let g = BASE_GATE - t * 0.003;
+  if (tribeEffect && tribeEffect.type === 'WAR') g -= 0.08;
+  return clamp(g, MIN_GATE, BASE_GATE);
+}
+
+// ─── RINGS ────────────────────────────────────────────────────────────────────
+function ringRadius(idx) {
+  // idx 0 = innermost
+  const logicW = lw();
+  const logicH = lh();
+  const minDim = Math.min(logicW, logicH);
+  const innerR = minDim * 0.09;
+  const outerR = minDim * 0.44;
+  const step = (outerR - innerR) / (RING_COUNT - 1);
+  return innerR + idx * step;
+}
+
+function initRings() {
+  rings = [];
+  for (let i = 0; i < RING_COUNT; i++) {
+    rings.push({
+      gateAngle: Math.random() * TAU,
+      speed: (i % 2 === 0 ? 1 : -1) * (0.9 + Math.random() * 0.2),
+      driftSpeed: 0,
+      driftPhase: Math.random() * TAU,
+    });
+  }
+}
+
+// ─── PARTICLES ────────────────────────────────────────────────────────────────
+function spawnParticles(x, y, count, hue, speedMul) {
+  for (let i = 0; i < count; i++) {
+    if (particles.length >= MAX_PARTICLES) break;
+    const a = Math.random() * TAU;
+    const s = (1.5 + Math.random() * 2.5) * (speedMul || 1);
+    particles.push({
+      x, y,
+      vx: Math.cos(a) * s,
+      vy: Math.sin(a) * s,
+      life: 1,
+      decay: 0.025 + Math.random() * 0.02,
+      r: 2 + Math.random() * 3,
+      hue: hue + (Math.random() - 0.5) * 30,
+      sat: 80 + Math.random() * 20,
+    });
+  }
+}
+
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx * dt * 60;
+    p.y += p.vy * dt * 60;
+    p.vx *= 0.96;
+    p.vy *= 0.96;
+    p.life -= p.decay;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = `hsl(${p.hue},${p.sat}%,60%)`;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r * p.life, 0, TAU);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ─── SCREEN SHAKE ─────────────────────────────────────────────────────────────
+function triggerShake(amt, dur) {
+  shakeAmt = amt;
+  shakeDur = dur;
+}
+
+// ─── EMBER ────────────────────────────────────────────────────────────────────
+function spawnEmber() {
+  emberActive = true;
+  emberRing = 1 + Math.floor(Math.random() * (RING_COUNT - 2));
+  emberAngle = Math.random() * TAU;
+  emberTimer = 4000;
+}
+
+// ─── TRIBE EFFECTS ────────────────────────────────────────────────────────────
+const TRIBE_TYPES = ['WAR', 'RIVER', 'WIND'];
+
+function triggerTribe() {
+  const type = TRIBE_TYPES[Math.floor(Math.random() * TRIBE_TYPES.length)];
+  tribeEffect = { type, timer: 6000, duration: 6000 };
+}
+
+// ─── GAME INIT ────────────────────────────────────────────────────────────────
+function startGame() {
+  score = 0;
+  combo = 1;
+  elapsed = 0;
+  alive = true;
+  particles = [];
+  emberActive = false;
+  nextEmberIn = EMBER_INTERVAL;
+  tribeEffect = null;
+  nextTribeIn = TRIBE_INTERVAL;
+  firstTribe = true;
+  shakeAmt = 0;
+  freezeTimer = 0;
+  hueShift = 0;
+  hopProgress = 1;
+  hopDir = 1;
+
+  initRings();
+
+  playerRing = 0;
+  playerAngle = 0;
+  playerR = ringRadius(0);
+  targetR = playerR;
+
+  gameState = STATE.PLAYING;
+}
+
+// ─── HOP LOGIC ────────────────────────────────────────────────────────────────
+function tryHop() {
+  if (hopProgress < 1) return; // still animating
+
+  const nextRing = playerRing + hopDir;
+  if (nextRing < 0 || nextRing >= RING_COUNT) {
+    // wrap direction
+    hopDir = -hopDir;
+    return tryHop();
+  }
+
+  const ring = rings[nextRing];
+  const gw = gateW(elapsed);
+  const delta = Math.abs(angleDelta(playerAngle, ring.gateAngle));
+
+  if (delta > gw) {
+    // miss — game over
+    triggerDeath();
+    return;
+  }
+
+  // success
+  const perfect = delta < PERFECT_THRESHOLD;
+  score += combo;
+  if (perfect) {
+    combo = Math.min(combo + 1, MAX_COMBO);
+    spawnParticles(
+      cx + Math.cos(playerAngle) * ringRadius(nextRing),
+      cy + Math.sin(playerAngle) * ringRadius(nextRing),
+      18, hueShift + 30, 1.2
+    );
+  } else {
+    combo = 1;
+    spawnParticles(
+      cx + Math.cos(playerAngle) * ringRadius(nextRing),
+      cy + Math.sin(playerAngle) * ringRadius(nextRing),
+      8, hueShift, 0.8
+    );
+  }
+
+  playerRing = nextRing;
+  hopProgress = 0;
+  targetR = ringRadius(nextRing);
+  hopDir = (nextRing === RING_COUNT - 1) ? -1 : (nextRing === 0 ? 1 : hopDir);
+}
+
+function triggerDeath() {
+  alive = false;
+  gameState = STATE.GAMEOVER;
+  freezeTimer = 0.18;
+  triggerShake(10, 0.5);
+  spawnParticles(
+    cx + Math.cos(playerAngle) * playerR,
+    cy + Math.sin(playerAngle) * playerR,
+    40, 0, 1.5
+  );
+  if (score > bestScore) {
+    bestScore = score;
+    localStorage.setItem(LS_KEY, bestScore);
+  }
+}
+
+// ─── UPDATE ───────────────────────────────────────────────────────────────────
+function update(dt) {
+  if (gameState !== STATE.PLAYING) return;
+
+  if (freezeTimer > 0) {
+    freezeTimer -= dt;
+    return;
+  }
+
+  elapsed += dt;
+  hueShift = (hueShift + 18 * dt) % 360;
+
+  // shake decay
+  if (shakeDur > 0) {
+    shakeDur -= dt;
+    if (shakeDur <= 0) shakeAmt = 0;
+  }
+
+  // rotate rings
+  const om = omega(elapsed);
+  for (let i = 0; i < RING_COUNT; i++) {
+    const r = rings[i];
+    let extra = 0;
+    if (tribeEffect && tribeEffect.type === 'WIND') {
+      extra = Math.sin(elapsed * 1.8 + r.driftPhase) * 0.6;
+    }
+    r.gateAngle += r.speed * (om + extra) * dt;
+  }
+
+  // hop animation
+  if (hopProgress < 1) {
+    hopProgress = Math.min(1, hopProgress + dt * 8);
+    playerR = lerp(playerR, targetR, hopProgress);
+  }
+
+  // orbit player
+  playerAngle += om * 0.95 * dt;
+
+  // tribe effect timer
+  if (tribeEffect) {
+    tribeEffect.timer -= dt * 1000;
+    if (tribeEffect.timer <= 0) tribeEffect = null;
+  } else {
+    nextTribeIn -= dt * 1000;
+    if (nextTribeIn <= 0) {
+      triggerTribe();
+      nextTribeIn = TRIBE_INTERVAL + Math.random() * 10000;
+    }
+  }
+
+  // ember
+  nextEmberIn -= dt * 1000;
+  if (nextEmberIn <= 0 && !emberActive) {
+    spawnEmber();
+    nextEmberIn = EMBER_INTERVAL + Math.random() * 5000;
+  }
+  if (emberActive) {
+    emberTimer -= dt * 1000;
+    // rotate ember with its ring
+    emberAngle += rings[emberRing].speed * omega(elapsed) * dt;
+    if (emberTimer <= 0) emberActive = false;
+
+    // check collection
+    const eR = ringRadius(emberRing);
+    const px = cx + Math.cos(playerAngle) * playerR;
+    const py = cy + Math.sin(playerAngle) * playerR;
+    const ex = cx + Math.cos(emberAngle) * eR;
+    const ey = cy + Math.sin(emberAngle) * eR;
+    const dist = Math.hypot(px - ex, py - ey);
+    if (dist < 18) {
+      score += 5;
+      spawnParticles(ex, ey, 14, 30, 1.3);
+      emberActive = false;
+    }
+  }
+
+  updateParticles(dt);
+}
+
+// ─── DRAW ─────────────────────────────────────────────────────────────────────
+function draw() {
+  const lW = lw();
+  const lH = lh();
+
+  ctx.clearRect(0, 0, lW, lH);
+
+  // Background
+  const bg = ctx.createRadialGradient(lW/2, lH/2, 0, lW/2, lH/2, Math.max(lW, lH) * 0.7);
+  bg.addColorStop(0, '#1a0800');
+  bg.addColorStop(0.5, '#0d0400');
+  bg.addColorStop(1, '#000');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, lW, lH);
+
+  if (gameState === STATE.START) {
+    drawStartScreen(lW, lH);
+    return;
+  }
+
+  // shake offset
+  let sx = 0, sy = 0;
+  if (shakeAmt > 0 && shakeDur > 0) {
+    sx = (Math.random() - 0.5) * shakeAmt;
+    sy = (Math.random() - 0.5) * shakeAmt;
+  }
+  ctx.save();
+  ctx.translate(sx, sy);
+
+  if (gameState === STATE.PLAYING || gameState === STATE.GAMEOVER) {
+    drawGame(lW, lH);
+  }
+
+  ctx.restore();
+
+  if (gameState === STATE.GAMEOVER) {
+    drawGameover(lW, lH);
+  }
+}
+
+function drawStartScreen(lW, lH) {
+  // Campfire glow
+  const glow = ctx.createRadialGradient(lW/2, lH/2, 0, lW/2, lH/2, 80);
+  glow.addColorStop(0, 'rgba(255,140,0,0.3)');
+  glow.addColorStop(1, 'rgba(255,140,0,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, lW, lH);
+
+  // Title
+  ctx.textAlign = 'center';
+  ctx.fillStyle = `hsl(${hueShift + 40},90%,65%)`;
+  ctx.font = `bold ${Math.round(lW * 0.12)}px Georgia, serif`;
+  ctx.fillText('TRIBAL', lW / 2, lH * 0.36);
+  ctx.fillStyle = `hsl(${hueShift + 20},80%,55%)`;
+  ctx.font = `bold ${Math.round(lW * 0.10)}px Georgia, serif`;
+  ctx.fillText('LOOP', lW / 2, lH * 0.36 + lW * 0.13);
+
+  // Animated rings preview
+  const t = Date.now() / 1000;
+  for (let i = 0; i < RING_COUNT; i++) {
+    const r = ringRadius(i);
+    const hue = (hueShift + i * 45) % 360;
+    ctx.strokeStyle = `hsla(${hue},70%,50%,0.4)`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(lW/2, lH/2, r, 0, TAU);
+    ctx.stroke();
+
+    // spike previews
+    const spikeGate = t * (i % 2 === 0 ? 0.8 : -0.8) + i;
+    drawRingSpikes(lW/2, lH/2, r, spikeGate, Math.PI * 0.35, hue, 0.3);
+  }
+
+  // Campfire
+  drawCampfire(lW/2, lH/2);
+
+  // Tap prompt
+  const pulse = 0.7 + 0.3 * Math.sin(Date.now() / 400);
+  ctx.globalAlpha = pulse;
+  ctx.fillStyle = '#e8c97a';
+  ctx.font = `${Math.round(lW * 0.055)}px Georgia, serif`;
+  ctx.fillText('Tap to Start', lW / 2, lH * 0.78);
+  ctx.globalAlpha = 1;
+
+  // Best score
+  if (bestScore > 0) {
+    ctx.fillStyle = '#9a7840';
+    ctx.font = `${Math.round(lW * 0.04)}px Georgia, serif`;
+    ctx.fillText(`Best: ${bestScore}`, lW / 2, lH * 0.84);
+  }
+}
+
+function drawGame(lW, lH) {
+  const now = Date.now() / 1000;
+
+  // Campfire glow
+  const glowR = 60 + 10 * Math.sin(now * 3);
+  const glow = ctx.createRadialGradient(lW/2, lH/2, 0, lW/2, lH/2, glowR);
+  glow.addColorStop(0, 'rgba(255,140,0,0.25)');
+  glow.addColorStop(1, 'rgba(255,80,0,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, lW, lH);
+
+  // Draw rings
+  for (let i = 0; i < RING_COUNT; i++) {
+    const r = ringRadius(i);
+    const hue = (hueShift + i * 60) % 360;
+    const isPlayerRing = (i === playerRing);
+    const ring = rings[i];
+    const gw = gateW(elapsed);
+
+    // Ring track
+    ctx.strokeStyle = `hsla(${hue},60%,35%,0.5)`;
+    ctx.lineWidth = isPlayerRing ? 2 : 1;
+    ctx.beginPath();
+    ctx.arc(lW/2, lH/2, r, 0, TAU);
+    ctx.stroke();
+
+    // Spikes arc (excluding gate)
+    drawRingSpikes(lW/2, lH/2, r, ring.gateAngle, gw, hue, 1);
+
+    // Gate highlight
+    ctx.strokeStyle = `hsla(${hue+60},90%,65%,0.6)`;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(lW/2, lH/2, r, ring.gateAngle - gw, ring.gateAngle + gw);
+    ctx.stroke();
+  }
+
+  // Ember
+  if (emberActive) {
+    const er = ringRadius(emberRing);
+    const ex = lW/2 + Math.cos(emberAngle) * er;
+    const ey = lH/2 + Math.sin(emberAngle) * er;
+    const pulse = 0.6 + 0.4 * Math.sin(now * 6);
+    const gEmber = ctx.createRadialGradient(ex, ey, 0, ex, ey, 14);
+    gEmber.addColorStop(0, `rgba(255,200,50,${pulse})`);
+    gEmber.addColorStop(1, 'rgba(255,100,0,0)');
+    ctx.fillStyle = gEmber;
+    ctx.beginPath();
+    ctx.arc(ex, ey, 14, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.font = `bold ${Math.round(lW * 0.05)}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText('🔥', ex, ey + 5);
+  }
+
+  // Campfire
+  drawCampfire(lW/2, lH/2);
+
+  // Player totem
+  const px = lW/2 + Math.cos(playerAngle) * playerR;
+  const py = lH/2 + Math.sin(playerAngle) * playerR;
+  drawTotem(px, py);
+
+  // Particles
+  drawParticles();
+
+  // HUD
+  drawHUD(lW, lH);
+
+  // Tribe banner
+  if (tribeEffect) {
+    drawTribeBanner(lW, lH);
+  }
+}
+
+function drawRingSpikes(cx2, cy2, r, gateAngle, gw, hue, alpha) {
+  const spikeCount = Math.round(r * 0.45);
+  const spikeH = 8 + r * 0.04;
+  ctx.fillStyle = `hsla(${hue},80%,55%,${alpha})`;
+
+  for (let i = 0; i < spikeCount; i++) {
+    const a = (i / spikeCount) * TAU;
+    const delta = Math.abs(angleDelta(a, gateAngle));
+    if (delta < gw + 0.05) continue; // skip gate area
+
+    const cos = Math.cos(a), sin = Math.sin(a);
+    const x0 = cx2 + cos * (r - spikeH * 0.5);
+    const y0 = cy2 + sin * (r - spikeH * 0.5);
+    const x1 = cx2 + cos * (r + spikeH * 0.5);
+    const y1 = cy2 + sin * (r + spikeH * 0.5);
+    const perp = a + Math.PI / 2;
+    const pw = spikeH * 0.25;
+
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x0 + Math.cos(perp) * pw, y0 + Math.sin(perp) * pw);
+    ctx.lineTo(x0 - Math.cos(perp) * pw, y0 - Math.sin(perp) * pw);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
+function drawCampfire(x, y) {
+  const t = Date.now() / 1000;
+  // Glow
+  const glowR = 18 + 4 * Math.sin(t * 5);
+  const g = ctx.createRadialGradient(x, y, 0, x, y, glowR);
+  g.addColorStop(0, 'rgba(255,200,50,0.9)');
+  g.addColorStop(0.4, 'rgba(255,120,0,0.6)');
+  g.addColorStop(1, 'rgba(255,50,0,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(x, y, glowR, 0, TAU);
+  ctx.fill();
+
+  // Flame flicker (triangle)
+  for (let f = 0; f < 3; f++) {
+    const flicker = Math.sin(t * (4 + f) + f * 2) * 3;
+    ctx.fillStyle = f === 0 ? 'rgba(255,220,50,0.9)' : f === 1 ? 'rgba(255,120,0,0.7)' : 'rgba(200,50,0,0.5)';
+    ctx.beginPath();
+    ctx.moveTo(x - 6 + f * 2, y + 6);
+    ctx.lineTo(x + 6 - f * 2, y + 6);
+    ctx.lineTo(x + Math.sin(t * 3 + f) * 2, y - 12 - f * 4 + flicker);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // Log base
+  ctx.strokeStyle = '#5c3a1e';
+  ctx.lineWidth = 3;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(x - 10, y + 6);
+  ctx.lineTo(x + 10, y + 6);
+  ctx.stroke();
+}
+
+function drawTotem(x, y) {
+  const hue = hueShift;
+  const pulse = 0.7 + 0.3 * Math.sin(Date.now() / 150);
+
+  // Glow
+  const g = ctx.createRadialGradient(x, y, 0, x, y, 16);
+  g.addColorStop(0, `hsla(${hue},90%,75%,${pulse * 0.8})`);
+  g.addColorStop(1, `hsla(${hue},70%,50%,0)`);
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(x, y, 16, 0, TAU);
+  ctx.fill();
+
+  // Body
+  ctx.fillStyle = `hsl(${hue},80%,60%)`;
+  ctx.beginPath();
+  ctx.arc(x, y, 7, 0, TAU);
+  ctx.fill();
+
+  // Inner
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.arc(x, y, 3, 0, TAU);
+  ctx.fill();
+}
+
+function drawHUD(lW, lH) {
+  // Score
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#e8c97a';
+  ctx.font = `bold ${Math.round(lW * 0.09)}px Georgia, serif`;
+  ctx.fillText(score, lW / 2, lH * 0.08);
+
+  // Combo
+  if (combo > 1) {
+    ctx.fillStyle = `hsl(${hueShift + 40},90%,65%)`;
+    ctx.font = `bold ${Math.round(lW * 0.05)}px Georgia, serif`;
+    ctx.fillText(`x${combo} COMBO`, lW / 2, lH * 0.13);
+  }
+
+  // Elapsed rings indicator (top right)
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#6a5030';
+  ctx.font = `${Math.round(lW * 0.032)}px sans-serif`;
+  ctx.fillText(`Ring ${playerRing + 1}/${RING_COUNT}`, lW - 10, 20);
+}
+
+function drawTribeBanner(lW, lH) {
+  const t = tribeEffect;
+  const fade = Math.min(1, t.timer / 800, (t.duration - t.timer) / 800 + 0.001);
+  const labels = { WAR: '⚔ WAR TRIBE', RIVER: '🌊 RIVER TRIBE', WIND: '🌀 WIND TRIBE' };
+  const colors = { WAR: '#ff4444', RIVER: '#44aaff', WIND: '#aaffaa' };
+
+  ctx.globalAlpha = fade * 0.9;
+  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+  const bh = 36;
+  ctx.fillRect(0, lH * 0.16, lW, bh);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = colors[t.type] || '#fff';
+  ctx.font = `bold ${Math.round(lW * 0.055)}px Georgia, serif`;
+  ctx.fillText(labels[t.type] || t.type, lW / 2, lH * 0.16 + bh * 0.72);
+  ctx.globalAlpha = 1;
+}
+
+function drawGameover(lW, lH) {
+  // Dim overlay
+  ctx.fillStyle = 'rgba(0,0,0,0.65)';
+  ctx.fillRect(0, 0, lW, lH);
+
+  // Panel
+  const pw = lW * 0.78;
+  const ph = lH * 0.42;
+  const px = (lW - pw) / 2;
+  const py = lH * 0.28;
+  ctx.fillStyle = 'rgba(20,8,0,0.92)';
+  roundRect(ctx, px, py, pw, ph, 16);
+  ctx.fill();
+  ctx.strokeStyle = `hsl(${hueShift + 30},60%,40%)`;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.textAlign = 'center';
+
+  // Title
+  ctx.fillStyle = '#ff6644';
+  ctx.font = `bold ${Math.round(lW * 0.075)}px Georgia, serif`;
+  ctx.fillText('SPIRIT CALLED', lW / 2, py + ph * 0.22);
+
+  // Score
+  ctx.fillStyle = '#e8c97a';
+  ctx.font = `bold ${Math.round(lW * 0.13)}px Georgia, serif`;
+  ctx.fillText(score, lW / 2, py + ph * 0.48);
+  ctx.font = `${Math.round(lW * 0.038)}px Georgia, serif`;
+  ctx.fillStyle = '#9a7840';
+  ctx.fillText('HOPS', lW / 2, py + ph * 0.58);
+
+  // Best
+  ctx.fillStyle = '#c8a85a';
+  ctx.font = `${Math.round(lW * 0.042)}px Georgia, serif`;
+  const newBest = score >= bestScore && score > 0;
+  ctx.fillText(newBest ? '✦ NEW BEST! ✦' : `Best: ${bestScore}`, lW / 2, py + ph * 0.72);
+
+  // Retry prompt
+  const pulse = 0.7 + 0.3 * Math.sin(Date.now() / 400);
+  ctx.globalAlpha = pulse;
+  ctx.fillStyle = '#e8c97a';
+  ctx.font = `${Math.round(lW * 0.048)}px Georgia, serif`;
+  ctx.fillText('Tap to Retry', lW / 2, py + ph * 0.90);
+  ctx.globalAlpha = 1;
+
+  // Share button
+  const sbW = 120, sbH = 32;
+  const sbX = lW / 2 - sbW / 2;
+  const sbY = py + ph + 14;
+  ctx.fillStyle = 'rgba(80,40,0,0.8)';
+  roundRect(ctx, sbX, sbY, sbW, sbH, 8);
+  ctx.fill();
+  ctx.strokeStyle = '#c8a85a';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.fillStyle = '#e8c97a';
+  ctx.font = `${Math.round(lW * 0.038)}px sans-serif`;
+  ctx.fillText('Share Score', lW / 2, sbY + sbH * 0.68);
+
+  // store share button bounds for click detection
+  window._shareBtn = { x: sbX, y: sbY, w: sbW, h: sbH };
+}
+
+function roundRect(ctx2, x, y, w, h, r) {
+  ctx2.beginPath();
+  ctx2.moveTo(x + r, y);
+  ctx2.lineTo(x + w - r, y);
+  ctx2.arcTo(x + w, y, x + w, y + r, r);
+  ctx2.lineTo(x + w, y + h - r);
+  ctx2.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx2.lineTo(x + r, y + h);
+  ctx2.arcTo(x, y + h, x, y + h - r, r);
+  ctx2.lineTo(x, y + r);
+  ctx2.arcTo(x, y, x + r, y, r);
+  ctx2.closePath();
+}
+
+// ─── LOOP ─────────────────────────────────────────────────────────────────────
+function loop(ts) {
+  const dt = Math.min((ts - lastTime) / 1000, 0.05);
+  lastTime = ts;
+
+  // Hue shift on start screen
+  if (gameState === STATE.START) {
+    hueShift = (hueShift + 18 * dt) % 360;
+  }
+
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// ─── INPUT ────────────────────────────────────────────────────────────────────
+function getCanvasPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / dpr / rect.width;
+  const scaleY = canvas.height / dpr / rect.height;
+  const clientX = e.clientX || (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+  const clientY = e.clientY || (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
+  return {
+    x: (clientX - rect.left) * scaleX,
+    y: (clientY - rect.top) * scaleY,
+  };
+}
+
+function handleInput(e) {
+  if (e.target !== canvas && !['keydown'].includes(e.type)) return;
+
+  if (gameState === STATE.START) {
+    startGame();
+    return;
+  }
+
+  if (gameState === STATE.GAMEOVER) {
+    // Check share button
+    if (e.type === 'pointerdown' || e.type === 'touchstart') {
+      const pos = getCanvasPos(e);
+      const sb = window._shareBtn;
+      if (sb && pos.x >= sb.x && pos.x <= sb.x + sb.w && pos.y >= sb.y && pos.y <= sb.y + sb.h) {
+        shareScore();
+        return;
+      }
+    }
+    startGame();
+    return;
+  }
+
+  if (gameState === STATE.PLAYING && freezeTimer <= 0) {
+    tryHop();
+  }
+}
+
+function shareScore() {
+  const url = location.href.split('?')[0] + `?score=${score}`;
+  const text = `I scored ${score} hops in Tribal Loop! Can you beat me?`;
+  if (navigator.share) {
+    navigator.share({ title: 'Tribal Loop', text, url }).catch(() => {});
+  } else {
+    try {
+      navigator.clipboard.writeText(url);
+      // Brief visual feedback
+      const prev = window._shareBtn;
+      if (prev) {
+        // flash — draw will handle next frame
+      }
+    } catch(err) {
+      // fallback: open share URL
+      window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`);
+    }
+  }
+}
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+function init() {
+  bestScore = parseInt(localStorage.getItem(LS_KEY) || '0', 10);
+
+  setupCanvas();
+
+  window.addEventListener('resize', () => {
+    setupCanvas();
+    initRings && initRings();
+  });
+
+  canvas.addEventListener('pointerdown', handleInput);
+  document.addEventListener('keydown', (e) => {
+    if (e.code === 'Space' || e.code === 'Enter') {
+      e.preventDefault();
+      handleInput(e);
+    }
+  });
+
+  lastTime = performance.now();
+  requestAnimationFrame(loop);
+}
+
+init();
+
+})();
+</script>
+</body>
+</html>

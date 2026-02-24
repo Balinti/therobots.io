@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Molten Spin: Trailbreaker</title>
+<meta name="description" content="Molten Spin: Trailbreaker - Navigate a lava satellite through heat gates. Tap to spin, dodge your own trail, survive the inferno!">
+<meta name="theme-color" content="#1a0a00">
+<meta property="og:title" content="Molten Spin: Trailbreaker">
+<meta property="og:description" content="Navigate a lava satellite through heat gates. Tap to spin, dodge your own trail, survive the inferno!">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://balinti.github.io/molten-spin/">
+<meta property="og:image" content="https://balinti.github.io/molten-spin/preview.png">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;background:#0d0500;font-family:'Segoe UI',system-ui,sans-serif;overflow-x:hidden}
+  body{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;min-height:100vh;padding:8px 0 60px}
+  #container{width:100%;max-width:420px;display:flex;flex-direction:column;align-items:center;gap:6px}
+  #canvas-wrap{position:relative;width:100%;max-width:420px}
+  canvas{display:block;width:100%;max-width:420px;height:auto;touch-action:none;border-radius:12px;box-shadow:0 0 40px #ff4400aa}
+  #score-bar{width:100%;max-width:420px;display:flex;justify-content:space-between;align-items:center;padding:0 8px}
+  .score-label{color:#ff8844;font-size:13px;letter-spacing:1px;text-transform:uppercase;opacity:0.7}
+  .score-val{color:#ffcc44;font-size:22px;font-weight:700;letter-spacing:2px;text-shadow:0 0 12px #ff6600}
+  #info{width:100%;max-width:420px;background:#1a0800cc;border:1px solid #ff440033;border-radius:10px;padding:10px 14px;color:#cc7733;font-size:12px;line-height:1.6;margin-top:2px}
+  #info h3{color:#ff9944;font-size:13px;margin-bottom:4px;letter-spacing:1px}
+  #info ul{list-style:none;padding-left:0}
+  #info ul li::before{content:"› ";color:#ff6600}
+</style>
+</head>
+<body>
+<div id="container">
+  <div id="score-bar">
+    <span class="score-label">Score</span>
+    <span class="score-val" id="score-disp">0</span>
+    <span class="score-label">Best</span>
+    <span class="score-val" id="best-disp">0</span>
+  </div>
+  <div id="canvas-wrap">
+    <canvas id="c"></canvas>
+  </div>
+  <div id="info">
+    <h3>How to Play</h3>
+    <ul>
+      <li>Tap / hold to spin clockwise; release to drift back</li>
+      <li>Fly through the glowing gap in each Heat Gate</li>
+      <li>Avoid your own hardened lava trail</li>
+      <li>Gates get narrower and faster — survive!</li>
+    </ul>
+  </div>
+</div>
+<script>
+(function(){
+'use strict';
+
+// ── Canvas & DPR ──────────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const W = 420, H = 750;
+const DPR = Math.min(window.devicePixelRatio || 1, 2);
+canvas.width = W * DPR;
+canvas.height = H * DPR;
+ctx.scale(DPR, DPR);
+
+// ── Persistence ───────────────────────────────────────────────────────────────
+const LS_KEY = 'ms_tb_best';
+let bestScore = parseInt(localStorage.getItem(LS_KEY) || '0', 10);
+document.getElementById('best-disp').textContent = bestScore;
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+const CX = W / 2, CY = H / 2;
+const CORE_R = 38;
+const ORBIT_R = 110;
+const SAT_R = 10;
+const TRAIL_MAX = 200;       // max trail segments kept
+const TRAIL_SOFT_TICKS = 22; // frames while trail is soft (non-lethal)
+const BASE_GAP = 1.15;       // gate gap in radians
+const MIN_GAP = 0.52;
+const PARTICLE_POOL = 300;
+
+// ── State machine ─────────────────────────────────────────────────────────────
+// states: 'start' | 'playing' | 'dead' | 'gameover'
+let state = 'start';
+let score = 0;
+let tick = 0;
+let hue = 0;
+
+// ── Camera shake ──────────────────────────────────────────────────────────────
+let shakeX = 0, shakeY = 0, shakePow = 0;
+function addShake(pow){ shakePow = Math.max(shakePow, pow); }
+function updateShake(){
+  if(shakePow < 0.5){ shakeX = shakeY = 0; return; }
+  shakeX = (Math.random()-0.5)*shakePow*2;
+  shakeY = (Math.random()-0.5)*shakePow*2;
+  shakePow *= 0.78;
+}
+
+// ── Flash overlay ─────────────────────────────────────────────────────────────
+let flashAlpha = 0;
+function addFlash(a){ flashAlpha = Math.min(1, flashAlpha + a); }
+
+// ── Freeze mechanic ───────────────────────────────────────────────────────────
+let freezeTicks = 0;
+
+// ── Satellite ─────────────────────────────────────────────────────────────────
+let satAngle = -Math.PI / 2; // top of orbit
+let satOmega = 0;            // angular velocity
+const BASE_DRIFT = -0.025;   // counterclockwise drift speed
+const HOLD_ACCEL = 0.018;    // clockwise acceleration per frame while held
+const DRAG = 0.93;
+
+// ── Trail ─────────────────────────────────────────────────────────────────────
+// each entry: { angle, age }
+let trail = [];
+
+// ── Gates ─────────────────────────────────────────────────────────────────────
+// { angle: center of gate arc, gapAngle: gap center, gapSize, speed, rings }
+let gates = [];
+let nextGateTick = 0;
+const GATE_RING_R = ORBIT_R + 30;
+const GATE_WIDTH = 14;
+
+// ── Particles ─────────────────────────────────────────────────────────────────
+const pool = [];
+for(let i=0;i<PARTICLE_POOL;i++) pool.push({active:false,x:0,y:0,vx:0,vy:0,life:0,maxLife:1,size:0,hue:0,type:'spark'});
+function spawnParticle(x, y, vx, vy, life, size, h, type='spark'){
+  for(let i=0;i<pool.length;i++){
+    if(!pool[i].active){
+      const p = pool[i];
+      p.active=true; p.x=x; p.y=y; p.vx=vx; p.vy=vy;
+      p.life=life; p.maxLife=life; p.size=size; p.hue=h; p.type=type;
+      return;
+    }
+  }
+}
+function burstParticles(x, y, count, hueBase, type='spark'){
+  for(let i=0;i<count;i++){
+    const a = Math.random()*Math.PI*2;
+    const spd = 1.5 + Math.random()*5;
+    spawnParticle(x, y, Math.cos(a)*spd, Math.sin(a)*spd,
+      20+Math.random()*30, 2+Math.random()*4,
+      hueBase + (Math.random()-0.5)*30, type);
+  }
+}
+function gateSparks(x, y){
+  for(let i=0;i<18;i++){
+    const a = Math.random()*Math.PI*2;
+    const spd = 2+Math.random()*4;
+    spawnParticle(x,y,Math.cos(a)*spd,Math.sin(a)*spd,15+Math.random()*20,1.5+Math.random()*3,50+Math.random()*40,'spark');
+  }
+}
+
+// ── Input ─────────────────────────────────────────────────────────────────────
+let held = false;
+function onDown(e){ e.preventDefault(); handleInput(); }
+function handleInput(){
+  if(state === 'start' || state === 'gameover'){ startGame(); return; }
+  if(state === 'playing') held = true;
+}
+function onUp(e){ e.preventDefault(); held = false; }
+canvas.addEventListener('pointerdown', onDown, {passive:false});
+canvas.addEventListener('pointerup', onUp, {passive:false});
+canvas.addEventListener('pointercancel', onUp, {passive:false});
+window.addEventListener('keydown', e=>{
+  if(e.code==='Space'||e.code==='Enter'){ e.preventDefault(); handleInput(); }
+});
+window.addEventListener('keyup', e=>{
+  if(e.code==='Space'||e.code==='Enter'){ held = false; }
+});
+
+// ── Difficulty ────────────────────────────────────────────────────────────────
+function difficulty(){
+  const lvl = score;
+  return {
+    gapSize: Math.max(MIN_GAP, BASE_GAP - lvl * 0.018),
+    gateSpeed: 0.006 + lvl * 0.0008,
+    spawnInterval: Math.max(90, 180 - lvl * 4),
+    trailSoftTicks: Math.max(8, TRAIL_SOFT_TICKS - Math.floor(lvl * 0.4)),
+    doubleGate: lvl >= 8 && Math.random() < 0.25,
+    fakeShift: lvl >= 5
+  };
+}
+
+// ── Game init ─────────────────────────────────────────────────────────────────
+function startGame(){
+  state = 'playing';
+  score = 0;
+  tick = 0;
+  satAngle = -Math.PI/2;
+  satOmega = 0;
+  trail = [];
+  gates = [];
+  nextGateTick = 60;
+  held = false;
+  flashAlpha = 0;
+  shakePow = 0;
+  document.getElementById('score-disp').textContent = '0';
+}
+
+// ── Trail collision ───────────────────────────────────────────────────────────
+function angularDiff(a, b){
+  // shortest arc from b to a, result in [-π, π]
+  let d = ((a - b) % (Math.PI*2) + Math.PI*3) % (Math.PI*2) - Math.PI;
+  return d;
+}
+function normalizeAngle(a){ return ((a % (Math.PI*2)) + Math.PI*2) % (Math.PI*2); }
+
+function trailCollides(satA){
+  const na = normalizeAngle(satA);
+  const SAFE_TAIL = 6; // skip newest N segments (grace period)
+  for(let i=0; i<trail.length - SAFE_TAIL; i++){
+    const seg = trail[i];
+    if(seg.age < seg.softTicks) continue; // still soft
+    const ta = normalizeAngle(seg.angle);
+    let diff = Math.abs(angularDiff(na, ta));
+    if(diff < 0.07) return true; // ~4° tolerance
+  }
+  return false;
+}
+
+// ── Gate collision ────────────────────────────────────────────────────────────
+function gateCollides(satA){
+  const na = normalizeAngle(satA);
+  for(let i=0;i<gates.length;i++){
+    const g = gates[i];
+    // Check if sat is at approximately the gate ring radius
+    // We use angular check — sat is always at ORBIT_R; gate at GATE_RING_R
+    // Near crossing: when satellite passes ring crossing zone (ring band)
+    if(!g.crossed){
+      // Check angular proximity on the gate ring
+      const gapStart = normalizeAngle(g.gapAngle - g.gapSize/2);
+      const gapEnd   = normalizeAngle(g.gapAngle + g.gapSize/2);
+      // Convert to continuous arc test
+      const diff = Math.abs(angularDiff(na, normalizeAngle(g.gapAngle)));
+      if(diff < g.gapSize/2 + 0.12) {
+        // inside gap region — safe crossing
+        if(diff < g.gapSize/2 - 0.05) {
+          // well inside gap, mark crossed if this tick we're close enough
+          if(!g._inGap) { g._inGap = true; }
+        }
+      }
+      // Check if we recently crossed the wall arc (outside gap)
+      // We track "last side" to detect crossing
+    }
+  }
+}
+
+// ── Spawn gate ────────────────────────────────────────────────────────────────
+function spawnGate(diff){
+  const gapAngle = Math.random() * Math.PI * 2;
+  const g = {
+    gapAngle,
+    gapSize: diff.gapSize,
+    speed: diff.gateSpeed * (Math.random() < 0.5 ? 1 : -1),
+    scored: false,
+    _prevSatSide: null,
+    fakeShift: diff.fakeShift && Math.random() < 0.15,
+    fakeShiftAt: 0,
+    fakeShiftDone: false,
+    ring: 0 // 0 = main ring, could add multi-ring later
+  };
+  gates.push(g);
+  if(diff.doubleGate){
+    const g2 = {
+      gapAngle: (gapAngle + Math.PI + (Math.random()-0.5)*0.6) % (Math.PI*2),
+      gapSize: diff.gapSize,
+      speed: -g.speed * (0.8 + Math.random()*0.4),
+      scored: false,
+      _prevSatSide: null,
+      fakeShift: false,
+      fakeShiftDone: false,
+      ring: 1
+    };
+    gates.push(g2);
+  }
+}
+
+// ── Kill satellite ────────────────────────────────────────────────────────────
+function killSat(reason){
+  if(state !== 'playing') return;
+  state = 'dead';
+  freezeTicks = 7;
+  addFlash(1);
+  addShake(28);
+  const sx = CX + Math.cos(satAngle)*ORBIT_R;
+  const sy = CY + Math.sin(satAngle)*ORBIT_R;
+  burstParticles(sx, sy, 60, hue, 'ember');
+  burstParticles(sx, sy, 30, hue+40, 'spark');
+  // update best
+  if(score > bestScore){
+    bestScore = score;
+    localStorage.setItem(LS_KEY, bestScore);
+    document.getElementById('best-disp').textContent = bestScore;
+  }
+}
+
+// ── Update ────────────────────────────────────────────────────────────────────
+function update(){
+  tick++;
+  hue = (hue + 0.4) % 360;
+
+  if(state === 'dead'){
+    freezeTicks--;
+    updateShake();
+    if(flashAlpha > 0) flashAlpha -= 0.06;
+    if(freezeTicks <= 0) state = 'gameover';
+    updateParticles();
+    return;
+  }
+  if(state !== 'playing'){
+    updateParticles();
+    updateShake();
+    if(flashAlpha > 0) flashAlpha -= 0.04;
+    return;
+  }
+
+  // Satellite physics
+  if(held){
+    satOmega += HOLD_ACCEL;
+  } else {
+    satOmega += (BASE_DRIFT - satOmega) * 0.08;
+  }
+  satOmega *= DRAG;
+  satAngle += satOmega;
+  satAngle = normalizeAngle(satAngle);
+
+  // Trail
+  const diff = difficulty();
+  trail.unshift({ angle: satAngle, age: 0, softTicks: diff.trailSoftTicks });
+  for(let i=0;i<trail.length;i++) trail[i].age++;
+  if(trail.length > TRAIL_MAX) trail.length = TRAIL_MAX;
+
+  // Spawn gates
+  if(tick >= nextGateTick){
+    spawnGate(diff);
+    nextGateTick = tick + diff.spawnInterval;
+  }
+
+  // Gate drift & scoring & collision
+  const na = normalizeAngle(satAngle);
+  for(let i=gates.length-1;i>=0;i--){
+    const g = gates[i];
+
+    // Fake shift telegraph
+    if(g.fakeShift && !g.fakeShiftDone && score >= 5){
+      if(g.fakeShiftAt === 0) g.fakeShiftAt = tick + 30;
+      if(tick === g.fakeShiftAt){
+        g.gapAngle = normalizeAngle(g.gapAngle + Math.PI/2 * (Math.random()<0.5?1:-1));
+        g.fakeShiftDone = true;
+      }
+    }
+
+    g.gapAngle = normalizeAngle(g.gapAngle + g.speed);
+
+    // Check if satellite crosses gate
+    const gapDiff = Math.abs(angularDiff(na, g.gapAngle));
+    const inGap = gapDiff < g.gapSize/2;
+    const inWall = gapDiff >= g.gapSize/2 && gapDiff < Math.PI; // not opposite side
+
+    if(g._prevSatSide !== null){
+      const crossingZone = Math.abs(angularDiff(na, g.gapAngle + Math.PI)) > 0.4; // not at exact opposite
+      // Simple threshold crossing detection
+      const prevDiff = Math.abs(angularDiff(g._prevSatAngle || na, g.gapAngle));
+      const curDiff = gapDiff;
+      // detect a pass: prev was on "approach" side and now close
+      if(!g.scored){
+        if(curDiff < 0.08 && inGap){
+          // Scored a pass
+          g.scored = true;
+          score++;
+          document.getElementById('score-disp').textContent = score;
+          const sx = CX + Math.cos(satAngle)*ORBIT_R;
+          const sy = CY + Math.sin(satAngle)*ORBIT_R;
+          gateSparks(sx, sy);
+          addShake(4);
+          burstParticles(sx, sy, 8, 55, 'spark');
+        }
+      }
+      // Death check: crossing wall
+      if(!g.scored && !g._dead){
+        // Detect if sat swept through the wall arc (not gap)
+        // We check if satellite is near the gate ring angularly in a wall zone
+        // Use a simple "did we just cross the gap boundary from outside gap side"
+        const WALL_KILL_THRESH = 0.04;
+        // Check both sides of the gate arc
+        const sideA = normalizeAngle(g.gapAngle - g.gapSize/2 - 0.08);
+        const sideB = normalizeAngle(g.gapAngle + g.gapSize/2 + 0.08);
+        // If sat is in wall zone near gate seam
+        const distA = Math.abs(angularDiff(na, sideA));
+        const distB = Math.abs(angularDiff(na, sideB));
+        if((distA < WALL_KILL_THRESH || distB < WALL_KILL_THRESH) && !inGap){
+          g._dead = true;
+          killSat('gate-wall');
+          return;
+        }
+      }
+    }
+    g._prevSatAngle = na;
+    g._prevSatSide = inGap ? 'gap' : 'wall';
+
+    // Remove old gates
+    if(g.scored && tick - (g._scoredAt || tick) > 120) gates.splice(i, 1);
+    if(g.scored && !g._scoredAt) g._scoredAt = tick;
+  }
+
+  // Trail self-collision
+  if(trailCollides(satAngle)){
+    killSat('trail');
+    return;
+  }
+
+  updateParticles();
+  updateShake();
+  if(flashAlpha > 0) flashAlpha -= 0.04;
+}
+
+function updateParticles(){
+  for(let i=0;i<pool.length;i++){
+    const p = pool[i];
+    if(!p.active) continue;
+    p.x += p.vx; p.y += p.vy;
+    p.vy += 0.08; // gravity
+    p.vx *= 0.97; p.vy *= 0.97;
+    p.life--;
+    if(p.life <= 0) p.active = false;
+  }
+}
+
+// ── Draw ──────────────────────────────────────────────────────────────────────
+function draw(){
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
+
+  // Background
+  const bg = ctx.createRadialGradient(CX, CY, 0, CX, CY, Math.max(W,H)*0.8);
+  bg.addColorStop(0, `hsl(${(hue+20)%360},60%,8%)`);
+  bg.addColorStop(1, '#050200');
+  ctx.fillStyle = bg;
+  ctx.fillRect(-10, -10, W+20, H+20);
+
+  // Orbit ring (subtle)
+  ctx.save();
+  ctx.strokeStyle = `hsla(${hue},60%,30%,0.18)`;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(CX, CY, ORBIT_R, 0, Math.PI*2);
+  ctx.stroke();
+  ctx.restore();
+
+  // Core (lava)
+  drawCore();
+
+  // Trail
+  drawTrail();
+
+  // Gates
+  drawGates();
+
+  // Satellite
+  if(state === 'playing' || state === 'dead' || state === 'gameover'){
+    drawSatellite();
+  }
+
+  // Particles
+  drawParticles();
+
+  // Flash overlay
+  if(flashAlpha > 0.01){
+    ctx.fillStyle = `rgba(255,180,50,${flashAlpha * 0.7})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // UI overlays
+  if(state === 'start') drawStartScreen();
+  if(state === 'gameover') drawGameoverScreen();
+
+  ctx.restore();
+}
+
+function drawCore(){
+  const t = tick * 0.04;
+  // Outer glow
+  for(let layer=0;layer<3;layer++){
+    const r = CORE_R + layer*10 + Math.sin(t + layer)*3;
+    const grad = ctx.createRadialGradient(CX,CY,CORE_R*0.4,CX,CY,r);
+    grad.addColorStop(0, `hsla(${hue},100%,70%,${0.15-layer*0.04})`);
+    grad.addColorStop(1, `hsla(${hue},100%,40%,0)`);
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(CX, CY, r, 0, Math.PI*2);
+    ctx.fill();
+  }
+  // Core body
+  const coreGrad = ctx.createRadialGradient(CX-10, CY-10, 4, CX, CY, CORE_R);
+  coreGrad.addColorStop(0, `hsl(${(hue+40)%360},100%,90%)`);
+  coreGrad.addColorStop(0.4, `hsl(${hue},100%,60%)`);
+  coreGrad.addColorStop(1, `hsl(${(hue-20+360)%360},100%,25%)`);
+  ctx.fillStyle = coreGrad;
+  ctx.beginPath();
+  ctx.arc(CX, CY, CORE_R, 0, Math.PI*2);
+  ctx.fill();
+  // Lava cracks
+  ctx.save();
+  ctx.globalAlpha = 0.35;
+  ctx.strokeStyle = `hsl(${(hue+60)%360},100%,85%)`;
+  ctx.lineWidth = 1;
+  for(let c=0;c<4;c++){
+    const ca = t*0.3 + c * Math.PI/2;
+    ctx.beginPath();
+    ctx.moveTo(CX + Math.cos(ca)*6, CY + Math.sin(ca)*6);
+    ctx.lineTo(CX + Math.cos(ca+0.4)*(CORE_R-4), CY + Math.sin(ca+0.4)*(CORE_R-4));
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawTrail(){
+  for(let i=trail.length-1;i>=0;i--){
+    const seg = trail[i];
+    const frac = i / trail.length;
+    const isSoft = seg.age < seg.softTicks;
+    const tx = CX + Math.cos(seg.angle) * ORBIT_R;
+    const ty = CY + Math.sin(seg.angle) * ORBIT_R;
+    const alpha = isSoft
+      ? (0.4 + 0.6*(1 - seg.age/seg.softTicks)) * (1 - frac*0.5)
+      : (0.75 + 0.25*(1-frac));
+    const r = isSoft ? (SAT_R*0.55 + (1-seg.age/seg.softTicks)*3) : SAT_R*0.7;
+    const segHue = isSoft ? (hue + 20)%360 : (hue - 10 + 360)%360;
+    const col = isSoft
+      ? `hsla(${segHue},100%,65%,${alpha})`
+      : `hsla(${segHue},100%,45%,${alpha})`;
+    ctx.beginPath();
+    ctx.arc(tx, ty, r, 0, Math.PI*2);
+    ctx.fillStyle = col;
+    ctx.fill();
+    if(!isSoft){
+      ctx.strokeStyle = `hsla(${segHue},100%,70%,${alpha*0.6})`;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+  }
+}
+
+function drawGates(){
+  for(let i=0;i<gates.length;i++){
+    const g = gates[i];
+    const r = GATE_RING_R + g.ring * 20;
+    // Wall arc: full circle minus gap
+    const gapHalf = g.gapSize / 2;
+    const wallStart = g.gapAngle + gapHalf;
+    const wallEnd = g.gapAngle - gapHalf + Math.PI*2;
+
+    // Outer glow
+    ctx.save();
+    ctx.shadowColor = `hsl(${(hue+180)%360},100%,65%)`;
+    ctx.shadowBlur = 14;
+    ctx.strokeStyle = `hsla(${(hue+180)%360},100%,65%,0.9)`;
+    ctx.lineWidth = GATE_WIDTH;
+    ctx.lineCap = 'butt';
+    ctx.beginPath();
+    ctx.arc(CX, CY, r, wallStart, wallStart + (Math.PI*2 - g.gapSize));
+    ctx.stroke();
+    ctx.restore();
+
+    // Inner bright edge
+    ctx.strokeStyle = `hsla(${(hue+200)%360},100%,85%,0.7)`;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(CX, CY, r, wallStart, wallStart + (Math.PI*2 - g.gapSize));
+    ctx.stroke();
+
+    // Gap markers (bright dots at gap edges)
+    for(let side=-1;side<=1;side+=2){
+      const edgeA = g.gapAngle + side * gapHalf;
+      const ex = CX + Math.cos(edgeA)*r;
+      const ey = CY + Math.sin(edgeA)*r;
+      ctx.fillStyle = `hsl(${(hue+180)%360},100%,90%)`;
+      ctx.beginPath();
+      ctx.arc(ex, ey, 5, 0, Math.PI*2);
+      ctx.fill();
+      // Tiny glow dot
+      ctx.fillStyle = `hsla(${(hue+180)%360},100%,100%,0.4)`;
+      ctx.beginPath();
+      ctx.arc(ex, ey, 9, 0, Math.PI*2);
+      ctx.fill();
+    }
+
+    // Fake-shift telegraph (pulsing ghost gap indicator)
+    if(g.fakeShift && !g.fakeShiftDone && g.fakeShiftAt > 0){
+      const remain = g.fakeShiftAt - tick;
+      if(remain > 0 && remain < 30){
+        const pulse = Math.sin(tick * 0.5) * 0.5 + 0.5;
+        ctx.strokeStyle = `hsla(60,100%,70%,${pulse * 0.5})`;
+        ctx.lineWidth = 4;
+        ctx.setLineDash([6,6]);
+        ctx.beginPath();
+        ctx.arc(CX, CY, r, g.gapAngle-gapHalf, g.gapAngle+gapHalf);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+  }
+}
+
+function drawSatellite(){
+  const sx = CX + Math.cos(satAngle)*ORBIT_R;
+  const sy = CY + Math.sin(satAngle)*ORBIT_R;
+
+  // Outer glow
+  const grd = ctx.createRadialGradient(sx,sy,0,sx,sy,SAT_R*2.5);
+  grd.addColorStop(0, `hsla(${hue},100%,70%,0.5)`);
+  grd.addColorStop(1, `hsla(${hue},100%,50%,0)`);
+  ctx.fillStyle = grd;
+  ctx.beginPath();
+  ctx.arc(sx, sy, SAT_R*2.5, 0, Math.PI*2);
+  ctx.fill();
+
+  // Body
+  const satGrd = ctx.createRadialGradient(sx-3,sy-3,1,sx,sy,SAT_R);
+  satGrd.addColorStop(0, `hsl(${(hue+40)%360},100%,90%)`);
+  satGrd.addColorStop(0.6, `hsl(${hue},100%,60%)`);
+  satGrd.addColorStop(1, `hsl(${(hue-30+360)%360},100%,30%)`);
+  ctx.fillStyle = satGrd;
+  ctx.beginPath();
+  ctx.arc(sx, sy, SAT_R, 0, Math.PI*2);
+  ctx.fill();
+
+  // Specular
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.beginPath();
+  ctx.arc(sx-3, sy-3, 3, 0, Math.PI*2);
+  ctx.fill();
+}
+
+function drawParticles(){
+  for(let i=0;i<pool.length;i++){
+    const p = pool[i];
+    if(!p.active) continue;
+    const t = p.life / p.maxLife;
+    const alpha = t * (p.type==='ember' ? 0.9 : 0.8);
+    const size = p.size * (p.type==='ember' ? (0.3 + t*0.7) : t);
+    ctx.fillStyle = p.type==='ember'
+      ? `hsla(${p.hue},100%,${40+t*50}%,${alpha})`
+      : `hsla(${p.hue},100%,${60+t*40}%,${alpha})`;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, size, 0, Math.PI*2);
+    ctx.fill();
+  }
+}
+
+function drawStartScreen(){
+  // Dark vignette
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(0, 0, W, H);
+
+  // Title
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 38px Segoe UI, system-ui, sans-serif';
+  ctx.fillStyle = `hsl(${hue},100%,65%)`;
+  ctx.shadowColor = `hsl(${hue},100%,50%)`;
+  ctx.shadowBlur = 20;
+  ctx.fillText('MOLTEN SPIN', CX, CY - 80);
+  ctx.font = 'bold 18px Segoe UI, system-ui, sans-serif';
+  ctx.fillStyle = `hsl(${(hue+40)%360},100%,75%)`;
+  ctx.fillText('TRAILBREAKER', CX, CY - 50);
+  ctx.shadowBlur = 0;
+
+  // Tagline
+  ctx.font = '14px Segoe UI, system-ui, sans-serif';
+  ctx.fillStyle = '#cc8844';
+  ctx.fillText('Navigate heat gates · Avoid your trail', CX, CY);
+
+  // CTA
+  const pulse = 0.7 + Math.sin(tick * 0.08) * 0.3;
+  ctx.globalAlpha = pulse;
+  ctx.fillStyle = `hsl(${(hue+180)%360},100%,70%)`;
+  ctx.font = 'bold 18px Segoe UI, system-ui, sans-serif';
+  ctx.fillText('TAP TO BEGIN', CX, CY + 55);
+  ctx.globalAlpha = 1;
+
+  ctx.textAlign = 'left';
+}
+
+function drawGameoverScreen(){
+  ctx.fillStyle = 'rgba(0,0,0,0.65)';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 36px Segoe UI, system-ui, sans-serif';
+  ctx.fillStyle = `hsl(${hue},100%,65%)`;
+  ctx.shadowColor = `hsl(${hue},100%,50%)`;
+  ctx.shadowBlur = 18;
+  ctx.fillText('GAME OVER', CX, CY - 70);
+  ctx.shadowBlur = 0;
+
+  ctx.font = 'bold 22px Segoe UI, system-ui, sans-serif';
+  ctx.fillStyle = '#ffcc44';
+  ctx.fillText(`Score: ${score}`, CX, CY - 20);
+
+  if(score >= bestScore && score > 0){
+    ctx.font = 'bold 15px Segoe UI, system-ui, sans-serif';
+    ctx.fillStyle = `hsl(${(hue+60)%360},100%,70%)`;
+    ctx.fillText('NEW BEST!', CX, CY + 12);
+  } else {
+    ctx.font = '14px Segoe UI, system-ui, sans-serif';
+    ctx.fillStyle = '#cc8844';
+    ctx.fillText(`Best: ${bestScore}`, CX, CY + 12);
+  }
+
+  const pulse = 0.7 + Math.sin(tick * 0.08) * 0.3;
+  ctx.globalAlpha = pulse;
+  ctx.fillStyle = `hsl(${(hue+180)%360},100%,70%)`;
+  ctx.font = 'bold 17px Segoe UI, system-ui, sans-serif';
+  ctx.fillText('TAP TO PLAY AGAIN', CX, CY + 65);
+  ctx.globalAlpha = 1;
+  ctx.textAlign = 'left';
+}
+
+// ── Loop ──────────────────────────────────────────────────────────────────────
+function loop(){
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

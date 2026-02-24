@@ -1,0 +1,1009 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Orbit Spiral - Free HTML5 Game</title>
+  <meta name="description" content="Play Orbit Spiral - Swipe to spiral upward through planets as gravity direction constantly shifts.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#05060a">
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Orbit Spiral - Free HTML5 Game">
+  <meta property="og:description" content="Play Orbit Spiral - Swipe to spiral upward through planets as gravity direction constantly shifts.">
+  <meta property="og:url" content="https://balinti.github.io/orbit-spiral/">
+  <meta property="og:image" content="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='630' viewBox='0 0 1200 630'%3E%3Crect width='1200' height='630' fill='%2305060a'/%3E%3Ccircle cx='600' cy='315' r='80' fill='%23a259ff'/%3E%3Ccircle cx='600' cy='315' r='120' fill='none' stroke='%23a259ff' stroke-width='4' stroke-dasharray='20 10' opacity='0.5'/%3E%3Ccircle cx='600' cy='115' r='50' fill='%2300d4ff'/%3E%3Ccircle cx='600' cy='115' r='80' fill='none' stroke='%2300d4ff' stroke-width='3' stroke-dasharray='15 8' opacity='0.5'/%3E%3Ctext x='600' y='500' font-family='Arial' font-size='72' fill='white' text-anchor='middle' font-weight='bold'%3EORBIT SPIRAL%3C/text%3E%3C/svg%3E">
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #05060a;
+      color: #eee;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      overflow-x: hidden;
+    }
+    #ad-top {
+      width: 100%;
+      max-width: 420px;
+      min-height: 50px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      color: #444;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      padding: 4px 0;
+    }
+    #wrap {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      flex: 1 1 auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      touch-action: manipulation;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      max-height: 750px;
+    }
+    #ad-bottom {
+      width: 100%;
+      max-width: 420px;
+      min-height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      color: #444;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      padding: 6px 0;
+    }
+    #seo-footer {
+      width: 100%;
+      max-width: 420px;
+      padding: 12px 16px 24px;
+      font-size: 12px;
+      color: #555;
+      line-height: 1.6;
+      text-align: center;
+    }
+    #seo-footer h1 { font-size: 14px; color: #888; margin-bottom: 4px; }
+    #seo-footer p { font-size: 11px; color: #444; }
+  </style>
+</head>
+<body>
+<div id="ad-top">Advertisement</div>
+<div id="wrap">
+  <canvas id="c"></canvas>
+</div>
+<div id="ad-bottom">Advertisement</div>
+<div id="seo-footer">
+  <h1>Orbit Spiral - Free HTML5 Game</h1>
+  <p>Tap to slingshot your planet hopper upward through an endless solar system. Master orbit capture, build streaks, and survive drifting debris. Play free in your browser, no download needed.</p>
+</div>
+
+<script>
+'use strict';
+// ─── Constants ───────────────────────────────────────────────────────────────
+const LS_KEY = 'oss_best';
+const MAX_PARTICLES = 200;
+const DT_CAP = 50; // ms
+
+// ─── Canvas & DPR setup ──────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const wrap = document.getElementById('wrap');
+
+let W = 0, H = 0, DPR = 1;
+function resize() {
+  const rect = wrap.getBoundingClientRect();
+  W = rect.width;
+  H = Math.min(rect.height || window.innerHeight, 750);
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = W * DPR;
+  canvas.height = H * DPR;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ─── State ───────────────────────────────────────────────────────────────────
+let state = 'start'; // 'start' | 'playing' | 'gameover'
+let score = 0, best = parseInt(localStorage.getItem(LS_KEY) || '0');
+let streak = 0, multiplier = 1;
+let camY = 0, targetCamY = 0;
+let shakeAmt = 0, shakeDur = 0;
+let hueBase = 200;
+let lastTime = 0;
+let tapHandled = false;
+
+// ─── Player ───────────────────────────────────────────────────────────────────
+let player = {
+  x: 0, y: 0,
+  vx: 0, vy: 0,
+  r: 8,
+  angle: 0,       // orbit angle
+  orbitR: 0,      // orbit radius around current planet
+  orbitSpeed: 0,  // rad/s
+  planet: null,   // current planet being orbited
+  flying: false,
+  trail: [],      // last N positions for trail
+  color: 'hsl(200,100%,70%)',
+};
+
+// ─── Planets ─────────────────────────────────────────────────────────────────
+let planets = [];
+let nextPlanetY = 0; // world-space Y of next planet to spawn (upward = negative)
+
+// Planet object shape:
+// { x, y, r, hue, captureR, capturePulse, reversed, clockSecs, clockElapsed,
+//   ringScale, ringAlpha, arrowAlpha, captured }
+
+// ─── Particles ───────────────────────────────────────────────────────────────
+let particles = [];
+// particle: { x, y, vx, vy, life, maxLife, r, hue, type }
+
+// ─── Hazards ─────────────────────────────────────────────────────────────────
+let hazards = [];
+// hazard: { x, y, dx, dy, len, vx, vy, hue }
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function rnd(a, b) { return a + Math.random() * (b - a); }
+function rndInt(a, b) { return Math.floor(rnd(a, b + 1)); }
+function lerp(a, b, t) { return a + (b - a) * t; }
+function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+function dist(ax, ay, bx, by) { return Math.hypot(bx - ax, by - ay); }
+
+function pointToSegDist(px, py, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return dist(px, py, ax, ay);
+  let t = ((px - ax) * dx + (py - ay) * dy) / lenSq;
+  t = clamp(t, 0, 1);
+  return dist(px, py, ax + t * dx, ay + t * dy);
+}
+
+// ─── Difficulty ───────────────────────────────────────────────────────────────
+function getDifficulty() {
+  const n = score;
+  const t = clamp(n / 60, 0, 1);
+  return {
+    captureRatio: lerp(2.2, 1.3, t),      // capture ring = planet.r * ratio
+    orbitSpeedBase: lerp(2.0, 3.8, t),    // rad/s
+    planetSpacing: lerp(160, 110, t),      // px world
+    hazardCount: n > 25 ? Math.floor((n - 25) / 8) : 0,
+    reversedChance: clamp(n / 80, 0, 0.4),
+    clockChance: clamp(n / 50, 0, 0.5),
+  };
+}
+
+// ─── Planet Factory ──────────────────────────────────────────────────────────
+function spawnPlanet(y, isCurrent) {
+  const diff = getDifficulty();
+  const hue = (hueBase + planets.length * 47) % 360;
+  const r = rnd(18, 32);
+  const captureR = r * diff.captureRatio;
+  const reversed = !isCurrent && Math.random() < diff.reversedChance;
+  const hasClock = !isCurrent && Math.random() < diff.clockChance;
+  const clockSecs = hasClock ? rnd(2.5, 5) : 0;
+  return {
+    x: isCurrent ? W / 2 : rnd(r + captureR, W - r - captureR),
+    y,
+    r,
+    hue,
+    captureR,
+    capturePulse: 0,
+    reversed,
+    clockSecs,
+    clockElapsed: 0,
+    ringScale: 1,
+    ringAlpha: 0.55,
+    arrowAlpha: reversed ? 1 : 0,
+    captured: isCurrent,
+  };
+}
+
+// ─── Init Game ────────────────────────────────────────────────────────────────
+function initGame() {
+  score = 0; streak = 0; multiplier = 1;
+  camY = 0; targetCamY = 0;
+  shakeAmt = 0; shakeDur = 0;
+  hueBase = rnd(0, 360);
+  planets = [];
+  particles = [];
+  hazards = [];
+  nextPlanetY = 0;
+
+  // First planet at bottom center
+  const p0 = spawnPlanet(-H * 0.65, true);
+  p0.x = W / 2;
+  planets.push(p0);
+
+  // Spawn several planets upward
+  const diff = getDifficulty();
+  nextPlanetY = p0.y - diff.planetSpacing;
+  for (let i = 0; i < 6; i++) {
+    planets.push(spawnPlanet(nextPlanetY, false));
+    nextPlanetY -= diff.planetSpacing;
+  }
+
+  // Attach player to first planet
+  player.planet = p0;
+  player.orbitR = p0.r + 22;
+  player.angle = -Math.PI / 2; // start at top of planet
+  player.orbitSpeed = 2.2;
+  player.flying = false;
+  player.trail = [];
+  player.color = `hsl(${(hueBase + 60) % 360},100%,70%)`;
+  updatePlayerPos();
+}
+
+function updatePlayerPos() {
+  if (!player.flying && player.planet) {
+    player.x = player.planet.x + Math.cos(player.angle) * player.orbitR;
+    player.y = player.planet.y + Math.sin(player.angle) * player.orbitR;
+  }
+}
+
+// ─── Release (slingshot) ─────────────────────────────────────────────────────
+function release() {
+  if (player.flying || state !== 'playing') return;
+  // Tangential velocity: perpendicular to radius vector
+  const speed = player.orbitSpeed * player.orbitR;
+  const dir = player.planet && player.planet.reversed ? -1 : 1;
+  // tangent = (-sin(angle), cos(angle)) * dir
+  player.vx = -Math.sin(player.angle) * speed * dir;
+  player.vy = Math.cos(player.angle) * speed * dir;
+  player.flying = true;
+  player.planet = null;
+
+  // Emit trail start
+  player.trail = [];
+}
+
+// ─── Capture ─────────────────────────────────────────────────────────────────
+function tryCapture() {
+  for (const p of planets) {
+    if (p.captured) continue;
+    const d = dist(player.x, player.y, p.x, p.y);
+    const inner = p.r + 2;
+    const outer = p.captureR + 8; // slight forgiveness
+    if (d >= inner && d <= outer) {
+      capturePlanet(p, d);
+      return;
+    }
+    // Crash into planet body
+    if (d < p.r) {
+      triggerDeath();
+      return;
+    }
+  }
+}
+
+function captureDistance(p) {
+  const d = dist(player.x, player.y, p.x, p.y);
+  const mid = (p.r + p.captureR) / 2;
+  return Math.abs(d - mid) / ((p.captureR - p.r) / 2);
+}
+
+function capturePlanet(p, d) {
+  p.captured = true;
+  player.flying = false;
+  player.planet = p;
+  player.orbitR = d;
+  // Compute angle
+  player.angle = Math.atan2(player.y - p.y, player.x - p.x);
+
+  const diff = getDifficulty();
+  player.orbitSpeed = diff.orbitSpeedBase * (p.reversed ? -1 : 1);
+  player.color = `hsl(${(p.hue + 60) % 360},100%,70%)`;
+
+  // Score
+  streak++;
+  multiplier = Math.min(1 + Math.floor(streak / 3), 8);
+
+  const norm = clamp((d - p.r) / (p.captureR - p.r), 0, 1);
+  const centerDev = Math.abs(norm - 0.5) * 2; // 0=perfect center, 1=edge
+  let bonus = 0;
+  let label = '';
+  if (centerDev < 0.15) {
+    bonus = 3; label = 'PERFECT!';
+    shake(6, 0.3);
+    emitShockwave(player.x, player.y - camY, p.hue);
+  } else if (centerDev < 0.4) {
+    bonus = 1; label = 'CLOSE!';
+    shake(2, 0.15);
+  }
+  score += (1 + bonus) * multiplier;
+
+  emitBurst(player.x, player.y - camY, p.hue, 12 + bonus * 5);
+  shake(1.5, 0.1);
+
+  // Milestone shakes
+  if (score % 25 === 0 && score > 0) shake(5, 0.35);
+
+  // Update camera
+  targetCamY = p.y - H * 0.65;
+
+  // Spawn more planets
+  ensurePlanets();
+  spawnHazardsIfNeeded();
+
+  // Update best
+  if (score > best) { best = score; localStorage.setItem(LS_KEY, best); }
+}
+
+function ensurePlanets() {
+  const diff = getDifficulty();
+  while (planets.length < planets.filter(p => p.captured).length + 7) {
+    planets.push(spawnPlanet(nextPlanetY, false));
+    nextPlanetY -= diff.planetSpacing;
+  }
+  // Prune far-below planets
+  const cull = camY + H * 2;
+  planets = planets.filter(p => p.y < cull);
+}
+
+function spawnHazardsIfNeeded() {
+  const diff = getDifficulty();
+  while (hazards.length < diff.hazardCount) {
+    const hx = rnd(20, W - 20);
+    const hy = nextPlanetY + rnd(30, 120);
+    const angle = rnd(0, Math.PI * 2);
+    const len = rnd(20, 50);
+    const spd = rnd(30, 70);
+    hazards.push({
+      x: hx, y: hy,
+      dx: Math.cos(angle) * len / 2,
+      dy: Math.sin(angle) * len / 2,
+      vx: Math.cos(angle + Math.PI / 2) * spd,
+      vy: Math.sin(angle + Math.PI / 2) * spd * 0.3,
+      hue: rnd(0, 360),
+    });
+  }
+}
+
+// ─── Death ────────────────────────────────────────────────────────────────────
+function triggerDeath() {
+  state = 'gameover';
+  shake(18, 0.8);
+  emitBurst(player.x, player.y - camY, 0, 30);
+  if (score > best) { best = score; localStorage.setItem(LS_KEY, best); }
+}
+
+// ─── Screen Shake ─────────────────────────────────────────────────────────────
+function shake(amount, duration) {
+  shakeAmt = Math.max(shakeAmt, amount);
+  shakeDur = Math.max(shakeDur, duration);
+}
+
+// ─── Particles ────────────────────────────────────────────────────────────────
+function emitBurst(sx, sy, hue, count) {
+  for (let i = 0; i < count; i++) {
+    if (particles.length >= MAX_PARTICLES) break;
+    const angle = rnd(0, Math.PI * 2);
+    const spd = rnd(40, 160);
+    particles.push({
+      x: sx, y: sy,
+      vx: Math.cos(angle) * spd,
+      vy: Math.sin(angle) * spd,
+      life: 1, maxLife: rnd(0.4, 0.9),
+      r: rnd(2, 5),
+      hue: (hue + rnd(-30, 30)) % 360,
+      type: 'burst',
+    });
+  }
+}
+
+function emitShockwave(sx, sy, hue) {
+  particles.push({
+    x: sx, y: sy, vx: 0, vy: 0,
+    life: 1, maxLife: 0.6,
+    r: 10, hue,
+    type: 'shockwave',
+  });
+}
+
+function emitTrail(sx, sy) {
+  if (particles.length >= MAX_PARTICLES) return;
+  particles.push({
+    x: sx, y: sy, vx: rnd(-10, 10), vy: rnd(-10, 10),
+    life: 1, maxLife: rnd(0.1, 0.25),
+    r: rnd(1.5, 3.5),
+    hue: (hueBase + rnd(-20, 20)) % 360,
+    type: 'trail',
+  });
+}
+
+// ─── Update ───────────────────────────────────────────────────────────────────
+function update(dt) {
+  const s = dt / 1000; // seconds
+
+  // Camera
+  camY = lerp(camY, targetCamY, clamp(s * 5, 0, 1));
+  hueBase = (hueBase + s * 12) % 360;
+
+  // Shake decay
+  if (shakeDur > 0) {
+    shakeDur -= s;
+    if (shakeDur <= 0) { shakeDur = 0; shakeAmt = 0; }
+  }
+
+  // Player orbit
+  if (!player.flying && player.planet) {
+    const dir = player.planet.reversed ? -1 : 1;
+    player.angle += player.orbitSpeed * dir * s;
+    updatePlayerPos();
+  }
+
+  // Player flight
+  if (player.flying) {
+    player.x += player.vx * s;
+    player.y += player.vy * s;
+    emitTrail(player.x, player.y - camY);
+    tryCapture();
+
+    // Death if way off screen
+    if (player.y - camY > H + 100) triggerDeath();
+    if (player.x < -50 || player.x > W + 50) triggerDeath();
+
+    // Check hazards
+    for (const h of hazards) {
+      const ax = h.x - h.dx, ay = h.y - h.dy;
+      const bx = h.x + h.dx, by = h.y + h.dy;
+      const d = pointToSegDist(player.x, player.y, ax, ay, bx, by);
+      if (d < player.r + 4) { triggerDeath(); return; }
+    }
+  }
+
+  // Planets update
+  for (const p of planets) {
+    p.capturePulse = (p.capturePulse + s * 2.5) % (Math.PI * 2);
+    if (p.clockSecs > 0 && !p.captured) {
+      p.clockElapsed += s;
+      if (p.clockElapsed >= p.clockSecs) {
+        p.reversed = !p.reversed;
+        p.clockElapsed = 0;
+        p.arrowAlpha = 1;
+      }
+    }
+    // Fade arrow after toggle
+    if (p.arrowAlpha > 0) p.arrowAlpha -= s * 0.8;
+  }
+
+  // Hazards drift
+  for (const h of hazards) {
+    h.x += h.vx * s;
+    h.y += h.vy * s;
+    // Bounce off walls
+    if (h.x < 10 || h.x > W - 10) h.vx *= -1;
+    // Cull far-below
+  }
+
+  // Particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.life -= s / p.maxLife;
+    if (p.life <= 0) { particles.splice(i, 1); continue; }
+    if (p.type === 'burst' || p.type === 'trail') {
+      p.x += p.vx * s;
+      p.y += p.vy * s;
+      p.vx *= 0.92;
+      p.vy *= 0.92;
+    } else if (p.type === 'shockwave') {
+      p.r += 200 * s;
+    }
+  }
+}
+
+// ─── Draw ─────────────────────────────────────────────────────────────────────
+function draw() {
+  // Shake transform
+  let sx = 0, sy = 0;
+  if (shakeAmt > 0 && shakeDur > 0) {
+    sx = (Math.random() - 0.5) * shakeAmt * 2;
+    sy = (Math.random() - 0.5) * shakeAmt * 2;
+  }
+
+  ctx.save();
+  ctx.translate(sx, sy);
+
+  // Background
+  const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+  bgGrad.addColorStop(0, `hsl(${(hueBase + 220) % 360},30%,4%)`);
+  bgGrad.addColorStop(1, `hsl(${(hueBase + 180) % 360},20%,6%)`);
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Stars (static based on camera)
+  drawStars();
+
+  // World transform (camera)
+  ctx.save();
+  ctx.translate(0, -camY);
+
+  // Hazards
+  for (const h of hazards) {
+    const ys = h.y - camY;
+    if (ys < -50 || ys > H + 50) continue;
+    ctx.save();
+    ctx.translate(0, camY); // compensate since we already translated
+    ctx.strokeStyle = `hsl(${h.hue},80%,60%)`;
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.globalAlpha = 0.85;
+    ctx.beginPath();
+    ctx.moveTo(h.x - h.dx, h.y - h.dy);
+    ctx.lineTo(h.x + h.dx, h.y + h.dy);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Planets
+  for (const p of planets) {
+    drawPlanet(p);
+  }
+
+  // Particles (in world coords)
+  ctx.save();
+  ctx.translate(0, camY); // compensate
+  drawParticles();
+  ctx.restore();
+
+  // Player
+  drawPlayer();
+
+  ctx.restore(); // world
+
+  // HUD (screen space)
+  drawHUD();
+
+  // Overlays
+  if (state === 'start') drawStart();
+  if (state === 'gameover') drawGameOver();
+
+  ctx.restore(); // shake
+}
+
+// ─── Stars ────────────────────────────────────────────────────────────────────
+const STARS = [];
+(function initStars() {
+  for (let i = 0; i < 80; i++) {
+    STARS.push({ x: Math.random(), y: Math.random(), r: Math.random() * 1.5 + 0.3, a: Math.random() * 0.7 + 0.2 });
+  }
+})();
+
+function drawStars() {
+  for (const s of STARS) {
+    const px = s.x * W;
+    // Parallax: stars scroll 20% of camera
+    const py = ((s.y * H + camY * 0.15) % H + H) % H;
+    ctx.globalAlpha = s.a;
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(px, py, s.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ─── Draw Planet ─────────────────────────────────────────────────────────────
+function drawPlanet(p) {
+  const screenY = p.y; // we're in world space with camY translation
+  const vis = screenY > camY - 80 && screenY < camY + H + 80;
+  if (!vis) return;
+
+  const hue = p.hue;
+  const pulse = Math.sin(p.capturePulse) * 0.5 + 0.5; // 0-1
+
+  // Capture ring (annulus) - draw if not captured and upcoming
+  if (!p.captured) {
+    // Outer ring
+    const ringR = p.captureR + pulse * 5;
+    ctx.globalAlpha = 0.4 + pulse * 0.2;
+    ctx.strokeStyle = `hsl(${hue},90%,65%)`;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8, 5]);
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, ringR, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Inner ring
+    ctx.globalAlpha = 0.3;
+    ctx.strokeStyle = `hsl(${hue},70%,55%)`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r + 2, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Clock indicator
+    if (p.clockSecs > 0) {
+      const prog = p.clockElapsed / p.clockSecs;
+      ctx.globalAlpha = 0.7;
+      ctx.strokeStyle = `hsl(${hue},100%,80%)`;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.captureR + 8, -Math.PI / 2, -Math.PI / 2 + prog * Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // Reverse orbit arrow
+    if (p.reversed) {
+      ctx.globalAlpha = clamp(p.arrowAlpha + 0.4, 0, 0.85);
+      drawArrow(p.x, p.y, p.captureR + 16, hue, true);
+    }
+  }
+
+  // Planet glow
+  ctx.globalAlpha = 0.3;
+  const glow = ctx.createRadialGradient(p.x, p.y, p.r * 0.5, p.x, p.y, p.r * 2.5);
+  glow.addColorStop(0, `hsl(${hue},90%,70%)`);
+  glow.addColorStop(1, 'transparent');
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, p.r * 2.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Planet body
+  ctx.globalAlpha = 1;
+  const grad = ctx.createRadialGradient(p.x - p.r * 0.3, p.y - p.r * 0.3, p.r * 0.1, p.x, p.y, p.r);
+  grad.addColorStop(0, `hsl(${hue},80%,80%)`);
+  grad.addColorStop(0.6, `hsl(${hue},80%,50%)`);
+  grad.addColorStop(1, `hsl(${hue},60%,30%)`);
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Shine
+  ctx.globalAlpha = 0.35;
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.arc(p.x - p.r * 0.25, p.y - p.r * 0.3, p.r * 0.3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+function drawArrow(cx, cy, r, hue, ccw) {
+  const dir = ccw ? -1 : 1;
+  ctx.strokeStyle = `hsl(${hue},100%,75%)`;
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  // Draw arc
+  ctx.arc(cx, cy, r, 0, Math.PI * 1.5 * dir);
+  ctx.stroke();
+  // Arrowhead
+  const endAngle = Math.PI * 1.5 * dir;
+  const ex = cx + Math.cos(endAngle) * r;
+  const ey = cy + Math.sin(endAngle) * r;
+  const tang = endAngle + Math.PI / 2 * dir;
+  const as = 8;
+  ctx.beginPath();
+  ctx.moveTo(ex, ey);
+  ctx.lineTo(ex + Math.cos(tang - 0.4) * as, ey + Math.sin(tang - 0.4) * as);
+  ctx.moveTo(ex, ey);
+  ctx.lineTo(ex + Math.cos(tang + 0.4) * as, ey + Math.sin(tang + 0.4) * as);
+  ctx.stroke();
+}
+
+// ─── Draw Player ─────────────────────────────────────────────────────────────
+function drawPlayer() {
+  // We're in world space
+  ctx.globalAlpha = 1;
+  // Glow
+  ctx.shadowColor = player.color;
+  ctx.shadowBlur = 12;
+  const grad = ctx.createRadialGradient(player.x, player.y, 0, player.x, player.y, player.r);
+  grad.addColorStop(0, '#fff');
+  grad.addColorStop(0.4, player.color);
+  grad.addColorStop(1, player.color.replace('70%', '40%'));
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(player.x, player.y, player.r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+}
+
+// ─── Draw Particles ──────────────────────────────────────────────────────────
+function drawParticles() {
+  for (const p of particles) {
+    ctx.globalAlpha = p.life * 0.9;
+    if (p.type === 'shockwave') {
+      ctx.globalAlpha = p.life * 0.5;
+      ctx.strokeStyle = `hsl(${p.hue},100%,75%)`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = `hsl(${p.hue},90%,${60 + p.life * 20}%)`;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r * p.life, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ─── HUD ─────────────────────────────────────────────────────────────────────
+function drawHUD() {
+  if (state === 'start') return;
+  ctx.globalAlpha = 1;
+
+  // Score
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 28px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText(score, W / 2, 44);
+
+  // Best
+  ctx.fillStyle = 'rgba(255,255,255,0.45)';
+  ctx.font = '13px Arial';
+  ctx.fillText(`BEST ${best}`, W / 2, 62);
+
+  // Streak / multiplier
+  if (streak > 0) {
+    ctx.fillStyle = `hsl(${hueBase},100%,70%)`;
+    ctx.font = 'bold 14px Arial';
+    ctx.textAlign = 'left';
+    ctx.fillText(`×${multiplier}  ${streak} STREAK`, 14, 32);
+  }
+}
+
+// ─── Overlay text helper ─────────────────────────────────────────────────────
+function bigText(text, y, size, alpha) {
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = '#fff';
+  ctx.font = `bold ${size}px Arial`;
+  ctx.textAlign = 'center';
+  ctx.fillText(text, W / 2, y);
+  ctx.globalAlpha = 1;
+}
+
+function subText(text, y, alpha) {
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.font = '16px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText(text, W / 2, y);
+  ctx.globalAlpha = 1;
+}
+
+// ─── Start Screen ─────────────────────────────────────────────────────────────
+let startPulse = 0;
+function drawStart() {
+  startPulse += 0.04;
+  const alpha = 0.85 + Math.sin(startPulse) * 0.15;
+
+  // Dark veil
+  ctx.fillStyle = 'rgba(5,6,10,0.6)';
+  ctx.fillRect(0, 0, W, H);
+
+  bigText('ORBIT SPIRAL', H / 2 - 60, 36, 1);
+  ctx.fillStyle = `hsl(${(hueBase+80)%360},100%,70%)`;
+  ctx.font = 'bold 36px Arial';
+  ctx.textAlign = 'center';
+  ctx.globalAlpha = alpha;
+  ctx.fillText('ORBIT SPIRAL', W / 2, H / 2 - 60);
+  ctx.globalAlpha = 1;
+
+  subText('Tap to orbit. Release to fly.', H / 2 - 20, 0.85);
+  subText('Land in the glowing ring.', H / 2 + 6, 0.65);
+
+  // Tap to start button
+  const bw = 180, bh = 50, bx = W / 2 - bw / 2, by = H / 2 + 50;
+  ctx.globalAlpha = 0.9;
+  ctx.fillStyle = `hsl(${hueBase},80%,45%)`;
+  roundRect(bx, by, bw, bh, 12);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 18px Arial';
+  ctx.fillText('TAP TO START', W / 2, by + 32);
+
+  if (best > 0) subText(`Best: ${best}`, H / 2 + 130, 0.55);
+}
+
+// ─── Game Over Screen ─────────────────────────────────────────────────────────
+let goAlpha = 0;
+function drawGameOver() {
+  goAlpha = clamp(goAlpha + 0.04, 0, 1);
+
+  ctx.fillStyle = `rgba(5,6,10,${0.75 * goAlpha})`;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.globalAlpha = goAlpha;
+  ctx.fillStyle = '#ff4466';
+  ctx.font = 'bold 38px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText('GAME OVER', W / 2, H / 2 - 70);
+
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 48px Arial';
+  ctx.fillText(score, W / 2, H / 2 - 10);
+
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.font = '15px Arial';
+  ctx.fillText(`Best: ${best}`, W / 2, H / 2 + 22);
+
+  // Retry button
+  const bw = 160, bh = 48, bx = W / 2 - bw / 2, by = H / 2 + 50;
+  ctx.fillStyle = `hsl(${hueBase},75%,42%)`;
+  roundRect(bx, by, bw, bh, 12);
+  ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 17px Arial';
+  ctx.fillText('PLAY AGAIN', W / 2, by + 31);
+
+  // Share button
+  const sw = 140, sh = 40, sx2 = W / 2 - sw / 2, sy2 = H / 2 + 115;
+  ctx.fillStyle = 'rgba(255,255,255,0.12)';
+  roundRect(sx2, sy2, sw, sh, 10);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+  ctx.lineWidth = 1.5;
+  roundRect(sx2, sy2, sw, sh, 10);
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  ctx.font = '14px Arial';
+  ctx.fillText('SHARE SCORE', W / 2, sy2 + 26);
+
+  ctx.globalAlpha = 1;
+}
+
+// ─── Round rect helper ────────────────────────────────────────────────────────
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.arcTo(x + w, y, x + w, y + r, r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h);
+  ctx.arcTo(x, y + h, x, y + h - r, r);
+  ctx.lineTo(x, y + r);
+  ctx.arcTo(x, y, x + r, y, r);
+  ctx.closePath();
+}
+
+// ─── Share ────────────────────────────────────────────────────────────────────
+function doShare() {
+  const text = `I scored ${score} in Orbit Spiral! Can you beat me? 🌀`;
+  const url = 'https://balinti.github.io/orbit-spiral/';
+  if (navigator.share) {
+    navigator.share({ title: 'Orbit Spiral', text, url }).catch(() => {});
+  } else {
+    navigator.clipboard.writeText(`${text} ${url}`).then(() => {
+      showToast('Copied to clipboard!');
+    }).catch(() => {
+      showToast('Share: ' + url);
+    });
+  }
+}
+
+let toastMsg = '', toastTimer = 0;
+function showToast(msg) {
+  toastMsg = msg;
+  toastTimer = 2.5;
+}
+function drawToast(dt) {
+  if (toastTimer <= 0) return;
+  toastTimer -= dt / 1000;
+  const alpha = clamp(toastTimer, 0, 0.5) * 2;
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = 'rgba(255,255,255,0.15)';
+  const tw = ctx.measureText(toastMsg).width + 24;
+  roundRect(W / 2 - tw / 2, H - 80, tw, 36, 8);
+  ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.font = '14px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText(toastMsg, W / 2, H - 56);
+  ctx.globalAlpha = 1;
+}
+
+// ─── Input ────────────────────────────────────────────────────────────────────
+function hitTest(cx, cy, x, y, w, h) {
+  return cx >= x && cx <= x + w && cy >= y && cy <= y + h;
+}
+
+function handleTap(ex, ey) {
+  if (state === 'start') {
+    state = 'playing';
+    goAlpha = 0;
+    initGame();
+    return;
+  }
+  if (state === 'gameover') {
+    // Share button: H/2+115 to H/2+155
+    const sy2 = H / 2 + 115, sh = 40, sw = 140, sx2 = W / 2 - sw / 2;
+    if (hitTest(ex, ey, sx2, sy2, sw, sh)) {
+      doShare();
+      return;
+    }
+    // Retry button
+    const bw = 160, bh = 48, bx = W / 2 - bw / 2, by = H / 2 + 50;
+    if (hitTest(ex, ey, bx, by, bw, bh) || true) { // tap anywhere to retry
+      goAlpha = 0;
+      state = 'playing';
+      initGame();
+    }
+    return;
+  }
+  if (state === 'playing') {
+    release();
+  }
+}
+
+canvas.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const ex = (e.clientX - rect.left) * (W / rect.width);
+  const ey = (e.clientY - rect.top) * (H / rect.height);
+  handleTap(ex, ey);
+}, { passive: false });
+
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    if (state === 'playing') release();
+    else if (state === 'start') { state = 'playing'; goAlpha = 0; initGame(); }
+    else if (state === 'gameover') { goAlpha = 0; state = 'playing'; initGame(); }
+  }
+});
+
+// ─── Loop ─────────────────────────────────────────────────────────────────────
+function loop(ts) {
+  const dt = lastTime ? clamp(ts - lastTime, 0, DT_CAP) : 16;
+  lastTime = ts;
+
+  if (state === 'playing') update(dt);
+  if (state === 'start') {
+    // Animate planets on start screen
+    hueBase = (hueBase + dt / 1000 * 12) % 360;
+    camY = lerp(camY, 0, 0.05);
+  }
+
+  draw();
+  drawToast(dt);
+
+  requestAnimationFrame(loop);
+}
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+// Create some placeholder planets for start screen visual
+function initStartScreen() {
+  planets = [];
+  const p0 = spawnPlanet(H * 0.6, true);
+  p0.x = W / 2;
+  planets.push(p0);
+  for (let i = 1; i < 5; i++) {
+    const p = spawnPlanet(H * 0.6 - i * 140, false);
+    planets.push(p);
+  }
+  player.planet = p0;
+  player.orbitR = p0.r + 22;
+  player.angle = -Math.PI / 2;
+  player.orbitSpeed = 1.8;
+  player.flying = false;
+  updatePlayerPos();
+}
+
+initStartScreen();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

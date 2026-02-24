@@ -1,0 +1,932 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Echo Spin - Free HTML5 Game</title>
+<meta name="description" content="Play Echo Spin - Tap rhythmic circles as controls invert randomly, challenging your reflexes.">
+<meta name="theme-color" content="#0a0a1a">
+<link rel="canonical" href="https://balinti.github.io/echo-spin/">
+<meta property="og:title" content="Echo Spin - Free HTML5 Game">
+<meta property="og:description" content="Play Echo Spin - Tap rhythmic circles as controls invert randomly, challenging your reflexes.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://balinti.github.io/echo-spin/">
+<meta property="og:image" content="https://balinti.github.io/echo-spin/og-image.png">
+<meta property="og:site_name" content="Echo Spin">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Echo Spin - Free HTML5 Game">
+<meta name="twitter:description" content="Play Echo Spin - Tap rhythmic circles as controls invert randomly, challenging your reflexes.">
+<meta name="twitter:image" content="https://balinti.github.io/echo-spin/og-image.png">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#0a0a1a;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;touch-action:none;user-select:none;-webkit-user-select:none}
+#wrap{position:relative;width:100%;max-width:420px;height:100vh;height:100dvh;max-height:750px;margin:0 auto;overflow:hidden;display:flex;flex-direction:column}
+#topbar{height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;z-index:10;flex-shrink:0}
+#score-display{color:#fff;font-size:18px;font-weight:700;letter-spacing:1px;opacity:0;transition:opacity .3s}
+#topbar .btns{display:flex;gap:8px}
+#topbar button{background:rgba(255,255,255,.1);border:none;color:#fff;width:36px;height:36px;border-radius:50%;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .2s}
+#topbar button:hover{background:rgba(255,255,255,.2)}
+#canvas-wrap{flex:1;position:relative;overflow:hidden}
+canvas{display:block;width:100%;height:100%}
+#footer{height:50px;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+#share-btn{display:none;background:linear-gradient(135deg,#00e5ff,#d500f9);border:none;color:#fff;padding:8px 20px;border-radius:20px;font-size:14px;font-weight:600;cursor:pointer;letter-spacing:.5px}
+#share-btn:active{transform:scale(.95)}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="topbar">
+    <div id="score-display">0</div>
+    <div class="btns">
+      <button id="mute-btn" aria-label="Mute">&#9834;</button>
+    </div>
+  </div>
+  <div id="canvas-wrap">
+    <canvas id="gc"></canvas>
+  </div>
+  <div id="footer">
+    <button id="share-btn">Challenge a Friend</button>
+  </div>
+</div>
+<script>
+'use strict';
+(()=>{
+
+// === CONSTANTS ===
+const MISS_LIMIT = 3;
+const HIT_WINDOW_PERFECT = 0.06;
+const HIT_WINDOW_GOOD = 0.14;
+const HIT_WINDOW_OK = 0.22;
+const ECHO_DELAY_MIN = 200;
+const ECHO_DELAY_MAX = 350;
+const SPAWN_DIST = Math.PI * 1.5;
+const LS_KEY = 'echoSpin.best';
+
+// === DOM ===
+const canvasWrap = document.getElementById('canvas-wrap');
+const canvas = document.getElementById('gc');
+const ctx = canvas.getContext('2d');
+const scoreDisplay = document.getElementById('score-display');
+const muteBtn = document.getElementById('mute-btn');
+const shareBtn = document.getElementById('share-btn');
+
+// === STATE ===
+let W, H, cx, cy, ringR, dpr;
+let state = 'start'; // start | playing | gameover
+let score = 0;
+let best = parseInt(localStorage.getItem(LS_KEY)) || 0;
+let combo = 0;
+let maxCombo = 0;
+let misses = 0;
+let elapsedTime = 0;
+let lastTime = 0;
+let hueShift = 0;
+let shakeX = 0, shakeY = 0, shakeDecay = 0;
+let timeDilation = 1;
+let timeDilationTimer = 0;
+let spawnTimer = 0;
+let surgeTimer = 0;
+let surgeActive = false;
+let surgeCooldown = 0;
+let beats = [];
+let particles = [];
+let ringPulses = [];
+let feedbackTexts = [];
+let muted = false;
+let audioCtx = null;
+let audioStarted = false;
+
+// === RESIZE ===
+function resize() {
+  dpr = window.devicePixelRatio || 1;
+  const rect = canvasWrap.getBoundingClientRect();
+  W = rect.width;
+  H = rect.height;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  cx = W / 2;
+  cy = H / 2;
+  ringR = Math.min(W, H) * 0.32;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// === AUDIO ===
+function initAudio() {
+  if (audioStarted) return;
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    audioStarted = true;
+  } catch(e) {}
+}
+
+function playBeep(freq, dur, vol = 0.15) {
+  if (muted || !audioCtx) return;
+  try {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + dur);
+  } catch(e) {}
+}
+
+function playHitSound(perfect) {
+  playBeep(perfect ? 880 : 660, 0.12, 0.18);
+}
+
+function playMissSound() {
+  playBeep(180, 0.2, 0.12);
+}
+
+function playEchoSound() {
+  playBeep(520, 0.15, 0.14);
+  setTimeout(() => playBeep(780, 0.1, 0.12), 100);
+}
+
+// === DIFFICULTY ===
+function getDifficulty() {
+  const t = elapsedTime;
+  let speed = 1.0;
+  let echoChance = 0;
+  let spawnRate = 1.4;
+  let hitWindowMult = 1.0;
+
+  if (t < 10) {
+    speed = 0.7;
+    echoChance = 0;
+    spawnRate = 1.6;
+    hitWindowMult = 1.3;
+  } else if (t < 25) {
+    speed = 0.8 + (t - 10) * 0.01;
+    echoChance = 0.15;
+    spawnRate = 1.4;
+    hitWindowMult = 1.15;
+  } else if (t < 45) {
+    speed = 0.95 + (t - 25) * 0.015;
+    echoChance = 0.3;
+    spawnRate = 1.2 - (t - 25) * 0.01;
+    hitWindowMult = 1.0;
+  } else if (t < 70) {
+    speed = 1.25 + (t - 45) * 0.015;
+    echoChance = 0.4;
+    spawnRate = 0.9 - (t - 45) * 0.005;
+    hitWindowMult = 0.85;
+  } else {
+    speed = 1.6 + (t - 70) * 0.005;
+    echoChance = 0.45;
+    spawnRate = Math.max(0.5, 0.65 - (t - 70) * 0.002);
+    hitWindowMult = 0.75;
+  }
+
+  if (surgeActive) {
+    speed *= 1.4;
+    spawnRate *= 0.6;
+  }
+
+  return { speed, echoChance, spawnRate: Math.max(0.4, spawnRate), hitWindowMult };
+}
+
+// === BEAT CLASS ===
+function createBeat(isEcho) {
+  return {
+    angle: -Math.PI / 2 + SPAWN_DIST,
+    isEcho,
+    alive: true,
+    scored: false,
+    missed: false,
+    echoPhase: 'approach', // approach | waiting | echoPulse
+    echoTimer: 0,
+    echoDelay: ECHO_DELAY_MIN + Math.random() * (ECHO_DELAY_MAX - ECHO_DELAY_MIN),
+    echoPulseAlpha: 0,
+    radius: 10,
+    alpha: 1,
+    hitAnim: 0
+  };
+}
+
+// === SPAWNING ===
+function spawnBeat(dt) {
+  const diff = getDifficulty();
+  spawnTimer -= dt;
+  if (spawnTimer <= 0) {
+    const isEcho = Math.random() < diff.echoChance;
+    beats.push(createBeat(isEcho));
+    spawnTimer = diff.spawnRate;
+  }
+}
+
+// === SURGE ===
+function updateSurge(dt) {
+  if (elapsedTime < 70) return;
+  if (!surgeActive) {
+    surgeCooldown -= dt;
+    if (surgeCooldown <= 0) {
+      surgeActive = true;
+      surgeTimer = 5;
+      addFeedback('SPIN SURGE!', cx, cy - ringR - 40, '#ff0', 1.5);
+    }
+  } else {
+    surgeTimer -= dt;
+    if (surgeTimer <= 0) {
+      surgeActive = false;
+      surgeCooldown = 15;
+    }
+  }
+}
+
+// === PARTICLES ===
+function spawnParticles(x, y, color, count = 12) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 60 + Math.random() * 140;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 0.5 + Math.random() * 0.4,
+      maxLife: 0.5 + Math.random() * 0.4,
+      size: 2 + Math.random() * 3,
+      color
+    });
+  }
+}
+
+function spawnRingPulse(color) {
+  ringPulses.push({ r: ringR, maxR: ringR + 60, alpha: 0.6, color });
+}
+
+function addFeedback(text, x, y, color = '#fff', scale = 1) {
+  feedbackTexts.push({ text, x, y, color, life: 1.2, maxLife: 1.2, scale, vy: -30 });
+}
+
+// === HIT DETECTION ===
+function getHitLineAngle() {
+  return -Math.PI / 2; // 12 o'clock
+}
+
+function angleDist(a, b) {
+  let d = a - b;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return d;
+}
+
+function attemptHit() {
+  initAudio();
+  if (state === 'start') { startGame(); return; }
+  if (state === 'gameover') { startGame(); return; }
+
+  const hitAngle = getHitLineAngle();
+  const diff = getDifficulty();
+  const wMult = diff.hitWindowMult;
+  let hitBeat = null;
+  let bestDist = Infinity;
+
+  for (const b of beats) {
+    if (!b.alive || b.scored || b.missed) continue;
+
+    if (!b.isEcho && b.echoPhase === 'approach') {
+      const dist = Math.abs(angleDist(b.angle, hitAngle));
+      const maxDist = HIT_WINDOW_OK * wMult;
+      if (dist < maxDist && dist < bestDist) {
+        bestDist = dist;
+        hitBeat = b;
+      }
+    } else if (b.isEcho && b.echoPhase === 'echoPulse') {
+      const dist = b.echoTimer / (b.echoDelay / 1000);
+      if (dist < 1.2) {
+        bestDist = 0;
+        hitBeat = b;
+      }
+    }
+  }
+
+  // Check for echo note tapped too early
+  if (!hitBeat) {
+    for (const b of beats) {
+      if (!b.alive || b.scored || b.missed) continue;
+      if (b.isEcho && b.echoPhase === 'waiting') {
+        const dist = Math.abs(angleDist(b.angle, hitAngle));
+        if (dist < HIT_WINDOW_OK * wMult * 1.5) {
+          registerMiss(b, 'Echo too soon!');
+          return;
+        }
+      }
+    }
+  }
+
+  if (!hitBeat) {
+    // Tap with nothing near
+    combo = 0;
+    return;
+  }
+
+  if (hitBeat.isEcho && hitBeat.echoPhase === 'echoPulse') {
+    // Echo hit
+    hitBeat.scored = true;
+    hitBeat.alive = false;
+    const points = 15 * (1 + Math.floor(combo / 5));
+    score += points;
+    combo++;
+    if (combo > maxCombo) maxCombo = combo;
+
+    const bx = cx + Math.cos(getHitLineAngle()) * ringR;
+    const by = cy + Math.sin(getHitLineAngle()) * ringR;
+    spawnParticles(bx, by, `hsl(${300 + hueShift}, 90%, 65%)`, 18);
+    spawnRingPulse(`hsl(${300 + hueShift}, 90%, 65%)`);
+    addFeedback(`Echo! +${points}`, bx, by - 20, `hsl(${300 + hueShift}, 90%, 65%)`);
+    playEchoSound();
+
+    if (combo > 0 && combo % 10 === 0) {
+      shakeX = (Math.random() - 0.5) * 8;
+      shakeY = (Math.random() - 0.5) * 8;
+      shakeDecay = 0.3;
+      addFeedback(`${combo}x COMBO!`, cx, cy, '#ff0', 1.4);
+    }
+    return;
+  }
+
+  // Pulse hit
+  const dist = Math.abs(angleDist(hitBeat.angle, hitAngle));
+  const wP = HIT_WINDOW_PERFECT * wMult;
+  const wG = HIT_WINDOW_GOOD * wMult;
+  const wO = HIT_WINDOW_OK * wMult;
+
+  let rating, pointBase, color;
+  if (dist < wP) {
+    rating = 'Perfect!'; pointBase = 10; color = '#0ff';
+    shakeX = (Math.random() - 0.5) * 3;
+    shakeY = (Math.random() - 0.5) * 3;
+    shakeDecay = 0.15;
+  } else if (dist < wG) {
+    rating = 'Good!'; pointBase = 7; color = '#0f0';
+    // Near window - time dilation
+    timeDilation = 0.9;
+    timeDilationTimer = 0.15;
+  } else {
+    rating = dist < wO * 0.7 ? 'OK' : (hitBeat.angle > hitAngle ? 'Late' : 'Early');
+    pointBase = 4; color = '#ff0';
+    timeDilation = 0.9;
+    timeDilationTimer = 0.15;
+  }
+
+  hitBeat.scored = true;
+  hitBeat.alive = false;
+  const multiplier = 1 + Math.floor(combo / 5);
+  const points = pointBase * multiplier;
+  score += points;
+  combo++;
+  if (combo > maxCombo) maxCombo = combo;
+
+  const bx = cx + Math.cos(hitBeat.angle) * ringR;
+  const by = cy + Math.sin(hitBeat.angle) * ringR;
+  spawnParticles(bx, by, color, 14);
+  spawnRingPulse(color);
+  addFeedback(`${rating} +${points}`, bx, by - 20, color);
+  playHitSound(dist < wP);
+
+  if (combo > 0 && combo % 10 === 0) {
+    shakeX = (Math.random() - 0.5) * 8;
+    shakeY = (Math.random() - 0.5) * 8;
+    shakeDecay = 0.3;
+    addFeedback(`${combo}x COMBO!`, cx, cy, '#ff0', 1.4);
+  }
+}
+
+function registerMiss(beat, text) {
+  beat.missed = true;
+  beat.alive = false;
+  misses++;
+  combo = 0;
+
+  const bx = cx + Math.cos(beat.angle) * ringR;
+  const by = cy + Math.sin(beat.angle) * ringR;
+  addFeedback(text || 'Miss!', bx, by - 20, '#f44');
+  playMissSound();
+
+  if (misses >= MISS_LIMIT) {
+    gameOver();
+  }
+}
+
+// === GAME STATE ===
+function startGame() {
+  initAudio();
+  state = 'playing';
+  score = 0;
+  combo = 0;
+  maxCombo = 0;
+  misses = 0;
+  elapsedTime = 0;
+  beats = [];
+  particles = [];
+  ringPulses = [];
+  feedbackTexts = [];
+  spawnTimer = 0.5;
+  surgeActive = false;
+  surgeCooldown = 15;
+  shakeX = 0; shakeY = 0; shakeDecay = 0;
+  timeDilation = 1; timeDilationTimer = 0;
+  scoreDisplay.style.opacity = '1';
+  shareBtn.style.display = 'none';
+  lastTime = performance.now();
+}
+
+function gameOver() {
+  state = 'gameover';
+  if (score > best) {
+    best = score;
+    localStorage.setItem(LS_KEY, best);
+  }
+  shakeX = (Math.random() - 0.5) * 20;
+  shakeY = (Math.random() - 0.5) * 20;
+  shakeDecay = 0.6;
+  shareBtn.style.display = 'block';
+  playBeep(150, 0.4, 0.2);
+}
+
+// === INPUT ===
+function onInput(e) {
+  if (e) e.preventDefault();
+  attemptHit();
+}
+
+canvas.addEventListener('pointerdown', onInput);
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    attemptHit();
+  }
+});
+
+muteBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  muted = !muted;
+  muteBtn.textContent = muted ? '🔇' : '♪';
+});
+
+shareBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const text = `I scored ${score} in Echo Spin! Can you beat me?`;
+  const url = `https://balinti.github.io/echo-spin/?challenge=${score}`;
+  if (navigator.share) {
+    navigator.share({ title: 'Echo Spin', text, url }).catch(() => {});
+  } else {
+    navigator.clipboard.writeText(`${text}\n${url}`).then(() => {
+      addFeedback('Link copied!', cx, cy, '#0f0');
+    }).catch(() => {});
+  }
+});
+
+// === UPDATE ===
+function update(dt) {
+  if (state !== 'playing') return;
+
+  // Time dilation
+  if (timeDilationTimer > 0) {
+    timeDilationTimer -= dt;
+    if (timeDilationTimer <= 0) timeDilation = 1;
+  }
+  const adt = dt * timeDilation;
+  elapsedTime += adt;
+
+  const diff = getDifficulty();
+  hueShift = (hueShift + dt * 20) % 360;
+
+  // Surge
+  updateSurge(adt);
+
+  // Spawn
+  spawnBeat(adt);
+
+  // Update beats
+  const hitAngle = getHitLineAngle();
+  for (const b of beats) {
+    if (!b.alive) continue;
+
+    if (b.echoPhase === 'approach') {
+      b.angle -= diff.speed * 1.5 * adt;
+
+      // Check if beat passed hit line
+      const dist = angleDist(b.angle, hitAngle);
+      if (!b.isEcho && dist < -HIT_WINDOW_OK * diff.hitWindowMult * 1.1) {
+        registerMiss(b, 'Miss!');
+      } else if (b.isEcho && Math.abs(dist) < 0.03) {
+        b.echoPhase = 'waiting';
+        b.angle = hitAngle;
+        b.echoTimer = 0;
+        // Telegraph ripple
+        const bx = cx + Math.cos(hitAngle) * ringR;
+        const by = cy + Math.sin(hitAngle) * ringR;
+        spawnParticles(bx, by, `hsl(${300 + hueShift}, 80%, 60%)`, 6);
+        addFeedback('Wait...', bx, by - 25, `hsl(${300 + hueShift}, 80%, 70%)`, 0.8);
+        playBeep(400, 0.08, 0.08);
+      } else if (b.isEcho && dist < -HIT_WINDOW_OK * diff.hitWindowMult * 1.1) {
+        // Echo passed without being caught
+        registerMiss(b, 'Missed Echo!');
+      }
+    } else if (b.echoPhase === 'waiting') {
+      b.echoTimer += dt * 1000;
+      b.echoPulseAlpha = Math.sin(b.echoTimer / b.echoDelay * Math.PI * 3) * 0.5 + 0.5;
+      if (b.echoTimer >= b.echoDelay) {
+        b.echoPhase = 'echoPulse';
+        b.echoTimer = 0;
+        playBeep(600, 0.06, 0.06);
+      }
+    } else if (b.echoPhase === 'echoPulse') {
+      b.echoTimer += dt;
+      if (b.echoTimer > 0.5) {
+        registerMiss(b, 'Echo too late!');
+      }
+    }
+  }
+
+  // Clean dead beats
+  beats = beats.filter(b => b.alive);
+
+  // Update particles
+  for (const p of particles) {
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy += 80 * dt;
+    p.life -= dt;
+  }
+  particles = particles.filter(p => p.life > 0);
+
+  // Update ring pulses
+  for (const rp of ringPulses) {
+    rp.r += 120 * dt;
+    rp.alpha -= 1.5 * dt;
+  }
+  ringPulses = ringPulses.filter(rp => rp.alpha > 0);
+
+  // Update feedback texts
+  for (const ft of feedbackTexts) {
+    ft.life -= dt;
+    ft.y += ft.vy * dt;
+    ft.vy *= 0.95;
+  }
+  feedbackTexts = feedbackTexts.filter(ft => ft.life > 0);
+
+  // Shake decay
+  if (shakeDecay > 0) {
+    shakeDecay -= dt;
+    if (shakeDecay <= 0) { shakeX = 0; shakeY = 0; }
+    else {
+      shakeX *= 0.88;
+      shakeY *= 0.88;
+    }
+  }
+
+  scoreDisplay.textContent = score;
+}
+
+// === DRAW ===
+function drawBackground() {
+  const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(W, H) * 0.7);
+  grad.addColorStop(0, `hsl(${240 + hueShift * 0.3}, 30%, 8%)`);
+  grad.addColorStop(1, '#0a0a1a');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+}
+
+function drawRing() {
+  const comboThick = Math.min(combo * 0.15, 4);
+  const baseThick = 2.5 + comboThick;
+
+  // Combo heat glow
+  if (combo > 5) {
+    ctx.save();
+    ctx.strokeStyle = `hsla(${(30 + hueShift) % 360}, 100%, 50%, ${Math.min(combo * 0.02, 0.3)})`;
+    ctx.lineWidth = baseThick + 8;
+    ctx.beginPath();
+    ctx.arc(cx, cy, ringR, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Main ring
+  ctx.strokeStyle = `hsla(${200 + hueShift * 0.5}, 60%, 40%, 0.6)`;
+  ctx.lineWidth = baseThick;
+  ctx.beginPath();
+  ctx.arc(cx, cy, ringR, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Ring pulses
+  for (const rp of ringPulses) {
+    ctx.strokeStyle = rp.color.replace(')', `, ${rp.alpha})`).replace('hsl(', 'hsla(').replace('rgb(', 'rgba(');
+    if (!rp.color.includes('hsl') && !rp.color.includes('rgb')) {
+      ctx.globalAlpha = rp.alpha;
+      ctx.strokeStyle = rp.color;
+    }
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, rp.r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  // Surge ring effect
+  if (surgeActive) {
+    const surgeAlpha = 0.3 + Math.sin(elapsedTime * 8) * 0.2;
+    ctx.strokeStyle = `hsla(40, 100%, 60%, ${surgeAlpha})`;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(cx, cy, ringR + 6, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+}
+
+function drawHitLine() {
+  const angle = getHitLineAngle();
+  const x1 = cx + Math.cos(angle) * (ringR - 18);
+  const y1 = cy + Math.sin(angle) * (ringR - 18);
+  const x2 = cx + Math.cos(angle) * (ringR + 18);
+  const y2 = cy + Math.sin(angle) * (ringR + 18);
+
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 3;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+
+  // Glow
+  ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+  ctx.lineWidth = 8;
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+}
+
+function drawBeats() {
+  const hitAngle = getHitLineAngle();
+  for (const b of beats) {
+    if (!b.alive) continue;
+    const bx = cx + Math.cos(b.angle) * ringR;
+    const by = cy + Math.sin(b.angle) * ringR;
+    const r = b.radius;
+
+    if (b.isEcho) {
+      // Echo (hollow) - magenta-ish
+      const echoHue = (300 + hueShift) % 360;
+
+      if (b.echoPhase === 'approach') {
+        ctx.strokeStyle = `hsl(${echoHue}, 90%, 65%)`;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(bx, by, r, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Inner dot
+        ctx.fillStyle = `hsla(${echoHue}, 90%, 65%, 0.3)`;
+        ctx.beginPath();
+        ctx.arc(bx, by, r * 0.4, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (b.echoPhase === 'waiting') {
+        // Pulsing at hit line
+        const px = cx + Math.cos(hitAngle) * ringR;
+        const py = cy + Math.sin(hitAngle) * ringR;
+        const pulseR = r + b.echoPulseAlpha * 6;
+
+        ctx.strokeStyle = `hsla(${echoHue}, 90%, 65%, ${0.5 + b.echoPulseAlpha * 0.5})`;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(px, py, pulseR, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Ripple telegraph
+        const rippleR = r + 15 + b.echoPulseAlpha * 15;
+        ctx.strokeStyle = `hsla(${echoHue}, 80%, 60%, ${0.2 + b.echoPulseAlpha * 0.2})`;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(px, py, rippleR, 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (b.echoPhase === 'echoPulse') {
+        // Echo pulse - TAP NOW
+        const px = cx + Math.cos(hitAngle) * ringR;
+        const py = cy + Math.sin(hitAngle) * ringR;
+        const flash = Math.sin(b.echoTimer * 20) * 0.3 + 0.7;
+
+        ctx.fillStyle = `hsla(${echoHue}, 100%, 70%, ${flash})`;
+        ctx.beginPath();
+        ctx.arc(px, py, r + 4, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(px, py, r + 8, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    } else {
+      // Pulse (solid) - cyan-ish
+      const pulseHue = (180 + hueShift) % 360;
+      ctx.fillStyle = `hsl(${pulseHue}, 90%, 60%)`;
+      ctx.beginPath();
+      ctx.arc(bx, by, r, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Glow
+      ctx.fillStyle = `hsla(${pulseHue}, 90%, 60%, 0.2)`;
+      ctx.beginPath();
+      ctx.arc(bx, by, r + 5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    const alpha = p.life / p.maxLife;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size * alpha, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawFeedback() {
+  for (const ft of feedbackTexts) {
+    const alpha = Math.min(ft.life / ft.maxLife * 2, 1);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = ft.color;
+    ctx.font = `bold ${14 * ft.scale}px 'Segoe UI', system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText(ft.text, ft.x, ft.y);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawHUD() {
+  // Combo
+  if (combo > 1 && state === 'playing') {
+    ctx.fillStyle = `hsla(${(40 + hueShift) % 360}, 100%, 70%, 0.9)`;
+    ctx.font = `bold 16px 'Segoe UI', system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText(`${combo}x`, cx, cy - ringR - 30);
+  }
+
+  // Misses (hearts)
+  if (state === 'playing') {
+    const heartY = cy + ringR + 35;
+    ctx.font = '16px sans-serif';
+    ctx.textAlign = 'center';
+    for (let i = 0; i < MISS_LIMIT; i++) {
+      ctx.fillStyle = i < (MISS_LIMIT - misses) ? 'rgba(255,80,80,0.9)' : 'rgba(255,255,255,0.15)';
+      ctx.fillText('♥', cx - 20 + i * 20, heartY);
+    }
+  }
+
+  // Surge indicator
+  if (surgeActive) {
+    ctx.fillStyle = `hsla(40, 100%, 60%, ${0.6 + Math.sin(elapsedTime * 6) * 0.3})`;
+    ctx.font = `bold 12px 'Segoe UI', system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText('⚡ SURGE ⚡', cx, cy + ringR + 55);
+  }
+}
+
+function drawStartScreen() {
+  drawBackground();
+
+  // Title
+  ctx.fillStyle = '#fff';
+  ctx.font = `bold 38px 'Segoe UI', system-ui, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillText('Echo Spin', cx, cy - 60);
+
+  // Subtitle
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.font = `16px 'Segoe UI', system-ui, sans-serif`;
+  ctx.fillText('Pulse & Echo', cx, cy - 30);
+
+  // Decorative ring
+  ctx.strokeStyle = `hsla(${hueShift * 2}, 80%, 60%, 0.4)`;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(cx, cy + 30, 50, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Animated dot on ring
+  const dotAngle = performance.now() / 1000 * 1.5;
+  const dx = cx + Math.cos(dotAngle) * 50;
+  const dy = cy + 30 + Math.sin(dotAngle) * 50;
+  ctx.fillStyle = `hsl(${180 + hueShift * 2}, 90%, 60%)`;
+  ctx.beginPath();
+  ctx.arc(dx, dy, 6, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Tap to start
+  const alpha = 0.5 + Math.sin(performance.now() / 500) * 0.3;
+  ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+  ctx.font = `18px 'Segoe UI', system-ui, sans-serif`;
+  ctx.fillText('Tap to Start', cx, cy + 130);
+
+  // Best score
+  if (best > 0) {
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.font = `14px 'Segoe UI', system-ui, sans-serif`;
+    ctx.fillText(`Best: ${best}`, cx, cy + 160);
+  }
+
+  // Instructions
+  ctx.fillStyle = 'rgba(255,255,255,0.3)';
+  ctx.font = `12px 'Segoe UI', system-ui, sans-serif`;
+  ctx.fillText('● Pulse: tap on the line', cx, H - 60);
+  ctx.fillText('○ Echo: wait for the flash, then tap', cx, H - 40);
+}
+
+function drawGameOver() {
+  // Darken overlay
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillRect(0, 0, W, H);
+
+  // Game Over
+  ctx.fillStyle = '#fff';
+  ctx.font = `bold 32px 'Segoe UI', system-ui, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillText('Game Over', cx, cy - 70);
+
+  // Score
+  ctx.fillStyle = `hsl(${180 + hueShift}, 90%, 65%)`;
+  ctx.font = `bold 48px 'Segoe UI', system-ui, sans-serif`;
+  ctx.fillText(score, cx, cy - 10);
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.font = `14px 'Segoe UI', system-ui, sans-serif`;
+  ctx.fillText('SCORE', cx, cy + 10);
+
+  // Best
+  ctx.fillStyle = '#ff0';
+  ctx.font = `bold 22px 'Segoe UI', system-ui, sans-serif`;
+  ctx.fillText(`Best: ${best}`, cx, cy + 50);
+
+  // Max combo
+  if (maxCombo > 1) {
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.font = `14px 'Segoe UI', system-ui, sans-serif`;
+    ctx.fillText(`Max Combo: ${maxCombo}x`, cx, cy + 75);
+  }
+
+  // Tap to retry
+  const alpha = 0.5 + Math.sin(performance.now() / 500) * 0.3;
+  ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+  ctx.font = `18px 'Segoe UI', system-ui, sans-serif`;
+  ctx.fillText('Tap to Retry', cx, cy + 130);
+}
+
+function drawPlaying() {
+  drawBackground();
+
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
+
+  drawRing();
+  drawHitLine();
+  drawBeats();
+  drawParticles();
+  drawFeedback();
+  drawHUD();
+
+  ctx.restore();
+}
+
+// === MAIN LOOP ===
+function loop(now) {
+  requestAnimationFrame(loop);
+
+  const dt = Math.min((now - lastTime) / 1000, 0.05);
+  lastTime = now;
+
+  hueShift = (hueShift + dt * 15) % 360;
+
+  if (state === 'playing') {
+    update(dt);
+    drawPlaying();
+  } else if (state === 'start') {
+    drawStartScreen();
+  } else if (state === 'gameover') {
+    drawPlaying(); // keep last frame
+    drawGameOver();
+  }
+}
+
+lastTime = performance.now();
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

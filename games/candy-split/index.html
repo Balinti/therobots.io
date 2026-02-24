@@ -1,0 +1,1127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Candy Split - Free HTML5 Game</title>
+  <meta name="description" content="Play Candy Split - Tap to bounce the candy ball and split it into two to hit matching sweets.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <link rel="canonical" href="https://balinti.github.io/candy-split/">
+  <link rel="preconnect" href="https://pagead2.googlesyndication.com" crossorigin>
+  <link rel="preconnect" href="https://googleads.g.doubleclick.net" crossorigin>
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Candy Split - Free HTML5 Game">
+  <meta property="og:description" content="Play Candy Split - Tap to bounce the candy ball and split it into two to hit matching sweets.">
+  <meta property="og:url" content="https://balinti.github.io/candy-split/">
+  <meta property="og:image" content="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='630'%3E%3Crect width='1200' height='630' fill='%231a0a2e'/%3E%3Ccircle cx='420' cy='315' r='90' fill='%23ff4fa3'/%3E%3Ccircle cx='420' cy='315' r='90' fill='url(%23gl)'/%3E%3Ccircle cx='780' cy='315' r='90' fill='%234fd1ff'/%3E%3Ccircle cx='780' cy='315' r='90' fill='url(%23gl2)'/%3E%3Cdefs%3E%3CradialGradient id='gl' cx='35%25' cy='30%25'%3E%3Cstop offset='0%25' stop-color='%23fff' stop-opacity='.5'/%3E%3Cstop offset='100%25' stop-color='%23ff4fa3' stop-opacity='0'/%3E%3C/radialGradient%3E%3CradialGradient id='gl2' cx='35%25' cy='30%25'%3E%3Cstop offset='0%25' stop-color='%23fff' stop-opacity='.5'/%3E%3Cstop offset='100%25' stop-color='%234fd1ff' stop-opacity='0'/%3E%3C/radialGradient%3E%3C/defs%3E%3Ctext x='600' y='200' font-family='Arial Black,sans-serif' font-size='90' font-weight='900' text-anchor='middle' fill='%23fff'%3ECandy Split%3C/text%3E%3Ctext x='600' y='560' font-family='Arial,sans-serif' font-size='38' text-anchor='middle' fill='%23ffcaf0'%3ETap to Split. Match the Color. Survive!%3C/text%3E%3C/svg%3E">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Candy Split - Free HTML5 Game">
+  <meta name="twitter:description" content="Play Candy Split - Tap to bounce the candy ball and split it into two to hit matching sweets.">
+  <meta name="twitter:image" content="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='630'%3E%3Crect width='1200' height='630' fill='%231a0a2e'/%3E%3Ccircle cx='420' cy='315' r='90' fill='%23ff4fa3'/%3E%3Ccircle cx='780' cy='315' r='90' fill='%234fd1ff'/%3E%3Ctext x='600' y='200' font-family='Arial Black,sans-serif' font-size='90' font-weight='900' text-anchor='middle' fill='%23fff'%3ECandy Split%3C/text%3E%3C/svg%3E">
+  <!-- Theme -->
+  <meta name="theme-color" content="#1a0a2e">
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #0d0520;
+      display: flex; flex-direction: column;
+      align-items: center;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      color: #fff;
+      overflow-x: hidden;
+    }
+    #game-shell {
+      width: 100%;
+      max-width: 420px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 0;
+    }
+    #canvas-wrap {
+      width: 100%;
+      max-width: 420px;
+      position: relative;
+      touch-action: manipulation;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+      border-radius: 0;
+      cursor: pointer;
+    }
+    #info-section {
+      width: 100%;
+      max-width: 420px;
+      padding: 12px 16px 24px;
+      color: #c0a0e0;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    #info-section summary {
+      cursor: pointer;
+      color: #e0b0ff;
+      font-weight: 600;
+      padding: 6px 0;
+      user-select: none;
+    }
+    #info-section details {
+      background: rgba(255,255,255,0.05);
+      border-radius: 8px;
+      padding: 8px 12px;
+      margin-top: 8px;
+    }
+    #info-section p { margin-top: 6px; }
+    #info-section ul { margin-top: 4px; padding-left: 18px; }
+  </style>
+</head>
+<body>
+<div id="game-shell">
+  <div id="canvas-wrap">
+    <canvas id="gc"></canvas>
+  </div>
+  <div id="info-section">
+    <details>
+      <summary>How to Play Candy Split</summary>
+      <p><strong>Candy Split</strong> is a fast-paced arcade game where you control a candy ball moving through color-coded gates.</p>
+      <ul>
+        <li><strong>Tap / Click / Space</strong> to split the candy into two halves (left &amp; right lanes).</li>
+        <li>Release (or wait) to merge back into one ball.</li>
+        <li><strong>Single gate</strong> (one wide opening): stay <em>merged</em> to pass.</li>
+        <li><strong>Double gate</strong> (two openings): <em>split</em> to pass through both lanes.</li>
+        <li>Match the <strong>color</strong> of the gate — wrong color or wrong state = game over!</li>
+        <li>Build combos for score multipliers. How far can you go?</li>
+      </ul>
+    </details>
+  </div>
+</div>
+
+<script>
+(function() {
+'use strict';
+
+// ── Constants ──────────────────────────────────────────────────────────────────
+const CANVAS_W = 420;
+const CANVAS_H = 750;
+const PLAYER_Y_FRAC = 0.72;
+const LANE_L_X = 0.28;  // fraction of canvas width
+const LANE_R_X = 0.72;
+const LANE_C_X = 0.50;
+const BALL_R = 18;
+const GATE_H = 22;
+const GATE_OPENING = 0.22; // fraction of canvas width per opening
+const WALL_W = 32;
+const MERGE_BEAT = 0.42; // seconds
+const HITSTOP_DUR = 0.08;
+const GAMEOVER_LOCKOUT = 0.35;
+const MAX_DPR = 2;
+
+// Color palette (6 hues)
+const HUES = [340, 30, 60, 160, 200, 270]; // pink, orange, yellow, green, cyan, purple
+const PALETTE = HUES.map(h => `hsl(${h},90%,62%)`);
+
+// localStorage keys
+const LS_BEST = 'candySplitBest';
+const LS_BEST_COMBO = 'candySplitBestCombo';
+
+// ── Canvas setup ───────────────────────────────────────────────────────────────
+const canvas = document.getElementById('gc');
+const ctx = canvas.getContext('2d');
+
+let dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
+let cssW = CANVAS_W, cssH = CANVAS_H;
+
+function resizeCanvas() {
+  const wrap = document.getElementById('canvas-wrap');
+  const ww = wrap.clientWidth || CANVAS_W;
+  cssW = Math.min(ww, CANVAS_W);
+  cssH = Math.round(cssW * (CANVAS_H / CANVAS_W));
+  canvas.style.width = cssW + 'px';
+  canvas.style.height = cssH + 'px';
+  canvas.width = Math.round(cssW * dpr);
+  canvas.height = Math.round(cssH * dpr);
+  ctx.setTransform(dpr * (cssW / CANVAS_W), 0, 0, dpr * (cssH / CANVAS_H), 0, 0);
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+// ── State ──────────────────────────────────────────────────────────────────────
+let state = 'start'; // 'start' | 'playing' | 'gameover'
+let score = 0;
+let bestScore = parseInt(localStorage.getItem(LS_BEST) || '0');
+let combo = 0;
+let bestCombo = parseInt(localStorage.getItem(LS_BEST_COMBO) || '0');
+let sessionBestCombo = 0;
+let multiplier = 1;
+let gatesCleared = 0;
+let splitHeld = false;       // is player currently split?
+let splitTimer = 0;          // auto-merge timer
+let playerHue = HUES[0];     // current player hue index
+let playerHueIdx = 0;
+let shakeTimer = 0;
+let shakeAmt = 0;
+let hitstopTimer = 0;
+let gameoverTimer = 0;       // lockout timer
+let bgHueDrift = 0;          // current bg hue
+let bgHueTarget = 0;         // target bg hue (toward upcoming gate)
+
+// Candy visuals
+let candleSquash = 1;        // squash/stretch Y scale
+let candleSquashTimer = 0;
+
+// Gates array: { y, type:'single'|'double', hueIdx, passed, speed }
+let gates = [];
+let gateSpawnTimer = 0;
+let gateSpawnInterval = 2.2;  // seconds
+let gateBaseSpeed = 120;      // px/s in game coords
+
+// Particles: { x,y, vx,vy, life,maxLife, color, r, additive }
+let particles = [];
+
+// Trail: { x,y,alpha }
+let trailL = [], trailR = [], trailC = [];
+
+// Death reason
+let deathReason = '';
+
+// Challenge banner
+let challengeScore = 0;
+(function(){
+  try {
+    const q = new URLSearchParams(location.search);
+    const ch = parseInt(q.get('challenge') || '0');
+    if(ch > 0) challengeScore = ch;
+  } catch(e){}
+})();
+
+// ── RNG (seeded, deterministic gate schedule) ──────────────────────────────────
+// We use a simple LCG but mostly rely on modulo patterns for fairness
+function gateSchedule(n) {
+  // Returns { type:'single'|'double', hueIdx }
+  // n = gatesCleared count (before this gate)
+  let type, hueIdx;
+
+  if (n < 10) {
+    type = 'single';
+  } else if (n < 25) {
+    // Introduce doubles: every 3rd after 10th
+    if (n % 3 === 0) type = 'double';
+    else type = 'single';
+    // But never two doubles in a row — handled by clamping
+  } else if (n < 50) {
+    // Alternate more
+    if (n % 2 === 0) type = 'double';
+    else type = 'single';
+  } else if (n < 100) {
+    // Fakeouts: two singles then double
+    const pat = n % 3;
+    if (pat === 2) type = 'double';
+    else type = 'single';
+  } else {
+    // Dense: alternating with occasional triple singles
+    const pat = n % 4;
+    if (pat === 0 || pat === 2) type = 'double';
+    else type = 'single';
+  }
+
+  // Choose hue: cycle through palette with small variety
+  // Use a deterministic pseudo-random based on n
+  const seed = ((n * 2654435761) >>> 0) % HUES.length;
+  hueIdx = seed;
+
+  return { type, hueIdx };
+}
+
+function getDifficulty() {
+  const n = gatesCleared;
+  let speed = gateBaseSpeed + Math.min(n * 3, 180);
+  let interval = Math.max(1.1, gateSpawnInterval - n * 0.018);
+  return { speed, interval };
+}
+
+// ── Gate spawning ──────────────────────────────────────────────────────────────
+function spawnGate() {
+  const sched = gateSchedule(gatesCleared + gates.length);
+  const { speed } = getDifficulty();
+  const g = {
+    y: -GATE_H - 10,
+    type: sched.type,
+    hueIdx: sched.hueIdx,
+    passed: false,
+    speed,
+    enterAnim: 0,  // 0..1 scale-in
+    glowPulse: 0
+  };
+  gates.push(g);
+  bgHueTarget = HUES[sched.hueIdx];
+}
+
+// ── Particles ──────────────────────────────────────────────────────────────────
+function spawnBurst(x, y, hue, count, additive) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 60 + Math.random() * 200;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 0.5 + Math.random() * 0.4,
+      maxLife: 0.9,
+      color: `hsl(${hue},90%,${60 + Math.random()*20}%)`,
+      r: 3 + Math.random() * 5,
+      additive: additive || false
+    });
+  }
+}
+
+function spawnRing(x, y, hue) {
+  for (let i = 0; i < 20; i++) {
+    const angle = (i / 20) * Math.PI * 2;
+    const speed = 180 + Math.random() * 60;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 0.7,
+      maxLife: 0.7,
+      color: `hsl(${hue},100%,75%)`,
+      r: 4 + Math.random() * 4,
+      additive: true
+    });
+  }
+}
+
+function spawnDeathBurst(x, y) {
+  for (let i = 0; i < 60; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 30 + Math.random() * 300;
+    const h = playerHue + (Math.random() - 0.5) * 40;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 0.8 + Math.random() * 0.6,
+      maxLife: 1.4,
+      color: `hsl(${h},90%,65%)`,
+      r: 4 + Math.random() * 8,
+      additive: true
+    });
+  }
+}
+
+// ── Input ──────────────────────────────────────────────────────────────────────
+function handleInput() {
+  if (state === 'start') {
+    startGame();
+    return;
+  }
+  if (state === 'gameover') {
+    if (gameoverTimer > GAMEOVER_LOCKOUT) retryGame();
+    return;
+  }
+  if (state === 'playing') {
+    if (!splitHeld) {
+      splitHeld = true;
+      splitTimer = 0;
+      // Squash/stretch trigger
+      candleSquash = 0.7;
+      candleSquashTimer = 0.15;
+    }
+  }
+}
+
+function handleRelease() {
+  if (state === 'playing' && splitHeld) {
+    splitHeld = false;
+    splitTimer = 0;
+    candleSquash = 1.3;
+    candleSquashTimer = 0.15;
+  }
+}
+
+document.getElementById('canvas-wrap').addEventListener('pointerdown', e => {
+  e.preventDefault();
+  handleInput();
+});
+document.getElementById('canvas-wrap').addEventListener('pointerup', e => {
+  e.preventDefault();
+  handleRelease();
+});
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    handleInput();
+  }
+});
+document.addEventListener('keyup', e => {
+  if (e.code === 'Space') {
+    e.preventDefault();
+    handleRelease();
+  }
+});
+
+// ── Game lifecycle ─────────────────────────────────────────────────────────────
+function startGame() {
+  state = 'playing';
+  score = 0;
+  combo = 0;
+  sessionBestCombo = 0;
+  multiplier = 1;
+  gatesCleared = 0;
+  splitHeld = false;
+  splitTimer = 0;
+  playerHueIdx = 0;
+  playerHue = HUES[0];
+  gates = [];
+  particles = [];
+  trailL = []; trailR = []; trailC = [];
+  gateSpawnTimer = 0;
+  shakeTimer = 0;
+  hitstopTimer = 0;
+  gameoverTimer = 0;
+  candleSquash = 1;
+  bgHueDrift = playerHue;
+  bgHueTarget = playerHue;
+  // Spawn first gate slightly sooner
+  spawnGate();
+}
+
+function retryGame() {
+  startGame();
+}
+
+function triggerGameOver(reason) {
+  if (state !== 'playing') return;
+  state = 'gameover';
+  deathReason = reason;
+  gameoverTimer = 0;
+  shakeTimer = 0.5;
+  shakeAmt = 14;
+  // Save best
+  if (score > bestScore) {
+    bestScore = score;
+    localStorage.setItem(LS_BEST, bestScore);
+  }
+  if (sessionBestCombo > bestCombo) {
+    bestCombo = sessionBestCombo;
+    localStorage.setItem(LS_BEST_COMBO, bestCombo);
+  }
+  // Death burst
+  const px = CANVAS_W * LANE_C_X;
+  const py = CANVAS_H * PLAYER_Y_FRAC;
+  spawnDeathBurst(px, py);
+}
+
+// ── Update ─────────────────────────────────────────────────────────────────────
+function update(dt) {
+  // Timers
+  if (hitstopTimer > 0) {
+    hitstopTimer -= dt;
+    if (hitstopTimer < 0) hitstopTimer = 0;
+    // During hitstop, skip most updates
+    updateParticles(dt);
+    return;
+  }
+
+  if (state === 'gameover') {
+    gameoverTimer += dt;
+    updateParticles(dt);
+    return;
+  }
+  if (state !== 'playing') return;
+
+  // Shake
+  if (shakeTimer > 0) shakeTimer = Math.max(0, shakeTimer - dt);
+
+  // Squash/stretch
+  if (candleSquashTimer > 0) {
+    candleSquashTimer -= dt;
+    if (candleSquashTimer <= 0) {
+      candleSquash = 1;
+      candleSquashTimer = 0;
+    }
+  } else {
+    // Spring back to 1
+    candleSquash += (1 - candleSquash) * 0.3;
+  }
+
+  // Auto-merge
+  if (splitHeld) {
+    splitTimer += dt;
+    if (splitTimer >= MERGE_BEAT) {
+      splitHeld = false;
+      splitTimer = 0;
+      candleSquash = 1.3;
+      candleSquashTimer = 0.12;
+    }
+  }
+
+  // Bg hue drift
+  bgHueDrift += (bgHueTarget - bgHueDrift) * dt * 1.5;
+
+  // Gate spawn
+  const { speed, interval } = getDifficulty();
+  gateSpawnTimer += dt;
+  if (gateSpawnTimer >= interval) {
+    gateSpawnTimer = 0;
+    spawnGate();
+  }
+
+  // Gate update
+  const playerY = CANVAS_H * PLAYER_Y_FRAC;
+  for (let i = gates.length - 1; i >= 0; i--) {
+    const g = gates[i];
+    g.y += g.speed * dt;
+    g.enterAnim = Math.min(1, g.enterAnim + dt * 6);
+    g.glowPulse = (g.glowPulse + dt * 3) % (Math.PI * 2);
+
+    // Check collision
+    if (!g.passed) {
+      const gateMid = g.y + GATE_H / 2;
+      const inZone = Math.abs(gateMid - playerY) < BALL_R + GATE_H / 2 + 2;
+
+      if (inZone) {
+        const gateHue = HUES[g.hueIdx];
+        // Color check
+        if (playerHue !== gateHue) {
+          triggerGameOver('Wrong color! Match the gate color.');
+          return;
+        }
+        // State check
+        if (g.type === 'single' && splitHeld) {
+          triggerGameOver('Stay merged for single gates!');
+          return;
+        }
+        if (g.type === 'double' && !splitHeld) {
+          triggerGameOver('Split for double gates!');
+          return;
+        }
+        // Passed!
+        g.passed = true;
+        gatesCleared++;
+        combo++;
+        if (combo > sessionBestCombo) sessionBestCombo = combo;
+        multiplier = Math.min(5, 1 + Math.floor(combo / 5));
+        score += multiplier;
+        playerHue = gateHue; // reinforce color
+        playerHueIdx = g.hueIdx;
+
+        // Hit-stop
+        hitstopTimer = HITSTOP_DUR;
+
+        // Shake (small)
+        shakeTimer = 0.08;
+        shakeAmt = 3;
+
+        // Particles
+        const cx = CANVAS_W * LANE_C_X;
+        if (combo % 5 === 0 && combo > 0) {
+          spawnRing(cx, playerY, gateHue);
+        } else {
+          spawnBurst(cx, playerY, gateHue, 18, true);
+        }
+
+        // Squash on clear
+        candleSquash = 1.4;
+        candleSquashTimer = 0.18;
+      }
+    }
+
+    // Remove offscreen
+    if (g.y > CANVAS_H + 50) {
+      gates.splice(i, 1);
+    }
+  }
+
+  // Trail update
+  function pushTrail(arr, x, y) {
+    arr.unshift({ x, y, alpha: 1 });
+    if (arr.length > 12) arr.pop();
+  }
+  for (let t of trailL) t.alpha *= 0.82;
+  for (let t of trailR) t.alpha *= 0.82;
+  for (let t of trailC) t.alpha *= 0.82;
+
+  const px = CANVAS_W * LANE_C_X;
+  const py = playerY;
+  if (splitHeld) {
+    pushTrail(trailL, CANVAS_W * LANE_L_X, py);
+    pushTrail(trailR, CANVAS_W * LANE_R_X, py);
+  } else {
+    pushTrail(trailC, px, py);
+  }
+
+  updateParticles(dt);
+}
+
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy += 200 * dt; // gravity
+    p.vx *= 0.97;
+    p.life -= dt;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+// ── Draw ───────────────────────────────────────────────────────────────────────
+function drawBackground() {
+  // Gradient background with hue drift
+  const hue = bgHueDrift;
+  const grd = ctx.createLinearGradient(0, 0, 0, CANVAS_H);
+  grd.addColorStop(0, `hsl(${hue - 30},40%,8%)`);
+  grd.addColorStop(0.5, `hsl(${hue},30%,12%)`);
+  grd.addColorStop(1, `hsl(${hue + 20},40%,7%)`);
+  ctx.fillStyle = grd;
+  ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+}
+
+function drawTunnel() {
+  // Left wall
+  const wg1 = ctx.createLinearGradient(0, 0, WALL_W, 0);
+  wg1.addColorStop(0, 'rgba(0,0,0,0.8)');
+  wg1.addColorStop(1, 'rgba(80,40,120,0.25)');
+  ctx.fillStyle = wg1;
+  ctx.fillRect(0, 0, WALL_W, CANVAS_H);
+
+  // Right wall
+  const wg2 = ctx.createLinearGradient(CANVAS_W - WALL_W, 0, CANVAS_W, 0);
+  wg2.addColorStop(0, 'rgba(80,40,120,0.25)');
+  wg2.addColorStop(1, 'rgba(0,0,0,0.8)');
+  ctx.fillStyle = wg2;
+  ctx.fillRect(CANVAS_W - WALL_W, 0, WALL_W, CANVAS_H);
+
+  // Subtle lane lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([8, 16]);
+  ctx.beginPath();
+  ctx.moveTo(CANVAS_W / 2, 0);
+  ctx.lineTo(CANVAS_W / 2, CANVAS_H);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function drawGate(g) {
+  const hue = HUES[g.hueIdx];
+  const color = `hsl(${hue},90%,62%)`;
+  const colorGlow = `hsla(${hue},90%,62%,0.4)`;
+  const pulse = 0.7 + 0.3 * Math.sin(g.glowPulse);
+
+  ctx.save();
+  // Scale-in animation
+  const scl = g.enterAnim;
+  const cy = g.y + GATE_H / 2;
+  ctx.translate(CANVAS_W / 2, cy);
+  ctx.scale(scl, 1);
+  ctx.translate(-CANVAS_W / 2, -cy);
+
+  const gw = CANVAS_W - WALL_W * 2;
+  const gx = WALL_W;
+  const gy = g.y;
+
+  if (g.type === 'single') {
+    // One wide opening in center
+    const openW = gw * GATE_OPENING * 2.5;
+    const openX = gx + (gw - openW) / 2;
+
+    // Left bar
+    const lBarW = openX - gx;
+    if (lBarW > 0) drawGateBar(gx, gy, lBarW, GATE_H, color, colorGlow, pulse);
+    // Right bar
+    const rBarX = openX + openW;
+    const rBarW = gx + gw - rBarX;
+    if (rBarW > 0) drawGateBar(rBarX, gy, rBarW, GATE_H, color, colorGlow, pulse);
+
+    // Label
+    ctx.fillStyle = `hsla(${hue},100%,85%,0.9)`;
+    ctx.font = 'bold 11px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('MERGE', CANVAS_W / 2, gy - 6);
+  } else {
+    // Two openings: left lane and right lane
+    const halfGW = gw / 2;
+    const openW = gw * GATE_OPENING;
+
+    // Left opening
+    const lOpenX = gx + halfGW / 2 - openW / 2;
+    const lBarW1 = lOpenX - gx;
+    const lBarX2 = lOpenX + openW;
+    const lBarW2 = gx + halfGW - lBarX2;
+    if (lBarW1 > 0) drawGateBar(gx, gy, lBarW1, GATE_H, color, colorGlow, pulse);
+    if (lBarW2 > 0) drawGateBar(lBarX2, gy, lBarW2, GATE_H, color, colorGlow, pulse);
+
+    // Right opening
+    const rOpenX = gx + halfGW + halfGW / 2 - openW / 2;
+    const rBarX1 = gx + halfGW;
+    const rBarW1 = rOpenX - rBarX1;
+    const rBarX2 = rOpenX + openW;
+    const rBarW2 = gx + gw - rBarX2;
+    if (rBarW1 > 0) drawGateBar(rBarX1, gy, rBarW1, GATE_H, color, colorGlow, pulse);
+    if (rBarW2 > 0) drawGateBar(rBarX2, gy, rBarW2, GATE_H, color, colorGlow, pulse);
+
+    // Label
+    ctx.fillStyle = `hsla(${hue},100%,85%,0.9)`;
+    ctx.font = 'bold 11px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('SPLIT', CANVAS_W / 2, gy - 6);
+  }
+
+  ctx.restore();
+}
+
+function drawGateBar(x, y, w, h, color, glow, pulse) {
+  const r = 5;
+  // Glow
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 18 * pulse;
+  // Fill
+  ctx.fillStyle = color;
+  roundRect(ctx, x, y, w, h, r);
+  ctx.fill();
+  // Highlight
+  ctx.shadowBlur = 0;
+  const hg = ctx.createLinearGradient(x, y, x, y + h);
+  hg.addColorStop(0, 'rgba(255,255,255,0.45)');
+  hg.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = hg;
+  roundRect(ctx, x, y, w, h / 2, r);
+  ctx.fill();
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+function drawCandy(x, y, hue, r, squashX, squashY, alpha) {
+  ctx.save();
+  ctx.globalAlpha = alpha !== undefined ? alpha : 1;
+  ctx.translate(x, y);
+  ctx.scale(squashX || 1, squashY || 1);
+
+  const color = `hsl(${hue},90%,62%)`;
+  const colorDark = `hsl(${hue},85%,40%)`;
+
+  // Shadow / glow
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 20;
+
+  // Body
+  const grad = ctx.createRadialGradient(-r * 0.2, -r * 0.2, r * 0.05, 0, 0, r);
+  grad.addColorStop(0, `hsl(${hue},90%,80%)`);
+  grad.addColorStop(0.5, color);
+  grad.addColorStop(1, colorDark);
+  ctx.beginPath();
+  ctx.arc(0, 0, r, 0, Math.PI * 2);
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  ctx.shadowBlur = 0;
+
+  // Glossy highlight
+  const hl = ctx.createRadialGradient(-r * 0.3, -r * 0.35, 0, -r * 0.15, -r * 0.2, r * 0.55);
+  hl.addColorStop(0, 'rgba(255,255,255,0.75)');
+  hl.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.beginPath();
+  ctx.arc(0, 0, r, 0, Math.PI * 2);
+  ctx.fillStyle = hl;
+  ctx.fill();
+
+  // Small specular dot
+  ctx.beginPath();
+  ctx.arc(-r * 0.28, -r * 0.3, r * 0.15, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawTrail(trail, hue) {
+  for (let i = 0; i < trail.length; i++) {
+    const t = trail[i];
+    if (t.alpha < 0.05) continue;
+    ctx.save();
+    ctx.globalAlpha = t.alpha * 0.35;
+    ctx.beginPath();
+    ctx.arc(t.x, t.y, BALL_R * (1 - i / trail.length * 0.5), 0, Math.PI * 2);
+    ctx.fillStyle = `hsl(${hue},90%,62%)`;
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    const a = p.life / p.maxLife;
+    ctx.save();
+    ctx.globalAlpha = a;
+    if (p.additive) ctx.globalCompositeOperation = 'lighter';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r * (0.5 + 0.5 * a), 0, Math.PI * 2);
+    ctx.fillStyle = p.color;
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawHUD() {
+  // Score
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  roundRect(ctx, 8, 8, 110, 52, 10);
+  ctx.fill();
+
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.font = '11px Arial';
+  ctx.textAlign = 'left';
+  ctx.fillText('SCORE', 18, 26);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 24px Arial';
+  ctx.fillText(score, 18, 52);
+
+  // Best
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  roundRect(ctx, 8, 68, 110, 36, 10);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255,220,100,0.8)';
+  ctx.font = '11px Arial';
+  ctx.fillText('BEST: ' + bestScore, 18, 92);
+  ctx.restore();
+
+  // Combo
+  if (combo > 1) {
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    roundRect(ctx, CANVAS_W - 118, 8, 110, 52, 10);
+    ctx.fill();
+
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.font = '11px Arial';
+    ctx.textAlign = 'right';
+    ctx.fillText('COMBO', CANVAS_W - 18, 26);
+
+    const comboHue = (combo * 30) % 360;
+    ctx.fillStyle = `hsl(${comboHue},90%,70%)`;
+    ctx.font = 'bold 22px Arial';
+    ctx.fillText('x' + combo, CANVAS_W - 18, 50);
+
+    if (multiplier > 1) {
+      ctx.fillStyle = 'rgba(255,220,60,0.9)';
+      ctx.font = 'bold 13px Arial';
+      ctx.fillText('×' + multiplier + ' mult', CANVAS_W - 18, 68);
+    }
+    ctx.restore();
+  }
+}
+
+function drawColorHint() {
+  // Show current player color as a small indicator
+  const hue = playerHue;
+  ctx.save();
+  ctx.fillStyle = `hsl(${hue},90%,62%)`;
+  ctx.shadowColor = `hsl(${hue},90%,62%)`;
+  ctx.shadowBlur = 10;
+  ctx.beginPath();
+  ctx.arc(CANVAS_W / 2, 28, 10, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  ctx.font = '9px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText('YOU', CANVAS_W / 2, 50);
+  ctx.restore();
+}
+
+function drawSplitIndicator() {
+  if (splitHeld) {
+    // Show split visual indicator at bottom
+    const py = CANVAS_H * PLAYER_Y_FRAC;
+    ctx.save();
+    ctx.strokeStyle = `hsla(${playerHue},80%,70%,0.4)`;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 8]);
+    // Line from left ball to right ball
+    ctx.beginPath();
+    ctx.moveTo(CANVAS_W * LANE_L_X, py);
+    ctx.lineTo(CANVAS_W * LANE_R_X, py);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+}
+
+function drawStartScreen() {
+  // Semi-transparent overlay
+  ctx.fillStyle = 'rgba(10,2,30,0.85)';
+  ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+
+  // Title
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.shadowColor = 'rgba(255,100,200,0.8)';
+  ctx.shadowBlur = 30;
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 52px Arial Black, Arial';
+  ctx.fillText('🍬', CANVAS_W / 2, CANVAS_H * 0.25);
+  ctx.shadowBlur = 0;
+
+  ctx.font = 'bold 42px Arial Black, Arial';
+  const tg = ctx.createLinearGradient(CANVAS_W * 0.1, 0, CANVAS_W * 0.9, 0);
+  tg.addColorStop(0, '#ff6ecf');
+  tg.addColorStop(0.5, '#ffe566');
+  tg.addColorStop(1, '#66e5ff');
+  ctx.fillStyle = tg;
+  ctx.fillText('CANDY SPLIT', CANVAS_W / 2, CANVAS_H * 0.38);
+
+  ctx.fillStyle = 'rgba(220,180,255,0.8)';
+  ctx.font = '16px Arial';
+  ctx.fillText('Match color · Merge or Split · Survive!', CANVAS_W / 2, CANVAS_H * 0.45);
+
+  // Challenge banner
+  if (challengeScore > 0) {
+    ctx.fillStyle = 'rgba(255,220,60,0.15)';
+    roundRect(ctx, CANVAS_W * 0.1, CANVAS_H * 0.49, CANVAS_W * 0.8, 36, 10);
+    ctx.fill();
+    ctx.fillStyle = '#ffe566';
+    ctx.font = 'bold 15px Arial';
+    ctx.fillText(`🏆 Beat ${challengeScore} gates to win!`, CANVAS_W / 2, CANVAS_H * 0.515);
+  }
+
+  // Instructions box
+  ctx.fillStyle = 'rgba(255,255,255,0.07)';
+  roundRect(ctx, CANVAS_W * 0.08, CANVAS_H * 0.54, CANVAS_W * 0.84, 120, 14);
+  ctx.fill();
+
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  ctx.font = '14px Arial';
+  const instY = CANVAS_H * 0.56;
+  ctx.fillText('HOLD → SPLIT into 2 halves', CANVAS_W / 2, instY + 16);
+  ctx.fillText('RELEASE → MERGE back to 1', CANVAS_W / 2, instY + 36);
+  ctx.fillText('🟠 Match the gate COLOR', CANVAS_W / 2, instY + 60);
+  ctx.fillText('Single gate = MERGED   Double = SPLIT', CANVAS_W / 2, instY + 80);
+  ctx.fillText('Build combos for score × multipliers!', CANVAS_W / 2, instY + 100);
+
+  // Tap to start
+  const pulse = 0.7 + 0.3 * Math.sin(Date.now() / 350);
+  ctx.globalAlpha = pulse;
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 22px Arial';
+  ctx.fillText('TAP TO START', CANVAS_W / 2, CANVAS_H * 0.84);
+  ctx.globalAlpha = 1;
+
+  if (bestScore > 0) {
+    ctx.fillStyle = 'rgba(255,220,100,0.7)';
+    ctx.font = '14px Arial';
+    ctx.fillText(`Best: ${bestScore}  |  Best Combo: ×${bestCombo}`, CANVAS_W / 2, CANVAS_H * 0.9);
+  }
+
+  ctx.restore();
+}
+
+function drawGameOverScreen() {
+  ctx.fillStyle = 'rgba(10,2,30,0.88)';
+  ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+
+  ctx.save();
+  ctx.textAlign = 'center';
+
+  // Title
+  ctx.fillStyle = '#ff6ecf';
+  ctx.font = 'bold 40px Arial Black, Arial';
+  ctx.shadowColor = '#ff6ecf';
+  ctx.shadowBlur = 20;
+  ctx.fillText('GAME OVER', CANVAS_W / 2, CANVAS_H * 0.22);
+  ctx.shadowBlur = 0;
+
+  // Reason
+  ctx.fillStyle = 'rgba(255,200,200,0.8)';
+  ctx.font = '14px Arial';
+  ctx.fillText(deathReason, CANVAS_W / 2, CANVAS_H * 0.29);
+
+  // Score card
+  ctx.fillStyle = 'rgba(255,255,255,0.07)';
+  roundRect(ctx, CANVAS_W * 0.1, CANVAS_H * 0.32, CANVAS_W * 0.8, 160, 16);
+  ctx.fill();
+
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.font = '13px Arial';
+  ctx.fillText('SCORE', CANVAS_W / 2, CANVAS_H * 0.36);
+
+  const scoreHue = Math.min(score * 2, 120); // green when high
+  ctx.fillStyle = `hsl(${scoreHue},90%,70%)`;
+  ctx.font = 'bold 56px Arial Black, Arial';
+  ctx.shadowColor = `hsl(${scoreHue},90%,60%)`;
+  ctx.shadowBlur = 15;
+  ctx.fillText(score, CANVAS_W / 2, CANVAS_H * 0.46);
+  ctx.shadowBlur = 0;
+
+  ctx.fillStyle = 'rgba(255,220,100,0.9)';
+  ctx.font = '15px Arial';
+  ctx.fillText(`Best: ${bestScore}`, CANVAS_W / 2 - 60, CANVAS_H * 0.52);
+
+  ctx.fillStyle = 'rgba(150,220,255,0.9)';
+  ctx.fillText(`Best Combo: ×${bestCombo}`, CANVAS_W / 2 + 60, CANVAS_H * 0.52);
+
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  ctx.font = '13px Arial';
+  ctx.fillText(`Gates cleared: ${gatesCleared}   Combo: ×${sessionBestCombo}`, CANVAS_W / 2, CANVAS_H * 0.57);
+
+  // Share button
+  ctx.fillStyle = '#6ecfff';
+  ctx.font = 'bold 15px Arial';
+  ctx.fillText('📤 Share Score', CANVAS_W / 2, CANVAS_H * 0.64);
+
+  // Retry
+  const lockout = gameoverTimer >= GAMEOVER_LOCKOUT;
+  const retryAlpha = lockout ? (0.7 + 0.3 * Math.sin(Date.now() / 380)) : 0.3;
+  ctx.globalAlpha = retryAlpha;
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 22px Arial';
+  ctx.fillText(lockout ? 'TAP TO RETRY' : '...', CANVAS_W / 2, CANVAS_H * 0.76);
+  ctx.globalAlpha = 1;
+
+  ctx.restore();
+}
+
+// Share button hit detection
+let shareBtn = null; // set during gameover draw
+
+canvas.addEventListener('pointerdown', e => {
+  if (state !== 'gameover') return;
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = CANVAS_W / rect.width;
+  const scaleY = CANVAS_H / rect.height;
+  const cx = (e.clientX - rect.left) * scaleX;
+  const cy = (e.clientY - rect.top) * scaleY;
+  const sy = CANVAS_H * 0.64;
+  if (Math.abs(cy - sy) < 20 && Math.abs(cx - CANVAS_W / 2) < 100) {
+    doShare();
+    e.stopPropagation();
+    return;
+  }
+  if (gameoverTimer > GAMEOVER_LOCKOUT) {
+    retryGame();
+  }
+});
+// prevent double-fire with canvas-wrap listener
+document.getElementById('canvas-wrap').addEventListener('pointerdown', e => {
+  if (state !== 'gameover') return;
+  // handled above on canvas
+}, { capture: true });
+
+function doShare() {
+  const text = `I cleared ${score} gates in Candy Split! Can you beat me? 🍬`;
+  const url = `https://balinti.github.io/candy-split/?challenge=${score}`;
+  if (navigator.share) {
+    navigator.share({ title: 'Candy Split', text, url }).catch(() => {});
+  } else {
+    navigator.clipboard.writeText(`${text}\n${url}`).then(() => {
+      // Flash feedback
+      deathReason = 'Link copied to clipboard!';
+    }).catch(() => {
+      prompt('Copy this link:', url);
+    });
+  }
+}
+
+// ── Main loop ──────────────────────────────────────────────────────────────────
+let lastTime = 0;
+
+function loop(ts) {
+  requestAnimationFrame(loop);
+
+  const dt = Math.min((ts - lastTime) / 1000, 0.033);
+  lastTime = ts;
+
+  update(dt);
+
+  // Shake transform
+  let sx = 0, sy = 0;
+  if (shakeTimer > 0) {
+    const str = shakeAmt * (shakeTimer / 0.5);
+    sx = (Math.random() - 0.5) * str;
+    sy = (Math.random() - 0.5) * str;
+  }
+
+  ctx.save();
+  ctx.translate(sx, sy);
+
+  drawBackground();
+  drawTunnel();
+
+  if (state === 'playing' || state === 'gameover') {
+    // Draw gates
+    for (const g of gates) {
+      if (!g.passed || g.y < CANVAS_H) drawGate(g);
+    }
+
+    // Draw trails
+    const hue = playerHue;
+    drawTrail(trailC, hue);
+    drawTrail(trailL, hue);
+    drawTrail(trailR, hue);
+
+    // Draw candy
+    if (state === 'playing') {
+      const py = CANVAS_H * PLAYER_Y_FRAC;
+      const sq = candleSquash;
+      const sqx = 1 + (1 - sq) * 0.5;
+      if (splitHeld) {
+        drawCandy(CANVAS_W * LANE_L_X, py, hue, BALL_R, sqx, sq);
+        drawCandy(CANVAS_W * LANE_R_X, py, hue, BALL_R, sqx, sq);
+      } else {
+        drawCandy(CANVAS_W * LANE_C_X, py, hue, BALL_R * (0.8 + 0.2 * sq), sqx, sq);
+      }
+      drawSplitIndicator();
+    }
+
+    // Particles
+    drawParticles();
+
+    if (state === 'playing') {
+      drawColorHint();
+      drawHUD();
+    }
+  }
+
+  // State screens
+  if (state === 'start') {
+    drawStartScreen();
+  } else if (state === 'gameover') {
+    drawParticles();
+    drawGameOverScreen();
+  }
+
+  ctx.restore();
+}
+
+requestAnimationFrame(ts => {
+  lastTime = ts;
+  requestAnimationFrame(loop);
+});
+
+})();
+</script>
+</body>
+</html>

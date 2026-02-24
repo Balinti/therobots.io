@@ -1,0 +1,1106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Narrow Trace - Free HTML5 Game</title>
+  <meta name="description" content="Play Narrow Trace - Tap to switch the direction of a shrinking cube moving on a zigzag line.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a0a1a">
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Narrow Trace - Free HTML5 Game">
+  <meta property="og:description" content="Tap to switch lanes. Risk lane = multiplier. How long can you trace the narrow path?">
+  <meta property="og:url" content="https://balinti.github.io/narrow-trace/">
+  <meta property="og:image" content="https://balinti.github.io/narrow-trace/og-image.jpg">
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Narrow Trace - Free HTML5 Game">
+  <meta name="twitter:description" content="Tap to switch lanes. Risk lane = multiplier. How long can you trace the narrow path?">
+  <meta name="twitter:image" content="https://balinti.github.io/narrow-trace/og-image.jpg">
+  <link rel="canonical" href="https://balinti.github.io/narrow-trace/">
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #050510;
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      user-select: none; -webkit-user-select: none;
+      touch-action: manipulation;
+    }
+    #wrap {
+      position: relative;
+      width: min(420px, 100vw);
+      height: min(750px, 100vh);
+      border-radius: 18px;
+      overflow: hidden;
+      box-shadow: 0 0 60px rgba(100,60,255,0.25), 0 0 120px rgba(0,200,255,0.1);
+    }
+    canvas {
+      display: block;
+      width: 100%; height: 100%;
+      touch-action: manipulation;
+    }
+    #how-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(5,5,20,0.92);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      padding: 32px;
+      color: #dde;
+      z-index: 10;
+    }
+    #how-overlay h2 { color: #7ef; font-size: 22px; margin-bottom: 4px; }
+    #how-overlay p { font-size: 14px; line-height: 1.7; text-align: center; opacity: 0.85; }
+    #how-overlay button {
+      margin-top: 12px;
+      padding: 10px 28px;
+      border: none; border-radius: 20px;
+      background: linear-gradient(135deg,#3af,#a3f);
+      color: #fff; font-size: 15px; font-weight: 700;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <div id="how-overlay">
+    <h2>How to Play</h2>
+    <p><strong>Tap / Space / Enter</strong> to switch between lanes.</p>
+    <p><strong>Safe Lane</strong> (blue, wide) — steady scoring, slower speed.</p>
+    <p><strong>Risk Lane</strong> (magenta, narrow) — faster score, combo multiplier up to ×6, but tight!</p>
+    <p><strong>Gates</strong> block one lane — they flash before arriving. Switch away in time!</p>
+    <p><strong>Ink Orbs</strong> give bonus points. Collect 4 for a <em>Widen Burst</em> shield!</p>
+    <p><strong>Near-miss</strong> the risk lane edge for bonus points.</p>
+    <button id="how-close">Got it!</button>
+  </div>
+</div>
+<script>
+(function(){
+'use strict';
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+const HS_KEY = 'narrowtrace_highscore_v1';
+const CANVAS_W = 420, CANVAS_H = 750;
+const SAFE_HALF = 56;
+const RISK_HALF_BASE = 22;
+const RISK_HALF_MIN = 14;
+const SAFE_X_CENTER = CANVAS_W * 0.5;  // track center
+const PLAYER_Y_FRAC = 0.72;
+const LANE_SWITCH_DUR = 0.13;
+const ORB_SHIELD_COUNT = 4;
+const SHIELD_GRACE = 0.45;
+const SHIELD_WIDEN = 26;
+const NEAR_MISS_THRESH = 6;
+const NEAR_MISS_SCORE = 18;
+const MAX_COMBO = 6;
+const COMBO_DECAY_WAIT = 2.2; // seconds on risk to start gaining combo
+
+// ─── State ───────────────────────────────────────────────────────────────────
+let STATE = 'START'; // START | PLAYING | GAMEOVER
+let t = 0, dt = 0, lastTime = 0;
+let score = 0, bestScore = parseInt(localStorage.getItem(HS_KEY)||'0');
+let combo = 1, comboPeak = 1, comboRiskTime = 0;
+let speed = 220;
+let riskHalf = RISK_HALF_BASE;
+let onRisk = false;
+let playerX = SAFE_X_CENTER;
+let playerTargetX = SAFE_X_CENTER;
+let playerSwitchT = 0;
+let shieldCount = 0; // 0 = none, 1 = active
+let orbBuffer = 0;   // orbs toward next shield
+let shieldActive = false;
+let shieldGraceT = 0;
+let shakeX = 0, shakeY = 0, shakeMag = 0, shakeDecay = 0;
+let deathParticlesDone = false;
+let bgHue = 220;
+let challengeScore = 0; // from URL param
+
+// ─── Segments ────────────────────────────────────────────────────────────────
+// Each segment: { y, h, split: bool }
+// y = top of segment in world coords (increases as player moves forward)
+// We keep screen coords: segments move downward
+let segments = [];
+let segWorldY = 0; // tracks spawn point
+let lastSplit = false;
+let splitTimer = 0, mergeTimer = 0;
+let inSplit = false;
+
+// ─── Gates ───────────────────────────────────────────────────────────────────
+// { y, lane: 'safe'|'risk', telegraphed: true, warningTimer }
+let gates = [];
+let gateTimer = 0;
+
+// ─── Orbs ────────────────────────────────────────────────────────────────────
+// { x, y, collected, pulseT }
+let orbs = [];
+let orbTimer = 0;
+
+// ─── Particles ───────────────────────────────────────────────────────────────
+// { x, y, vx, vy, life, maxLife, r, hue, sat, lit, composite }
+let particles = [];
+
+// ─── Canvas Setup ────────────────────────────────────────────────────────────
+const wrap = document.getElementById('wrap');
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let DPR = 1;
+
+function resizeCanvas(){
+  DPR = Math.min(window.devicePixelRatio || 1, 2.5);
+  const rect = wrap.getBoundingClientRect();
+  canvas.width = Math.round(rect.width * DPR);
+  canvas.height = Math.round(rect.height * DPR);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+// logical size
+function logW(){ return canvas.width / DPR; }
+function logH(){ return canvas.height / DPR; }
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function lerp(a,b,t){ return a+(b-a)*t; }
+function clamp(v,lo,hi){ return v<lo?lo:v>hi?hi:v; }
+function easeOut(t){ return 1-(1-t)*(1-t); }
+
+function speedFn(t){ return Math.min(520, 220 + 6*t); }
+function riskHalfFn(t){ return clamp(RISK_HALF_BASE - 0.10*t, RISK_HALF_MIN, RISK_HALF_BASE); }
+function gatesPerSec(t){ return Math.min(0.65, 0.20 + 0.010*t); }
+function orbsPerSec(t){ return Math.max(0.12, 0.35 - 0.004*t); }
+
+function safeHalfFn(){
+  // occasionally in later game, safe lane narrows a bit ("fake safety")
+  if(t > 40 && Math.random() < 0.15) return 44;
+  return SAFE_HALF;
+}
+
+// Track center x — constant for now
+const TRACK_CX = CANVAS_W * 0.5;
+
+// Lane X centers (risk is at same cx, offset inside safe)
+function safeLaneX(){ return TRACK_CX; }
+function riskLaneX(){ return TRACK_CX; } // both centered on same track
+
+// ─── Screen shake ────────────────────────────────────────────────────────────
+function addShake(mag, decay){
+  if(mag > shakeMag){ shakeMag = mag; shakeDecay = decay; }
+}
+
+// ─── Particles ───────────────────────────────────────────────────────────────
+function spawnParticles(x, y, count, hue, sat, litMin, litMax, speed, life, r, composite){
+  for(let i=0;i<count;i++){
+    const angle = Math.random()*Math.PI*2;
+    const spd = speed*(0.3+Math.random()*0.7);
+    const lit = litMin + Math.random()*(litMax-litMin);
+    particles.push({
+      x, y,
+      vx: Math.cos(angle)*spd,
+      vy: Math.sin(angle)*spd,
+      life: life*(0.6+Math.random()*0.4),
+      maxLife: life,
+      r: r*(0.5+Math.random()*0.5),
+      hue: hue+(Math.random()-0.5)*30,
+      sat, lit,
+      composite: composite||'lighter'
+    });
+  }
+}
+
+function spawnTrailParticle(x, y){
+  const hue = onRisk ? 300+Math.sin(t*2)*20 : 200+Math.sin(t*1.5)*20;
+  const sat = onRisk ? 90 : 80;
+  const lit = onRisk ? 65 : 60;
+  particles.push({
+    x: x+(Math.random()-0.5)*8,
+    y: y+(Math.random()-0.5)*4,
+    vx: (Math.random()-0.5)*30,
+    vy: 20+Math.random()*40,
+    life: 0.35+Math.random()*0.25,
+    maxLife: 0.6,
+    r: 3+Math.random()*3,
+    hue, sat, lit,
+    composite: 'lighter'
+  });
+}
+
+function spawnDeathParticles(x, y){
+  // big shatter
+  spawnParticles(x, y, 30, 30, 100, 50, 80, 280, 1.2, 5, 'lighter');
+  spawnParticles(x, y, 20, onRisk?300:200, 90, 60, 80, 200, 1.0, 4, 'lighter');
+  spawnParticles(x, y, 15, 60, 60, 70, 90, 160, 0.8, 3, 'source-over');
+}
+
+function spawnOrbPickup(x, y){
+  spawnParticles(x, y, 18, 55, 100, 60, 85, 200, 0.7, 4, 'lighter');
+  addShake(2.5, 8);
+}
+
+function spawnSwitchBurst(x, y){
+  const hue = onRisk ? 300 : 200;
+  spawnParticles(x, y, 10, hue, 85, 55, 75, 150, 0.4, 3, 'lighter');
+  addShake(1.5, 5);
+}
+
+function spawnNearMiss(x, y){
+  spawnParticles(x, y, 8, 50, 100, 70, 90, 100, 0.5, 3, 'lighter');
+}
+
+// ─── Combo text pops ─────────────────────────────────────────────────────────
+let comboPops = [];
+function addComboPop(text, x, y, color){
+  comboPops.push({ text, x, y, life: 0.8, maxLife: 0.8, color: color||'#fff', scale: 1.4 });
+}
+
+// ─── Segments ────────────────────────────────────────────────────────────────
+function initSegments(){
+  segments = [];
+  segWorldY = 0;
+  lastSplit = false;
+  inSplit = false;
+  splitTimer = 0; mergeTimer = 0;
+  // fill screen with merged segments
+  let y = -CANVAS_H * 0.2;
+  while(y < CANVAS_H * 1.5){
+    segments.push({ screenY: y, h: 120, split: false, safeHalf: SAFE_HALF });
+    y += 120;
+  }
+}
+
+function spawnSegment(){
+  // decide split or merge
+  let split = false, h;
+  if(inSplit){
+    splitTimer += dt;
+    h = 80 + Math.random()*60;
+    split = true;
+    if(splitTimer > 1.0 + Math.random()*1.0){
+      inSplit = false; mergeTimer = 0; lastSplit = false;
+    }
+  } else {
+    mergeTimer += dt;
+    h = 60 + Math.random()*80;
+    split = false;
+    if(mergeTimer > 1.5 + Math.random()*2.0){
+      inSplit = true; splitTimer = 0;
+    }
+  }
+  const sh = safeHalfFn();
+  segments.push({ screenY: -h, h, split, safeHalf: sh });
+}
+
+// ─── Gates ───────────────────────────────────────────────────────────────────
+function trySpawnGate(){
+  gateTimer += dt;
+  const rate = gatesPerSec(t);
+  if(gateTimer > 1/rate){
+    gateTimer = 0;
+    const lane = Math.random() < 0.5 ? 'safe' : 'risk';
+    gates.push({
+      screenY: -80,
+      lane,
+      w: lane==='safe' ? 60 : 28,
+      h: 14,
+      warningAlpha: 0,
+      warned: false
+    });
+  }
+}
+
+// ─── Orbs ────────────────────────────────────────────────────────────────────
+function trySpawnOrb(){
+  orbTimer += dt;
+  const rate = orbsPerSec(t);
+  if(orbTimer > 1/rate){
+    orbTimer = 0;
+    // mostly risk lane during split, otherwise random
+    const xOff = (Math.random() < (inSplit ? 0.7 : 0.4)) ? 0 : (Math.random()-0.5)*20;
+    orbs.push({
+      x: TRACK_CX + xOff,
+      screenY: -30,
+      collected: false,
+      pulseT: Math.random()*Math.PI*2,
+      onRisk: inSplit && Math.random()<0.7
+    });
+  }
+}
+
+// ─── Input ───────────────────────────────────────────────────────────────────
+function handleInput(){
+  if(STATE === 'START'){
+    startGame(); return;
+  }
+  if(STATE === 'GAMEOVER'){
+    resetGame(); startGame(); return;
+  }
+  if(STATE === 'PLAYING'){
+    switchLane();
+  }
+}
+
+function switchLane(){
+  onRisk = !onRisk;
+  playerSwitchT = 0;
+  playerTargetX = TRACK_CX; // both lanes centered
+  spawnSwitchBurst(playerX, logH()*PLAYER_Y_FRAC);
+  if(onRisk){ comboRiskTime = 0; }
+}
+
+// ─── Input events ────────────────────────────────────────────────────────────
+canvas.addEventListener('pointerdown', e=>{ e.preventDefault(); handleInput(); }, {passive:false});
+document.addEventListener('keydown', e=>{
+  if(e.code==='Space'||e.code==='Enter'){ e.preventDefault(); handleInput(); }
+});
+
+// How to play overlay
+document.getElementById('how-close').addEventListener('click', ()=>{
+  document.getElementById('how-overlay').style.display='none';
+});
+
+// ─── Game init ────────────────────────────────────────────────────────────────
+function startGame(){
+  STATE = 'PLAYING';
+  t = 0; score = 0; combo = 1; comboPeak = 1; comboRiskTime = 0;
+  speed = 220; riskHalf = RISK_HALF_BASE;
+  onRisk = false;
+  playerX = TRACK_CX;
+  playerTargetX = TRACK_CX;
+  playerSwitchT = 1;
+  shieldActive = false; shieldGraceT = 0; orbBuffer = 0;
+  shakeMag = 0;
+  particles = []; orbs = []; gates = []; comboPops = [];
+  gateTimer = 0; orbTimer = 0;
+  initSegments();
+  deathParticlesDone = false;
+  bgHue = 220;
+}
+
+function resetGame(){ STATE='START'; }
+
+function gameOver(){
+  if(STATE!=='PLAYING') return;
+  STATE = 'GAMEOVER';
+  if(score > bestScore){ bestScore = score; localStorage.setItem(HS_KEY, bestScore); }
+  spawnDeathParticles(playerX, logH()*PLAYER_Y_FRAC);
+  addShake(18, 12);
+}
+
+// ─── Collision ───────────────────────────────────────────────────────────────
+function checkCollision(){
+  const py = logH() * PLAYER_Y_FRAC;
+  const cubeHalf = 11;
+  // find the segment at player position
+  let seg = null;
+  for(const s of segments){
+    if(s.screenY <= py && s.screenY + s.h >= py){ seg = s; break; }
+  }
+  if(!seg) return; // off segments, could be death but let it slide briefly
+
+  const cx = TRACK_CX;
+  const sh = seg.safeHalf || SAFE_HALF;
+  const rh = riskHalf;
+
+  // compute allowed corridor
+  let allowLeft, allowRight;
+  if(onRisk){
+    // risk lane: thin corridor in center
+    allowLeft = cx - rh;
+    allowRight = cx + rh;
+    // shield widen
+    if(shieldGraceT > 0){
+      allowLeft -= SHIELD_WIDEN;
+      allowRight += SHIELD_WIDEN;
+    }
+  } else {
+    // safe lane: full wide corridor
+    allowLeft = cx - sh;
+    allowRight = cx + sh;
+  }
+
+  const pLeft = playerX - cubeHalf;
+  const pRight = playerX + cubeHalf;
+
+  if(pLeft < allowLeft || pRight > allowRight){
+    if(shieldActive && shieldGraceT <= 0){
+      shieldActive = false;
+      shieldGraceT = SHIELD_GRACE;
+      addShake(4, 8);
+      spawnParticles(playerX, py, 20, 55, 100, 60, 85, 180, 0.6, 4, 'lighter');
+      return;
+    }
+    if(shieldGraceT <= 0){
+      gameOver();
+    }
+  }
+
+  // gate collision
+  for(const g of gates){
+    if(Math.abs(g.screenY - py) < 20){
+      const gx = cx;
+      const gHalf = g.w/2;
+      if(g.lane === (onRisk ? 'risk' : 'safe')){
+        if(playerX + cubeHalf > gx - gHalf && playerX - cubeHalf < gx + gHalf){
+          if(shieldActive && shieldGraceT <= 0){
+            shieldActive = false;
+            shieldGraceT = SHIELD_GRACE;
+            addShake(4, 8);
+            spawnParticles(playerX, py, 20, 55, 100, 60, 85, 180, 0.6, 4, 'lighter');
+            g.hit = true;
+            return;
+          }
+          if(shieldGraceT <= 0){
+            gameOver();
+          }
+        }
+      }
+    }
+  }
+
+  // near miss on risk
+  if(onRisk && shieldGraceT <= 0){
+    const distToEdge = Math.min(
+      Math.abs(pLeft - (cx - rh)),
+      Math.abs(pRight - (cx + rh))
+    );
+    if(distToEdge < NEAR_MISS_THRESH){
+      score += NEAR_MISS_SCORE * dt * 60;
+      spawnNearMiss(playerX, py);
+    }
+  }
+}
+
+// ─── Scoring ─────────────────────────────────────────────────────────────────
+function updateScore(){
+  const base = speed * dt * 0.04;
+  if(onRisk){
+    comboRiskTime += dt;
+    if(comboRiskTime > 1.0){
+      combo = clamp(Math.floor(1 + comboRiskTime * 0.8), 1, MAX_COMBO);
+    }
+    score += base * combo * 1.8;
+    if(combo > comboPeak){ comboPeak = combo; }
+    // risk lane pulses
+    if(combo >= 3 && Math.floor(comboRiskTime) !== Math.floor(comboRiskTime - dt)){
+      addComboPop('×'+combo, TRACK_CX + 60, logH()*PLAYER_Y_FRAC - 40, '#f8f');
+    }
+  } else {
+    comboRiskTime = Math.max(0, comboRiskTime - dt*2);
+    combo = Math.max(1, combo - dt);
+    score += base * 0.9;
+  }
+  combo = clamp(combo, 1, MAX_COMBO);
+}
+
+// ─── Orb collection ──────────────────────────────────────────────────────────
+function checkOrbs(){
+  const py = logH() * PLAYER_Y_FRAC;
+  for(const o of orbs){
+    if(o.collected) continue;
+    const dx = playerX - o.x;
+    const dy = (o.screenY) - py;
+    if(Math.abs(dx) < 22 && Math.abs(dy) < 22){
+      o.collected = true;
+      score += 120 + combo * 30;
+      orbBuffer++;
+      if(orbBuffer >= ORB_SHIELD_COUNT && !shieldActive){
+        shieldActive = true;
+        orbBuffer = 0;
+        addShake(3, 6);
+        spawnParticles(playerX, py, 25, 55, 100, 60, 90, 200, 0.9, 5, 'lighter');
+        addComboPop('SHIELD!', TRACK_CX, py - 60, '#ff6');
+      }
+      spawnOrbPickup(o.x, o.screenY);
+      addComboPop('+'+Math.round(120+combo*30), o.x, o.screenY-20, '#fd6');
+    }
+  }
+}
+
+// ─── Update ──────────────────────────────────────────────────────────────────
+function update(timestamp){
+  if(!lastTime) lastTime = timestamp;
+  dt = Math.min((timestamp - lastTime)/1000, 0.033);
+  lastTime = timestamp;
+
+  if(STATE === 'PLAYING'){
+    t += dt;
+    speed = speedFn(t);
+    riskHalf = riskHalfFn(t);
+    bgHue = (bgHue + dt*4) % 360;
+
+    // move player toward target
+    playerSwitchT = Math.min(1, playerSwitchT + dt/LANE_SWITCH_DUR);
+    playerX = lerp(playerX, playerTargetX, easeOut(playerSwitchT));
+
+    // trail
+    if(Math.random() < 0.6){ spawnTrailParticle(playerX, logH()*PLAYER_Y_FRAC); }
+
+    // move segments
+    for(const s of segments){ s.screenY += speed * dt; }
+    // remove off-screen
+    segments = segments.filter(s => s.screenY < logH() + 200);
+    // spawn new at top
+    let topY = segments.length ? Math.min(...segments.map(s=>s.screenY)) : 0;
+    while(topY > -200){ spawnSegment(); topY -= 40; }
+
+    // move gates
+    for(const g of gates){ g.screenY += speed * dt; }
+    gates = gates.filter(g => !g.hit && g.screenY < logH() + 100);
+
+    // move orbs
+    for(const o of orbs){ o.screenY += speed * dt; o.pulseT += dt * 3; }
+    orbs = orbs.filter(o => !o.collected && o.screenY < logH() + 60);
+
+    trySpawnGate();
+    trySpawnOrb();
+    updateScore();
+    checkOrbs();
+    checkCollision();
+
+    // shield grace
+    if(shieldGraceT > 0) shieldGraceT = Math.max(0, shieldGraceT - dt);
+  }
+
+  // particles
+  for(const p of particles){
+    p.life -= dt;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy += 120 * dt; // gravity
+    p.vx *= 0.98;
+  }
+  particles = particles.filter(p => p.life > 0);
+
+  // combo pops
+  for(const cp of comboPops){
+    cp.life -= dt;
+    cp.y -= 50*dt;
+    cp.scale = lerp(cp.scale, 1, dt*8);
+  }
+  comboPops = comboPops.filter(cp => cp.life > 0);
+
+  // shake
+  if(shakeMag > 0.1){
+    shakeMag *= Math.pow(0.01, dt*shakeDecay*0.1);
+    shakeX = (Math.random()-0.5)*shakeMag*2;
+    shakeY = (Math.random()-0.5)*shakeMag*2;
+  } else {
+    shakeX = 0; shakeY = 0; shakeMag = 0;
+  }
+}
+
+// ─── Draw ─────────────────────────────────────────────────────────────────────
+function draw(){
+  const W = logW(), H = logH();
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
+
+  // Background
+  const bgGrad = ctx.createRadialGradient(W/2, H/2, 0, W/2, H/2, H*0.7);
+  const h1 = (bgHue) % 360;
+  const h2 = (bgHue + 40) % 360;
+  bgGrad.addColorStop(0, `hsl(${h1},30%,8%)`);
+  bgGrad.addColorStop(1, `hsl(${h2},20%,4%)`);
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, W, H);
+
+  if(STATE === 'PLAYING' || STATE === 'GAMEOVER'){
+    drawTrack(W, H);
+    drawGates(W, H);
+    drawParticles();
+    drawOrbs(H);
+    if(STATE === 'PLAYING') drawPlayer(H);
+    drawHUD(W, H);
+    drawComboPops();
+    if(STATE === 'GAMEOVER') drawGameover(W, H);
+
+    // danger vignette
+    if(STATE === 'PLAYING' && onRisk){
+      const edge = riskHalf;
+      const dangerDist = edge - Math.abs(playerX - TRACK_CX) - 11;
+      if(dangerDist < 14){
+        const alpha = clamp((14 - dangerDist)/14, 0, 1) * 0.4;
+        const vigGrad = ctx.createRadialGradient(W/2, H/2, H*0.2, W/2, H/2, H*0.7);
+        vigGrad.addColorStop(0, 'rgba(0,0,0,0)');
+        vigGrad.addColorStop(1, `rgba(220,30,180,${alpha})`);
+        ctx.fillStyle = vigGrad;
+        ctx.fillRect(0, 0, W, H);
+      }
+    }
+  }
+
+  if(STATE === 'START') drawStart(W, H);
+
+  ctx.restore();
+
+  // challenge banner
+  if(challengeScore > 0 && STATE === 'START'){
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,200,50,0.18)';
+    ctx.fillRect(0, H-60, W, 60);
+    ctx.fillStyle = '#ffd';
+    ctx.font = 'bold 14px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(`🏆 Beat the challenge: ${challengeScore}`, W/2, H-32);
+    ctx.restore();
+  }
+}
+
+function drawTrack(W, H){
+  const cx = TRACK_CX;
+  for(const seg of segments){
+    const y = seg.screenY, h = seg.h;
+    const sh = seg.safeHalf || SAFE_HALF;
+    const rh = riskHalf;
+
+    // Safe lane background
+    const safeGrad = ctx.createLinearGradient(cx-sh, 0, cx+sh, 0);
+    safeGrad.addColorStop(0, 'rgba(0,80,160,0.3)');
+    safeGrad.addColorStop(0.5, 'rgba(0,120,200,0.45)');
+    safeGrad.addColorStop(1, 'rgba(0,80,160,0.3)');
+    ctx.fillStyle = safeGrad;
+    ctx.fillRect(cx-sh, y, sh*2, h);
+
+    // Safe lane border
+    ctx.strokeStyle = `hsl(200,80%,55%)`;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(cx-sh+1, y, sh*2-2, h);
+
+    if(seg.split){
+      // Risk lane overlay (narrower, brighter)
+      const pulse = onRisk ? 0.15*Math.sin(t*6)*combo/MAX_COMBO : 0;
+      const rGrad = ctx.createLinearGradient(cx-rh, 0, cx+rh, 0);
+      rGrad.addColorStop(0, `rgba(200,0,180,${0.18+pulse})`);
+      rGrad.addColorStop(0.5, `rgba(255,30,220,${0.32+pulse})`);
+      rGrad.addColorStop(1, `rgba(200,0,180,${0.18+pulse})`);
+      ctx.fillStyle = rGrad;
+      ctx.fillRect(cx-rh, y, rh*2, h);
+
+      ctx.strokeStyle = `hsl(300,90%,${60+pulse*100}%)`;
+      ctx.lineWidth = onRisk ? 2.5 : 1.5;
+      ctx.strokeRect(cx-rh+1, y, rh*2-2, h);
+
+      // edge danger lines
+      ctx.strokeStyle = 'rgba(255,80,200,0.25)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4,4]);
+      ctx.beginPath(); ctx.moveTo(cx-rh, y); ctx.lineTo(cx-rh, y+h); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx+rh, y); ctx.lineTo(cx+rh, y+h); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+}
+
+function drawGates(W, H){
+  const cx = TRACK_CX;
+  for(const g of gates){
+    const gx = cx;
+    const gy = g.screenY;
+    const hw = g.w / 2;
+    const gh = g.h;
+
+    // telegraph: flash stripes approaching
+    const dist = gy - logH()*PLAYER_Y_FRAC;
+    if(dist > 0 && dist < H*0.5){
+      const alpha = clamp(1 - dist/(H*0.4), 0, 1);
+      // warning flash
+      const flash = 0.5 + 0.5*Math.sin(t*18);
+      ctx.fillStyle = `rgba(255,60,60,${alpha*flash*0.15})`;
+      ctx.fillRect(gx-hw, 0, hw*2, gy);
+
+      // stripes
+      ctx.save();
+      ctx.beginPath(); ctx.rect(gx-hw, gy-60, hw*2, 60); ctx.clip();
+      ctx.fillStyle = `rgba(255,80,50,${alpha*0.25})`;
+      for(let i=-60; i<60; i+=12){
+        ctx.fillRect(gx-hw+i, gy-70, 6, 80);
+      }
+      ctx.restore();
+    }
+
+    // gate bar
+    const gc = ctx.createLinearGradient(gx-hw, 0, gx+hw, 0);
+    gc.addColorStop(0,'rgba(255,50,50,0.9)');
+    gc.addColorStop(0.5,'rgba(255,120,80,1)');
+    gc.addColorStop(1,'rgba(255,50,50,0.9)');
+    ctx.fillStyle = gc;
+    ctx.fillRect(gx-hw, gy-gh/2, hw*2, gh);
+
+    // glow
+    ctx.shadowColor = '#f44';
+    ctx.shadowBlur = 12;
+    ctx.fillStyle = 'rgba(255,80,80,0.5)';
+    ctx.fillRect(gx-hw, gy-gh/2, hw*2, gh);
+    ctx.shadowBlur = 0;
+  }
+}
+
+function drawOrbs(H){
+  for(const o of orbs){
+    if(o.collected) continue;
+    const r = 10 + Math.sin(o.pulseT)*2;
+    const hue = 55 + Math.sin(o.pulseT*0.7)*15;
+    ctx.save();
+    ctx.shadowColor = `hsl(${hue},100%,70%)`;
+    ctx.shadowBlur = 16;
+    const g = ctx.createRadialGradient(o.x, o.screenY, 0, o.x, o.screenY, r);
+    g.addColorStop(0, `hsl(${hue},100%,85%)`);
+    g.addColorStop(0.6, `hsl(${hue},90%,60%)`);
+    g.addColorStop(1, `hsla(${hue},80%,50%,0)`);
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(o.x, o.screenY, r, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawPlayer(H){
+  const py = H * PLAYER_Y_FRAC;
+  const px = playerX;
+  const hs = 13; // half size
+  const hue = onRisk ? 300 + Math.sin(t*4)*20 : 200 + Math.sin(t*2)*15;
+  const brightness = shieldActive ? 80 : (shieldGraceT > 0 ? 70+30*Math.sin(t*20) : 65);
+
+  ctx.save();
+  // shield glow
+  if(shieldActive || shieldGraceT > 0){
+    ctx.shadowColor = `hsl(55,100%,80%)`;
+    ctx.shadowBlur = 24;
+    ctx.strokeStyle = `hsla(55,100%,70%,${shieldGraceT>0?0.6+0.4*Math.sin(t*15):0.8})`;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(px, py, hs+8, 0, Math.PI*2);
+    ctx.stroke();
+  }
+  ctx.shadowColor = `hsl(${hue},90%,70%)`;
+  ctx.shadowBlur = 18;
+  // cube
+  ctx.fillStyle = `hsl(${hue},85%,${brightness}%)`;
+  const angle = Math.sin(t*3)*0.08;
+  ctx.translate(px, py);
+  ctx.rotate(angle);
+  ctx.fillRect(-hs, -hs, hs*2, hs*2);
+  // inner highlight
+  ctx.fillStyle = `hsla(${hue},70%,95%,0.35)`;
+  ctx.fillRect(-hs+3, -hs+3, hs*2-6, hs*2-6);
+  ctx.shadowBlur = 0;
+  ctx.restore();
+}
+
+function drawParticles(){
+  ctx.save();
+  for(const p of particles){
+    const alpha = clamp(p.life/p.maxLife, 0, 1);
+    ctx.globalCompositeOperation = p.composite || 'lighter';
+    ctx.globalAlpha = alpha * 0.85;
+    ctx.fillStyle = `hsl(${p.hue},${p.sat}%,${p.lit}%)`;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r * alpha, 0, Math.PI*2);
+    ctx.fill();
+  }
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+function drawComboPops(){
+  ctx.save();
+  for(const cp of comboPops){
+    const alpha = clamp(cp.life/cp.maxLife, 0, 1);
+    ctx.globalAlpha = alpha;
+    ctx.save();
+    ctx.translate(cp.x, cp.y);
+    ctx.scale(cp.scale, cp.scale);
+    ctx.fillStyle = cp.color;
+    ctx.font = `bold ${14}px system-ui`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = cp.color;
+    ctx.shadowBlur = 8;
+    ctx.fillText(cp.text, 0, 0);
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+function drawHUD(W, H){
+  // Score
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.beginPath();
+  roundRect(ctx, 12, 12, 130, 62, 12);
+  ctx.fill();
+  ctx.fillStyle = '#ddf';
+  ctx.font = 'bold 26px system-ui';
+  ctx.textAlign = 'left';
+  ctx.fillText(Math.floor(score), 22, 42);
+  ctx.fillStyle = 'rgba(180,200,255,0.55)';
+  ctx.font = '11px system-ui';
+  ctx.fillText('SCORE', 22, 58);
+  ctx.restore();
+
+  // Best
+  ctx.save();
+  ctx.fillStyle = '#aac';
+  ctx.font = '11px system-ui';
+  ctx.textAlign = 'left';
+  ctx.fillText('BEST: '+Math.floor(bestScore), 22, 84);
+  ctx.restore();
+
+  // Combo
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.beginPath();
+  roundRect(ctx, W-140, 12, 128, 62, 12);
+  ctx.fill();
+  const comboAlpha = onRisk ? 1 : 0.55;
+  const comboHue = onRisk ? 300 : 220;
+  ctx.fillStyle = `hsla(${comboHue},90%,70%,${comboAlpha})`;
+  ctx.font = `bold 26px system-ui`;
+  ctx.textAlign = 'right';
+  ctx.fillText(`×${combo.toFixed(1)}`, W-22, 42);
+  ctx.fillStyle = `hsla(${comboHue},70%,65%,${comboAlpha*0.7})`;
+  ctx.font = '11px system-ui';
+  ctx.fillText('COMBO', W-22, 58);
+  ctx.restore();
+
+  // Lane indicator
+  ctx.save();
+  const laneLabel = onRisk ? 'RISK' : 'SAFE';
+  const laneHue = onRisk ? 300 : 200;
+  ctx.fillStyle = `hsl(${laneHue},85%,60%)`;
+  ctx.font = 'bold 12px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText(laneLabel, W/2, H-18);
+  ctx.restore();
+
+  // Orb progress / shield indicator
+  ctx.save();
+  const indX = W/2 - (ORB_SHIELD_COUNT * 14)/2;
+  const indY = H - 50;
+  for(let i=0; i<ORB_SHIELD_COUNT; i++){
+    const filled = shieldActive ? true : i < orbBuffer;
+    ctx.beginPath();
+    ctx.arc(indX + i*14 + 7, indY, 5, 0, Math.PI*2);
+    if(filled){
+      ctx.fillStyle = shieldActive ? `hsl(55,100%,70%)` : `hsl(55,85%,60%)`;
+      ctx.shadowColor = '#ff6';
+      ctx.shadowBlur = shieldActive ? 10 : 6;
+    } else {
+      ctx.fillStyle = 'rgba(180,180,220,0.25)';
+      ctx.shadowBlur = 0;
+    }
+    ctx.fill();
+  }
+  if(shieldActive){
+    ctx.fillStyle = '#ff6';
+    ctx.font = 'bold 11px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('SHIELD', W/2, indY+18);
+  }
+  ctx.shadowBlur = 0;
+  ctx.restore();
+}
+
+function drawStart(W, H){
+  // Dim overlay
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(0,0,W,H);
+
+  // Title glow
+  ctx.save();
+  ctx.shadowColor = `hsl(${bgHue},90%,65%)`;
+  ctx.shadowBlur = 32;
+  ctx.fillStyle = '#fff';
+  ctx.font = `bold 46px system-ui`;
+  ctx.textAlign = 'center';
+  ctx.fillText('Narrow Trace', W/2, H*0.28);
+  ctx.shadowBlur = 0;
+
+  ctx.fillStyle = `hsl(${bgHue+30},80%,70%)`;
+  ctx.font = 'bold 18px system-ui';
+  ctx.fillText('Split-Track Rush', W/2, H*0.28+38);
+
+  // instruction
+  ctx.fillStyle = 'rgba(200,220,255,0.75)';
+  ctx.font = '14px system-ui';
+  ctx.fillText('Tap to switch lanes. Risk = multiplier.', W/2, H*0.28+72);
+
+  // Tap to start
+  const pulse = 0.7 + 0.3*Math.sin(t*3);
+  ctx.globalAlpha = pulse;
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 22px system-ui';
+  ctx.fillText('TAP TO START', W/2, H*0.62);
+  ctx.globalAlpha = 1;
+
+  if(bestScore > 0){
+    ctx.fillStyle = 'rgba(200,220,255,0.55)';
+    ctx.font = '14px system-ui';
+    ctx.fillText('Best: '+Math.floor(bestScore), W/2, H*0.62+34);
+  }
+
+  // mini track preview
+  ctx.fillStyle = 'rgba(0,100,180,0.3)';
+  ctx.fillRect(W/2-56, H*0.45, 112, 80);
+  ctx.strokeStyle = 'rgba(0,180,255,0.5)';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(W/2-56, H*0.45, 112, 80);
+  ctx.fillStyle = 'rgba(220,0,200,0.2)';
+  ctx.fillRect(W/2-18, H*0.45, 36, 80);
+  ctx.strokeStyle = 'rgba(255,50,220,0.4)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(W/2-18, H*0.45, 36, 80);
+
+  ctx.restore();
+}
+
+function drawGameover(W, H){
+  // overlay
+  ctx.fillStyle = 'rgba(0,0,0,0.65)';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.save();
+  // Big score
+  ctx.shadowColor = `hsl(${bgHue},90%,65%)`;
+  ctx.shadowBlur = 28;
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 58px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText(Math.floor(score), W/2, H*0.32);
+  ctx.shadowBlur = 0;
+
+  ctx.fillStyle = 'rgba(180,200,255,0.65)';
+  ctx.font = '15px system-ui';
+  ctx.fillText('SCORE', W/2, H*0.32+26);
+
+  if(score >= bestScore){
+    ctx.fillStyle = `hsl(55,100%,70%)`;
+    ctx.shadowColor = '#ffd';
+    ctx.shadowBlur = 12;
+    ctx.font = 'bold 17px system-ui';
+    ctx.fillText('NEW BEST!', W/2, H*0.32+54);
+    ctx.shadowBlur = 0;
+  } else {
+    ctx.fillStyle = 'rgba(180,200,255,0.55)';
+    ctx.font = '14px system-ui';
+    ctx.fillText('Best: '+Math.floor(bestScore), W/2, H*0.32+54);
+  }
+
+  ctx.fillStyle = `hsl(300,80%,70%)`;
+  ctx.font = '14px system-ui';
+  ctx.fillText('Peak Combo: ×'+comboPeak.toFixed(1), W/2, H*0.32+78);
+
+  // Tap to retry
+  const pulse = 0.7 + 0.3*Math.sin(t*3);
+  ctx.globalAlpha = pulse;
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 20px system-ui';
+  ctx.fillText('TAP TO RETRY', W/2, H*0.58);
+  ctx.globalAlpha = 1;
+
+  ctx.restore();
+
+  // Buttons
+  drawButton(W/2-78, H*0.67, 70, 36, 'SHARE', '#2a2a4a', '#7af', ()=>shareScore());
+  drawButton(W/2+8, H*0.67, 90, 36, 'HOW TO PLAY', '#2a2a4a', '#a7f', ()=>{
+    document.getElementById('how-overlay').style.display='flex';
+  });
+}
+
+// simple clickable button drawn on canvas with event on first tap
+let canvasButtons = [];
+function drawButton(x, y, w, h, label, bg, col, cb){
+  ctx.save();
+  ctx.fillStyle = bg;
+  ctx.strokeStyle = col;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  roundRect(ctx, x, y, w, h, 10);
+  ctx.fill(); ctx.stroke();
+  ctx.fillStyle = col;
+  ctx.font = 'bold 12px system-ui';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, x+w/2, y+h/2);
+  ctx.restore();
+  canvasButtons.push({x, y, w, h, cb, frame: frameCount});
+}
+let frameCount = 0;
+
+canvas.addEventListener('pointerdown', e=>{
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = logW() / rect.width;
+  const scaleY = logH() / rect.height;
+  const cx2 = (e.clientX - rect.left) * scaleX;
+  const cy2 = (e.clientY - rect.top) * scaleY;
+  for(const b of canvasButtons){
+    if(b.frame === frameCount - 1 || b.frame === frameCount){
+      if(cx2>=b.x && cx2<=b.x+b.w && cy2>=b.y && cy2<=b.y+b.h){
+        e.stopPropagation();
+        b.cb();
+        return;
+      }
+    }
+  }
+}, {passive:false, capture: true});
+
+function shareScore(){
+  const url = `https://balinti.github.io/narrow-trace/?challenge=${Math.floor(score)}`;
+  const text = `I scored ${Math.floor(score)} on Narrow Trace! Can you beat me? 🎮`;
+  if(navigator.share){
+    navigator.share({ title:'Narrow Trace', text, url }).catch(()=>{});
+  } else {
+    navigator.clipboard.writeText(url+'\n'+text).then(()=>{
+      addComboPop('Link copied!', logW()/2, logH()*0.78, '#7af');
+    }).catch(()=>{
+      prompt('Copy this link:', url);
+    });
+  }
+}
+
+function roundRect(ctx, x, y, w, h, r){
+  ctx.moveTo(x+r, y);
+  ctx.arcTo(x+w, y, x+w, y+h, r);
+  ctx.arcTo(x+w, y+h, x, y+h, r);
+  ctx.arcTo(x, y+h, x, y, r);
+  ctx.arcTo(x, y, x+w, y, r);
+  ctx.closePath();
+}
+
+// ─── Challenge URL ────────────────────────────────────────────────────────────
+(function(){
+  try {
+    const params = new URLSearchParams(window.location.search);
+    if(params.has('challenge')){
+      challengeScore = parseInt(params.get('challenge'))||0;
+    }
+  } catch(e){}
+})();
+
+// ─── Loop ─────────────────────────────────────────────────────────────────────
+function loop(timestamp){
+  canvasButtons = [];
+  frameCount++;
+  update(timestamp);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// Start animation (idle on start screen)
+lastTime = 0;
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

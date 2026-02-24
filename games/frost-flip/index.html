@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Frost Flip - Free HTML5 Game</title>
+<meta name="description" content="Play Frost Flip - Tap to flip gravity and dodge multiplying icicles in a chilling arctic escape.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0a1628">
+<link rel="canonical" href="https://balinti.github.io/frost-flip/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Frost Flip - Free HTML5 Game">
+<meta property="og:description" content="Play Frost Flip - Tap to flip gravity and dodge multiplying icicles in a chilling arctic escape.">
+<meta property="og:url" content="https://balinti.github.io/frost-flip/">
+<meta property="og:image" content="https://balinti.github.io/frost-flip/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Frost Flip - Free HTML5 Game">
+<meta name="twitter:description" content="Play Frost Flip - Tap to flip gravity and dodge multiplying icicles in a chilling arctic escape.">
+<meta name="twitter:image" content="https://balinti.github.io/frost-flip/og-image.png">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#0a1628;font-family:'Segoe UI',system-ui,sans-serif;display:flex;justify-content:center;align-items:center}
+#gc{width:100%;max-width:420px;height:100vh;max-height:750px;position:relative;touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+canvas{display:block;width:100%;height:100%;border-radius:8px}
+#seo{position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden}
+</style>
+</head>
+<body>
+<div id="gc"><canvas id="c"></canvas></div>
+<div id="seo">
+<h1>Frost Flip - Free Online HTML5 Game</h1>
+<p>Frost Flip is a hyper-casual HTML5 game where you tap to flip gravity and navigate through icy obstacles. Shatter cracked icicles for bonus points and build your Frost Combo to climb the leaderboard.</p>
+<h2>How to Play Frost Flip</h2>
+<p>Tap the screen or press Space/Enter to flip gravity. Dodge solid icicles and time your flips to shatter cracked ones. Build combos by shattering consecutive cracked icicles without missing. Watch for temperature zones that change the gameplay dynamics.</p>
+<h2>Game Features</h2>
+<ul>
+<li>Tap to flip gravity mechanic</li>
+<li>Shatter cracked icicles for bonus Shatter Points</li>
+<li>Build Frost Combos for multiplied scores</li>
+<li>Temperature zones: Warm Vent and Deep Freeze</li>
+<li>Near-miss bonus scoring</li>
+<li>Increasing difficulty with speed and spawn rate</li>
+<li>Challenge friends with shareable links</li>
+<li>High score persistence</li>
+</ul>
+<h2>FAQ</h2>
+<h3>Is Frost Flip free to play?</h3>
+<p>Yes, Frost Flip is completely free to play in your browser. No downloads or installations required.</p>
+<h3>What devices support Frost Flip?</h3>
+<p>Frost Flip works on any modern browser including Chrome, Firefox, Safari, and Edge on desktop and mobile devices.</p>
+<h3>How do I improve my score?</h3>
+<p>Focus on shattering cracked icicles to build your Frost Combo. Higher combos mean more points per shatter. Watch for Warm Vent zones for speed boosts and Deep Freeze zones for combo rewards.</p>
+</ul>
+</div>
+<script>
+(()=>{
+'use strict';
+
+const W=420, H=750;
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+const container=document.getElementById('gc');
+
+// High-DPI scaling
+function resize(){
+  const dpr=window.devicePixelRatio||1;
+  const rect=container.getBoundingClientRect();
+  canvas.width=rect.width*dpr;
+  canvas.height=rect.height*dpr;
+  ctx.setTransform(dpr*rect.width/W, 0, 0, dpr*rect.height/H, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+// State
+let state='start'; // start, playing, gameover
+let score=0, bestScore=parseInt(localStorage.getItem('ff_best'))||0;
+let combo=0, maxCombo=0;
+let frameCount=0, gameTime=0;
+let shakeX=0, shakeY=0, shakeMag=0, shakeDecay=0.9;
+let hueShift=0;
+let soundOn=localStorage.getItem('ff_sound')!=='off';
+let audioStarted=false;
+
+// Challenge
+const params=new URLSearchParams(window.location.search);
+const challengeScore=params.get('targetScore')?parseInt(params.get('targetScore')):0;
+const challengeCombo=params.get('targetCombo')?parseInt(params.get('targetCombo')):0;
+const isChallenge=params.get('challenge')==='1';
+
+// Player
+const player={x:100, y:H/2, vy:0, gravity:1, w:22, h:22, trail:[]};
+const GRAVITY=0.45;
+const FLIP_VEL=8.5;
+
+// Obstacles
+let obstacles=[];
+let spawnTimer=0;
+let baseSpeed=2.8;
+let speed=baseSpeed;
+let spawnInterval=90;
+
+// Particles
+let particles=[];
+
+// Temperature zones
+let tempZone='normal'; // normal, warm, freeze
+let tempTimer=0;
+let tempDuration=0;
+let tempAlpha=0;
+
+// Near miss
+let nearMissFlash=0;
+let nearMissText='';
+
+// Audio
+let audioCtx=null;
+function initAudio(){
+  if(audioStarted) return;
+  audioStarted=true;
+  try{ audioCtx=new (window.AudioContext||window.webkitAudioContext)(); } catch(e){}
+}
+function playSound(type){
+  if(!soundOn||!audioCtx) return;
+  try{
+    const osc=audioCtx.createOscillator();
+    const gain=audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    const t=audioCtx.currentTime;
+    if(type==='flip'){
+      osc.type='sine';
+      osc.frequency.setValueAtTime(800,t);
+      osc.frequency.exponentialRampToValueAtTime(1200,t+0.05);
+      gain.gain.setValueAtTime(0.15,t);
+      gain.gain.exponentialRampToValueAtTime(0.001,t+0.08);
+      osc.start(t); osc.stop(t+0.08);
+    } else if(type==='shatter'){
+      osc.type='sawtooth';
+      osc.frequency.setValueAtTime(400,t);
+      osc.frequency.exponentialRampToValueAtTime(100,t+0.2);
+      gain.gain.setValueAtTime(0.2,t);
+      gain.gain.exponentialRampToValueAtTime(0.001,t+0.25);
+      osc.start(t); osc.stop(t+0.25);
+      // noise burst
+      const buf=audioCtx.createBuffer(1,audioCtx.sampleRate*0.1,audioCtx.sampleRate);
+      const data=buf.getChannelData(0);
+      for(let i=0;i<data.length;i++) data[i]=(Math.random()*2-1)*0.3;
+      const noise=audioCtx.createBufferSource();
+      noise.buffer=buf;
+      const ng=audioCtx.createGain();
+      ng.gain.setValueAtTime(0.15,t);
+      ng.gain.exponentialRampToValueAtTime(0.001,t+0.15);
+      noise.connect(ng); ng.connect(audioCtx.destination);
+      noise.start(t); noise.stop(t+0.15);
+    } else if(type==='death'){
+      osc.type='square';
+      osc.frequency.setValueAtTime(150,t);
+      osc.frequency.exponentialRampToValueAtTime(40,t+0.4);
+      gain.gain.setValueAtTime(0.25,t);
+      gain.gain.exponentialRampToValueAtTime(0.001,t+0.5);
+      osc.start(t); osc.stop(t+0.5);
+    } else if(type==='nearmiss'){
+      osc.type='sine';
+      osc.frequency.setValueAtTime(1400,t);
+      osc.frequency.exponentialRampToValueAtTime(1800,t+0.06);
+      gain.gain.setValueAtTime(0.08,t);
+      gain.gain.exponentialRampToValueAtTime(0.001,t+0.1);
+      osc.start(t); osc.stop(t+0.1);
+    }
+  }catch(e){}
+}
+
+// Obstacle creation
+function createObstacle(){
+  const diff=Math.min(gameTime/3600, 1); // 0-1 over ~60s
+  const gapSize=Math.max(140-diff*40, 90);
+  const gapY=gapSize/2+40+Math.random()*(H-gapSize-80);
+
+  // Decide cracked
+  const crackChance=0.35+diff*0.15;
+  const isCracked=Math.random()<crackChance;
+
+  // Decide which side is cracked (top or bottom randomly)
+  const crackedSide=isCracked?(Math.random()<0.5?'top':'bottom'):null;
+
+  const telegraphTime=Math.max(36-diff*12, 18); // frames before shatterable
+
+  obstacles.push({
+    x:W+60,
+    gapY: gapY,
+    gapSize: gapSize,
+    topH: gapY-gapSize/2,
+    botY: gapY+gapSize/2,
+    botH: H-(gapY+gapSize/2),
+    cracked: isCracked,
+    crackedSide: crackedSide,
+    shattered: false,
+    shatterTimer: 0,
+    telegraphMax: telegraphTime,
+    telegraphTimer: 0,
+    shatterable: false,
+    scored: false,
+    nearMissed: false,
+    w: 48+Math.random()*16,
+    shards: []
+  });
+}
+
+// Particle creation
+function spawnParticles(x, y, count, color, sizeRange, speedRange, life){
+  for(let i=0;i<count;i++){
+    const angle=Math.random()*Math.PI*2;
+    const spd=speedRange[0]+Math.random()*(speedRange[1]-speedRange[0]);
+    particles.push({
+      x, y,
+      vx:Math.cos(angle)*spd,
+      vy:Math.sin(angle)*spd,
+      size:sizeRange[0]+Math.random()*(sizeRange[1]-sizeRange[0]),
+      life: life||30+Math.random()*20,
+      maxLife: life||30+Math.random()*20,
+      color: color,
+      type:'circle'
+    });
+  }
+}
+
+function spawnShardParticles(x,y,h,fromTop){
+  const shardCount=8+Math.floor(Math.random()*6);
+  for(let i=0;i<shardCount;i++){
+    const angle=(fromTop?1:-1)*(Math.PI/6+Math.random()*Math.PI/3) + (Math.random()-0.5)*0.5;
+    const spd=3+Math.random()*5;
+    const sh=8+Math.random()*16;
+    const sw=3+Math.random()*5;
+    particles.push({
+      x:x+Math.random()*30-15, y:y+Math.random()*Math.min(h,60)*(fromTop?1:-1),
+      vx:Math.cos(angle)*spd-speed*0.5,
+      vy:Math.sin(angle)*spd*(fromTop?1:-1),
+      size:sh, w:sw,
+      life:30+Math.random()*30,
+      maxLife:40,
+      color:`hsl(${190+Math.random()*30},${70+Math.random()*20}%,${70+Math.random()*20}%)`,
+      rot:Math.random()*Math.PI,
+      rotV:(Math.random()-0.5)*0.2,
+      type:'shard',
+      gravity:0.15
+    });
+  }
+}
+
+// Reset game
+function resetGame(){
+  player.x=100; player.y=H/2; player.vy=0; player.gravity=1; player.trail=[];
+  obstacles=[]; particles=[];
+  score=0; combo=0; maxCombo=0;
+  frameCount=0; gameTime=0;
+  spawnTimer=0;
+  speed=baseSpeed;
+  shakeMag=0;
+  tempZone='normal'; tempTimer=0;
+  nearMissFlash=0;
+}
+
+// Input
+function doFlip(){
+  if(state==='start'){
+    initAudio();
+    resetGame();
+    state='playing';
+    return;
+  }
+  if(state==='gameover'){
+    resetGame();
+    state='playing';
+    return;
+  }
+  if(state==='playing'){
+    player.gravity*=-1;
+    player.vy=FLIP_VEL*(-player.gravity);
+    playSound('flip');
+  }
+}
+
+canvas.addEventListener('pointerdown',(e)=>{
+  e.preventDefault();
+  // Check sound toggle
+  const rect=container.getBoundingClientRect();
+  const sx=(e.clientX-rect.left)/rect.width*W;
+  const sy=(e.clientY-rect.top)/rect.height*H;
+  if(sx>W-80 && sy<35){
+    soundOn=!soundOn;
+    localStorage.setItem('ff_sound', soundOn?'on':'off');
+    if(!audioStarted) initAudio();
+    return;
+  }
+  // Check share button on gameover
+  if(state==='gameover' && sx>W/2-70 && sx<W/2+70 && sy>H/2+100 && sy<H/2+140){
+    shareScore();
+    return;
+  }
+  doFlip();
+});
+
+document.addEventListener('keydown',(e)=>{
+  if(e.code==='Space'||e.code==='Enter'){
+    e.preventDefault();
+    doFlip();
+  }
+});
+
+// Share
+function shareScore(){
+  const url=`${window.location.origin}${window.location.pathname}?challenge=1&targetScore=${score}&targetCombo=${maxCombo}`;
+  const text=`Can you beat my Frost Flip score? ${score} pts, ${maxCombo}x combo! `;
+  if(navigator.share){
+    navigator.share({title:'Frost Flip Challenge', text, url}).catch(()=>{});
+  } else {
+    navigator.clipboard.writeText(text+url).then(()=>{
+      shareMsg='Link copied!';
+      shareMsgTimer=120;
+    }).catch(()=>{});
+  }
+}
+let shareMsg='', shareMsgTimer=0;
+
+// Update
+function update(){
+  frameCount++;
+  hueShift=(hueShift+0.3)%360;
+
+  if(state!=='playing') return;
+
+  gameTime++;
+  const diff=Math.min(gameTime/3600, 1);
+  speed=baseSpeed+diff*2.5;
+  if(tempZone==='warm') speed*=1.15;
+  spawnInterval=Math.max(90-diff*35, 42);
+
+  // Temperature zone cycling
+  tempTimer--;
+  if(tempTimer<=0){
+    const r=Math.random();
+    if(r<0.15) { tempZone='warm'; tempDuration=180+Math.random()*180; }
+    else if(r<0.3) { tempZone='freeze'; tempDuration=180+Math.random()*180; }
+    else { tempZone='normal'; tempDuration=300+Math.random()*200; }
+    tempTimer=tempDuration;
+    tempAlpha=0;
+  }
+  tempAlpha=Math.min(tempAlpha+0.02, 0.15);
+
+  // Player physics
+  player.vy+=GRAVITY*player.gravity;
+  player.vy=Math.max(-12, Math.min(12, player.vy));
+  player.y+=player.vy;
+
+  // Clamp
+  if(player.y<player.h/2){ player.y=player.h/2; player.vy=0; }
+  if(player.y>H-player.h/2){ player.y=H-player.h/2; player.vy=0; }
+
+  // Trail
+  player.trail.push({x:player.x, y:player.y, a:1});
+  if(player.trail.length>12) player.trail.shift();
+  for(const t of player.trail) t.a*=0.85;
+
+  // Spawn
+  spawnTimer++;
+  if(spawnTimer>=spawnInterval){
+    spawnTimer=0;
+    createObstacle();
+  }
+
+  // Update obstacles
+  for(let i=obstacles.length-1;i>=0;i--){
+    const o=obstacles[i];
+    o.x-=speed;
+
+    if(o.cracked && !o.shattered){
+      o.telegraphTimer++;
+      if(o.telegraphTimer>=o.telegraphMax){
+        o.shatterable=true;
+      }
+    }
+
+    // Collision check
+    if(!o.shattered && o.x<player.x+player.w/2 && o.x+o.w>player.x-player.w/2){
+      const inGap=player.y-player.h/2>o.topH && player.y+player.h/2<o.botY;
+
+      if(!inGap){
+        // Check if hitting cracked side and it's shatterable
+        const hittingTop=player.y-player.h/2<o.topH;
+        const hittingBot=player.y+player.h/2>o.botY;
+
+        let shattered=false;
+        if(o.shatterable){
+          if(hittingTop && o.crackedSide==='top'){
+            shattered=true;
+            spawnShardParticles(o.x, o.topH, o.topH, false);
+          } else if(hittingBot && o.crackedSide==='bottom'){
+            shattered=true;
+            spawnShardParticles(o.x, o.botY, o.botH, true);
+          }
+        }
+
+        if(shattered){
+          o.shattered=true;
+          combo++;
+          if(combo>maxCombo) maxCombo=combo;
+          const comboMult=Math.min(combo, 10);
+          const pts=10*comboMult;
+          score+=pts;
+          playSound('shatter');
+          shakeMag=4;
+          spawnParticles(o.x, player.y, 15,
+            `hsl(${190+Math.random()*40},80%,75%)`,
+            [2,6],[2,7],25);
+          // Bonus text particle
+          particles.push({
+            x:o.x, y:player.y-30,
+            vx:0, vy:-1.5,
+            size:16, life:45, maxLife:45,
+            color:'#fff',
+            type:'text',
+            text:`+${pts} x${combo}`
+          });
+          if(tempZone==='freeze'){
+            score+=5*comboMult;
+          }
+        } else {
+          // Death
+          die();
+          return;
+        }
+      }
+    }
+
+    // Score for passing
+    if(!o.scored && o.x+o.w<player.x-player.w/2){
+      o.scored=true;
+      score++;
+      if(!o.cracked || o.shattered){
+        // Fine, no combo reset
+      } else if(o.cracked && !o.shattered){
+        // Missed a crackable - reset combo
+        combo=0;
+      }
+    }
+
+    // Near miss detection
+    if(!o.nearMissed && !o.shattered){
+      const margin=8;
+      if(o.x<player.x+player.w/2+margin && o.x+o.w>player.x-player.w/2-margin){
+        const topDist=Math.abs((player.y+player.h/2)-o.topH);
+        const botDist=Math.abs((player.y-player.h/2)-o.botY);
+        const minDist=Math.min(topDist, botDist);
+        if(minDist<15 && player.y-player.h/2>o.topH && player.y+player.h/2<o.botY){
+          o.nearMissed=true;
+          score+=3;
+          nearMissFlash=15;
+          nearMissText='CLOSE!';
+          playSound('nearmiss');
+          spawnParticles(player.x, player.y, 5,
+            `hsl(60,90%,70%)`, [1,3],[1,3],15);
+        }
+      }
+    }
+
+    // Remove off-screen
+    if(o.x+o.w<-20) obstacles.splice(i,1);
+  }
+
+  // Particles
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    p.x+=p.vx;
+    p.y+=p.vy;
+    if(p.gravity) p.vy+=p.gravity;
+    if(p.rotV) p.rot+=p.rotV;
+    p.life--;
+    if(p.life<=0) particles.splice(i,1);
+  }
+
+  // Screen shake
+  if(shakeMag>0.1){
+    shakeX=(Math.random()-0.5)*shakeMag;
+    shakeY=(Math.random()-0.5)*shakeMag;
+    shakeMag*=shakeDecay;
+  } else {
+    shakeX=0; shakeY=0; shakeMag=0;
+  }
+
+  // Near miss flash
+  if(nearMissFlash>0) nearMissFlash--;
+}
+
+function die(){
+  state='gameover';
+  playSound('death');
+  shakeMag=12;
+  if(score>bestScore){
+    bestScore=score;
+    localStorage.setItem('ff_best', bestScore);
+  }
+  spawnParticles(player.x, player.y, 30,
+    `hsl(0,80%,60%)`, [2,8],[2,8],40);
+  spawnParticles(player.x, player.y, 20,
+    `hsl(200,80%,80%)`, [1,5],[3,9],50);
+}
+
+// Draw
+function draw(){
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
+
+  // Background gradient
+  const bgGrad=ctx.createLinearGradient(0,0,0,H);
+  if(tempZone==='warm'){
+    bgGrad.addColorStop(0,'#1a0f08');
+    bgGrad.addColorStop(1,'#2a1510');
+  } else if(tempZone==='freeze'){
+    bgGrad.addColorStop(0,'#040a1a');
+    bgGrad.addColorStop(1,'#081028');
+  } else {
+    bgGrad.addColorStop(0,'#0a1628');
+    bgGrad.addColorStop(1,'#0d1f3c');
+  }
+  ctx.fillStyle=bgGrad;
+  ctx.fillRect(-20,-20,W+40,H+40);
+
+  // Temperature overlay
+  if(tempZone==='warm'){
+    ctx.fillStyle=`rgba(255,120,40,${tempAlpha*0.5})`;
+    ctx.fillRect(0,0,W,H);
+  } else if(tempZone==='freeze'){
+    ctx.fillStyle=`rgba(100,180,255,${tempAlpha*0.4})`;
+    ctx.fillRect(0,0,W,H);
+  }
+
+  // Subtle grid lines
+  ctx.strokeStyle='rgba(100,180,255,0.03)';
+  ctx.lineWidth=1;
+  const gridOff=(frameCount*speed*0.5)%40;
+  for(let x=-gridOff;x<W;x+=40){
+    ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke();
+  }
+
+  if(state==='start'){
+    drawStartScreen();
+  } else if(state==='playing' || state==='gameover'){
+    drawGame();
+  }
+
+  // Sound toggle
+  ctx.fillStyle='rgba(255,255,255,0.5)';
+  ctx.font='11px sans-serif';
+  ctx.textAlign='right';
+  ctx.fillText(soundOn?'Sound: On':'Sound: Off', W-8, 22);
+
+  // Share message
+  if(shareMsgTimer>0){
+    shareMsgTimer--;
+    ctx.fillStyle=`rgba(255,255,255,${Math.min(1,shareMsgTimer/30)})`;
+    ctx.font='bold 16px sans-serif';
+    ctx.textAlign='center';
+    ctx.fillText(shareMsg, W/2, H/2+160);
+  }
+
+  ctx.restore();
+}
+
+function drawStartScreen(){
+  // Title
+  const titleY=H*0.3;
+  ctx.textAlign='center';
+
+  // Frost particles in background
+  const t=frameCount*0.02;
+  for(let i=0;i<8;i++){
+    const fx=W/2+Math.sin(t+i*0.8)*120;
+    const fy=titleY-60+Math.cos(t*0.7+i*1.2)*40+i*15;
+    const fa=0.1+Math.sin(t+i)*0.08;
+    ctx.beginPath();
+    ctx.arc(fx,fy,3+Math.sin(t+i)*2,0,Math.PI*2);
+    ctx.fillStyle=`rgba(150,210,255,${fa})`;
+    ctx.fill();
+  }
+
+  // Title shadow
+  ctx.font='bold 52px sans-serif';
+  ctx.fillStyle='rgba(100,180,255,0.3)';
+  ctx.fillText('FROST FLIP', W/2+2, titleY+2);
+
+  // Title
+  const tGrad=ctx.createLinearGradient(W/2-120, titleY-30, W/2+120, titleY+10);
+  tGrad.addColorStop(0,'#8ecfff');
+  tGrad.addColorStop(0.5,'#ffffff');
+  tGrad.addColorStop(1,'#60b0ff');
+  ctx.fillStyle=tGrad;
+  ctx.fillText('FROST FLIP', W/2, titleY);
+
+  // Subtitle
+  ctx.font='16px sans-serif';
+  ctx.fillStyle='rgba(180,220,255,0.6)';
+  ctx.fillText('Crack & Cash', W/2, titleY+35);
+
+  // Tap to start (pulsing)
+  const pulse=0.6+Math.sin(frameCount*0.05)*0.4;
+  ctx.font='bold 20px sans-serif';
+  ctx.fillStyle=`rgba(255,255,255,${pulse})`;
+  ctx.fillText('Tap to Start', W/2, H*0.55);
+
+  // Instructions
+  ctx.font='13px sans-serif';
+  ctx.fillStyle='rgba(180,210,240,0.5)';
+  ctx.fillText('Tap / Space / Enter to flip gravity', W/2, H*0.62);
+  ctx.fillText('Shatter cracked icicles for bonus points', W/2, H*0.66);
+
+  // Challenge banner
+  if(isChallenge){
+    ctx.fillStyle='rgba(255,200,50,0.15)';
+    const bannerY=H*0.74;
+    ctx.fillRect(40, bannerY-20, W-80, 50);
+    ctx.strokeStyle='rgba(255,200,50,0.4)';
+    ctx.lineWidth=1;
+    ctx.strokeRect(40, bannerY-20, W-80, 50);
+    ctx.fillStyle='#ffd040';
+    ctx.font='bold 14px sans-serif';
+    ctx.fillText(`Challenge: Beat ${challengeScore} pts`, W/2, bannerY);
+    if(challengeCombo>0){
+      ctx.font='12px sans-serif';
+      ctx.fillText(`Combo target: ${challengeCombo}x`, W/2, bannerY+18);
+    }
+  }
+
+  // Best score
+  if(bestScore>0){
+    ctx.font='14px sans-serif';
+    ctx.fillStyle='rgba(180,220,255,0.4)';
+    ctx.fillText(`Best: ${bestScore}`, W/2, H*0.82);
+  }
+}
+
+function drawGame(){
+  // Draw obstacles
+  for(const o of obstacles){
+    if(o.shattered) continue;
+
+    drawIcicle(o, 'top', o.topH);
+    drawIcicle(o, 'bottom', o.botH);
+  }
+
+  // Draw player trail
+  for(const t of player.trail){
+    if(t.a<0.05) continue;
+    ctx.beginPath();
+    ctx.arc(t.x, t.y, player.w/2*t.a, 0, Math.PI*2);
+    ctx.fillStyle=`rgba(150,210,255,${t.a*0.3})`;
+    ctx.fill();
+  }
+
+  // Draw player
+  const ph=`hsl(${200+hueShift*0.1},85%,70%)`;
+  ctx.save();
+  ctx.translate(player.x, player.y);
+  const tilt=player.vy*0.04;
+  ctx.rotate(tilt);
+
+  // Glow
+  ctx.shadowColor='rgba(100,180,255,0.6)';
+  ctx.shadowBlur=15;
+
+  // Body
+  ctx.beginPath();
+  ctx.moveTo(player.w/2+4, 0);
+  ctx.lineTo(-player.w/2, -player.h/2);
+  ctx.lineTo(-player.w/2+6, 0);
+  ctx.lineTo(-player.w/2, player.h/2);
+  ctx.closePath();
+
+  const pGrad=ctx.createLinearGradient(-player.w/2, -player.h/2, player.w/2, player.h/2);
+  pGrad.addColorStop(0,'#70c0ff');
+  pGrad.addColorStop(1,'#3090e0');
+  ctx.fillStyle=pGrad;
+  ctx.fill();
+  ctx.strokeStyle='rgba(200,230,255,0.6)';
+  ctx.lineWidth=1.5;
+  ctx.stroke();
+
+  ctx.shadowBlur=0;
+  ctx.restore();
+
+  // Particles
+  for(const p of particles){
+    const alpha=p.life/p.maxLife;
+    if(p.type==='shard'){
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot||0);
+      ctx.fillStyle=p.color;
+      ctx.globalAlpha=alpha;
+      ctx.beginPath();
+      ctx.moveTo(0,-p.size/2);
+      ctx.lineTo(p.w/2, p.size/2);
+      ctx.lineTo(-p.w/2, p.size/2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.globalAlpha=1;
+      ctx.restore();
+    } else if(p.type==='text'){
+      ctx.globalAlpha=alpha;
+      ctx.fillStyle=p.color;
+      ctx.font=`bold ${p.size}px sans-serif`;
+      ctx.textAlign='center';
+      ctx.fillText(p.text, p.x, p.y);
+      ctx.globalAlpha=1;
+    } else {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size*alpha, 0, Math.PI*2);
+      ctx.fillStyle=p.color;
+      ctx.globalAlpha=alpha;
+      ctx.fill();
+      ctx.globalAlpha=1;
+    }
+  }
+
+  // Near miss flash
+  if(nearMissFlash>0){
+    ctx.fillStyle=`rgba(255,255,100,${nearMissFlash/30})`;
+    ctx.fillRect(0,0,W,H);
+    ctx.fillStyle=`rgba(255,255,200,${nearMissFlash/15})`;
+    ctx.font='bold 18px sans-serif';
+    ctx.textAlign='center';
+    ctx.fillText(nearMissText, player.x+40, player.y-20);
+  }
+
+  // HUD
+  drawHUD();
+
+  // Game over overlay
+  if(state==='gameover'){
+    drawGameOver();
+  }
+}
+
+function drawIcicle(o, side, h){
+  if(h<=0) return;
+  const x=o.x;
+  const w=o.w;
+  const isCrackedSide=o.cracked && o.crackedSide===side;
+
+  // Base color
+  let baseH=200, baseS=60, baseL=50;
+  if(tempZone==='warm'){ baseH=210; baseS=40; baseL=45; }
+  if(tempZone==='freeze'){ baseH=210; baseS=80; baseL=60; }
+
+  ctx.save();
+
+  if(side==='top'){
+    // Draw from top
+    const grad=ctx.createLinearGradient(x, 0, x, h);
+    grad.addColorStop(0,`hsl(${baseH},${baseS}%,${baseL+15}%)`);
+    grad.addColorStop(1,`hsl(${baseH},${baseS+10}%,${baseL-10}%)`);
+    ctx.fillStyle=grad;
+
+    // Icicle shape - jagged bottom edge
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x+w, 0);
+    // Jagged bottom
+    const teeth=3+Math.floor(w/18);
+    const tw=w/teeth;
+    for(let i=teeth;i>=0;i--){
+      const tx=x+i*tw;
+      const depth=(i%2===0)?h:h-12-Math.random()*8;
+      ctx.lineTo(tx, depth);
+    }
+    ctx.closePath();
+    ctx.fill();
+
+    // Shine
+    ctx.strokeStyle=`rgba(200,235,255,0.3)`;
+    ctx.lineWidth=1;
+    ctx.beginPath();
+    ctx.moveTo(x+4, 0); ctx.lineTo(x+4, h*0.7);
+    ctx.stroke();
+  } else {
+    // Draw from bottom
+    const grad=ctx.createLinearGradient(x, H, x, H-h);
+    grad.addColorStop(0,`hsl(${baseH},${baseS}%,${baseL+15}%)`);
+    grad.addColorStop(1,`hsl(${baseH},${baseS+10}%,${baseL-10}%)`);
+    ctx.fillStyle=grad;
+
+    ctx.beginPath();
+    ctx.moveTo(x, H);
+    ctx.lineTo(x+w, H);
+    const teeth=3+Math.floor(w/18);
+    const tw=w/teeth;
+    for(let i=teeth;i>=0;i--){
+      const tx=x+i*tw;
+      const topEdge=H-h;
+      const depth=(i%2===0)?topEdge:topEdge+12+Math.random()*8;
+      ctx.lineTo(tx, depth);
+    }
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.strokeStyle=`rgba(200,235,255,0.3)`;
+    ctx.lineWidth=1;
+    ctx.beginPath();
+    ctx.moveTo(x+4, H); ctx.lineTo(x+4, H-h*0.7);
+    ctx.stroke();
+  }
+
+  // Cracked telegraph
+  if(isCrackedSide){
+    const progress=Math.min(o.telegraphTimer/o.telegraphMax, 1);
+    const cy=side==='top'?h*0.6:(H-h*0.6);
+
+    // Glow
+    const glowAlpha=0.15+progress*0.4+Math.sin(frameCount*0.15)*0.1;
+    ctx.shadowColor=o.shatterable?'rgba(255,200,50,0.8)':'rgba(255,150,50,0.4)';
+    ctx.shadowBlur=o.shatterable?20:8;
+
+    // Crack lines
+    ctx.strokeStyle=`rgba(255,${180+progress*75},${50+progress*100},${0.3+progress*0.6})`;
+    ctx.lineWidth=1.5+progress;
+
+    const cx=x+w/2;
+    // Main crack
+    ctx.beginPath();
+    ctx.moveTo(cx-w*0.3, cy-10);
+    ctx.lineTo(cx, cy);
+    ctx.lineTo(cx+w*0.25, cy+8);
+    ctx.stroke();
+    // Branch cracks
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx-w*0.15, cy+15);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx+w*0.2, cy-12);
+    ctx.stroke();
+
+    ctx.shadowBlur=0;
+
+    // Ticking visual cue - pulsing ring
+    if(progress>0.3){
+      const ringAlpha=(0.2+progress*0.3)*Math.abs(Math.sin(frameCount*0.2));
+      ctx.strokeStyle=`rgba(255,220,100,${ringAlpha})`;
+      ctx.lineWidth=2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 12+progress*8, 0, Math.PI*2*progress);
+      ctx.stroke();
+    }
+
+    // Ready indicator
+    if(o.shatterable){
+      const blinkAlpha=0.5+Math.sin(frameCount*0.3)*0.5;
+      ctx.fillStyle=`rgba(255,230,100,${blinkAlpha})`;
+      ctx.font='bold 12px sans-serif';
+      ctx.textAlign='center';
+      ctx.fillText('CRACK!', cx, cy-18);
+    }
+  }
+
+  ctx.restore();
+}
+
+function drawHUD(){
+  ctx.textAlign='left';
+
+  // Score
+  ctx.font='bold 28px sans-serif';
+  ctx.fillStyle='rgba(255,255,255,0.9)';
+  ctx.fillText(score, 15, 40);
+
+  // Combo
+  if(combo>0){
+    const comboScale=Math.min(1+combo*0.05, 1.5);
+    const comboHue=(combo*30)%360;
+    ctx.font=`bold ${16*comboScale}px sans-serif`;
+    ctx.fillStyle=`hsl(${comboHue},80%,70%)`;
+    ctx.fillText(`${combo}x COMBO`, 15, 65);
+  }
+
+  // Temp zone indicator
+  if(tempZone!=='normal'){
+    ctx.font='bold 12px sans-serif';
+    ctx.textAlign='right';
+    if(tempZone==='warm'){
+      ctx.fillStyle='rgba(255,160,60,0.7)';
+      ctx.fillText('WARM VENT', W-10, 50);
+    } else {
+      ctx.fillStyle='rgba(100,180,255,0.7)';
+      ctx.fillText('DEEP FREEZE', W-10, 50);
+    }
+  }
+}
+
+function drawGameOver(){
+  // Overlay
+  ctx.fillStyle='rgba(5,10,25,0.75)';
+  ctx.fillRect(0,0,W,H);
+
+  ctx.textAlign='center';
+
+  // Game over title
+  ctx.font='bold 40px sans-serif';
+  ctx.fillStyle='rgba(255,100,100,0.9)';
+  ctx.fillText('GAME OVER', W/2, H/2-80);
+
+  // Score
+  ctx.font='bold 32px sans-serif';
+  ctx.fillStyle='#fff';
+  ctx.fillText(score, W/2, H/2-30);
+  ctx.font='14px sans-serif';
+  ctx.fillStyle='rgba(200,220,240,0.6)';
+  ctx.fillText('SCORE', W/2, H/2-45);
+
+  // Best
+  ctx.font='bold 20px sans-serif';
+  ctx.fillStyle=score>=bestScore?'#ffd700':'rgba(200,220,240,0.7)';
+  ctx.fillText(`Best: ${bestScore}`, W/2, H/2+10);
+  if(score>=bestScore && score>0){
+    ctx.font='bold 14px sans-serif';
+    ctx.fillStyle='#ffd700';
+    ctx.fillText('NEW BEST!', W/2, H/2+30);
+  }
+
+  // Max combo
+  ctx.font='16px sans-serif';
+  ctx.fillStyle='rgba(180,220,255,0.6)';
+  ctx.fillText(`Max Combo: ${maxCombo}x`, W/2, H/2+55);
+
+  // Challenge result
+  if(isChallenge){
+    const beatScore=score>=challengeScore;
+    const beatCombo=maxCombo>=challengeCombo;
+    ctx.font='bold 14px sans-serif';
+    ctx.fillStyle=(beatScore&&beatCombo)?'#50ff50':'#ff8080';
+    ctx.fillText((beatScore&&beatCombo)?'Challenge Complete!':'Challenge Failed', W/2, H/2+78);
+  }
+
+  // Share button
+  ctx.fillStyle='rgba(100,180,255,0.2)';
+  const btnX=W/2-70, btnY=H/2+100, btnW=140, btnH=36;
+  ctx.beginPath();
+  ctx.roundRect(btnX, btnY, btnW, btnH, 8);
+  ctx.fill();
+  ctx.strokeStyle='rgba(100,180,255,0.5)';
+  ctx.lineWidth=1;
+  ctx.stroke();
+  ctx.fillStyle='rgba(200,230,255,0.9)';
+  ctx.font='bold 14px sans-serif';
+  ctx.fillText('Share / Challenge', W/2, H/2+122);
+
+  // Tap to retry
+  const pulse=0.4+Math.sin(frameCount*0.05)*0.4;
+  ctx.font='bold 18px sans-serif';
+  ctx.fillStyle=`rgba(255,255,255,${pulse})`;
+  ctx.fillText('Tap to Retry', W/2, H/2+170);
+}
+
+// Game loop
+function loop(){
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+loop();
+
+})();
+</script>
+</body>
+</html>

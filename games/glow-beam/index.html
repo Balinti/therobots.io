@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Glow Beam - Free HTML5 Game</title>
+<meta name="description" content="Play Glow Beam - Tap to keep your balance on a glowing beam against a fading sunset timer.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0a0015">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Glow Beam - Free HTML5 Game">
+<meta property="og:description" content="Match polarity to absorb pulses on a neon beam. Tap to flip polarity. How long can you survive?">
+<meta property="og:url" content="https://balinti.github.io/glow-beam/">
+<meta property="og:image" content="https://balinti.github.io/glow-beam/preview.png">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#050010;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;font-family:'Segoe UI',Arial,sans-serif;touch-action:none}
+#wrap{position:relative;width:100%;max-width:420px;height:100%;max-height:750px;display:flex;flex-direction:column;align-items:center;justify-content:center}
+#gameCanvas{display:block;width:100%;height:100%;max-width:420px;max-height:750px;cursor:pointer}
+#hud{position:absolute;top:12px;left:0;right:0;display:flex;justify-content:space-between;align-items:flex-start;padding:0 16px;pointer-events:none;z-index:2}
+.hud-left,.hud-right{display:flex;flex-direction:column;gap:2px}
+.hud-score{font-size:28px;font-weight:700;color:#fff;text-shadow:0 0 12px #ff80ff,0 0 24px #ff40ff;letter-spacing:1px}
+.hud-label{font-size:10px;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:1px}
+.hud-best{font-size:14px;color:rgba(255,200,255,0.7);text-shadow:0 0 8px #ff60ff}
+.hud-stage{font-size:12px;color:rgba(255,180,100,0.8);text-shadow:0 0 8px #ff8040}
+.hud-combo{font-size:16px;font-weight:700;text-align:right}
+.hud-mult{font-size:22px;font-weight:900;text-align:right;text-shadow:0 0 12px currentColor}
+#overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:5;background:transparent;pointer-events:none}
+#overlay.active{pointer-events:auto}
+.panel{display:none;flex-direction:column;align-items:center;gap:12px;padding:32px 24px;border-radius:20px;background:rgba(5,0,20,0.85);border:1px solid rgba(255,100,255,0.3);box-shadow:0 0 40px rgba(200,0,255,0.2),inset 0 0 20px rgba(100,0,200,0.1);max-width:320px;width:90%;text-align:center}
+.panel.show{display:flex}
+.panel h1{font-size:42px;font-weight:900;letter-spacing:3px;background:linear-gradient(135deg,#ff60ff,#60c0ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;text-shadow:none}
+.panel h2{font-size:28px;font-weight:700;color:#ff80ff;text-shadow:0 0 16px #ff40ff}
+.panel .sub{font-size:14px;color:rgba(255,200,255,0.7);line-height:1.5}
+.panel .tap-hint{font-size:16px;color:#80ffff;text-shadow:0 0 12px #40ffff;animation:pulse-hint 1.2s ease-in-out infinite}
+.panel .score-display{font-size:48px;font-weight:900;color:#fff;text-shadow:0 0 20px #ff80ff}
+.panel .best-display{font-size:16px;color:rgba(255,200,100,0.8);text-shadow:0 0 8px #ff8040}
+.panel .reason{font-size:14px;color:#ff6060;text-shadow:0 0 10px #ff2020;font-weight:600}
+@keyframes pulse-hint{0%,100%{opacity:0.5;transform:scale(1)}50%{opacity:1;transform:scale(1.05)}}
+#about{position:absolute;bottom:0;left:0;right:0;background:rgba(5,0,20,0.9);color:rgba(255,255,255,0.4);font-size:10px;line-height:1.6;padding:8px 16px;text-align:center;border-top:1px solid rgba(255,100,255,0.1)}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="gameCanvas"></canvas>
+  <div id="hud">
+    <div class="hud-left">
+      <div class="hud-label">Score</div>
+      <div class="hud-score" id="hudScore">0</div>
+      <div class="hud-best" id="hudBest">Best: 0</div>
+    </div>
+    <div class="hud-right">
+      <div class="hud-label" style="text-align:right" id="hudStageLabel">Stage 1</div>
+      <div class="hud-mult" id="hudMult" style="color:#ffffff">x1</div>
+      <div class="hud-combo" id="hudCombo" style="color:rgba(255,255,255,0.5)">combo 0</div>
+    </div>
+  </div>
+  <div id="overlay">
+    <div class="panel show" id="panelStart">
+      <h1>GLOW BEAM</h1>
+      <p class="sub">Match polarity to absorb pulses.<br>Tap to flip <span style="color:#60c0ff">Blue</span> ↔ <span style="color:#ff60ff">Pink</span></p>
+      <p class="tap-hint">Tap to Start</p>
+    </div>
+    <div class="panel" id="panelGameover">
+      <h2>GAME OVER</h2>
+      <div class="reason" id="reasonText">Wrong polarity!</div>
+      <div class="score-display" id="goScore">0</div>
+      <div class="best-display" id="goBest">Best: 0</div>
+      <p class="tap-hint" style="margin-top:8px">Tap to Retry</p>
+    </div>
+  </div>
+  <div id="about">
+    <strong>Glow Beam</strong> &mdash; Tap to flip polarity (Blue/Pink). Match the pulse color as it crosses the impact line to score.
+    Combo up to x8 multiplier. Survive sunset stages with increasing speed and split lanes. Space or Enter also works.
+  </div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+// ─── Canvas setup ───────────────────────────────────────────────────────────
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const wrap = document.getElementById('wrap');
+
+let W = 420, H = 750, DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+function resize() {
+  const rect = wrap.getBoundingClientRect();
+  W = rect.width;
+  H = rect.height;
+  canvas.width = W * DPR;
+  canvas.height = H * DPR;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  if (state !== 'playing') drawStatic();
+}
+window.addEventListener('resize', resize);
+
+// ─── HUD refs ───────────────────────────────────────────────────────────────
+const hudScore = document.getElementById('hudScore');
+const hudBest  = document.getElementById('hudBest');
+const hudMult  = document.getElementById('hudMult');
+const hudCombo = document.getElementById('hudCombo');
+const hudStageLabel = document.getElementById('hudStageLabel');
+const panelStart    = document.getElementById('panelStart');
+const panelGameover = document.getElementById('panelGameover');
+const overlay       = document.getElementById('overlay');
+const goScore       = document.getElementById('goScore');
+const goBest        = document.getElementById('goBest');
+const reasonText    = document.getElementById('reasonText');
+
+// ─── State ───────────────────────────────────────────────────────────────────
+let state = 'start'; // 'start' | 'playing' | 'gameover'
+let score = 0;
+let bestScore = parseInt(localStorage.getItem('glowbeam_highscore') || '0');
+let combo = 0;
+let mult = 1;
+let gameTime = 0;    // seconds since game start
+let stageIdx = 0;
+let polarity = 0;    // 0=blue, 1=pink
+let pulses = [];
+let particles = [];
+let floatTexts = [];
+let shakeAmt = 0;
+let shakeDur = 0;
+let hitStopFrames = 0;
+let animId = null;
+let lastTime = 0;
+let laneMode = false; // enabled at stage 5 (70s+)
+let playerLane = 0;   // 0=left, 1=right (in lane mode)
+let bgHue = 20;       // sunset hue cycling
+let frameHue = 0;     // global color cycle
+
+// ─── Stages ─────────────────────────────────────────────────────────────────
+const STAGES = [
+  {name:'Warm-Up',    minT:0,   maxT:10,  speed:220, interval:2.2, double:0,   fakeout:false, lanes:false},
+  {name:'Rising',     minT:10,  maxT:25,  speed:280, interval:1.7, double:0.2, fakeout:false, lanes:false},
+  {name:'Pairs',      minT:25,  maxT:45,  speed:340, interval:1.4, double:0.5, fakeout:false, lanes:false},
+  {name:'Fakeout',    minT:45,  maxT:70,  speed:400, interval:1.2, double:0.3, fakeout:true,  lanes:false},
+  {name:'Split Lane', minT:70,  maxT:999, speed:460, interval:0.9, double:0.4, fakeout:true,  lanes:true},
+];
+
+// ─── Geometry ────────────────────────────────────────────────────────────────
+const BEAM_X_PCT  = 0.5;
+const BEAM_Y_PCT  = 0.72;
+const PLAYER_R    = 10;
+const PULSE_R     = 18;
+const IMPACT_Y_PCT = 0.72;
+const LANE_OFFSET = 60;
+
+function beamX(lane) {
+  if (!laneMode) return W * BEAM_X_PCT;
+  return W * BEAM_X_PCT + (lane === 0 ? -LANE_OFFSET : LANE_OFFSET);
+}
+function impactY() { return H * IMPACT_Y_PCT; }
+
+// ─── Colors ──────────────────────────────────────────────────────────────────
+const BLUE = {h:200, s:100, l:65, str:'#50c8ff', glow:'#20a0ff'};
+const PINK = {h:320, s:100, l:65, str:'#ff60d0', glow:'#ff20a0'};
+function polarityColor(p) { return p === 0 ? BLUE : PINK; }
+function polarityColorStr(p) { return p === 0 ? BLUE.str : PINK.str; }
+function polarityGlowStr(p) { return p === 0 ? BLUE.glow : PINK.glow; }
+
+// ─── Particle pool ───────────────────────────────────────────────────────────
+const POOL_SIZE = 300;
+const pool = [];
+for (let i = 0; i < POOL_SIZE; i++) pool.push({active:false});
+
+function getParticle() {
+  for (let i = 0; i < POOL_SIZE; i++) if (!pool[i].active) return pool[i];
+  return null;
+}
+
+function spawnParticles(x, y, color, count, fast) {
+  for (let i = 0; i < count; i++) {
+    const p = getParticle();
+    if (!p) break;
+    const angle = Math.random() * Math.PI * 2;
+    const spd = (fast ? 180 : 90) + Math.random() * (fast ? 200 : 120);
+    p.active = true;
+    p.x = x; p.y = y;
+    p.vx = Math.cos(angle) * spd;
+    p.vy = Math.sin(angle) * spd - (fast ? 60 : 30);
+    p.life = 1;
+    p.decay = 0.025 + Math.random() * 0.03;
+    p.r = 3 + Math.random() * (fast ? 5 : 3);
+    p.color = color;
+    p.lighter = Math.random() < 0.4;
+    p.trail = [];
+  }
+}
+
+function spawnShockwave(x, y, color) {
+  const p = getParticle();
+  if (!p) return;
+  p.active = true; p.x = x; p.y = y;
+  p.vx = 0; p.vy = 0; p.life = 1; p.decay = 0.04;
+  p.r = PULSE_R; p.color = color; p.shockwave = true; p.lighter = false; p.trail = [];
+}
+
+// ─── Pulse spawning ──────────────────────────────────────────────────────────
+let nextSpawnT = 0.5;
+
+function spawnPulse(lane, pol, fakeout) {
+  const stage = STAGES[stageIdx];
+  const spd = stage.speed * (0.9 + Math.random() * 0.2);
+  pulses.push({
+    x: beamX(lane),
+    y: -PULSE_R,
+    prevY: -PULSE_R - 1,
+    vy: spd,
+    lane: lane,
+    polarity: pol,
+    fakeout: fakeout,
+    locked: false,
+    lockTimer: 0,
+    lockFlashed: false,
+    r: PULSE_R,
+    alpha: fakeout ? 0.35 : 1,
+    grazed: false,
+  });
+}
+
+function schedulePulse() {
+  const stage = STAGES[stageIdx];
+  const pol = Math.round(Math.random());
+  const doDouble = Math.random() < stage.double;
+  const doFakeout = stage.fakeout && Math.random() < 0.35;
+
+  if (stage.lanes) {
+    // Split-lane burst: spawn in both lanes sometimes
+    const burstCount = 1 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < burstCount; i++) {
+      const lane = Math.random() < 0.5 ? 0 : 1;
+      const p2 = Math.round(Math.random());
+      setTimeout(() => spawnPulse(lane, p2, doFakeout), i * 280);
+    }
+  } else {
+    spawnPulse(0, pol, doFakeout);
+    if (doDouble) {
+      setTimeout(() => {
+        const p2 = Math.random() < 0.5 ? pol : 1 - pol;
+        spawnPulse(0, p2, doFakeout);
+      }, 350 + Math.random() * 150);
+    }
+  }
+
+  const jitter = (Math.random() - 0.5) * 0.4;
+  nextSpawnT += stage.interval + jitter;
+}
+
+// ─── Combo/mult update ───────────────────────────────────────────────────────
+function updateMult() {
+  if (combo < 10)       mult = 1;
+  else if (combo < 25)  mult = 2;
+  else if (combo < 50)  mult = 4;
+  else                  mult = 8;
+}
+
+function addScore(base, label, x, y) {
+  const pts = base * mult;
+  score += pts;
+  hudScore.textContent = score;
+  floatTexts.push({x, y, text: (mult > 1 ? 'x'+mult+' ' : '') + '+'+pts+(label?' '+label:''), life:1, col: mult >= 4 ? '#ffdd40' : '#ffffff'});
+}
+
+// ─── Screen shake ────────────────────────────────────────────────────────────
+function triggerShake(amt, dur) {
+  shakeAmt = amt;
+  shakeDur = dur;
+}
+
+// ─── Stage update ────────────────────────────────────────────────────────────
+function updateStage() {
+  for (let i = STAGES.length - 1; i >= 0; i--) {
+    if (gameTime >= STAGES[i].minT) {
+      if (stageIdx !== i) {
+        stageIdx = i;
+        laneMode = STAGES[i].lanes;
+        hudStageLabel.textContent = 'Stage ' + (i+1) + ': ' + STAGES[i].name;
+        // Stage change flash
+        floatTexts.push({x: W/2, y: H/2, text: 'STAGE '+(i+1)+': '+STAGES[i].name.toUpperCase(), life:1.5, col:'#ffaa40', big:true});
+      }
+      break;
+    }
+  }
+}
+
+// ─── Game init ───────────────────────────────────────────────────────────────
+function initGame() {
+  score = 0; combo = 0; mult = 1; gameTime = 0;
+  stageIdx = 0; polarity = 0; pulses = []; particles = []; floatTexts = [];
+  shakeAmt = 0; shakeDur = 0; hitStopFrames = 0;
+  laneMode = false; playerLane = 0; bgHue = 20; frameHue = 0;
+  nextSpawnT = 0.8;
+  hudScore.textContent = '0';
+  hudBest.textContent = 'Best: ' + bestScore;
+  hudMult.textContent = 'x1';
+  hudMult.style.color = '#ffffff';
+  hudCombo.textContent = 'combo 0';
+  hudStageLabel.textContent = 'Stage 1: Warm-Up';
+  for (let i = 0; i < POOL_SIZE; i++) pool[i].active = false;
+}
+
+// ─── Input ───────────────────────────────────────────────────────────────────
+function handleInput() {
+  if (state === 'start') {
+    startGame();
+  } else if (state === 'playing') {
+    tap();
+  } else if (state === 'gameover') {
+    startGame();
+  }
+}
+
+canvas.addEventListener('pointerdown', e => { e.preventDefault(); handleInput(); });
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); handleInput(); }
+});
+
+function tap() {
+  polarity = 1 - polarity;
+  if (laneMode) playerLane = 1 - playerLane;
+  // tap spark
+  const px = beamX(playerLane);
+  const py = impactY();
+  spawnParticles(px, py, polarityColorStr(polarity), 6, false);
+}
+
+// ─── State transitions ───────────────────────────────────────────────────────
+function startGame() {
+  initGame();
+  state = 'playing';
+  overlay.classList.remove('active');
+  panelStart.classList.remove('show');
+  panelGameover.classList.remove('show');
+  lastTime = performance.now();
+  if (animId) cancelAnimationFrame(animId);
+  loop(lastTime);
+}
+
+function showStart() {
+  state = 'start';
+  overlay.classList.add('active');
+  panelStart.classList.add('show');
+  panelGameover.classList.remove('show');
+  drawStatic();
+}
+
+function gameOver(reason) {
+  state = 'gameover';
+  if (score > bestScore) {
+    bestScore = score;
+    localStorage.setItem('glowbeam_highscore', bestScore);
+  }
+  triggerShake(14, 0.5);
+  hitStopFrames = 0;
+  overlay.classList.add('active');
+  panelGameover.classList.add('show');
+  panelStart.classList.remove('show');
+  reasonText.textContent = reason;
+  goScore.textContent = score;
+  goBest.textContent = 'Best: ' + bestScore;
+  hudBest.textContent = 'Best: ' + bestScore;
+}
+
+// ─── Main loop ───────────────────────────────────────────────────────────────
+function loop(ts) {
+  animId = requestAnimationFrame(loop);
+  const raw = (ts - lastTime) / 1000;
+  lastTime = ts;
+  const dt = Math.min(raw, 0.05);
+
+  if (hitStopFrames > 0) { hitStopFrames--; render(0); return; }
+
+  if (state === 'playing') update(dt);
+  render(dt);
+}
+
+// ─── Update ──────────────────────────────────────────────────────────────────
+function update(dt) {
+  gameTime += dt;
+  bgHue += dt * 8;
+  frameHue = (frameHue + dt * 40) % 360;
+  updateStage();
+
+  if (gameTime >= nextSpawnT) schedulePulse();
+
+  const iy = impactY();
+  const GRAZE_BAND = 22;
+
+  for (let i = pulses.length - 1; i >= 0; i--) {
+    const p = pulses[i];
+    p.prevY = p.y;
+    p.y += p.vy * dt;
+
+    // Fakeout lock-in: lock color when 90px above impact
+    if (p.fakeout && !p.locked && p.y >= iy - 90) {
+      p.locked = true;
+      p.lockTimer = 0.18;
+      p.alpha = 1;
+    }
+    if (p.lockTimer > 0) {
+      p.lockTimer -= dt;
+      if (!p.lockFlashed && p.lockTimer < 0.12) {
+        p.lockFlashed = true;
+        spawnParticles(p.x, p.y, polarityColorStr(p.polarity), 8, false);
+      }
+    }
+
+    // Impact detection: crossing impact line
+    if (p.prevY < iy && p.y >= iy) {
+      const pxPx = beamX(playerLane);
+      const laneOk = !laneMode || (p.lane === playerLane);
+      const polOk  = p.polarity === polarity;
+
+      if (!laneOk) {
+        pulses.splice(i, 1);
+        triggerShake(12, 0.4);
+        spawnParticles(p.x, iy, '#ff4040', 20, true);
+        spawnShockwave(p.x, iy, '#ff2020');
+        floatTexts.push({x: p.x, y: iy - 30, text:'WRONG LANE!', life:1.2, col:'#ff4040', big:true});
+        combo = 0; updateMult();
+        gameOver('Wrong lane!');
+        return;
+      } else if (!polOk) {
+        // Check graze: exact timing within ±GRAZE_BAND px would be a graze
+        // For simplicity: mismatch polarity = fail (graze removed to keep it fair, wrong pol always fails)
+        pulses.splice(i, 1);
+        triggerShake(14, 0.45);
+        spawnParticles(p.x, iy, '#ff4040', 22, true);
+        spawnShockwave(p.x, iy, '#ff2020');
+        floatTexts.push({x: p.x, y: iy - 30, text:'WRONG POLARITY!', life:1.2, col:'#ff4040', big:true});
+        combo = 0; updateMult();
+        gameOver('Wrong polarity!');
+        return;
+      } else {
+        // Perfect absorb
+        pulses.splice(i, 1);
+        combo++;
+        updateMult();
+        const col = polarityColorStr(p.polarity);
+        spawnParticles(p.x, iy, col, 24, true);
+        spawnShockwave(p.x, iy, col);
+        hitStopFrames = mult >= 4 ? 4 : 3;
+        addScore(10, 'PERFECT', p.x, iy - 30);
+      }
+    } else if (p.y > H + 60) {
+      // Missed
+      pulses.splice(i, 1);
+      combo = 0; updateMult();
+    }
+  }
+
+  // Update particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.life -= p.decay;
+    if (p.life <= 0) { particles.splice(i, 1); continue; }
+    if (!p.shockwave) {
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy += 200 * dt; // gravity
+    } else {
+      p.r += 120 * dt;
+    }
+  }
+
+  // Pool-based particles update
+  for (let i = 0; i < POOL_SIZE; i++) {
+    const p = pool[i];
+    if (!p.active) continue;
+    p.life -= p.decay;
+    if (p.life <= 0) { p.active = false; continue; }
+    if (!p.shockwave) {
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy += 200 * dt;
+    } else {
+      p.r += 140 * dt;
+    }
+  }
+
+  // Float texts
+  for (let i = floatTexts.length - 1; i >= 0; i--) {
+    const t = floatTexts[i];
+    t.life -= dt * (t.big ? 0.6 : 0.9);
+    t.y -= dt * 45;
+    if (t.life <= 0) floatTexts.splice(i, 1);
+  }
+
+  // Update shake
+  if (shakeDur > 0) {
+    shakeDur -= dt;
+    shakeAmt *= 0.85;
+    if (shakeDur <= 0) { shakeAmt = 0; shakeDur = 0; }
+  }
+
+  // Update HUD mult color
+  const multColors = ['#ffffff', '#40ffff', '#40ff80', '#ffdd00'];
+  const multIdx = mult === 1 ? 0 : mult === 2 ? 1 : mult === 4 ? 2 : 3;
+  hudMult.textContent = 'x' + mult;
+  hudMult.style.color = multColors[multIdx];
+  hudCombo.textContent = 'combo ' + combo;
+  hudCombo.style.color = multColors[multIdx];
+}
+
+// ─── Render ───────────────────────────────────────────────────────────────────
+function render(dt) {
+  // Shake transform
+  let sx = 0, sy = 0;
+  if (shakeAmt > 0) {
+    sx = (Math.random() - 0.5) * shakeAmt * 2;
+    sy = (Math.random() - 0.5) * shakeAmt * 2;
+  }
+  ctx.save();
+  ctx.translate(sx, sy);
+
+  // Background
+  drawBackground();
+
+  if (state === 'playing' || state === 'gameover') {
+    drawBeam();
+    drawPulses();
+    drawPlayer();
+    drawParticles();
+    drawFloatTexts();
+    drawComboAura();
+  } else {
+    drawBeamStatic();
+  }
+
+  ctx.restore();
+}
+
+function drawStatic() {
+  ctx.save();
+  drawBackground();
+  drawBeamStatic();
+  ctx.restore();
+}
+
+function drawBackground() {
+  // Sunset gradient
+  const h1 = (bgHue % 360);
+  const h2 = (bgHue + 40) % 360;
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0,   `hsl(${h1},60%,6%)`);
+  g.addColorStop(0.5, `hsl(${h2},50%,9%)`);
+  g.addColorStop(1,   'hsl(260,40%,5%)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+
+  // Star field
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  // Use deterministic pseudo-random for stars
+  const seed = 42;
+  for (let i = 0; i < 50; i++) {
+    const x = ((seed * (i * 7 + 13) * 1234567) % W + W) % W;
+    const y = ((seed * (i * 11 + 7) * 987654) % (H * 0.6) + H * 0.6 * i / 50);
+    const twinkle = Math.sin(gameTime * 1.5 + i) * 0.3 + 0.5;
+    ctx.globalAlpha = twinkle * 0.4;
+    ctx.fillRect(x % W, y % (H * 0.65), 1.5, 1.5);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawBeam() {
+  const bx = W * BEAM_X_PCT;
+  const iy = impactY();
+
+  if (laneMode) {
+    // Two lanes
+    drawSingleBeam(beamX(0), iy);
+    drawSingleBeam(beamX(1), iy);
+  } else {
+    drawSingleBeam(bx, iy);
+  }
+
+  // Impact line
+  ctx.save();
+  const pcol = polarityColorStr(polarity);
+  ctx.strokeStyle = pcol;
+  ctx.lineWidth = 2;
+  ctx.globalAlpha = 0.7;
+  ctx.setLineDash([6, 4]);
+  ctx.beginPath();
+  ctx.moveTo(laneMode ? beamX(0) - 90 : bx - 80, iy);
+  ctx.lineTo(laneMode ? beamX(1) + 90 : bx + 80, iy);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+function drawBeamStatic() {
+  drawSingleBeam(W * BEAM_X_PCT, H * IMPACT_Y_PCT);
+}
+
+function drawSingleBeam(bx, iy) {
+  ctx.save();
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, 'rgba(150,80,255,0)');
+  g.addColorStop(0.5, 'rgba(200,100,255,0.3)');
+  g.addColorStop(1, 'rgba(100,50,200,0)');
+
+  ctx.strokeStyle = g;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(bx, 0);
+  ctx.lineTo(bx, H);
+  ctx.stroke();
+
+  // Inner glow line
+  ctx.shadowColor = polarityColorStr(polarity);
+  ctx.shadowBlur = 12;
+  ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(bx, 0);
+  ctx.lineTo(bx, H);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.restore();
+}
+
+function drawPulses() {
+  for (const p of pulses) {
+    const col = polarityColorStr(p.polarity);
+    const glow = polarityGlowStr(p.polarity);
+    const alpha = p.fakeout && !p.locked ? 0.35 : 1;
+    const lockPulse = p.locked && p.lockTimer > 0 ? Math.sin(p.lockTimer * 60) * 0.3 + 0.7 : 1;
+
+    ctx.save();
+    ctx.globalAlpha = alpha * lockPulse;
+
+    // Outer glow ring
+    ctx.shadowColor = col;
+    ctx.shadowBlur = 18;
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Inner bright ring
+    ctx.shadowBlur = 6;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r * 0.6, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Core dot
+    const cg = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r * 0.5);
+    cg.addColorStop(0, '#ffffff');
+    cg.addColorStop(0.5, col);
+    cg.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = cg;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r * 0.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Fakeout dim overlay text
+    if (p.fakeout && !p.locked) {
+      ctx.globalAlpha = 0.25;
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '9px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('?', p.x, p.y + 3);
+    }
+
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+}
+
+function drawPlayer() {
+  const px = beamX(playerLane);
+  const py = impactY();
+  const col = polarityColorStr(polarity);
+  const glow = polarityGlowStr(polarity);
+  const pulse = Math.sin(gameTime * 8) * 0.2 + 1;
+
+  ctx.save();
+  // Aura glow
+  ctx.shadowColor = col;
+  ctx.shadowBlur = 24;
+
+  // Outer ring
+  ctx.strokeStyle = col;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(px, py, PLAYER_R * pulse, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Core
+  const cg = ctx.createRadialGradient(px, py, 0, px, py, PLAYER_R);
+  cg.addColorStop(0, '#ffffff');
+  cg.addColorStop(0.4, col);
+  cg.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = cg;
+  ctx.beginPath();
+  ctx.arc(px, py, PLAYER_R, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Lane indicator in lane mode
+  if (laneMode) {
+    ctx.globalAlpha = 0.4;
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 5]);
+    // arrow indicating current lane
+    const otherX = beamX(1 - playerLane);
+    ctx.beginPath();
+    ctx.moveTo(px + (px < otherX ? 18 : -18), py);
+    ctx.lineTo(otherX, py);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  ctx.shadowBlur = 0;
+  ctx.restore();
+}
+
+function drawComboAura() {
+  if (combo < 10) return;
+  const px = beamX(playerLane);
+  const py = impactY();
+  const radius = 30 + (combo / 5);
+  const alpha = Math.min(combo / 50, 0.5);
+  const col = mult === 8 ? '#ffdd00' : mult === 4 ? '#40ff80' : '#40ffff';
+  const pulse = Math.sin(gameTime * 6) * 0.15 + 1;
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.strokeStyle = col;
+  ctx.shadowColor = col;
+  ctx.shadowBlur = 20;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(px, py, radius * pulse, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawParticles() {
+  // Normal pass
+  ctx.save();
+  for (let i = 0; i < POOL_SIZE; i++) {
+    const p = pool[i];
+    if (!p.active) continue;
+    const a = Math.max(0, p.life);
+    if (p.shockwave) {
+      ctx.globalAlpha = a * 0.6;
+      ctx.strokeStyle = p.color;
+      ctx.lineWidth = 2;
+      ctx.shadowColor = p.color;
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (p.lighter) {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = a * 0.7;
+      ctx.fillStyle = p.color;
+      ctx.shadowColor = p.color;
+      ctx.shadowBlur = p.r * 2;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r * a, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
+    } else {
+      ctx.globalAlpha = a;
+      ctx.fillStyle = p.color;
+      ctx.shadowColor = p.color;
+      ctx.shadowBlur = p.r;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r * a, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.shadowBlur = 0;
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+function drawFloatTexts() {
+  ctx.save();
+  for (const t of floatTexts) {
+    ctx.globalAlpha = Math.min(1, t.life);
+    ctx.fillStyle = t.col;
+    ctx.shadowColor = t.col;
+    ctx.shadowBlur = 10;
+    ctx.font = (t.big ? 'bold 18px' : 'bold 14px') + ' Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(t.text, t.x, t.y);
+  }
+  ctx.shadowBlur = 0;
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+resize();
+showStart();
+hudBest.textContent = 'Best: ' + bestScore;
+
+// Animate start screen
+function startScreenLoop(ts) {
+  if (state !== 'start') return;
+  bgHue += 0.05;
+  gameTime += 0.016;
+  drawStatic();
+  requestAnimationFrame(startScreenLoop);
+}
+requestAnimationFrame(startScreenLoop);
+
+})();
+</script>
+
+<p style="display:none">
+Glow Beam is a free browser game. Tap or press Space to flip your spark's polarity between Blue and Pink.
+Match the color of incoming pulse rings as they cross the impact line to score points.
+Build combos for up to 8x multiplier. Survive through sunset stages with increasing pulse speed.
+Stage 5 introduces split lanes - tap also toggles your lane. Fakeout pulses lock their color at the last second!
+Play on mobile or desktop instantly - no download, no install required.
+</p>
+</body>
+</html>

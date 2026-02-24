@@ -1,0 +1,1057 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Magnetic Cumulus - Free HTML5 Game</title>
+  <meta name="description" content="Play Magnetic Cumulus - Tap to control a magnet that attracts and stacks floating cloud fragments precisely.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a0a1a">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Magnetic Cumulus - Free HTML5 Game">
+  <meta property="og:description" content="Play Magnetic Cumulus - Tap to control a magnet that attracts and stacks floating cloud fragments precisely.">
+  <meta property="og:url" content="https://balinti.github.io/magnetic-cumulus/">
+  <meta property="og:image" content="https://balinti.github.io/magnetic-cumulus/og-image.png">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Magnetic Cumulus - Free HTML5 Game">
+  <meta name="twitter:description" content="Play Magnetic Cumulus - Tap to control a magnet that attracts and stacks floating cloud fragments precisely.">
+  <meta name="twitter:image" content="https://balinti.github.io/magnetic-cumulus/og-image.png">
+
+  <link rel="canonical" href="https://balinti.github.io/magnetic-cumulus/">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: radial-gradient(ellipse at 50% 30%, #0d1b3e 0%, #06090f 70%);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      color: #e0e8ff;
+      overflow: hidden;
+      touch-action: none;
+      user-select: none;
+    }
+
+    #game-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 100%;
+      max-width: 420px;
+    }
+
+    #canvas-container {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      max-height: 750px;
+      aspect-ratio: 420 / 750;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      border-radius: 12px;
+      box-shadow: 0 0 40px rgba(80, 120, 255, 0.3);
+    }
+
+    #seo-block {
+      margin-top: 12px;
+      padding: 0 12px;
+      max-width: 420px;
+      text-align: center;
+      font-size: 11px;
+      color: rgba(160, 180, 255, 0.45);
+      line-height: 1.5;
+    }
+
+    #seo-block h1 {
+      font-size: 13px;
+      font-weight: 600;
+      color: rgba(160, 180, 255, 0.55);
+      margin-bottom: 3px;
+    }
+  </style>
+</head>
+<body>
+<div id="game-wrapper">
+  <div id="canvas-container">
+    <canvas id="gc"></canvas>
+  </div>
+  <div id="seo-block">
+    <h1>Magnetic Cumulus – Snap-Pulse Tower Game</h1>
+    <p>Tap to fire a magnetic pulse and snap drifting cloud puffs onto open nodes. Build your tower, chain combos, and beat your high score!</p>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ─── Canvas / DPR Setup ───────────────────────────────────────────────────────
+const canvas = document.getElementById('gc');
+const ctx = canvas.getContext('2d');
+const W_CSS = 420, H_CSS = 750;
+let dpr = window.devicePixelRatio || 1;
+
+function resizeCanvas() {
+  dpr = window.devicePixelRatio || 1;
+  canvas.width  = W_CSS * dpr;
+  canvas.height = H_CSS * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+const CX = W_CSS / 2;       // canvas center x
+const CY = H_CSS * 0.58;    // core center y (slightly below mid)
+const CORE_R = 52;           // core radius
+const NODE_ORBIT = 90;       // orbit radius for attachment nodes
+const PUFF_R = 22;           // puff radius
+const PULSE_DURATION = 0.22; // seconds
+const SNAP_ANIM_DURATION = 0.18;
+const SHAKE_DURATION_BIG = 0.5;
+const SHAKE_DURATION_SMALL = 0.15;
+const LS_KEY = 'mc_best';
+
+// ─── State ────────────────────────────────────────────────────────────────────
+let state = 'start'; // 'start' | 'playing' | 'gameover' | 'paused'
+let prevState = 'start';
+let score = 0;
+let best = parseInt(localStorage.getItem(LS_KEY) || '0', 10);
+let combo = 0;
+let hue = 200;
+let frameTime = 0;
+let challengeScore = 0;
+
+// Shake
+let shakeAmt = 0, shakeDur = 0, shakeTimer = 0;
+
+// Pulse
+let pulseActive = false, pulseT = 0, pulseR = 0;
+let pulseRange = 130; // starts wide, shrinks with difficulty
+
+// Nodes
+let nodes = [];       // { angle, occupied, blocked, hue, snapT }
+let nodeCount = 6;
+
+// Puff
+let puff = null;
+/*
+  puff = {
+    x, y, vx, vy,
+    wobbleAmp, wobbleFreq, wobblePhase, wobbleT,
+    fromLeft,
+    state: 'drifting' | 'snapping' | 'falling' | 'missed',
+    snapTarget: nodeIdx,
+    snapT, snapSx, snapSy, snapEx, snapEy,
+    hue
+  }
+*/
+
+// Particles
+let particles = [];
+/*
+  particle = { x, y, vx, vy, r, life, maxLife, hue, alpha }
+*/
+
+// Pulse rings
+let pulseRings = [];
+/*
+  ring = { x, y, r, maxR, life, maxLife, hue }
+*/
+
+// Stars (background)
+let stars = [];
+
+// Score pop-up texts
+let scoreTexts = [];
+
+// Difficulty state
+let diffTimer = 0;
+let puffSpeed = 90;    // px/s
+let nextPuffDelay = 0; // after snap, wait this long before spawning next
+let midgameReached = false;
+
+// ─── Shared Challenge Score from URL ─────────────────────────────────────────
+(function() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    challengeScore = parseInt(params.get('score') || '0', 10) || 0;
+  } catch(e) {}
+})();
+
+// ─── Init Stars ───────────────────────────────────────────────────────────────
+function initStars() {
+  stars = [];
+  for (let i = 0; i < 80; i++) {
+    stars.push({
+      x: Math.random() * W_CSS,
+      y: Math.random() * H_CSS,
+      r: Math.random() * 1.2 + 0.2,
+      alpha: Math.random() * 0.6 + 0.2,
+      twinkle: Math.random() * Math.PI * 2
+    });
+  }
+}
+
+// ─── Node Setup ──────────────────────────────────────────────────────────────
+function buildNodes(count) {
+  nodes = [];
+  for (let i = 0; i < count; i++) {
+    const angle = (i / count) * Math.PI * 2 - Math.PI / 2;
+    nodes.push({
+      angle,
+      occupied: false,
+      blocked: false,
+      hue: hue + i * 30,
+      snapT: 0
+    });
+  }
+}
+
+function nodePos(n) {
+  return {
+    x: CX + Math.cos(n.angle) * NODE_ORBIT,
+    y: CY + Math.sin(n.angle) * NODE_ORBIT
+  };
+}
+
+function openNodes() {
+  return nodes.filter(n => !n.occupied && !n.blocked);
+}
+
+// ─── Difficulty Ramp ─────────────────────────────────────────────────────────
+function applyDifficulty() {
+  // Speed increases over time
+  puffSpeed = 90 + score * 5 + diffTimer * 8;
+  puffSpeed = Math.min(puffSpeed, 280);
+
+  // Pulse range shrinks
+  pulseRange = Math.max(80, 130 - score * 2 - diffTimer * 1.5);
+
+  // Add nodes at score milestones
+  const targetNodeCount = Math.min(12, 6 + Math.floor(score / 5));
+  if (targetNodeCount > nodes.length) {
+    // Add new open nodes
+    const count = targetNodeCount;
+    const old = nodes.map(n => ({ angle: n.angle, occupied: n.occupied, blocked: n.blocked, hue: n.hue, snapT: n.snapT }));
+    nodes = [];
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2 - Math.PI / 2;
+      // try to match old occupied state by closest angle
+      const match = old.find(o => Math.abs(o.angle - angle) < 0.1);
+      nodes.push({
+        angle,
+        occupied: match ? match.occupied : false,
+        blocked: false,
+        hue: hue + i * (360 / count),
+        snapT: 0
+      });
+    }
+  }
+
+  // Midgame: add blocked nodes
+  if (score >= 10 && !midgameReached) {
+    midgameReached = true;
+  }
+  if (midgameReached) {
+    // Occasionally block a random open node (cosmetic difficulty)
+    const unblocked = nodes.filter(n => !n.occupied && !n.blocked);
+    const blocked = nodes.filter(n => n.blocked);
+    const desiredBlocked = Math.floor(score / 15);
+    if (blocked.length < desiredBlocked && unblocked.length > 2) {
+      const pick = unblocked[Math.floor(Math.random() * unblocked.length)];
+      pick.blocked = true;
+    }
+  }
+}
+
+// ─── Puff Spawning ───────────────────────────────────────────────────────────
+function spawnPuff() {
+  if (openNodes().length === 0) {
+    // All nodes occupied = player wins round? Reset nodes
+    nodes.forEach(n => { n.occupied = false; n.blocked = false; });
+    score += 5; // bonus
+    spawnScoreText(CX, CY, '+5 CLEAR!', '#fff');
+  }
+
+  const fromLeft = Math.random() < 0.5;
+  const startX = fromLeft ? -PUFF_R * 2 : W_CSS + PUFF_R * 2;
+  // Y: somewhere in the upper portion, near the node orbit level
+  const startY = CY - NODE_ORBIT - PUFF_R - 20 + (Math.random() - 0.5) * 60;
+
+  puff = {
+    x: startX,
+    y: startY,
+    vx: fromLeft ? puffSpeed : -puffSpeed,
+    vy: 0,
+    wobbleAmp: 12 + Math.random() * 8,
+    wobbleFreq: 1.2 + Math.random() * 0.6,
+    wobblePhase: Math.random() * Math.PI * 2,
+    wobbleT: 0,
+    fromLeft,
+    state: 'drifting',
+    snapTarget: -1,
+    snapT: 0,
+    snapSx: 0, snapSy: 0,
+    snapEx: 0, snapEy: 0,
+    hue: hue + Math.random() * 60 - 30
+  };
+}
+
+// ─── Game Init ────────────────────────────────────────────────────────────────
+function startGame() {
+  score = 0;
+  combo = 0;
+  hue = 200;
+  diffTimer = 0;
+  midgameReached = false;
+  puffSpeed = 90;
+  pulseRange = 130;
+  nextPuffDelay = 0;
+  particles = [];
+  pulseRings = [];
+  scoreTexts = [];
+  shakeAmt = 0; shakeTimer = 0;
+  pulseActive = false;
+  nodeCount = 6;
+  buildNodes(nodeCount);
+  applyDifficulty();
+  spawnPuff();
+  state = 'playing';
+}
+
+// ─── Input ────────────────────────────────────────────────────────────────────
+function handleInput() {
+  if (state === 'start') { startGame(); return; }
+  if (state === 'gameover') { startGame(); return; }
+  if (state === 'paused') { state = prevState; return; }
+  if (state === 'playing') { firePulse(); }
+}
+
+canvas.addEventListener('pointerdown', e => { e.preventDefault(); handleInput(); });
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'Enter') handleInput();
+});
+
+// Visibility change -> pause
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && state === 'playing') {
+    prevState = state;
+    state = 'paused';
+  }
+});
+
+// ─── Pulse Logic ─────────────────────────────────────────────────────────────
+function firePulse() {
+  if (pulseActive) return; // debounce
+  pulseActive = true;
+  pulseT = 0;
+
+  // Emit a pulse ring from core
+  pulseRings.push({ x: CX, y: CY, r: CORE_R, maxR: pulseRange + CORE_R, life: 1, maxLife: 1, hue });
+
+  // Evaluate snap
+  if (!puff || puff.state !== 'drifting') return;
+
+  const open = openNodes();
+  if (open.length === 0) return;
+
+  // Find nearest open node to puff
+  let nearest = null, nearestDist = Infinity;
+  for (const n of open) {
+    const pos = nodePos(n);
+    const d = Math.hypot(puff.x - pos.x, puff.y - pos.y);
+    if (d < nearestDist) { nearestDist = d; nearest = n; }
+  }
+
+  if (nearest && nearestDist <= pulseRange) {
+    // SNAP!
+    const npos = nodePos(nearest);
+    const perfect = nearestDist < 28;
+    nearest.occupied = true;
+    nearest.snapT = 1;
+    puff.state = 'snapping';
+    puff.snapTarget = nodes.indexOf(nearest);
+    puff.snapSx = puff.x;
+    puff.snapSy = puff.y;
+    puff.snapEx = npos.x;
+    puff.snapEy = npos.y;
+    puff.snapT = 0;
+
+    // Scoring
+    combo++;
+    const points = 1 + (combo > 1 ? combo - 1 : 0) + (perfect ? 3 : 0);
+    score += points;
+    hue = (hue + 18) % 360;
+    if (score > best) { best = score; localStorage.setItem(LS_KEY, best); }
+
+    // Particles burst
+    burstParticles(npos.x, npos.y, perfect ? 22 : 12, puff.hue, perfect);
+
+    // Screen shake (small)
+    triggerShake(perfect ? 5 : 3, SHAKE_DURATION_SMALL);
+
+    // Score text
+    spawnScoreText(npos.x, npos.y - 30, perfect ? `PERFECT +${points}` : `+${points}`, `hsl(${puff.hue},100%,70%)`);
+
+    applyDifficulty();
+  } else {
+    // MISS
+    puff.state = 'missed';
+    puff.vy = 120; // start falling
+    combo = 0;
+    // Show miss feedback ring (red)
+    pulseRings.push({ x: CX, y: CY, r: CORE_R, maxR: pulseRange + CORE_R, life: 1, maxLife: 1, hue: 0 });
+  }
+}
+
+// ─── Particles ───────────────────────────────────────────────────────────────
+function burstParticles(x, y, count, hue, perfect) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = perfect ? (60 + Math.random() * 120) : (40 + Math.random() * 80);
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      r: perfect ? (3 + Math.random() * 4) : (2 + Math.random() * 3),
+      life: 1,
+      maxLife: 0.5 + Math.random() * 0.4,
+      hue: hue + (Math.random() - 0.5) * 40,
+      alpha: 1
+    });
+  }
+}
+
+// ─── Score Pop Text ───────────────────────────────────────────────────────────
+function spawnScoreText(x, y, text, color) {
+  scoreTexts.push({ x, y, text, color, life: 1, maxLife: 1, vy: -50 });
+}
+
+// ─── Shake ───────────────────────────────────────────────────────────────────
+function triggerShake(amt, dur) {
+  shakeAmt = amt;
+  shakeDur = dur;
+  shakeTimer = dur;
+}
+
+// ─── Main Loop ───────────────────────────────────────────────────────────────
+let lastTime = 0;
+function loop(ts) {
+  requestAnimationFrame(loop);
+  const dt = Math.min((ts - lastTime) / 1000, 0.033);
+  lastTime = ts;
+
+  update(dt);
+  render();
+}
+
+function update(dt) {
+  // Twinkle stars
+  for (const s of stars) { s.twinkle += dt * 1.5; }
+
+  if (state === 'start' || state === 'gameover' || state === 'paused') {
+    // Update pulse rings and particles even on non-playing screens for visual flair
+    updateRings(dt);
+    updateParticles(dt);
+    return;
+  }
+
+  if (state !== 'playing') return;
+
+  diffTimer += dt;
+  hue = (hue + dt * 10) % 360;
+
+  // Update shake
+  if (shakeTimer > 0) {
+    shakeTimer -= dt;
+    if (shakeTimer <= 0) shakeAmt = 0;
+  }
+
+  // Update pulse cooldown
+  if (pulseActive) {
+    pulseT += dt;
+    if (pulseT >= PULSE_DURATION) pulseActive = false;
+  }
+
+  updateRings(dt);
+  updateParticles(dt);
+  updateScoreTexts(dt);
+  updateNodes(dt);
+
+  // Update puff
+  if (puff) {
+    if (puff.state === 'drifting') {
+      puff.wobbleT += dt;
+      puff.x += puff.vx * dt;
+      puff.y = (CY - NODE_ORBIT - PUFF_R - 20) + Math.sin(puff.wobbleT * puff.wobbleFreq + puff.wobblePhase) * puff.wobbleAmp;
+
+      // Check if puff drifted off screen without being snapped
+      if (puff.x < -PUFF_R * 3 || puff.x > W_CSS + PUFF_R * 3) {
+        // Drifted away without a tap - not a game over, spawn next
+        puff = null;
+        nextPuffDelay = 0.3;
+      }
+    } else if (puff.state === 'snapping') {
+      puff.snapT += dt / SNAP_ANIM_DURATION;
+      if (puff.snapT >= 1) {
+        puff.snapT = 1;
+        puff = null;
+        nextPuffDelay = 0.4 + Math.max(0, 0.5 - score * 0.02);
+      } else {
+        // Ease in-out lerp
+        const t = easeInOut(puff.snapT);
+        puff.x = puff.snapSx + (puff.snapEx - puff.snapSx) * t;
+        puff.y = puff.snapSy + (puff.snapEy - puff.snapSy) * t;
+      }
+    } else if (puff.state === 'missed' || puff.state === 'falling') {
+      puff.vy += 400 * dt; // gravity
+      puff.y += puff.vy * dt;
+      if (puff.y > H_CSS + PUFF_R * 2) {
+        // Fallen off screen -> game over
+        triggerShake(14, SHAKE_DURATION_BIG);
+        burstParticles(puff.x > W_CSS ? W_CSS - 20 : Math.max(20, puff.x), H_CSS - 30, 20, 0, false);
+        state = 'gameover';
+        puff = null;
+      }
+    }
+  } else {
+    // Spawn next puff after delay
+    if (nextPuffDelay > 0) {
+      nextPuffDelay -= dt;
+    } else {
+      spawnPuff();
+    }
+  }
+}
+
+function updateRings(dt) {
+  for (let i = pulseRings.length - 1; i >= 0; i--) {
+    const r = pulseRings[i];
+    r.life -= dt / 0.5;
+    r.r += (r.maxR - r.r) * (1 - r.life);
+    if (r.life <= 0) pulseRings.splice(i, 1);
+  }
+}
+
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.life -= dt / p.maxLife;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy += 180 * dt;
+    p.alpha = Math.max(0, p.life);
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+function updateScoreTexts(dt) {
+  for (let i = scoreTexts.length - 1; i >= 0; i--) {
+    const t = scoreTexts[i];
+    t.life -= dt / t.maxLife;
+    t.y += t.vy * dt;
+    if (t.life <= 0) scoreTexts.splice(i, 1);
+  }
+}
+
+function updateNodes(dt) {
+  for (const n of nodes) {
+    if (n.snapT > 0) n.snapT = Math.max(0, n.snapT - dt * 4);
+  }
+}
+
+// ─── Render ──────────────────────────────────────────────────────────────────
+function render() {
+  ctx.save();
+
+  // Apply screen shake
+  if (shakeTimer > 0 && shakeAmt > 0) {
+    const progress = shakeTimer / shakeDur;
+    const intensity = shakeAmt * progress;
+    ctx.translate(
+      (Math.random() * 2 - 1) * intensity,
+      (Math.random() * 2 - 1) * intensity
+    );
+  }
+
+  // Background
+  drawBackground();
+
+  if (state === 'start') {
+    drawStartScreen();
+  } else if (state === 'gameover') {
+    drawGameScene();
+    drawGameOverScreen();
+  } else if (state === 'paused') {
+    drawGameScene();
+    drawPauseOverlay();
+  } else {
+    drawGameScene();
+    drawHUD();
+  }
+
+  ctx.restore();
+}
+
+function drawBackground() {
+  // Dark gradient
+  const grad = ctx.createRadialGradient(CX, H_CSS * 0.35, 0, CX, H_CSS * 0.35, H_CSS * 0.85);
+  grad.addColorStop(0, `hsl(${(hue + 200) % 360}, 40%, 12%)`);
+  grad.addColorStop(1, '#04050d');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W_CSS, H_CSS);
+
+  // Stars
+  for (const s of stars) {
+    const tw = (Math.sin(s.twinkle) * 0.5 + 0.5) * 0.5 + 0.2;
+    ctx.globalAlpha = s.alpha * tw;
+    ctx.fillStyle = '#c8d8ff';
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawGameScene() {
+  // Pulse rings
+  for (const ring of pulseRings) {
+    const alpha = Math.max(0, ring.life) * 0.7;
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = ring.hue === 0 ? '#ff4444' : `hsl(${ring.hue}, 100%, 65%)`;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(CX, CY, ring.r, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  // Pulse range indicator (subtle dotted circle)
+  if (state === 'playing') {
+    ctx.globalAlpha = 0.12;
+    ctx.strokeStyle = `hsl(${hue}, 80%, 70%)`;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 6]);
+    ctx.beginPath();
+    ctx.arc(CX, CY, pulseRange, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+  }
+
+  // Core
+  drawCore();
+
+  // Nodes
+  for (let i = 0; i < nodes.length; i++) {
+    drawNode(nodes[i]);
+  }
+
+  // Puff
+  if (puff) drawPuff(puff);
+
+  // Particles
+  for (const p of particles) {
+    ctx.globalAlpha = p.alpha;
+    ctx.fillStyle = `hsl(${p.hue}, 100%, 70%)`;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // Score texts
+  for (const t of scoreTexts) {
+    ctx.globalAlpha = Math.max(0, t.life);
+    ctx.font = `bold ${t.text.startsWith('PERFECT') ? 16 : 14}px 'Segoe UI', sans-serif`;
+    ctx.fillStyle = t.color;
+    ctx.textAlign = 'center';
+    ctx.fillText(t.text, t.x, t.y);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawCore() {
+  // Outer glow
+  const g = ctx.createRadialGradient(CX, CY, CORE_R * 0.4, CX, CY, CORE_R * 1.6);
+  g.addColorStop(0, `hsla(${hue}, 80%, 60%, 0.2)`);
+  g.addColorStop(1, 'transparent');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(CX, CY, CORE_R * 1.6, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Core body
+  const coreGrad = ctx.createRadialGradient(CX - 12, CY - 12, 4, CX, CY, CORE_R);
+  coreGrad.addColorStop(0, `hsl(${hue}, 60%, 75%)`);
+  coreGrad.addColorStop(0.6, `hsl(${hue}, 70%, 35%)`);
+  coreGrad.addColorStop(1, `hsl(${hue}, 80%, 15%)`);
+  ctx.fillStyle = coreGrad;
+  ctx.beginPath();
+  ctx.arc(CX, CY, CORE_R, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Core outline
+  ctx.strokeStyle = `hsl(${hue}, 100%, 70%)`;
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+
+  // Magnetic symbol (M lines)
+  ctx.strokeStyle = `hsla(${hue}, 100%, 90%, 0.7)`;
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  const ms = 14;
+  ctx.beginPath();
+  ctx.moveTo(CX - ms, CY + ms * 0.5);
+  ctx.lineTo(CX - ms, CY - ms * 0.5);
+  ctx.lineTo(CX, CY + ms * 0.3);
+  ctx.lineTo(CX + ms, CY - ms * 0.5);
+  ctx.lineTo(CX + ms, CY + ms * 0.5);
+  ctx.stroke();
+  ctx.lineCap = 'butt';
+}
+
+function drawNode(n) {
+  const pos = nodePos(n);
+  const snapBounce = n.snapT > 0 ? 1 + Math.sin(n.snapT * Math.PI) * 0.35 : 1;
+
+  if (n.blocked) {
+    // Blocked node: dark X
+    ctx.globalAlpha = 0.55;
+    ctx.strokeStyle = '#ff3344';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, 12, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(pos.x - 7, pos.y - 7); ctx.lineTo(pos.x + 7, pos.y + 7);
+    ctx.moveTo(pos.x + 7, pos.y - 7); ctx.lineTo(pos.x - 7, pos.y + 7);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    return;
+  }
+
+  if (n.occupied) {
+    // Occupied: dim filled node
+    ctx.globalAlpha = 0.5;
+    ctx.fillStyle = `hsl(${n.hue}, 60%, 30%)`;
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, 12 * snapBounce, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = `hsl(${n.hue}, 80%, 55%)`;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  } else {
+    // Open node: bright ring
+    ctx.strokeStyle = `hsl(${hue}, 100%, 65%)`;
+    ctx.lineWidth = 2.5;
+    ctx.shadowColor = `hsl(${hue}, 100%, 65%)`;
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, 12 * snapBounce, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // Inner dot
+    ctx.fillStyle = `hsla(${hue}, 100%, 80%, 0.3)`;
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawPuff(p) {
+  const alpha = p.state === 'missed' || p.state === 'falling' ? Math.max(0, 1 - (p.y / H_CSS) * 0.5) : 1;
+  ctx.globalAlpha = alpha;
+
+  // Cloud puff shape (multiple overlapping circles)
+  const clouds = [
+    { dx: 0, dy: 0, r: PUFF_R },
+    { dx: -14, dy: 6, r: PUFF_R * 0.72 },
+    { dx: 14, dy: 6, r: PUFF_R * 0.72 },
+    { dx: -8, dy: -10, r: PUFF_R * 0.6 },
+    { dx: 8, dy: -10, r: PUFF_R * 0.6 },
+  ];
+
+  const puffGrad = ctx.createRadialGradient(p.x - 6, p.y - 6, 2, p.x, p.y, PUFF_R * 1.1);
+  puffGrad.addColorStop(0, `hsl(${p.hue}, 80%, 90%)`);
+  puffGrad.addColorStop(0.5, `hsl(${p.hue}, 70%, 65%)`);
+  puffGrad.addColorStop(1, `hsl(${p.hue}, 80%, 40%)`);
+
+  // Draw cloud blobs
+  for (const c of clouds) {
+    ctx.fillStyle = puffGrad;
+    ctx.beginPath();
+    ctx.arc(p.x + c.dx, p.y + c.dy, c.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Outline
+  ctx.strokeStyle = `hsl(${p.hue}, 100%, 80%)`;
+  ctx.lineWidth = 2;
+  for (const c of clouds) {
+    ctx.beginPath();
+    ctx.arc(p.x + c.dx, p.y + c.dy, c.r, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  // Miss indicator
+  if (p.state === 'missed' || p.state === 'falling') {
+    ctx.fillStyle = 'rgba(255,60,60,0.6)';
+    ctx.font = 'bold 18px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('✕', p.x, p.y + 6);
+  }
+
+  ctx.globalAlpha = 1;
+}
+
+function drawHUD() {
+  // Score
+  ctx.font = `bold 36px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = `hsl(${hue}, 100%, 80%)`;
+  ctx.textAlign = 'center';
+  ctx.shadowColor = `hsl(${hue}, 100%, 50%)`;
+  ctx.shadowBlur = 10;
+  ctx.fillText(score, CX, 60);
+  ctx.shadowBlur = 0;
+
+  // Best
+  ctx.font = `13px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = 'rgba(180,200,255,0.6)';
+  ctx.fillText(`Best: ${best}`, CX, 82);
+
+  // Combo indicator
+  if (combo > 1) {
+    ctx.font = `bold 14px 'Segoe UI', sans-serif`;
+    ctx.fillStyle = `hsl(${(hue + 60) % 360}, 100%, 75%)`;
+    ctx.fillText(`× ${combo} COMBO`, CX, 100);
+  }
+
+  // Tap hint (fades after a few score)
+  if (score < 3 && puff && puff.state === 'drifting') {
+    ctx.globalAlpha = 0.55;
+    ctx.font = `13px 'Segoe UI', sans-serif`;
+    ctx.fillStyle = '#fff';
+    ctx.fillText('TAP to snap!', CX, H_CSS - 40);
+    ctx.globalAlpha = 1;
+  }
+}
+
+// ─── Screens ─────────────────────────────────────────────────────────────────
+function drawStartScreen() {
+  // Draw some ambient puffs in background for style
+  drawAmbientPuffs();
+
+  // Title card
+  ctx.save();
+  roundRect(ctx, CX - 160, H_CSS * 0.22, 320, 200, 20);
+  ctx.fillStyle = 'rgba(10, 20, 60, 0.8)';
+  ctx.fill();
+  ctx.strokeStyle = `hsl(${hue}, 80%, 55%)`;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.textAlign = 'center';
+  ctx.shadowColor = `hsl(${hue}, 100%, 60%)`;
+  ctx.shadowBlur = 18;
+  ctx.font = `bold 32px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = `hsl(${hue}, 100%, 85%)`;
+  ctx.fillText('Magnetic', CX, H_CSS * 0.32);
+  ctx.font = `bold 38px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = `hsl(${(hue + 40) % 360}, 100%, 80%)`;
+  ctx.fillText('Cumulus', CX, H_CSS * 0.32 + 46);
+  ctx.shadowBlur = 0;
+
+  ctx.font = `13px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = 'rgba(180,200,255,0.7)';
+  ctx.fillText('Snap-Pulse Tower', CX, H_CSS * 0.32 + 74);
+
+  // Challenge banner
+  if (challengeScore > 0) {
+    ctx.font = `bold 13px 'Segoe UI', sans-serif`;
+    ctx.fillStyle = `hsl(${hue}, 100%, 75%)`;
+    ctx.fillText(`🏆 Beat ${challengeScore} to win!`, CX, H_CSS * 0.32 + 100);
+  }
+
+  // Tap to start
+  const pulse = Math.sin(Date.now() / 400) * 0.3 + 0.7;
+  ctx.globalAlpha = pulse;
+  ctx.font = `bold 18px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = '#fff';
+  ctx.fillText('Tap to Start', CX, H_CSS * 0.62);
+  ctx.globalAlpha = 1;
+
+  // Best score
+  if (best > 0) {
+    ctx.font = `13px 'Segoe UI', sans-serif`;
+    ctx.fillStyle = 'rgba(160,180,255,0.6)';
+    ctx.fillText(`Best: ${best}`, CX, H_CSS * 0.67);
+  }
+
+  // Instructions
+  ctx.font = `12px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = 'rgba(130,160,255,0.5)';
+  ctx.fillText('Tap when cloud is near a node', CX, H_CSS * 0.78);
+  ctx.fillText('to snap it with a magnetic pulse', CX, H_CSS * 0.81);
+}
+
+function drawAmbientPuffs() {
+  // Static decorative puffs
+  const t = Date.now() / 1000;
+  const deco = [
+    { x: 60 + Math.sin(t * 0.4) * 15, y: 160, hue: 220 },
+    { x: 360 + Math.sin(t * 0.35 + 1) * 12, y: 200, hue: 280 },
+    { x: 100 + Math.sin(t * 0.3 + 2) * 10, y: 580, hue: 160 },
+    { x: 350 + Math.sin(t * 0.45 + 0.5) * 14, y: 560, hue: 340 },
+  ];
+  for (const d of deco) {
+    ctx.globalAlpha = 0.25;
+    const clouds = [{ dx:0,dy:0,r:18 },{ dx:-10,dy:5,r:13 },{ dx:10,dy:5,r:13 }];
+    for (const c of clouds) {
+      ctx.fillStyle = `hsl(${d.hue}, 70%, 60%)`;
+      ctx.beginPath();
+      ctx.arc(d.x + c.dx, d.y + c.dy, c.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawGameOverScreen() {
+  // Dim overlay
+  ctx.fillStyle = 'rgba(4,5,13,0.75)';
+  ctx.fillRect(0, 0, W_CSS, H_CSS);
+
+  // Panel
+  ctx.save();
+  roundRect(ctx, CX - 155, H_CSS * 0.28, 310, 290, 20);
+  ctx.fillStyle = 'rgba(8, 15, 45, 0.95)';
+  ctx.fill();
+  ctx.strokeStyle = `hsl(${hue}, 80%, 50%)`;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.textAlign = 'center';
+
+  ctx.font = `bold 26px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = '#ff6677';
+  ctx.shadowColor = '#ff0022';
+  ctx.shadowBlur = 10;
+  ctx.fillText('GAME OVER', CX, H_CSS * 0.35);
+  ctx.shadowBlur = 0;
+
+  ctx.font = `bold 52px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = `hsl(${hue}, 100%, 80%)`;
+  ctx.shadowColor = `hsl(${hue}, 100%, 60%)`;
+  ctx.shadowBlur = 14;
+  ctx.fillText(score, CX, H_CSS * 0.47);
+  ctx.shadowBlur = 0;
+
+  ctx.font = `14px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = 'rgba(160,180,255,0.75)';
+  ctx.fillText(`Best: ${best}`, CX, H_CSS * 0.52);
+
+  if (score >= best && score > 0) {
+    ctx.font = `bold 13px 'Segoe UI', sans-serif`;
+    ctx.fillStyle = `hsl(${(hue + 60) % 360}, 100%, 75%)`;
+    ctx.fillText('NEW BEST!', CX, H_CSS * 0.56);
+  }
+
+  // Tap to retry
+  const pulse = Math.sin(Date.now() / 400) * 0.3 + 0.7;
+  ctx.globalAlpha = pulse;
+  ctx.font = `bold 18px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = '#fff';
+  ctx.fillText('Tap to Retry', CX, H_CSS * 0.63);
+  ctx.globalAlpha = 1;
+
+  // Share button area (drawn as text hint)
+  ctx.font = `12px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = 'rgba(130,160,255,0.5)';
+  ctx.fillText('[ Share Score ]', CX, H_CSS * 0.68);
+}
+
+function drawPauseOverlay() {
+  ctx.fillStyle = 'rgba(4,5,13,0.7)';
+  ctx.fillRect(0, 0, W_CSS, H_CSS);
+  ctx.textAlign = 'center';
+  ctx.font = `bold 26px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = '#fff';
+  ctx.fillText('PAUSED', CX, H_CSS * 0.45);
+  ctx.font = `16px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = 'rgba(180,200,255,0.7)';
+  ctx.fillText('Tap to Resume', CX, H_CSS * 0.52);
+}
+
+// ─── Share ───────────────────────────────────────────────────────────────────
+// Tap on gameover screen share area triggers share
+canvas.addEventListener('pointerdown', e => {
+  if (state !== 'gameover') return;
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = W_CSS / rect.width;
+  const scaleY = H_CSS / rect.height;
+  const cx = (e.clientX - rect.left) * scaleX;
+  const cy = (e.clientY - rect.top) * scaleY;
+  // Share area is around H_CSS * 0.68
+  if (cy > H_CSS * 0.65 && cy < H_CSS * 0.72) {
+    doShare();
+    e.stopPropagation();
+  }
+});
+
+function doShare() {
+  const url = `https://balinti.github.io/magnetic-cumulus/?score=${score}`;
+  const text = `I scored ${score} in Magnetic Cumulus! Can you beat me?`;
+  if (navigator.share) {
+    navigator.share({ title: 'Magnetic Cumulus', text, url }).catch(() => {});
+  } else {
+    navigator.clipboard.writeText(url).then(() => {
+      spawnScoreText(CX, H_CSS * 0.6, 'Link copied!', '#adf');
+    }).catch(() => {});
+  }
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function easeInOut(t) {
+  return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+// ─── Kick Off ────────────────────────────────────────────────────────────────
+initStars();
+buildNodes(6); // for start screen visuals
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

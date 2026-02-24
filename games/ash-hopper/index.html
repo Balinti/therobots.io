@@ -1,0 +1,1056 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Ash Hopper - Free HTML5 Game</title>
+<meta name="description" content="Play Ash Hopper - Bounce through volcanic ash clouds, jumping gaps and snagging surprise powerups mid-air.">
+<meta name="theme-color" content="#1a1a2e">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Ash Hopper - Free HTML5 Game">
+<meta property="og:description" content="Bounce through volcanic ash clouds, jumping gaps and clearing the way with shockwaves!">
+<meta property="og:url" content="https://balinti.github.io/ash-hopper/">
+<meta property="og:image" content="https://balinti.github.io/ash-hopper/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Ash Hopper - Free HTML5 Game">
+<meta name="twitter:description" content="Bounce through volcanic ash clouds, jumping gaps and clearing the way with shockwaves!">
+<meta name="twitter:image" content="https://balinti.github.io/ash-hopper/og-image.png">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#0d0d1a;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;touch-action:none;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
+#wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;min-height:100vh;min-height:100dvh;background:linear-gradient(135deg,#0d0d1a 0%,#1a1a2e 50%,#16213e 100%)}
+#c{display:block;max-width:420px;max-height:750px;width:100%;height:100%;border-radius:12px;image-rendering:pixelated}
+#seo{max-width:420px;width:100%;color:#8888aa;font-size:13px;line-height:1.5;padding:16px 12px;text-align:center}
+#seo h1{font-size:18px;color:#ccccee;margin-bottom:6px}
+#seo p{margin-bottom:8px}
+#seo details{text-align:left;margin-top:6px}
+#seo summary{cursor:pointer;color:#aaaacc}
+@media(max-height:600px){#seo{display:none}}
+</style>
+</head>
+<body>
+<div id="wrap">
+<canvas id="c"></canvas>
+<div id="seo">
+<h1>Ash Hopper - Free HTML5 Game</h1>
+<p>Jump through volcanic ash clouds in this addictive one-tap auto-runner! Clear the ash with shockwaves, build clean streaks, and challenge your friends.</p>
+<p><strong>How to play:</strong> Tap the screen or press Space/Enter to hop. Avoid gaps and don't stay in ash clouds too long or you'll choke!</p>
+<details>
+<summary>FAQ</summary>
+<p><strong>Q: What are Clean Streaks?</strong><br>A: Land without touching ash during your jump to build a combo multiplier for bonus points.</p>
+<p><strong>Q: What is the Clear Ring?</strong><br>A: Every hop creates a shockwave that temporarily dissolves nearby ash clouds.</p>
+<p><strong>Q: How does the Choke Meter work?</strong><br>A: A ring fills around your character while in ash. If it fills completely, game over!</p>
+<p><strong>Q: Can I challenge friends?</strong><br>A: Yes! On the game over screen, use the Share or Challenge buttons to send a seeded level to friends.</p>
+</details>
+</div>
+</div>
+<script>
+'use strict';
+(()=>{
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+const W_MAX=420,H_MAX=750;
+let W,H,dpr,cw,ch;
+let state='start';
+let frameCount=0;
+let score=0,bestScore=0,combo=0,bestCombo=0;
+let distanceTraveled=0;
+let challengeSeed=null,challengeTarget=0;
+let shakeX=0,shakeY=0,shakeMag=0,shakeDecay=0.9;
+
+// PRNG
+let rngState=1;
+function seedRng(s){rngState=(s|0)||1}
+function rng(){rngState^=rngState<<13;rngState^=rngState>>17;rngState^=rngState<<5;return(rngState>>>0)/4294967296}
+
+// Parse challenge
+const params=new URLSearchParams(window.location.search);
+if(params.has('challenge')&&params.has('score')){
+challengeSeed=parseInt(params.get('challenge'),36)||12345;
+challengeTarget=parseInt(params.get('score'))||0;
+}
+
+// Load best
+try{bestScore=parseInt(localStorage.getItem('ashhopper_best'))||0}catch(e){}
+
+// Resize
+function resize(){
+const wrap=document.getElementById('wrap');
+const ww=Math.min(window.innerWidth,W_MAX);
+const wh=Math.min(window.innerHeight,H_MAX);
+dpr=Math.min(window.devicePixelRatio||1,2);
+W=ww;H=wh;
+canvas.style.width=W+'px';
+canvas.style.height=H+'px';
+cw=W*dpr;ch=H*dpr;
+canvas.width=cw;canvas.height=ch;
+ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+resize();
+window.addEventListener('resize',resize);
+
+// Game constants
+const GROUND_Y_RATIO=0.75;
+const PLAYER_X_RATIO=0.2;
+const GRAVITY=0.55;
+const HOP_VEL=-10.5;
+const BASE_SPEED=3.0;
+const PLATFORM_MIN_W=80;
+const PLATFORM_MAX_W=180;
+const GAP_MIN_W=40;
+const GAP_MAX_W=90;
+const ASH_COUNT=12;
+const CHOKE_RATE=0.008;
+const CHOKE_DECAY=0.012;
+const GUST_INTERVAL=360;
+const GUST_DURATION=90;
+
+// Player
+let player={x:0,y:0,vy:0,onGround:false,inAsh:false,chokeLevel:0,cleanJump:true,hopCount:0};
+let scrollSpeed=BASE_SPEED;
+let difficultyMul=1;
+let groundY=0;
+let playerX=0;
+
+// Platforms
+const platforms=[];
+const PLAT_POOL_MAX=30;
+let platGenX=0;
+
+// Ash blobs
+const ashBlobs=[];
+const ASH_POOL_MAX=20;
+let ashGenX=0;
+
+// Clear rings
+const clearRings=[];
+const RING_POOL_MAX=10;
+
+// Particles
+const particles=[];
+const PART_POOL_MAX=120;
+
+// Vent orbs
+const ventOrbs=[];
+const VENT_POOL_MAX=10;
+
+// Gust
+let gustTimer=0;
+let gustActive=false;
+let gustVisual=0;
+
+// Near-miss
+let nearMissText='';
+let nearMissTimer=0;
+
+// Combo text
+let comboText='';
+let comboTimer=0;
+
+// HSL cycling
+let hueBase=0;
+
+// Challenge code
+let challengeCode='';
+
+function groundYPos(){return H*GROUND_Y_RATIO}
+function playerXPos(){return W*PLAYER_X_RATIO}
+
+function initGame(){
+frameCount=0;
+score=0;combo=0;bestCombo=0;
+distanceTraveled=0;
+groundY=groundYPos();
+playerX=playerXPos();
+scrollSpeed=BASE_SPEED;
+difficultyMul=1;
+hueBase=Math.random()*360;
+gustTimer=0;gustActive=false;gustVisual=0;
+nearMissText='';nearMissTimer=0;
+comboText='';comboTimer=0;
+shakeMag=0;
+
+// Seed RNG
+const seed=challengeSeed||(Date.now()%1000000);
+challengeCode=seed.toString(36).toUpperCase();
+seedRng(seed);
+
+player.x=playerX;
+player.y=groundY-20;
+player.vy=0;
+player.onGround=true;
+player.inAsh=false;
+player.chokeLevel=0;
+player.cleanJump=true;
+player.hopCount=0;
+
+platforms.length=0;
+ashBlobs.length=0;
+clearRings.length=0;
+particles.length=0;
+ventOrbs.length=0;
+
+// Initial platform
+platforms.push({x:-20,w:W+100,y:groundY});
+platGenX=W+80;
+ashGenX=W+200;
+
+// Generate ahead
+for(let i=0;i<15;i++)generatePlatform();
+for(let i=0;i<8;i++)generateAsh();
+}
+
+function generatePlatform(){
+const gapW=GAP_MIN_W+rng()*(GAP_MAX_W-GAP_MIN_W)*Math.min(difficultyMul,1.8);
+const platW=PLATFORM_MIN_W+rng()*(PLATFORM_MAX_W-PLATFORM_MIN_W);
+const x=platGenX+gapW;
+if(platforms.length<PLAT_POOL_MAX){
+platforms.push({x:x,w:platW,y:groundY});
+}
+// Maybe add vent orb on platform
+if(rng()<0.25&&ventOrbs.length<VENT_POOL_MAX){
+ventOrbs.push({x:x+platW*0.3+rng()*platW*0.4,y:groundY-30,collected:false,pulse:rng()*Math.PI*2});
+}
+platGenX=x+platW;
+}
+
+function generateAsh(){
+const x=ashGenX+50+rng()*200;
+const y=groundY-60-rng()*120;
+const r=30+rng()*50;
+const speed=0.3+rng()*0.7;
+if(ashBlobs.length<ASH_POOL_MAX){
+ashBlobs.push({x:x,y:y,r:r,baseR:r,opacity:0.35+rng()*0.2,speed:speed,fadeTimer:0,phase:rng()*Math.PI*2});
+}
+ashGenX=x+100;
+}
+
+function hop(){
+if(!player.onGround)return;
+player.vy=HOP_VEL*(player.inAsh?0.65:1);
+player.onGround=false;
+player.cleanJump=true;
+player.hopCount++;
+
+// Clear ring
+if(clearRings.length<RING_POOL_MAX){
+clearRings.push({x:player.x,y:player.y,r:0,maxR:80,alpha:0.8,speed:3});
+}
+
+// Landing particles
+spawnParticles(player.x,player.y+16,6,'ember');
+}
+
+function spawnParticles(x,y,count,type){
+for(let i=0;i<count&&particles.length<PART_POOL_MAX;i++){
+const angle=Math.random()*Math.PI*2;
+const speed=1+Math.random()*3;
+const life=20+Math.random()*30;
+particles.push({
+x:x,y:y,
+vx:Math.cos(angle)*speed*(type==='ring'?2:1),
+vy:Math.sin(angle)*speed-(type==='ember'?2:0),
+life:life,maxLife:life,
+type:type,
+hue:hueBase+Math.random()*60,
+size:2+Math.random()*3
+});
+}
+}
+
+function input(){
+if(state==='start'){
+state='playing';
+initGame();
+}else if(state==='playing'){
+hop();
+}else if(state==='gameover'){
+state='start';
+}
+}
+
+canvas.addEventListener('pointerdown',(e)=>{e.preventDefault();input()});
+document.addEventListener('keydown',(e)=>{
+if(e.code==='Space'||e.code==='Enter'){
+e.preventDefault();
+input();
+}
+});
+
+// Prevent scrolling
+document.addEventListener('touchmove',(e)=>e.preventDefault(),{passive:false});
+
+function update(){
+if(state!=='playing')return;
+frameCount++;
+
+// Difficulty
+difficultyMul=1+frameCount*0.0003;
+scrollSpeed=BASE_SPEED*difficultyMul;
+
+// HSL cycling
+hueBase=(hueBase+0.3)%360;
+
+// Gust
+gustTimer++;
+if(!gustActive&&gustTimer>=GUST_INTERVAL){
+gustActive=true;
+gustTimer=0;
+}
+if(gustActive){
+gustVisual=Math.min(gustVisual+0.05,1);
+if(gustTimer>=GUST_DURATION){
+gustActive=false;
+gustTimer=0;
+gustVisual=0;
+}
+}else{
+gustVisual=Math.max(gustVisual-0.03,0);
+}
+
+const gustMul=gustActive?1.8:1;
+
+// Scroll platforms
+for(let i=platforms.length-1;i>=0;i--){
+platforms[i].x-=scrollSpeed;
+if(platforms[i].x+platforms[i].w<-50){
+platforms.splice(i,1);
+}
+}
+
+// Generate new platforms
+while(platGenX-distanceTraveled<W+300){
+generatePlatform();
+}
+
+// Scroll vent orbs
+for(let i=ventOrbs.length-1;i>=0;i--){
+ventOrbs[i].x-=scrollSpeed;
+ventOrbs[i].pulse+=0.08;
+if(ventOrbs[i].x<-40){
+ventOrbs.splice(i,1);
+}
+}
+
+// Scroll ash
+for(let i=ashBlobs.length-1;i>=0;i--){
+const a=ashBlobs[i];
+a.x-=scrollSpeed+a.speed*gustMul;
+a.phase+=0.02;
+a.y+=Math.sin(a.phase)*0.3;
+if(a.fadeTimer>0){
+a.fadeTimer--;
+a.r=a.baseR*(0.3+0.7*(a.fadeTimer>0?a.fadeTimer/30:1));
+}else{
+a.r+=(a.baseR-a.r)*0.05;
+}
+if(a.x+a.r<-80){
+ashBlobs.splice(i,1);
+}
+}
+
+while(ashGenX-distanceTraveled<W+400){
+generateAsh();
+}
+
+distanceTraveled+=scrollSpeed;
+
+// Player physics
+player.vy+=GRAVITY;
+player.y+=player.vy;
+
+// Platform collision
+player.onGround=false;
+player.inAsh=false;
+let onPlatform=false;
+for(const p of platforms){
+if(player.x>=p.x-5&&player.x<=p.x+p.w+5){
+if(player.y+16>=p.y&&player.y+16<=p.y+20&&player.vy>=0){
+player.y=p.y-16;
+player.vy=0;
+player.onGround=true;
+onPlatform=true;
+
+// Landing effects
+if(!player.wasOnGround){
+spawnParticles(player.x,player.y+16,4,'ember');
+shakeMag=Math.max(shakeMag,1.5);
+
+// Check near-miss
+const leftEdge=p.x;
+const rightEdge=p.x+p.w;
+const distToEdge=Math.min(player.x-leftEdge,rightEdge-player.x);
+if(distToEdge<20&&distToEdge>0){
+const bonus=Math.floor(15*(1-distToEdge/20));
+score+=bonus;
+nearMissText='NEAR MISS +'+bonus;
+nearMissTimer=60;
+spawnParticles(player.x,player.y,8,'ring');
+}
+
+// Clean streak
+if(player.cleanJump&&player.hopCount>1){
+combo++;
+if(combo>bestCombo)bestCombo=combo;
+const comboBonus=combo*5;
+score+=comboBonus;
+comboText='CLEAN x'+combo+' +'+comboBonus;
+comboTimer=50;
+}else if(!player.cleanJump){
+if(combo>2){
+comboText='STREAK BROKEN';
+comboTimer=40;
+}
+combo=0;
+}
+}
+break;
+}
+}
+}
+player.wasOnGround=player.onGround;
+
+// Check ash contact
+for(const a of ashBlobs){
+if(a.fadeTimer>0)continue;
+const dx=player.x-a.x;
+const dy=player.y-a.y;
+const dist=Math.sqrt(dx*dx+dy*dy);
+if(dist<a.r+10){
+player.inAsh=true;
+player.cleanJump=false;
+break;
+}
+}
+
+// Choke meter
+if(player.inAsh){
+player.chokeLevel=Math.min(1,player.chokeLevel+CHOKE_RATE);
+}else{
+player.chokeLevel=Math.max(0,player.chokeLevel-CHOKE_DECAY);
+}
+
+// Vent orb collection
+for(let i=ventOrbs.length-1;i>=0;i--){
+const v=ventOrbs[i];
+if(v.collected)continue;
+const dx=player.x-v.x;
+const dy=player.y-v.y;
+if(Math.sqrt(dx*dx+dy*dy)<25){
+v.collected=true;
+player.chokeLevel=Math.max(0,player.chokeLevel-0.3);
+score+=25;
+spawnParticles(v.x,v.y,10,'ring');
+
+// Extra clear ring
+clearRings.push({x:v.x,y:v.y,r:0,maxR:120,alpha:1,speed:4});
+ventOrbs.splice(i,1);
+}
+}
+
+// Clear rings update
+for(let i=clearRings.length-1;i>=0;i--){
+const cr=clearRings[i];
+cr.r+=cr.speed;
+cr.alpha-=0.025;
+// Affect ash
+for(const a of ashBlobs){
+const dx=a.x-cr.x;
+const dy=a.y-cr.y;
+const dist=Math.sqrt(dx*dx+dy*dy);
+if(dist<cr.r+a.r){
+a.fadeTimer=30;
+spawnParticles(a.x,a.y,2,'ash');
+}
+}
+if(cr.alpha<=0||cr.r>=cr.maxR){
+clearRings.splice(i,1);
+}
+}
+
+// Particles update
+for(let i=particles.length-1;i>=0;i--){
+const p=particles[i];
+p.x-=scrollSpeed*0.5;
+p.x+=p.vx;
+p.y+=p.vy;
+if(p.type==='ember')p.vy+=0.05;
+p.life--;
+if(p.life<=0)particles.splice(i,1);
+}
+
+// Score
+score+=Math.floor(scrollSpeed*0.1*(1+combo*0.1));
+
+// Near miss timer
+if(nearMissTimer>0)nearMissTimer--;
+if(comboTimer>0)comboTimer--;
+
+// Fall death
+if(player.y>H+50){
+gameOver();
+return;
+}
+
+// Choke death
+if(player.chokeLevel>=1){
+gameOver();
+return;
+}
+
+// Shake decay
+shakeMag*=shakeDecay;
+if(shakeMag<0.1)shakeMag=0;
+shakeX=(Math.random()-0.5)*shakeMag*2;
+shakeY=(Math.random()-0.5)*shakeMag*2;
+}
+
+function gameOver(){
+state='gameover';
+shakeMag=8;
+spawnParticles(player.x,player.y,20,'ember');
+if(score>bestScore){
+bestScore=score;
+try{localStorage.setItem('ashhopper_best',bestScore.toString())}catch(e){}
+}
+}
+
+function drawStart(){
+// Background
+const grad=ctx.createLinearGradient(0,0,0,H);
+grad.addColorStop(0,'#0d0d1a');
+grad.addColorStop(0.5,'#1a1a2e');
+grad.addColorStop(1,'#16213e');
+ctx.fillStyle=grad;
+ctx.fillRect(0,0,W,H);
+
+// Floating ash preview
+const t=Date.now()*0.001;
+for(let i=0;i<6;i++){
+const ax=W*0.2+i*60+Math.sin(t+i)*20;
+const ay=H*0.35+Math.cos(t*0.7+i*0.8)*30;
+ctx.beginPath();
+ctx.arc(ax,ay,20+Math.sin(t+i)*5,0,Math.PI*2);
+ctx.fillStyle='rgba(120,120,140,0.15)';
+ctx.fill();
+}
+
+// Title
+ctx.textAlign='center';
+ctx.textBaseline='middle';
+
+ctx.font='bold 42px "Segoe UI",system-ui,sans-serif';
+ctx.fillStyle='#ffffff';
+ctx.shadowColor='rgba(255,100,50,0.5)';
+ctx.shadowBlur=20;
+ctx.fillText('ASH HOPPER',W/2,H*0.25);
+ctx.shadowBlur=0;
+
+ctx.font='16px "Segoe UI",system-ui,sans-serif';
+ctx.fillStyle='#aaaacc';
+ctx.fillText('Clear the Cloud',W/2,H*0.32);
+
+// Instructions
+ctx.font='14px "Segoe UI",system-ui,sans-serif';
+ctx.fillStyle='#8888aa';
+ctx.fillText('Tap or press Space to hop',W/2,H*0.45);
+ctx.fillText('Avoid gaps & ash clouds',W/2,H*0.50);
+ctx.fillText('Build clean streaks for bonus points',W/2,H*0.55);
+
+// Start prompt
+const pulse=0.7+0.3*Math.sin(Date.now()*0.005);
+ctx.globalAlpha=pulse;
+ctx.font='bold 20px "Segoe UI",system-ui,sans-serif';
+ctx.fillStyle='#ff8844';
+ctx.fillText('TAP TO START',W/2,H*0.68);
+ctx.globalAlpha=1;
+
+// Best score
+if(bestScore>0){
+ctx.font='14px "Segoe UI",system-ui,sans-serif';
+ctx.fillStyle='#ffcc66';
+ctx.fillText('Best: '+bestScore,W/2,H*0.76);
+}
+
+// Challenge info
+if(challengeSeed){
+ctx.font='13px "Segoe UI",system-ui,sans-serif';
+ctx.fillStyle='#66ccff';
+ctx.fillText('Challenge Mode!',W/2,H*0.82);
+ctx.fillText('Beat: '+challengeTarget,W/2,H*0.86);
+}
+
+// Small player preview
+const py=H*0.40-8;
+const px=W/2;
+drawPlayerChar(px,py,0,0,false);
+}
+
+function drawPlayerChar(x,y,chokeLevel,hue,inAsh){
+// Body
+ctx.beginPath();
+ctx.arc(x,y,12,0,Math.PI*2);
+const bodyHue=(hue+200)%360;
+ctx.fillStyle=inAsh?`hsl(${bodyHue},30%,40%)`:`hsl(${bodyHue},60%,55%)`;
+ctx.fill();
+ctx.strokeStyle='#ffffff';
+ctx.lineWidth=2;
+ctx.stroke();
+
+// Eyes
+ctx.fillStyle='#ffffff';
+ctx.beginPath();
+ctx.arc(x-4,y-3,3,0,Math.PI*2);
+ctx.arc(x+4,y-3,3,0,Math.PI*2);
+ctx.fill();
+ctx.fillStyle='#222';
+ctx.beginPath();
+ctx.arc(x-3.5,y-3,1.5,0,Math.PI*2);
+ctx.arc(x+4.5,y-3,1.5,0,Math.PI*2);
+ctx.fill();
+
+// Choke ring
+if(chokeLevel>0.01){
+ctx.beginPath();
+ctx.arc(x,y,18,-Math.PI/2,-Math.PI/2+Math.PI*2*chokeLevel);
+ctx.strokeStyle=chokeLevel>0.7?`rgba(255,60,60,${0.5+chokeLevel*0.5})`:`rgba(255,180,60,${0.3+chokeLevel*0.4})`;
+ctx.lineWidth=3;
+ctx.stroke();
+}
+}
+
+function drawPlaying(){
+ctx.save();
+ctx.translate(shakeX,shakeY);
+
+// Background
+const grad=ctx.createLinearGradient(0,0,0,H);
+grad.addColorStop(0,`hsl(${(hueBase+240)%360},20%,8%)`);
+grad.addColorStop(0.5,`hsl(${(hueBase+250)%360},20%,12%)`);
+grad.addColorStop(1,`hsl(${(hueBase+260)%360},25%,15%)`);
+ctx.fillStyle=grad;
+ctx.fillRect(-10,-10,W+20,H+20);
+
+// Gust visual
+if(gustVisual>0){
+ctx.globalAlpha=gustVisual*0.08;
+for(let i=0;i<5;i++){
+const gy=H*0.2+i*H*0.12;
+const gx=(frameCount*3+i*80)%W;
+ctx.beginPath();
+ctx.moveTo(gx,gy);
+ctx.lineTo(gx-120,gy+5);
+ctx.strokeStyle='#aabbcc';
+ctx.lineWidth=1;
+ctx.stroke();
+}
+ctx.globalAlpha=1;
+}
+
+// Platforms
+for(const p of platforms){
+const platGrad=ctx.createLinearGradient(p.x,p.y-4,p.x,p.y+12);
+platGrad.addColorStop(0,`hsl(${(hueBase+20)%360},15%,30%)`);
+platGrad.addColorStop(1,`hsl(${(hueBase+20)%360},15%,18%)`);
+ctx.fillStyle=platGrad;
+
+// Platform body
+ctx.beginPath();
+ctx.roundRect(p.x,p.y,p.w,14,4);
+ctx.fill();
+
+// Platform top edge highlight
+ctx.beginPath();
+ctx.moveTo(p.x+4,p.y);
+ctx.lineTo(p.x+p.w-4,p.y);
+ctx.strokeStyle=`hsl(${(hueBase+40)%360},30%,50%)`;
+ctx.lineWidth=2;
+ctx.stroke();
+
+// Edge markers on platform lips
+ctx.fillStyle=`hsl(${(hueBase+60)%360},40%,45%)`;
+ctx.fillRect(p.x,p.y,4,8);
+ctx.fillRect(p.x+p.w-4,p.y,4,8);
+}
+
+// Vent orbs
+for(const v of ventOrbs){
+if(v.collected)continue;
+const glow=0.6+0.4*Math.sin(v.pulse);
+ctx.beginPath();
+ctx.arc(v.x,v.y,8+glow*3,0,Math.PI*2);
+ctx.fillStyle=`hsla(${(hueBase+120)%360},80%,60%,${0.3*glow})`;
+ctx.fill();
+ctx.beginPath();
+ctx.arc(v.x,v.y,6,0,Math.PI*2);
+ctx.fillStyle=`hsl(${(hueBase+120)%360},80%,65%)`;
+ctx.fill();
+ctx.strokeStyle='#fff';
+ctx.lineWidth=1.5;
+ctx.stroke();
+}
+
+// Ash blobs
+for(const a of ashBlobs){
+if(a.r<2)continue;
+const ashAlpha=a.fadeTimer>0?a.opacity*(a.fadeTimer/30):a.opacity;
+ctx.beginPath();
+ctx.arc(a.x,a.y,a.r,0,Math.PI*2);
+const ashGrad=ctx.createRadialGradient(a.x,a.y,0,a.x,a.y,a.r);
+ashGrad.addColorStop(0,`hsla(0,0%,50%,${ashAlpha*0.6})`);
+ashGrad.addColorStop(0.6,`hsla(0,0%,45%,${ashAlpha*0.4})`);
+ashGrad.addColorStop(1,`hsla(0,0%,40%,0)`);
+ctx.fillStyle=ashGrad;
+ctx.fill();
+}
+
+// Clear rings
+for(const cr of clearRings){
+ctx.beginPath();
+ctx.arc(cr.x,cr.y,cr.r,0,Math.PI*2);
+ctx.strokeStyle=`hsla(${(hueBase+60)%360},80%,70%,${cr.alpha})`;
+ctx.lineWidth=3;
+ctx.shadowColor=`hsla(${(hueBase+60)%360},80%,70%,${cr.alpha*0.5})`;
+ctx.shadowBlur=10;
+ctx.stroke();
+ctx.shadowBlur=0;
+}
+
+// Particles
+for(const p of particles){
+const alpha=p.life/p.maxLife;
+ctx.globalAlpha=alpha;
+if(p.type==='ember'){
+ctx.fillStyle=`hsl(${p.hue},80%,60%)`;
+ctx.fillRect(p.x-p.size/2,p.y-p.size/2,p.size,p.size);
+}else if(p.type==='ring'){
+ctx.beginPath();
+ctx.arc(p.x,p.y,p.size,0,Math.PI*2);
+ctx.fillStyle=`hsl(${p.hue},90%,75%)`;
+ctx.fill();
+}else if(p.type==='ash'){
+ctx.fillStyle=`hsl(0,0%,${50+Math.random()*20}%)`;
+ctx.fillRect(p.x-1,p.y-1,3,3);
+}
+ctx.globalAlpha=1;
+}
+
+// Player
+drawPlayerChar(player.x,player.y,player.chokeLevel,hueBase,player.inAsh);
+
+// Player shadow on platform
+ctx.globalAlpha=0.2;
+ctx.beginPath();
+ctx.ellipse(player.x,groundY+2,14,4,0,0,Math.PI*2);
+ctx.fillStyle='#000';
+ctx.fill();
+ctx.globalAlpha=1;
+
+// UI - Score
+ctx.textAlign='left';
+ctx.textBaseline='top';
+ctx.font='bold 22px "Segoe UI",system-ui,sans-serif';
+ctx.fillStyle='#ffffff';
+ctx.fillText(score.toString(),15,15);
+
+// Combo
+if(combo>1){
+ctx.font='14px "Segoe UI",system-ui,sans-serif';
+ctx.fillStyle=`hsl(${(hueBase+120)%360},70%,65%)`;
+ctx.fillText('x'+combo+' streak',15,42);
+}
+
+// Best
+ctx.textAlign='right';
+ctx.font='13px "Segoe UI",system-ui,sans-serif';
+ctx.fillStyle='#888';
+ctx.fillText('Best: '+bestScore,W-15,15);
+
+// Choke warning
+if(player.chokeLevel>0.5){
+const warn=Math.sin(frameCount*0.2)>0;
+if(warn){
+ctx.font='bold 14px "Segoe UI",system-ui,sans-serif';
+ctx.fillStyle='#ff4444';
+ctx.textAlign='center';
+ctx.fillText('CHOKING!',W/2,20);
+}
+}
+
+// Near miss text
+if(nearMissTimer>0){
+ctx.globalAlpha=nearMissTimer/60;
+ctx.font='bold 16px "Segoe UI",system-ui,sans-serif';
+ctx.fillStyle='#ffdd44';
+ctx.textAlign='center';
+ctx.fillText(nearMissText,player.x,player.y-40-((60-nearMissTimer)*0.5));
+ctx.globalAlpha=1;
+}
+
+// Combo text
+if(comboTimer>0){
+ctx.globalAlpha=comboTimer/50;
+ctx.font='bold 14px "Segoe UI",system-ui,sans-serif';
+ctx.fillStyle=comboText.includes('BROKEN')?'#ff6644':`hsl(${(hueBase+120)%360},70%,65%)`;
+ctx.textAlign='center';
+ctx.fillText(comboText,W/2,60);
+ctx.globalAlpha=1;
+}
+
+// Challenge target
+if(challengeSeed){
+ctx.font='12px "Segoe UI",system-ui,sans-serif';
+ctx.fillStyle='#66ccff';
+ctx.textAlign='right';
+ctx.fillText('Target: '+challengeTarget,W-15,32);
+}
+
+// Gust indicator
+if(gustActive){
+ctx.font='bold 12px "Segoe UI",system-ui,sans-serif';
+ctx.fillStyle='#88bbdd';
+ctx.textAlign='center';
+ctx.fillText('~ GUST ~',W/2,H-20);
+}
+
+ctx.restore();
+}
+
+function drawGameOver(){
+// Background
+const grad=ctx.createLinearGradient(0,0,0,H);
+grad.addColorStop(0,'#0d0d1a');
+grad.addColorStop(1,'#1a0a0a');
+ctx.fillStyle=grad;
+ctx.fillRect(0,0,W,H);
+
+ctx.save();
+ctx.translate(shakeX,shakeY);
+
+// Remaining particles
+for(const p of particles){
+const alpha=p.life/p.maxLife;
+ctx.globalAlpha=alpha;
+ctx.fillStyle=`hsl(${p.hue},80%,60%)`;
+ctx.fillRect(p.x-p.size/2,p.y-p.size/2,p.size,p.size);
+ctx.globalAlpha=1;
+}
+
+ctx.textAlign='center';
+ctx.textBaseline='middle';
+
+// Game over text
+ctx.font='bold 36px "Segoe UI",system-ui,sans-serif';
+ctx.fillStyle='#ff6644';
+ctx.shadowColor='rgba(255,60,30,0.4)';
+ctx.shadowBlur=15;
+ctx.fillText('GAME OVER',W/2,H*0.18);
+ctx.shadowBlur=0;
+
+// Choke or fall
+const deathMsg=player.chokeLevel>=1?'Choked in ash!':'Fell into the gap!';
+ctx.font='15px "Segoe UI",system-ui,sans-serif';
+ctx.fillStyle='#aa8888';
+ctx.fillText(deathMsg,W/2,H*0.25);
+
+// Score
+ctx.font='bold 48px "Segoe UI",system-ui,sans-serif';
+ctx.fillStyle='#ffffff';
+ctx.fillText(score.toString(),W/2,H*0.35);
+ctx.font='14px "Segoe UI",system-ui,sans-serif';
+ctx.fillStyle='#aaa';
+ctx.fillText('SCORE',W/2,H*0.42);
+
+// Best
+if(score>=bestScore){
+ctx.font='bold 16px "Segoe UI",system-ui,sans-serif';
+ctx.fillStyle='#ffcc44';
+ctx.fillText('NEW BEST!',W/2,H*0.48);
+}else{
+ctx.font='14px "Segoe UI",system-ui,sans-serif';
+ctx.fillStyle='#888';
+ctx.fillText('Best: '+bestScore,W/2,H*0.48);
+}
+
+// Stats
+ctx.font='13px "Segoe UI",system-ui,sans-serif';
+ctx.fillStyle='#8888aa';
+ctx.fillText('Best Streak: x'+bestCombo,W/2,H*0.54);
+
+// Challenge result
+if(challengeSeed){
+const beat=score>=challengeTarget;
+ctx.font='bold 16px "Segoe UI",system-ui,sans-serif';
+ctx.fillStyle=beat?'#44ff88':'#ff6644';
+ctx.fillText(beat?'CHALLENGE BEATEN!':'Challenge not beaten',W/2,H*0.59);
+}
+
+// Buttons area
+const btnY=H*0.65;
+const btnW=140;
+const btnH=36;
+
+// Share button
+drawButton(W/2-btnW/2-4,btnY,btnW,btnH,'Share Score','#4488ff');
+
+// Challenge button
+drawButton(W/2-btnW/2-4,btnY+46,btnW,btnH,'Challenge Friend','#ff8844');
+
+// Challenge code
+ctx.font='12px "Segoe UI",system-ui,sans-serif';
+ctx.fillStyle='#666';
+ctx.fillText('Code: '+challengeCode,W/2,btnY+100);
+
+// Tap to restart
+const pulse=0.5+0.5*Math.sin(Date.now()*0.004);
+ctx.globalAlpha=pulse;
+ctx.font='bold 16px "Segoe UI",system-ui,sans-serif';
+ctx.fillStyle='#aaa';
+ctx.fillText('TAP TO RETRY',W/2,H*0.92);
+ctx.globalAlpha=1;
+
+ctx.restore();
+
+// Handle button clicks
+canvas._shareBtn={x:W/2-btnW/2-4,y:btnY,w:btnW,h:btnH};
+canvas._challengeBtn={x:W/2-btnW/2-4,y:btnY+46,w:btnW,h:btnH};
+}
+
+function drawButton(x,y,w,h,text,color){
+ctx.beginPath();
+ctx.roundRect(x,y,w,h,8);
+ctx.fillStyle=color;
+ctx.globalAlpha=0.2;
+ctx.fill();
+ctx.globalAlpha=1;
+ctx.strokeStyle=color;
+ctx.lineWidth=2;
+ctx.stroke();
+ctx.font='bold 14px "Segoe UI",system-ui,sans-serif';
+ctx.fillStyle=color;
+ctx.textAlign='center';
+ctx.textBaseline='middle';
+ctx.fillText(text,x+w/2,y+h/2);
+}
+
+// Button click handling for game over
+canvas.addEventListener('pointerdown',(e)=>{
+if(state!=='gameover')return;
+const rect=canvas.getBoundingClientRect();
+const sx=(e.clientX-rect.left)*(W/rect.width);
+const sy=(e.clientY-rect.top)*(H/rect.height);
+
+if(canvas._shareBtn){
+const b=canvas._shareBtn;
+if(sx>=b.x&&sx<=b.x+b.w&&sy>=b.y&&sy<=b.y+b.h){
+shareScore();
+e.stopPropagation();
+return;
+}
+}
+if(canvas._challengeBtn){
+const b=canvas._challengeBtn;
+if(sx>=b.x&&sx<=b.x+b.w&&sy>=b.y&&sy<=b.y+b.h){
+challengeFriend();
+e.stopPropagation();
+return;
+}
+}
+});
+
+function shareScore(){
+const text=`I scored ${score} in Ash Hopper! Can you beat me? 🌋`;
+const url=`https://balinti.github.io/ash-hopper/?challenge=${challengeCode}&score=${score}`;
+if(navigator.share){
+navigator.share({title:'Ash Hopper',text:text,url:url}).catch(()=>{});
+}else{
+copyToClipboard(text+' '+url);
+}
+}
+
+function challengeFriend(){
+const url=`https://balinti.github.io/ash-hopper/?challenge=${challengeCode}&score=${score}`;
+const text=`Beat my score of ${score} in Ash Hopper! 🌋 ${url}`;
+if(navigator.share){
+navigator.share({title:'Ash Hopper Challenge',text:text,url:url}).catch(()=>{});
+}else{
+copyToClipboard(text);
+}
+}
+
+function copyToClipboard(text){
+if(navigator.clipboard){
+navigator.clipboard.writeText(text).then(()=>{
+showCopyFeedback();
+}).catch(()=>{fallbackCopy(text)});
+}else{
+fallbackCopy(text);
+}
+}
+
+let copyFeedbackTimer=0;
+function showCopyFeedback(){copyFeedbackTimer=90}
+
+function fallbackCopy(text){
+const ta=document.createElement('textarea');
+ta.value=text;
+ta.style.position='fixed';
+ta.style.opacity='0';
+document.body.appendChild(ta);
+ta.select();
+try{document.execCommand('copy');showCopyFeedback()}catch(e){}
+document.body.removeChild(ta);
+}
+
+function draw(){
+ctx.clearRect(0,0,W,H);
+if(state==='start'){
+drawStart();
+}else if(state==='playing'){
+drawPlaying();
+}else if(state==='gameover'){
+drawGameOver();
+// Copy feedback
+if(copyFeedbackTimer>0){
+copyFeedbackTimer--;
+ctx.globalAlpha=copyFeedbackTimer/90;
+ctx.font='bold 14px "Segoe UI",system-ui,sans-serif';
+ctx.fillStyle='#44ff88';
+ctx.textAlign='center';
+ctx.fillText('Copied to clipboard!',W/2,H*0.60);
+ctx.globalAlpha=1;
+}
+}
+}
+
+function loop(){
+update();
+
+// Shake update for gameover
+if(state==='gameover'){
+shakeMag*=shakeDecay;
+if(shakeMag<0.1)shakeMag=0;
+shakeX=(Math.random()-0.5)*shakeMag*2;
+shakeY=(Math.random()-0.5)*shakeMag*2;
+// Decay particles
+for(let i=particles.length-1;i>=0;i--){
+particles[i].x+=particles[i].vx;
+particles[i].y+=particles[i].vy;
+particles[i].vy+=0.05;
+particles[i].life--;
+if(particles[i].life<=0)particles.splice(i,1);
+}
+}
+
+draw();
+requestAnimationFrame(loop);
+}
+
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

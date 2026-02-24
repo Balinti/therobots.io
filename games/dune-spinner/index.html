@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Dune Spinner - Free HTML5 Game</title>
+<meta name="description" content="Play Dune Spinner - Swipe to control orbiting circles that shrink as they dodge sandstorm obstacles.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Dune Spinner - Free HTML5 Game">
+<meta property="og:description" content="Play Dune Spinner - Swipe to control orbiting circles that shrink as they dodge sandstorm obstacles.">
+<meta property="og:url" content="https://balinti.github.io/dune-spinner/">
+<meta property="og:image" content="https://balinti.github.io/dune-spinner/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Dune Spinner - Free HTML5 Game">
+<meta name="twitter:description" content="Play Dune Spinner - Swipe to control orbiting circles that shrink as they dodge sandstorm obstacles.">
+<meta name="twitter:image" content="https://balinti.github.io/dune-spinner/og.png">
+<meta name="theme-color" content="#1a0a00">
+<link rel="canonical" href="https://balinti.github.io/dune-spinner/">
+<link rel="preconnect" href="https://pagead2.googlesyndication.com">
+<link rel="preconnect" href="https://googleads.g.doubleclick.net">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#0d0500;display:flex;align-items:center;justify-content:center;font-family:'Segoe UI',sans-serif}
+#gameContainer{position:relative;width:420px;height:750px;max-width:100vw;max-height:100vh;overflow:hidden}
+canvas{display:block;width:100%;height:100%;touch-action:manipulation;cursor:pointer}
+</style>
+</head>
+<body>
+<div id="gameContainer">
+<canvas id="gameCanvas"></canvas>
+</div>
+<script>
+(function(){
+'use strict';
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const container = document.getElementById('gameContainer');
+
+// High-DPI setup
+const DPR = Math.min(window.devicePixelRatio || 1, 2);
+let CW = 420, CH = 750;
+
+function resizeCanvas() {
+  const rect = container.getBoundingClientRect();
+  CW = rect.width;
+  CH = rect.height;
+  canvas.width = CW * DPR;
+  canvas.height = CH * DPR;
+  canvas.style.width = CW + 'px';
+  canvas.style.height = CH + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+// Constants
+const LS_KEY = 'duneSpinnerBest';
+const ORBIT_R = 130;
+const CORE_R = 38;
+const SEED_R = 11;
+const TRAIL_LEN = 18;
+const NEAR_MISS_BAND = 18;
+
+// Game state
+let state = 'start';
+let score = 0;
+let best = parseInt(localStorage.getItem(LS_KEY) || '0');
+let hue = 35;
+let multiplier = 1;
+let nearStreak = 0;
+let nearMissBandBonus = 0; // extra band width from relic
+let nearMissBandTimer = 0;
+let bladesCleared = 0;
+
+// Player
+let seedAngle = -Math.PI / 2;
+let seedDir = 1; // 1=cw, -1=ccw
+let seedSpeed = 1.8; // rad/s
+let trailPoints = [];
+
+// Blades
+let blades = [];
+let bladeTimer = 0;
+let bladeInterval = 2.2; // seconds between blades
+let bladeSpeed = 90; // px/s inward
+
+// Relics
+let relics = [];
+let relicTimer = 0;
+
+// Particles
+let particles = [];
+
+// Shake
+let shakeX = 0, shakeY = 0, shakeMag = 0, shakeDur = 0, shakeTimer = 0;
+
+// Hit stop
+let hitStop = 0;
+
+// Gust
+let gustTimer = 0;
+let gustInterval = 9;
+let gustActive = false;
+let gustDur = 0;
+let gustLines = [];
+
+// Score display
+let scoreAnim = 0;
+let scorePop = 0;
+
+// Difficulty
+let diffTime = 0;
+
+// Colors
+const SAND_COLORS = ['#c8842a','#d4973b','#e6b05a','#b06a1a'];
+const GUST_COLOR = 'rgba(200,150,50,0.18)';
+
+function getDiff() {
+  const t = diffTime;
+  return {
+    seedSpeed: 1.8 + t * 0.012,
+    bladeInterval: Math.max(1.1, 2.2 - t * 0.022),
+    bladeSpeed: 90 + t * 1.1,
+    gapFraction: Math.max(0.22, 0.42 - t * 0.003),
+    doubleGapChance: Math.min(0.35, t * 0.005),
+    rotatingGapChance: Math.min(0.45, t * 0.006),
+  };
+}
+
+function resetGame() {
+  score = 0;
+  hue = 35;
+  multiplier = 1;
+  nearStreak = 0;
+  nearMissBandBonus = 0;
+  nearMissBandTimer = 0;
+  bladesCleared = 0;
+  seedAngle = -Math.PI / 2;
+  seedDir = 1;
+  trailPoints = [];
+  blades = [];
+  bladeTimer = 0;
+  relics = [];
+  relicTimer = 0;
+  particles = [];
+  shakeX = 0; shakeY = 0; shakeMag = 0; shakeDur = 0; shakeTimer = 0;
+  hitStop = 0;
+  gustTimer = 0;
+  gustActive = false;
+  gustDur = 0;
+  gustLines = [];
+  diffTime = 0;
+  scoreAnim = 0;
+  scorePop = 0;
+  bladeInterval = 2.2;
+  bladeSpeed = 90;
+  seedSpeed = 1.8;
+}
+
+// ---- Blade ----
+function spawnBlade() {
+  const d = getDiff();
+  const gapFrac = d.gapFraction;
+  const gapAngle = gapFrac * Math.PI * 2;
+  const gapStart = Math.random() * Math.PI * 2;
+  const rotating = Math.random() < d.rotatingGapChance;
+  const rotSpeed = rotating ? (Math.random() * 0.7 + 0.3) * (Math.random() < 0.5 ? 1 : -1) : 0;
+  const doubleGap = Math.random() < d.doubleGapChance;
+  const gap2Start = doubleGap ? (gapStart + Math.PI + (Math.random() - 0.5) * 0.5) % (Math.PI * 2) : null;
+
+  blades.push({
+    r: CW * 0.72,      // start far out
+    speed: d.bladeSpeed * (0.9 + Math.random() * 0.2),
+    gapStart,
+    gapAngle,
+    gap2Start,
+    doubleGap,
+    rotSpeed,
+    colorIdx: Math.floor(Math.random() * SAND_COLORS.length),
+    passed: false,
+    nearMissed: false,
+    width: 18 + Math.random() * 8,
+    alpha: 1,
+  });
+}
+
+function spawnRelic() {
+  // Place on orbit ring at a random safe angle
+  const angle = Math.random() * Math.PI * 2;
+  relics.push({
+    angle,
+    collected: false,
+    life: 1,
+    r: ORBIT_R,
+    pulseT: 0,
+  });
+}
+
+// ---- Particles ----
+function spawnParticles(x, y, count, colorH, type) {
+  for (let i = 0; i < count; i++) {
+    const ang = Math.random() * Math.PI * 2;
+    const spd = type === 'death' ? (2 + Math.random() * 5) : (1 + Math.random() * 3);
+    particles.push({
+      x, y,
+      vx: Math.cos(ang) * spd,
+      vy: Math.sin(ang) * spd,
+      life: 1,
+      decay: type === 'death' ? 0.018 : 0.03,
+      r: type === 'death' ? (3 + Math.random() * 4) : (2 + Math.random() * 3),
+      h: colorH + (Math.random() - 0.5) * 30,
+      s: 80,
+      l: 60,
+    });
+  }
+}
+
+// ---- Shake ----
+function triggerShake(mag, dur) {
+  shakeMag = Math.max(shakeMag, mag);
+  shakeDur = dur;
+  shakeTimer = dur;
+}
+
+// ---- Input ----
+function handleInput() {
+  if (state === 'start') { state = 'playing'; return; }
+  if (state === 'gameover') { resetGame(); state = 'playing'; return; }
+  if (state === 'playing') {
+    seedDir *= -1;
+    spawnParticles(
+      CW/2 + Math.cos(seedAngle) * ORBIT_R,
+      CH/2 + Math.sin(seedAngle) * ORBIT_R,
+      5, hue, 'flip'
+    );
+  }
+}
+
+canvas.addEventListener('pointerdown', e => { e.preventDefault(); handleInput(); });
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); handleInput(); }
+});
+
+// ---- Angle helpers ----
+function angleDiff(a, b) {
+  let d = ((b - a) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+  if (d > Math.PI) d -= Math.PI * 2;
+  return d;
+}
+
+function angleInGap(angle, gapStart, gapAngle) {
+  const diff = ((angle - gapStart) % (Math.PI*2) + Math.PI*2) % (Math.PI*2);
+  return diff < gapAngle;
+}
+
+function angleInBlade(angle, gapStart, gapAngle, gap2Start, doubleGap, gapAngle2) {
+  if (angleInGap(angle, gapStart, gapAngle)) return false;
+  if (doubleGap && gap2Start !== null && angleInGap(angle, gap2Start, gapAngle2 || gapAngle)) return false;
+  return true;
+}
+
+// ---- Main loop ----
+let lastTime = 0;
+
+function update(dt) {
+  if (hitStop > 0) { hitStop -= dt; return; }
+
+  const d = getDiff();
+  diffTime += dt;
+
+  // Update seed
+  seedSpeed = d.seedSpeed;
+  const angSpeed = seedSpeed * (gustActive ? 1.0 : 1.0);
+  seedAngle += angSpeed * seedDir * dt;
+
+  // Trail
+  trailPoints.push({ x: CW/2 + Math.cos(seedAngle)*ORBIT_R, y: CH/2 + Math.sin(seedAngle)*ORBIT_R });
+  if (trailPoints.length > TRAIL_LEN) trailPoints.shift();
+
+  // Hue cycle
+  hue = (hue + 15 * dt) % 360;
+
+  // Blade timer
+  bladeTimer -= dt;
+  if (bladeTimer <= 0) {
+    spawnBlade();
+    bladeTimer = d.bladeInterval * (0.85 + Math.random() * 0.3);
+  }
+
+  // Relic timer
+  relicTimer -= dt;
+  if (relicTimer <= 0 && relics.length < 2) {
+    if (Math.random() < 0.4) spawnRelic();
+    relicTimer = 6 + Math.random() * 6;
+  }
+
+  // Gust
+  gustTimer -= dt;
+  if (gustTimer <= 0 && !gustActive) {
+    gustActive = true;
+    gustDur = 2.0;
+    gustTimer = 999;
+    // Generate wind lines
+    gustLines = [];
+    for (let i = 0; i < 12; i++) {
+      gustLines.push({
+        x: Math.random() * CW,
+        y: Math.random() * CH,
+        len: 30 + Math.random() * 60,
+        spd: 80 + Math.random() * 60,
+        life: 1,
+      });
+    }
+  }
+  if (gustActive) {
+    gustDur -= dt;
+    // Move wind lines
+    for (const l of gustLines) {
+      l.x += l.spd * dt;
+      l.life -= dt * 0.5;
+    }
+    if (gustDur <= 0) {
+      gustActive = false;
+      gustTimer = 9 + Math.random() * 3;
+      gustLines = [];
+    }
+  }
+
+  // Near miss band
+  if (nearMissBandTimer > 0) nearMissBandTimer -= dt;
+  else nearMissBandBonus = 0;
+
+  // Update blades
+  const seedX = CW/2 + Math.cos(seedAngle) * ORBIT_R;
+  const seedY = CH/2 + Math.sin(seedAngle) * ORBIT_R;
+
+  for (let i = blades.length - 1; i >= 0; i--) {
+    const b = blades[i];
+    b.r -= b.speed * dt;
+    if (b.rotSpeed) {
+      b.gapStart += b.rotSpeed * dt;
+      if (b.gap2Start !== null) b.gap2Start += b.rotSpeed * dt;
+    }
+    // Gust: blades slightly faster
+    if (gustActive) b.r -= 15 * dt;
+
+    const OR = ORBIT_R;
+    const bw = b.width / 2;
+
+    // Check if blade crosses orbit ring
+    if (!b.passed && b.r < OR + bw) {
+      // Check collision
+      const inBladeAngle = angleInBlade(seedAngle, b.gapStart, b.gapAngle, b.gap2Start, b.doubleGap, b.gapAngle);
+
+      if (inBladeAngle) {
+        // Hit!
+        triggerShake(14, 0.4);
+        hitStop = 0.1;
+        spawnParticles(seedX, seedY, 30, hue, 'death');
+        if (score > best) {
+          best = score;
+          localStorage.setItem(LS_KEY, best);
+        }
+        setTimeout(() => { state = 'gameover'; }, 120);
+        return;
+      }
+
+      if (b.r < OR - bw) {
+        // Passed!
+        b.passed = true;
+        bladesCleared++;
+
+        // Check near miss
+        const bandW = NEAR_MISS_BAND + nearMissBandBonus;
+        let nearMiss = false;
+        // Check angle proximity to blade edges
+        const edgeAngles = [b.gapStart, (b.gapStart + b.gapAngle) % (Math.PI*2)];
+        if (b.doubleGap && b.gap2Start !== null) {
+          edgeAngles.push(b.gap2Start, (b.gap2Start + b.gapAngle) % (Math.PI*2));
+        }
+        for (const ea of edgeAngles) {
+          const adiff = Math.abs(angleDiff(seedAngle, ea));
+          const angBand = bandW / OR; // convert px band to angle
+          if (adiff < angBand && adiff > 0.01) { nearMiss = true; break; }
+        }
+
+        let pts = 1;
+        if (nearMiss && !b.nearMissed) {
+          b.nearMissed = true;
+          nearStreak++;
+          multiplier = Math.min(4, 1 + Math.floor(nearStreak / 2));
+          pts += nearStreak;
+          triggerShake(3, 0.12);
+          spawnParticles(seedX, seedY, 12, 50, 'near');
+        } else if (!nearMiss) {
+          nearStreak = Math.max(0, nearStreak - 1);
+          if (nearStreak === 0) multiplier = 1;
+        }
+
+        const gained = pts * multiplier;
+        score += gained;
+        scoreAnim = 1;
+        scorePop = gained;
+        spawnParticles(seedX, seedY, 8, hue, 'pass');
+        if (score > best) {
+          best = score;
+          localStorage.setItem(LS_KEY, best);
+        }
+      }
+    }
+
+    // Remove blades past center
+    if (b.r < CORE_R - 20) blades.splice(i, 1);
+  }
+
+  // Update relics
+  for (let i = relics.length - 1; i >= 0; i--) {
+    const rel = relics[i];
+    rel.pulseT += dt * 2;
+    rel.life -= dt * 0.08;
+    if (rel.life <= 0) { relics.splice(i, 1); continue; }
+
+    // Check collection
+    const relX = CW/2 + Math.cos(rel.angle) * rel.r;
+    const relY = CH/2 + Math.sin(rel.angle) * rel.r;
+    const dx = seedX - relX, dy = seedY - relY;
+    if (Math.sqrt(dx*dx+dy*dy) < SEED_R + 10) {
+      // Collected!
+      score += 5 * multiplier;
+      nearMissBandBonus = 12;
+      nearMissBandTimer = 5;
+      spawnParticles(relX, relY, 20, 200, 'relic');
+      relics.splice(i, 1);
+    }
+  }
+
+  // Update particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vx *= 0.92;
+    p.vy *= 0.92;
+    p.life -= p.decay;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+
+  // Update shake
+  if (shakeTimer > 0) {
+    shakeTimer -= dt;
+    const t = shakeTimer / shakeDur;
+    shakeX = (Math.random()-0.5) * shakeMag * t;
+    shakeY = (Math.random()-0.5) * shakeMag * t;
+    if (shakeTimer <= 0) { shakeX = 0; shakeY = 0; shakeMag = 0; }
+  }
+
+  // Score anim
+  if (scoreAnim > 0) scoreAnim -= dt * 3;
+}
+
+// ---- Drawing ----
+function drawBackground() {
+  // Deep sand gradient
+  const grad = ctx.createRadialGradient(CW/2, CH/2, 20, CW/2, CH/2, Math.max(CW,CH)*0.8);
+  grad.addColorStop(0, '#1a0a00');
+  grad.addColorStop(0.5, '#0d0500');
+  grad.addColorStop(1, '#080200');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, CW, CH);
+
+  // Subtle dust particles in background
+  ctx.save();
+  for (let i = 0; i < 30; i++) {
+    const bx = ((i * 137.5 + Date.now() * 0.01) % CW);
+    const by = ((i * 89.3 + Date.now() * 0.008) % CH);
+    ctx.globalAlpha = 0.04 + (i%5)*0.008;
+    ctx.fillStyle = '#c8842a';
+    ctx.beginPath();
+    ctx.arc(bx, by, 1 + (i%3), 0, Math.PI*2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawGust() {
+  if (!gustActive) return;
+  const progress = 1 - (gustDur / 2.0);
+  ctx.save();
+  ctx.globalAlpha = 0.3 * Math.sin(progress * Math.PI);
+  ctx.fillStyle = GUST_COLOR;
+  ctx.fillRect(0, 0, CW, CH);
+  // Wind lines
+  ctx.strokeStyle = 'rgba(220,170,60,0.5)';
+  ctx.lineWidth = 1.5;
+  for (const l of gustLines) {
+    ctx.globalAlpha = l.life * 0.5;
+    ctx.beginPath();
+    ctx.moveTo(l.x - l.len, l.y);
+    ctx.lineTo(l.x, l.y);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawOrbitRing() {
+  ctx.save();
+  let wobble = 0;
+  if (gustActive) wobble = Math.sin(Date.now() * 0.01) * 3;
+  ctx.strokeStyle = `hsla(35,50%,40%,0.35)`;
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([6, 8]);
+  ctx.beginPath();
+  ctx.arc(CW/2, CH/2, ORBIT_R + wobble, 0, Math.PI*2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+function drawCore() {
+  const cx = CW/2, cy = CH/2;
+  // Outer glow
+  const grd = ctx.createRadialGradient(cx, cy, CORE_R*0.3, cx, cy, CORE_R*1.6);
+  grd.addColorStop(0, `hsla(${hue},80%,55%,0.25)`);
+  grd.addColorStop(1, 'transparent');
+  ctx.fillStyle = grd;
+  ctx.beginPath();
+  ctx.arc(cx, cy, CORE_R*1.6, 0, Math.PI*2);
+  ctx.fill();
+
+  // Core circle
+  const cg = ctx.createRadialGradient(cx-CORE_R*0.3, cy-CORE_R*0.3, 2, cx, cy, CORE_R);
+  cg.addColorStop(0, `hsl(${hue+20},70%,65%)`);
+  cg.addColorStop(0.6, `hsl(${hue},65%,40%)`);
+  cg.addColorStop(1, `hsl(${hue-10},60%,22%)`);
+  ctx.fillStyle = cg;
+  ctx.beginPath();
+  ctx.arc(cx, cy, CORE_R, 0, Math.PI*2);
+  ctx.fill();
+
+  // Dune lines on core
+  ctx.save();
+  ctx.globalAlpha = 0.3;
+  ctx.strokeStyle = `hsl(${hue+30},80%,70%)`;
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 4; i++) {
+    const y = cy - CORE_R*0.5 + i * CORE_R*0.35;
+    const hw = Math.sqrt(Math.max(0, CORE_R*CORE_R - (y-cy)*(y-cy))) * 0.8;
+    ctx.beginPath();
+    ctx.moveTo(cx - hw, y);
+    ctx.quadraticCurveTo(cx, y - 4, cx + hw, y);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawBlades() {
+  for (const b of blades) {
+    const cx = CW/2, cy = CH/2;
+    const inner = Math.max(5, b.r - b.width);
+    const outer = b.r;
+    if (outer < 0) continue;
+
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, b.alpha * (b.r > CW*0.55 ? (1 - (b.r - CW*0.55)/(CW*0.15)) : 1));
+    if (ctx.globalAlpha < 0) { ctx.restore(); continue; }
+
+    const color = SAND_COLORS[b.colorIdx];
+
+    // Draw blade as annular sector — fill everything except gaps
+    // Use clipping: draw full annulus, then cut gaps
+    ctx.beginPath();
+    ctx.arc(cx, cy, outer, 0, Math.PI*2);
+    ctx.arc(cx, cy, inner, Math.PI*2, 0, true);
+    ctx.closePath();
+
+    // Create gap cutouts using composite
+    const tmpCanvas = document.createElement('canvas');
+    tmpCanvas.width = canvas.width;
+    tmpCanvas.height = canvas.height;
+    const tmpCtx = tmpCanvas.getContext('2d');
+    tmpCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+    // Draw annulus
+    tmpCtx.fillStyle = color;
+    tmpCtx.beginPath();
+    tmpCtx.arc(cx, cy, outer, 0, Math.PI*2);
+    tmpCtx.arc(cx, cy, inner, Math.PI*2, 0, true);
+    tmpCtx.closePath();
+    tmpCtx.fill();
+
+    // Cut gap(s)
+    tmpCtx.globalCompositeOperation = 'destination-out';
+    tmpCtx.fillStyle = 'rgba(0,0,0,1)';
+    const drawGapCut = (gs, ga) => {
+      tmpCtx.beginPath();
+      tmpCtx.moveTo(cx, cy);
+      tmpCtx.arc(cx, cy, outer + 2, gs, gs + ga);
+      tmpCtx.arc(cx, cy, inner - 2, gs + ga, gs, true);
+      tmpCtx.closePath();
+      tmpCtx.fill();
+    };
+    drawGapCut(b.gapStart, b.gapAngle);
+    if (b.doubleGap && b.gap2Start !== null) drawGapCut(b.gap2Start, b.gapAngle);
+
+    ctx.drawImage(tmpCanvas, 0, 0, CW, CH);
+
+    // Edge highlight
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.strokeStyle = `hsl(${hue},90%,80%)`;
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.3;
+    ctx.beginPath();
+    ctx.arc(cx, cy, outer, 0, Math.PI*2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(cx, cy, inner, 0, Math.PI*2);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+}
+
+function drawTrail() {
+  if (trailPoints.length < 2) return;
+  ctx.save();
+  for (let i = 1; i < trailPoints.length; i++) {
+    const t = i / trailPoints.length;
+    ctx.globalAlpha = t * 0.5;
+    ctx.strokeStyle = `hsl(${hue},85%,60%)`;
+    ctx.lineWidth = SEED_R * t * 1.2;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(trailPoints[i-1].x, trailPoints[i-1].y);
+    ctx.lineTo(trailPoints[i].x, trailPoints[i].y);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawSeed() {
+  const sx = CW/2 + Math.cos(seedAngle) * ORBIT_R;
+  const sy = CH/2 + Math.sin(seedAngle) * ORBIT_R;
+
+  // Glow
+  const grd = ctx.createRadialGradient(sx, sy, 1, sx, sy, SEED_R*2.5);
+  grd.addColorStop(0, `hsla(${hue},100%,70%,0.8)`);
+  grd.addColorStop(1, 'transparent');
+  ctx.fillStyle = grd;
+  ctx.beginPath();
+  ctx.arc(sx, sy, SEED_R*2.5, 0, Math.PI*2);
+  ctx.fill();
+
+  // Main seed
+  const sg = ctx.createRadialGradient(sx-2, sy-2, 1, sx, sy, SEED_R);
+  sg.addColorStop(0, `hsl(${hue+30},100%,90%)`);
+  sg.addColorStop(0.5, `hsl(${hue},90%,65%)`);
+  sg.addColorStop(1, `hsl(${hue-10},80%,45%)`);
+  ctx.fillStyle = sg;
+  ctx.beginPath();
+  ctx.arc(sx, sy, SEED_R, 0, Math.PI*2);
+  ctx.fill();
+
+  // Direction indicator
+  ctx.save();
+  ctx.strokeStyle = `hsla(${hue},100%,90%,0.7)`;
+  ctx.lineWidth = 2;
+  const arrowAng = seedAngle + (seedDir > 0 ? Math.PI/2 : -Math.PI/2);
+  ctx.beginPath();
+  ctx.moveTo(sx, sy);
+  ctx.lineTo(sx + Math.cos(arrowAng)*SEED_R*0.8, sy + Math.sin(arrowAng)*SEED_R*0.8);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawRelics() {
+  for (const rel of relics) {
+    const rx = CW/2 + Math.cos(rel.angle) * rel.r;
+    const ry = CH/2 + Math.sin(rel.angle) * rel.r;
+    const pulse = 1 + 0.15 * Math.sin(rel.pulseT);
+
+    ctx.save();
+    ctx.globalAlpha = rel.life * 0.9;
+
+    // Outer ring
+    ctx.strokeStyle = `hsl(200,100%,70%)`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(rx, ry, 9 * pulse, 0, Math.PI*2);
+    ctx.stroke();
+
+    // Gem shape
+    ctx.fillStyle = `hsl(200,90%,65%)`;
+    ctx.beginPath();
+    ctx.moveTo(rx, ry - 7*pulse);
+    ctx.lineTo(rx + 5*pulse, ry);
+    ctx.lineTo(rx, ry + 7*pulse);
+    ctx.lineTo(rx - 5*pulse, ry);
+    ctx.closePath();
+    ctx.fill();
+
+    // Shine
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.beginPath();
+    ctx.arc(rx - 2, ry - 2, 2, 0, Math.PI*2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    ctx.save();
+    ctx.globalAlpha = p.life * 0.85;
+    ctx.fillStyle = `hsl(${p.h},${p.s}%,${p.l}%)`;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r * p.life, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawHUD() {
+  // Score
+  const sc = Math.floor(score);
+  const popScale = 1 + Math.max(0, scoreAnim) * 0.35;
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.font = `bold ${Math.round(42 * popScale)}px 'Segoe UI',sans-serif`;
+  ctx.fillStyle = `hsl(${hue},85%,65%)`;
+  ctx.globalAlpha = 0.95;
+  ctx.fillText(sc, CW/2, 72);
+
+  // Best
+  ctx.font = `16px 'Segoe UI',sans-serif`;
+  ctx.fillStyle = 'rgba(200,150,60,0.65)';
+  ctx.fillText(`BEST ${best}`, CW/2, 95);
+
+  // Multiplier
+  if (multiplier > 1) {
+    ctx.font = `bold 20px 'Segoe UI',sans-serif`;
+    ctx.fillStyle = `hsl(50,100%,65%)`;
+    ctx.globalAlpha = 0.9;
+    ctx.fillText(`×${multiplier}`, CW - 45, 68);
+  }
+
+  // Score pop
+  if (scoreAnim > 0 && scorePop > 1) {
+    ctx.font = `bold ${Math.round(18 + scoreAnim*8)}px 'Segoe UI',sans-serif`;
+    ctx.fillStyle = `hsla(50,100%,70%,${scoreAnim})`;
+    ctx.fillText(`+${scorePop}`, CW/2 + 55, 65);
+  }
+
+  // Near miss band bonus indicator
+  if (nearMissBandTimer > 0) {
+    ctx.font = '13px sans-serif';
+    ctx.fillStyle = 'rgba(100,200,255,0.8)';
+    ctx.fillText('RELIC ACTIVE', CW/2, 112);
+  }
+
+  // Gust warning
+  if (gustActive) {
+    ctx.font = 'bold 15px sans-serif';
+    ctx.fillStyle = `rgba(230,170,40,${0.6 + 0.4*Math.sin(Date.now()*0.01)})`;
+    ctx.fillText('SANDSTORM!', CW/2, CH - 30);
+  }
+
+  ctx.restore();
+}
+
+function drawStartScreen() {
+  drawBackground();
+  drawCore();
+
+  ctx.save();
+  // Title
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 52px "Segoe UI",sans-serif';
+  const tg = ctx.createLinearGradient(CW/2-120, 0, CW/2+120, 0);
+  tg.addColorStop(0, '#e6b05a');
+  tg.addColorStop(0.5, '#fff0c0');
+  tg.addColorStop(1, '#c8842a');
+  ctx.fillStyle = tg;
+  ctx.shadowColor = 'rgba(200,130,20,0.7)';
+  ctx.shadowBlur = 20;
+  ctx.fillText('DUNE', CW/2, CH/2 - 80);
+  ctx.font = 'bold 36px "Segoe UI",sans-serif';
+  ctx.fillText('SPINNER', CW/2, CH/2 - 38);
+
+  ctx.shadowBlur = 0;
+  ctx.font = '17px "Segoe UI",sans-serif';
+  ctx.fillStyle = 'rgba(220,180,80,0.75)';
+  ctx.fillText('Tap to flip orbit direction', CW/2, CH/2 + 20);
+  ctx.fillText('Survive sand blade storms!', CW/2, CH/2 + 44);
+
+  // Tap prompt
+  const pulse = 0.7 + 0.3 * Math.sin(Date.now() * 0.003);
+  ctx.globalAlpha = pulse;
+  ctx.font = 'bold 22px "Segoe UI",sans-serif';
+  ctx.fillStyle = '#ffd080';
+  ctx.fillText('TAP TO START', CW/2, CH/2 + 100);
+
+  if (best > 0) {
+    ctx.globalAlpha = 0.6;
+    ctx.font = '15px sans-serif';
+    ctx.fillStyle = '#c8842a';
+    ctx.fillText(`Best: ${best}`, CW/2, CH/2 + 135);
+  }
+
+  ctx.restore();
+}
+
+function drawGameOverScreen() {
+  drawBackground();
+  // Dim overlay
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(0, 0, CW, CH);
+
+  ctx.save();
+  ctx.textAlign = 'center';
+
+  ctx.font = 'bold 38px "Segoe UI",sans-serif';
+  ctx.fillStyle = '#e05050';
+  ctx.shadowColor = 'rgba(200,50,50,0.6)';
+  ctx.shadowBlur = 15;
+  ctx.fillText('GAME OVER', CW/2, CH/2 - 90);
+
+  ctx.shadowBlur = 0;
+  ctx.font = 'bold 62px "Segoe UI",sans-serif';
+  ctx.fillStyle = `hsl(${hue},80%,65%)`;
+  ctx.fillText(Math.floor(score), CW/2, CH/2 - 20);
+
+  ctx.font = '18px "Segoe UI",sans-serif';
+  ctx.fillStyle = 'rgba(200,150,60,0.8)';
+  ctx.fillText(`BEST  ${best}`, CW/2, CH/2 + 28);
+
+  const pulse = 0.7 + 0.3 * Math.sin(Date.now() * 0.003);
+  ctx.globalAlpha = pulse;
+  ctx.font = 'bold 22px "Segoe UI",sans-serif';
+  ctx.fillStyle = '#ffd080';
+  ctx.fillText('TAP TO RETRY', CW/2, CH/2 + 90);
+
+  ctx.restore();
+}
+
+function render() {
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
+
+  if (state === 'start') {
+    drawStartScreen();
+  } else if (state === 'playing') {
+    drawBackground();
+    drawGust();
+    drawOrbitRing();
+    drawBlades();
+    drawRelics();
+    drawTrail();
+    drawCore();
+    drawSeed();
+    drawParticles();
+    drawHUD();
+  } else if (state === 'gameover') {
+    drawGameOverScreen();
+    drawParticles();
+  }
+
+  ctx.restore();
+}
+
+function loop(ts) {
+  const dt = Math.min((ts - lastTime) / 1000, 0.05);
+  lastTime = ts;
+
+  if (state === 'playing') update(dt);
+
+  ctx.clearRect(0, 0, CW, CH);
+  render();
+
+  requestAnimationFrame(loop);
+}
+
+// Prevent context menu / scroll
+document.addEventListener('contextmenu', e => e.preventDefault());
+document.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+
+requestAnimationFrame(ts => { lastTime = ts; requestAnimationFrame(loop); });
+
+})();
+</script>
+</body>
+</html>

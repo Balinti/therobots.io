@@ -1,0 +1,1102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Glacier Glide - Free HTML5 Game</title>
+  <meta name="description" content="Play Glacier Glide - Swipe to dodge oscillating ice chunks in a frosty arctic landscape.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a1628">
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Glacier Glide - Free HTML5 Game">
+  <meta property="og:description" content="Play Glacier Glide - Swipe to dodge oscillating ice chunks in a frosty arctic landscape.">
+  <meta property="og:url" content="https://balinti.github.io/glacier-glide/">
+  <meta property="og:image" content="https://balinti.github.io/glacier-glide/og-image.png">
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #050d1a;
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+    }
+    #gameWrapper {
+      position: relative;
+      width: 100%; height: 100%;
+      max-width: 420px;
+      max-height: 750px;
+      background: #0a1628;
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+      width: 100%; height: 100%;
+      image-rendering: crisp-edges;
+    }
+    #overlay {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      background: rgba(5, 13, 26, 0.88);
+      backdrop-filter: blur(4px);
+      z-index: 10;
+      padding: 20px;
+      text-align: center;
+      color: #e8f4ff;
+    }
+    #overlay.hidden { display: none; }
+    .ov-logo {
+      font-size: 2.4rem; font-weight: 900; letter-spacing: 2px;
+      background: linear-gradient(135deg, #7ff0ff, #5bc8ff, #a0e8ff);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+      text-shadow: none;
+      margin-bottom: 4px;
+    }
+    .ov-sub {
+      font-size: 0.85rem; color: #7ab8d4; margin-bottom: 24px; letter-spacing: 1px;
+    }
+    .ov-instructions {
+      background: rgba(127,240,255,0.07);
+      border: 1px solid rgba(127,240,255,0.18);
+      border-radius: 12px;
+      padding: 14px 18px;
+      font-size: 0.82rem;
+      color: #b0d8ef;
+      line-height: 1.7;
+      margin-bottom: 20px;
+      max-width: 310px;
+    }
+    .ov-instructions b { color: #7ff0ff; }
+    .ov-btn {
+      background: linear-gradient(135deg, #1a6aff, #0090ff);
+      color: #fff; border: none; border-radius: 50px;
+      padding: 14px 48px; font-size: 1.1rem; font-weight: 700;
+      cursor: pointer; letter-spacing: 1px;
+      box-shadow: 0 4px 24px rgba(0,144,255,0.4);
+      transition: transform 0.1s, box-shadow 0.1s;
+      margin-bottom: 10px; width: 220px;
+    }
+    .ov-btn:active { transform: scale(0.96); box-shadow: 0 2px 12px rgba(0,144,255,0.3); }
+    .ov-btn.share {
+      background: linear-gradient(135deg, #1db954, #19a348);
+      box-shadow: 0 4px 24px rgba(29,185,84,0.35);
+    }
+    .ov-score-box {
+      background: rgba(127,240,255,0.07);
+      border: 1px solid rgba(127,240,255,0.2);
+      border-radius: 14px;
+      padding: 16px 28px;
+      margin-bottom: 20px;
+      min-width: 260px;
+    }
+    .ov-score-row { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 0.9rem; color: #99c8e0; }
+    .ov-score-row span:last-child { color: #fff; font-weight: 700; }
+    .ov-death { color: #ff7070; font-size: 0.85rem; margin-bottom: 16px; font-style: italic; }
+    .ov-challenge { color: #ffd060; font-size: 0.82rem; margin-bottom: 12px; }
+    .ov-challenge-result { font-size: 0.9rem; font-weight: 700; margin-bottom: 12px; }
+    .ov-challenge-result.win { color: #7ff0ff; }
+    .ov-challenge-result.lose { color: #ff9060; }
+    #hud {
+      position: absolute; top: 0; left: 0; right: 0;
+      pointer-events: none; z-index: 5;
+    }
+  </style>
+</head>
+<body>
+<div id="gameWrapper">
+  <canvas id="gc"></canvas>
+  <div id="overlay">
+    <div class="ov-logo">GLACIER GLIDE</div>
+    <div class="ov-sub">DRIFT &amp; CRACK</div>
+    <div id="ovChallenge" class="ov-challenge" style="display:none"></div>
+    <div class="ov-instructions">
+      <b>HOLD</b> = drift RIGHT &nbsp;|&nbsp; <b>RELEASE</b> = drift LEFT<br>
+      Collect <b>Ice Cores</b> to charge Overdrive<br>
+      Dodge walls, gates &amp; cracking ice<br>
+      Near-misses earn bonus points!
+    </div>
+    <button class="ov-btn" id="startBtn">TAP TO PLAY</button>
+    <div style="font-size:0.75rem;color:#4a7a99;margin-top:8px">Space / Enter also works</div>
+  </div>
+</div>
+
+<script>
+// ─── UTILITY ─────────────────────────────────────────────────────────────────
+function mulberry32(seed) {
+  return function() {
+    seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+    var t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+const clamp = (v, mn, mx) => Math.max(mn, Math.min(mx, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+
+// ─── CANVAS SETUP ────────────────────────────────────────────────────────────
+const wrapper = document.getElementById('gameWrapper');
+const canvas = document.getElementById('gc');
+const ctx = canvas.getContext('2d');
+
+let W, H, dpr;
+function resizeCanvas() {
+  const r = wrapper.getBoundingClientRect();
+  dpr = window.devicePixelRatio || 1;
+  W = r.width; H = r.height;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+resizeCanvas();
+window.addEventListener('resize', () => { resizeCanvas(); if (state !== 'playing') drawIdleFrame(); });
+
+// ─── GAME STATE ───────────────────────────────────────────────────────────────
+let state = 'start'; // 'start' | 'playing' | 'gameover'
+let bestScore = +localStorage.getItem('gg_best') || 0;
+
+// ─── CHALLENGE PARAM ─────────────────────────────────────────────────────────
+const urlParams = new URLSearchParams(location.search);
+const challengeVal = urlParams.get('challenge') ? +urlParams.get('challenge') : null;
+if (challengeVal) {
+  const el = document.getElementById('ovChallenge');
+  el.style.display = '';
+  el.textContent = `Challenge: beat ${challengeVal}m`;
+}
+
+// ─── GAME VARIABLES ──────────────────────────────────────────────────────────
+let player, segments, particles, popTexts;
+let score, distance, coreMeter, coreStreak, multiplier;
+let overdrive, overdriveTimer, overdriveMax;
+let speed, baseSpeed, scrollY;
+let bgHue, time;
+let deathCause;
+let shakeAmt, shakeDur, shakeT;
+let holding = false;
+let prng;
+let segSeed;
+let nextSegY;
+let nearMissCooldown;
+let frameId;
+
+const PLAYER_W = 28, PLAYER_H = 42;
+const LANE_W = () => W;
+const CHANNEL_W = () => Math.min(W - 40, 360);
+const CHANNEL_X = () => (W - CHANNEL_W()) / 2;
+const CORE_R = 11;
+const CORE_METER_MAX = 5;
+const OVERDRIVE_DURATION = 5000;
+
+function initGame() {
+  segSeed = Date.now() & 0xffffffff;
+  prng = mulberry32(segSeed);
+
+  player = {
+    x: W / 2, y: H * 0.65,
+    vx: 0, vy: 0,
+    w: PLAYER_W, h: PLAYER_H,
+    trail: []
+  };
+
+  segments = [];
+  particles = [];
+  popTexts = [];
+  score = 0;
+  distance = 0;
+  coreMeter = 0;
+  coreStreak = 0;
+  multiplier = 1;
+  overdrive = false;
+  overdriveTimer = 0;
+  overdriveMax = OVERDRIVE_DURATION;
+  speed = 180;
+  baseSpeed = 180;
+  scrollY = 0;
+  bgHue = 200;
+  time = 0;
+  deathCause = '';
+  shakeAmt = 0; shakeDur = 0; shakeT = 0;
+  nextSegY = H;
+  nearMissCooldown = 0;
+
+  // pre-spawn segments
+  for (let i = 0; i < 20; i++) spawnSegment();
+}
+
+// ─── DIFFICULTY ───────────────────────────────────────────────────────────────
+function getDifficulty() {
+  const t = time / 1000;
+  const spd = Math.min(baseSpeed + t * 18, 520);
+  const gateW = Math.max(CHANNEL_W() * 0.55 - t * 0.9, PLAYER_W * 2.2);
+  const crackDelay = Math.max(1600 - t * 12, 500);
+  const spawnGap = Math.max(320 - t * 0.9, 130);
+  return { spd, gateW, crackDelay, spawnGap };
+}
+
+// ─── SEGMENT SPAWNER ─────────────────────────────────────────────────────────
+// Obstacle types: 'WALL','GATE','FRAGILE','GAP'
+function spawnSegment() {
+  const diff = getDifficulty();
+  const cx = CHANNEL_X();
+  const cw = CHANNEL_W();
+  const r = prng();
+  let type;
+  const t = time / 1000;
+  // Weight obstacles by time
+  if (t < 5) {
+    type = r < 0.55 ? 'GATE' : 'WALL';
+  } else if (t < 15) {
+    type = r < 0.38 ? 'GATE' : r < 0.65 ? 'WALL' : r < 0.88 ? 'FRAGILE' : 'GAP';
+  } else {
+    type = r < 0.3 ? 'GATE' : r < 0.52 ? 'WALL' : r < 0.75 ? 'FRAGILE' : 'GAP';
+  }
+
+  const y = nextSegY;
+  nextSegY -= diff.spawnGap * (0.85 + prng() * 0.3);
+  const seg = { type, y, active: true, hasCores: false, cores: [] };
+
+  if (type === 'WALL') {
+    // A horizontal wall with a random gap somewhere in the channel
+    const wallH = 14;
+    const gapW = diff.gateW;
+    const gapX = cx + prng() * (cw - gapW);
+    seg.wallRects = [
+      { x: cx, y: y, w: gapX - cx, h: wallH },
+      { x: gapX + gapW, y: y, w: (cx + cw) - (gapX + gapW), h: wallH }
+    ];
+    seg.gapX = gapX; seg.gapW = gapW;
+    // 60% chance core in gap center
+    if (prng() < 0.6) {
+      seg.hasCores = true;
+      seg.cores.push({ x: gapX + gapW / 2, y: y + 7, r: CORE_R, collected: false });
+    }
+  } else if (type === 'GATE') {
+    // Two pillars with a gate gap
+    const gateW = diff.gateW;
+    const gapX = cx + prng() * (cw - gateW);
+    const pillarH = 18;
+    seg.wallRects = [
+      { x: cx, y: y, w: gapX - cx, h: pillarH },
+      { x: gapX + gateW, y: y, w: (cx + cw) - (gapX + gateW), h: pillarH }
+    ];
+    seg.gapX = gapX; seg.gapW = gateW;
+    // Core in gate often
+    if (prng() < 0.72) {
+      seg.hasCores = true;
+      seg.cores.push({ x: gapX + gateW / 2, y: y + 9, r: CORE_R, collected: false });
+    }
+  } else if (type === 'FRAGILE') {
+    // A fragile tile that opens after a warning
+    const tileW = CHANNEL_W() * (0.5 + prng() * 0.3);
+    const tileX = cx + prng() * (CHANNEL_W() - tileW);
+    seg.fragile = { x: tileX, y: y, w: tileW, h: 16 };
+    seg.crackDelay = diff.crackDelay;
+    seg.crackTimer = 0;
+    seg.cracked = false;
+    seg.warned = false;
+    seg.warnPulse = 0;
+  } else if (type === 'GAP') {
+    // A gap in the "floor" - open fissure player must pass over
+    const gapW = Math.min(CHANNEL_W() * (0.3 + prng() * 0.3), CHANNEL_W() - PLAYER_W * 3);
+    const gapX = cx + PLAYER_W + prng() * (CHANNEL_W() - gapW - PLAYER_W * 2);
+    seg.gap = { x: gapX, y: y - 8, w: gapW, h: 28 };
+    // Side wall segments
+    seg.wallRects = [
+      { x: cx, y: y - 8, w: gapX - cx, h: 28 },
+      { x: gapX + gapW, y: y - 8, w: (cx + cw) - (gapX + gapW), h: 28 }
+    ];
+    seg.gapX = gapX; seg.gapW = gapW;
+  }
+
+  segments.push(seg);
+}
+
+// ─── PARTICLES ───────────────────────────────────────────────────────────────
+function spawnParticles(x, y, count, color, speed, life, size = 4) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const spd = speed * (0.4 + Math.random() * 0.6);
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * spd,
+      vy: Math.sin(angle) * spd,
+      life: life * (0.7 + Math.random() * 0.3),
+      maxLife: life,
+      color,
+      size: size * (0.5 + Math.random() * 0.5),
+      gravity: 0.08 + Math.random() * 0.06
+    });
+  }
+}
+
+function spawnDriftSpray(x, y, dir) {
+  const color = overdrive ? `hsl(${bgHue+40},100%,75%)` : `hsl(200,80%,80%)`;
+  for (let i = 0; i < 3; i++) {
+    particles.push({
+      x: x + (Math.random() - 0.5) * 10,
+      y: y + PLAYER_H / 2,
+      vx: -dir * (1 + Math.random() * 2.5),
+      vy: -(0.5 + Math.random() * 1.5),
+      life: 0.35 + Math.random() * 0.2,
+      maxLife: 0.55,
+      color,
+      size: 2 + Math.random() * 3,
+      gravity: 0.04
+    });
+  }
+}
+
+// ─── POP TEXTS ───────────────────────────────────────────────────────────────
+function popText(x, y, txt, color = '#fff', size = 16) {
+  popTexts.push({ x, y, txt, color, size, vy: -1.2, life: 1.1, maxLife: 1.1 });
+}
+
+// ─── SCREEN SHAKE ────────────────────────────────────────────────────────────
+function triggerShake(magnitude, duration) {
+  shakeAmt = magnitude; shakeDur = duration; shakeT = 0;
+}
+
+// ─── COLLISION HELPERS ───────────────────────────────────────────────────────
+function rectsOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
+  return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
+}
+
+function circleAABB(cx, cy, cr, rx, ry, rw, rh) {
+  const nearX = clamp(cx, rx, rx + rw);
+  const nearY = clamp(cy, ry, ry + rh);
+  const dx = cx - nearX, dy = cy - nearY;
+  return dx * dx + dy * dy < cr * cr;
+}
+
+// ─── NEAR MISS ───────────────────────────────────────────────────────────────
+function checkNearMiss(px, py, pw, ph) {
+  if (nearMissCooldown > 0) return;
+  const margin = 14;
+  for (const seg of segments) {
+    if (!seg.active || !seg.wallRects) continue;
+    for (const r of seg.wallRects) {
+      if (r.w <= 0 || r.h <= 0) continue;
+      const expandX = r.x - margin, expandW = r.w + margin * 2;
+      const expandY = r.y - margin, expandH = r.h + margin * 2;
+      if (rectsOverlap(px, py, pw, ph, expandX, expandY, expandW, expandH)) {
+        if (!rectsOverlap(px, py, pw, ph, r.x, r.y, r.w, r.h)) {
+          // Near miss!
+          const bonus = Math.round(50 * multiplier);
+          score += bonus;
+          popText(px, py - 20, `NEAR MISS +${bonus}`, '#7ff0ff', 14);
+          nearMissCooldown = 0.8;
+          return;
+        }
+      }
+    }
+  }
+}
+
+// ─── UPDATE ───────────────────────────────────────────────────────────────────
+let lastTime = 0;
+function update(ts) {
+  const rawDt = (ts - lastTime) / 1000;
+  lastTime = ts;
+  const dt = Math.min(rawDt, 0.05);
+
+  time += dt * 1000;
+  const diff = getDifficulty();
+
+  // Speed
+  speed = diff.spd;
+  if (overdrive) speed *= 1.45;
+
+  // Scroll
+  scrollY += speed * dt;
+  distance += speed * dt / 100;
+
+  bgHue = (bgHue + dt * 3) % 360;
+
+  // Overdrive
+  if (overdrive) {
+    overdriveTimer -= dt * 1000;
+    if (overdriveTimer <= 0) { overdrive = false; multiplier = 1 + coreStreak * 0.1; }
+  }
+
+  // Near miss cooldown
+  nearMissCooldown = Math.max(0, nearMissCooldown - dt);
+
+  // Player physics
+  const px = player.x, py = player.y;
+  const axel = holding ? 1 : -1; // HOLD=right, RELEASE=left
+  const accel = overdrive ? 480 : 340;
+  const friction = overdrive ? 0.965 : 0.94;
+
+  player.vx += axel * accel * dt;
+  player.vx *= friction;
+  player.vx = clamp(player.vx, -280, 280);
+  player.x += player.vx * dt;
+
+  // Bounds
+  const cx = CHANNEL_X(), cw = CHANNEL_W();
+  if (player.x - PLAYER_W / 2 < cx) {
+    player.x = cx + PLAYER_W / 2;
+    if (player.vx < 0) { player.vx *= -0.35; }
+    spawnDriftSpray(player.x, player.y, -1);
+  }
+  if (player.x + PLAYER_W / 2 > cx + cw) {
+    player.x = cx + cw - PLAYER_W / 2;
+    if (player.vx > 0) { player.vx *= -0.35; }
+    spawnDriftSpray(player.x, player.y, 1);
+  }
+
+  // Player trail
+  player.trail.unshift({ x: player.x, y: player.y });
+  if (player.trail.length > 12) player.trail.pop();
+
+  // Drift spray
+  if (Math.abs(player.vx) > 60 && Math.random() < 0.4) {
+    spawnDriftSpray(player.x, player.y, Math.sign(player.vx));
+  }
+
+  // Score
+  const baseScore = speed * dt * multiplier * 0.6;
+  score += baseScore;
+
+  // Segment management
+  while (nextSegY > scrollY - H * 0.5) spawnSegment();
+
+  // Remove off-screen segments (below camera)
+  const cullY = scrollY + H + 200;
+  for (let i = segments.length - 1; i >= 0; i--) {
+    const s = segments[i];
+    const sy = s.y - scrollY;
+    if (sy > cullY) { segments.splice(i, 1); }
+  }
+
+  // Collision + core pickup + near miss
+  const plx = player.x - PLAYER_W / 2;
+  const ply = player.y - PLAYER_H / 2;
+  checkNearMiss(plx, ply, PLAYER_W, PLAYER_H);
+
+  for (const seg of segments) {
+    if (!seg.active) continue;
+    const sy = seg.y - scrollY; // world → screen
+
+    // Update fragile
+    if (seg.type === 'FRAGILE' && seg.fragile) {
+      seg.crackTimer += dt * 1000;
+      seg.warnPulse = (seg.warnPulse || 0) + dt * 8;
+      if (!seg.warned && seg.crackTimer > seg.crackDelay * 0.55) {
+        seg.warned = true;
+      }
+      if (!seg.cracked && seg.crackTimer > seg.crackDelay) {
+        seg.cracked = true;
+        // spawn shards
+        const f = seg.fragile;
+        const fx = f.x, fy = f.y - scrollY + f.h / 2;
+        spawnParticles(fx + f.w / 2, fy, 14, 'hsl(200,60%,80%)', 140, 0.7, 5);
+      }
+    }
+
+    // Wall rects collision
+    if (seg.wallRects) {
+      for (const r of seg.wallRects) {
+        if (r.w <= 0 || r.h <= 0) continue;
+        const rx = r.x, ry = r.y - scrollY;
+        if (rectsOverlap(plx, ply, PLAYER_W, PLAYER_H, rx, ry, r.w, r.h)) {
+          die(seg.type === 'GAP' ? 'Fell into a crevasse' : 'Smashed into ice wall');
+          return;
+        }
+      }
+    }
+
+    // Fragile tile collision (before cracked)
+    if (seg.type === 'FRAGILE' && seg.fragile && !seg.cracked) {
+      const f = seg.fragile;
+      const ry = f.y - scrollY;
+      if (rectsOverlap(plx, ply, PLAYER_W, PLAYER_H, f.x, ry, f.w, f.h)) {
+        die('Crashed through fragile ice');
+        return;
+      }
+    }
+
+    // Core pickup
+    if (seg.hasCores) {
+      for (const core of seg.cores) {
+        if (core.collected) continue;
+        const coreSY = core.y - scrollY;
+        const dx = player.x - core.x;
+        const dy = player.y - coreSY;
+        if (dx * dx + dy * dy < (CORE_R + PLAYER_W / 2) * (CORE_R + PLAYER_W / 2)) {
+          core.collected = true;
+          coreStreak++;
+          coreMeter = Math.min(coreMeter + 1, CORE_METER_MAX);
+          const bonus = Math.round(120 * coreStreak);
+          score += bonus;
+          popText(player.x, player.y - 30, `+${bonus}`, '#7ff0ff', 15);
+          spawnParticles(player.x, player.y, 18, 'hsl(195,100%,80%)', 160, 0.6, 4);
+          multiplier = 1 + coreStreak * 0.15;
+          if (coreMeter >= CORE_METER_MAX && !overdrive) {
+            overdrive = true;
+            overdriveTimer = overdriveMax;
+            coreMeter = 0;
+            multiplier = 3;
+            popText(player.x, player.y - 55, 'OVERDRIVE!', '#ffef00', 22);
+            triggerShake(4, 0.3);
+          }
+        }
+      }
+    }
+  }
+
+  // Update particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += p.gravity;
+    p.life -= dt;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+
+  // Update pop texts
+  for (let i = popTexts.length - 1; i >= 0; i--) {
+    const t = popTexts[i];
+    t.y += t.vy;
+    t.life -= dt;
+    if (t.life <= 0) popTexts.splice(i, 1);
+  }
+
+  // Screen shake
+  if (shakeT < shakeDur) shakeT += dt;
+
+  // Best
+  if (Math.floor(score) > bestScore) {
+    bestScore = Math.floor(score);
+    localStorage.setItem('gg_best', bestScore);
+  }
+
+  render();
+  frameId = requestAnimationFrame(update);
+}
+
+// ─── DIE ──────────────────────────────────────────────────────────────────────
+function die(cause) {
+  deathCause = cause || 'Wiped out';
+  state = 'gameover';
+  cancelAnimationFrame(frameId);
+  triggerShake(14, 0.7);
+
+  // Death burst
+  spawnParticles(player.x, player.y, 40, 'hsl(200,90%,75%)', 220, 0.9, 6);
+  spawnParticles(player.x, player.y, 20, '#fff', 150, 0.6, 3);
+
+  // Do one shake render loop
+  let shakeDone = 0;
+  function shakeRender(ts) {
+    shakeT += 0.016;
+    // Update particles briefly
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx * 0.6; p.y += p.vy * 0.6; p.vy += p.gravity; p.life -= 0.016;
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+    render();
+    shakeDone += 0.016;
+    if (shakeDone < 0.75) requestAnimationFrame(shakeRender);
+    else showGameover();
+  }
+  requestAnimationFrame(shakeRender);
+}
+
+function showGameover() {
+  const overlay = document.getElementById('overlay');
+  overlay.innerHTML = buildGameoverHTML();
+  overlay.classList.remove('hidden');
+  document.getElementById('restartBtn').addEventListener('click', startGame);
+  document.getElementById('shareBtn').addEventListener('click', shareScore);
+}
+
+function buildGameoverHTML() {
+  const dist = Math.floor(distance);
+  const sc = Math.floor(score);
+  const best = Math.max(bestScore, sc);
+  let challengeResult = '';
+  if (challengeVal !== null) {
+    if (dist >= challengeVal) {
+      challengeResult = `<div class="ov-challenge-result win">Challenge BEATEN! 🏆</div>`;
+    } else {
+      challengeResult = `<div class="ov-challenge-result lose">Challenge missed by ${challengeVal - dist}m</div>`;
+    }
+  }
+  return `
+    <div class="ov-logo">GAME OVER</div>
+    <div class="ov-death">"${deathCause}"</div>
+    ${challengeResult}
+    <div class="ov-score-box">
+      <div class="ov-score-row"><span>Score</span><span>${sc.toLocaleString()}</span></div>
+      <div class="ov-score-row"><span>Distance</span><span>${dist}m</span></div>
+      <div class="ov-score-row"><span>Best Score</span><span>${best.toLocaleString()}</span></div>
+      <div class="ov-score-row"><span>Cores Collected</span><span>${coreStreak}</span></div>
+    </div>
+    <button class="ov-btn" id="restartBtn">PLAY AGAIN</button>
+    <button class="ov-btn share" id="shareBtn" style="margin-top:6px">SHARE SCORE</button>
+    <div style="font-size:0.72rem;color:#4a7a99;margin-top:10px">Space / Enter to restart</div>
+  `;
+}
+
+// ─── SHARE ───────────────────────────────────────────────────────────────────
+function shareScore() {
+  const dist = Math.floor(distance);
+  const sc = Math.floor(score);
+  const url = `https://balinti.github.io/glacier-glide/?challenge=${dist}`;
+  const text = `I survived ${dist}m in Glacier Glide! Score: ${sc.toLocaleString()}. Can you beat me? 🧊`;
+  if (navigator.share) {
+    navigator.share({ title: 'Glacier Glide', text, url }).catch(() => {});
+  } else {
+    navigator.clipboard.writeText(`${text}\n${url}`).then(() => {
+      popText(W / 2, H / 2, 'Link copied!', '#7ff0ff', 18);
+    }).catch(() => {});
+  }
+}
+
+// ─── RENDER ───────────────────────────────────────────────────────────────────
+function render() {
+  // Shake offset
+  let sx = 0, sy = 0;
+  if (shakeT < shakeDur) {
+    const p = 1 - shakeT / shakeDur;
+    const mag = shakeAmt * p;
+    sx = Math.cos(shakeT * 43) * mag;
+    sy = Math.sin(shakeT * 37) * mag;
+  }
+  ctx.save();
+  ctx.translate(sx, sy);
+
+  // Background gradient
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  if (overdrive) {
+    grad.addColorStop(0, `hsl(${bgHue},70%,8%)`);
+    grad.addColorStop(1, `hsl(${bgHue+30},60%,14%)`);
+  } else {
+    grad.addColorStop(0, `hsl(210,55%,7%)`);
+    grad.addColorStop(1, `hsl(220,45%,13%)`);
+  }
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Ice track background
+  const cx = CHANNEL_X(), cw = CHANNEL_W();
+  ctx.fillStyle = overdrive ? `hsla(${bgHue},60%,18%,0.35)` : 'rgba(160,220,255,0.06)';
+  ctx.fillRect(cx, 0, cw, H);
+
+  // Track edge glow
+  const edgeGrad = ctx.createLinearGradient(cx, 0, cx + 12, 0);
+  edgeGrad.addColorStop(0, overdrive ? `hsla(${bgHue+40},80%,70%,0.3)` : 'rgba(127,240,255,0.25)');
+  edgeGrad.addColorStop(1, 'transparent');
+  ctx.fillStyle = edgeGrad;
+  ctx.fillRect(cx, 0, 12, H);
+  const edgeGrad2 = ctx.createLinearGradient(cx + cw - 12, 0, cx + cw, 0);
+  edgeGrad2.addColorStop(0, 'transparent');
+  edgeGrad2.addColorStop(1, overdrive ? `hsla(${bgHue+40},80%,70%,0.3)` : 'rgba(127,240,255,0.25)');
+  ctx.fillStyle = edgeGrad2;
+  ctx.fillRect(cx + cw - 12, 0, 12, H);
+
+  // Scrolling ice texture lines
+  ctx.strokeStyle = 'rgba(180,230,255,0.04)';
+  ctx.lineWidth = 1;
+  const lineSpacing = 60;
+  const offset = scrollY % lineSpacing;
+  for (let y = -offset; y < H + lineSpacing; y += lineSpacing) {
+    ctx.beginPath();
+    ctx.moveTo(cx, y); ctx.lineTo(cx + cw, y);
+    ctx.stroke();
+  }
+
+  // Render segments
+  for (const seg of segments) {
+    const sy2 = seg.y - scrollY;
+    if (sy2 < -100 || sy2 > H + 100) continue;
+    renderSegment(seg, sy2);
+  }
+
+  // Particles
+  for (const p of particles) {
+    const alpha = clamp(p.life / p.maxLife, 0, 1);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size * alpha, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  if (state === 'playing') {
+    // Player
+    renderPlayer();
+    // HUD
+    renderHUD();
+    // Pop texts
+    renderPopTexts();
+  } else if (state === 'gameover') {
+    // Still render player ghost
+    ctx.globalAlpha = 0.4;
+    renderPlayer();
+    ctx.globalAlpha = 1;
+    renderPopTexts();
+  }
+
+  ctx.restore();
+}
+
+function renderSegment(seg, sy) {
+  const cx = CHANNEL_X(), cw = CHANNEL_W();
+
+  if (seg.type === 'FRAGILE' && seg.fragile) {
+    if (seg.cracked) {
+      // Cracked - show dark gap with fissure lines
+      const f = seg.fragile;
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.fillRect(f.x, sy - f.h / 2, f.w, f.h + 4);
+      ctx.strokeStyle = `hsl(200,70%,60%)`;
+      ctx.lineWidth = 1.5;
+      ctx.globalAlpha = 0.5;
+      for (let i = 0; i < 4; i++) {
+        const bx = f.x + (i + 0.5) * f.w / 4;
+        ctx.beginPath(); ctx.moveTo(bx, sy - f.h / 2); ctx.lineTo(bx + (Math.random() - 0.5) * 6, sy + f.h / 2 + 4); ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    } else {
+      const f = seg.fragile;
+      const pulse = seg.warned ? 0.55 + 0.45 * Math.sin(seg.warnPulse) : 0;
+      // Ice tile
+      ctx.fillStyle = seg.warned
+        ? `hsla(10,80%,${50 + pulse * 20}%,${0.7 + pulse * 0.3})`
+        : 'rgba(160,220,255,0.55)';
+      ctx.fillRect(f.x, sy - f.h / 2, f.w, f.h);
+      // Crack lines
+      ctx.strokeStyle = seg.warned ? `rgba(255,100,80,${0.5 + pulse * 0.5})` : 'rgba(100,180,220,0.4)';
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 3; i++) {
+        const bx = f.x + (i + 1) * f.w / 4;
+        ctx.beginPath(); ctx.moveTo(bx, sy - f.h / 2); ctx.lineTo(bx + 3, sy + f.h / 2); ctx.stroke();
+      }
+      // Glow
+      if (seg.warned) {
+        ctx.shadowColor = 'rgba(255,100,60,0.8)';
+        ctx.shadowBlur = 10 + pulse * 12;
+        ctx.strokeStyle = `rgba(255,140,80,${0.4 + pulse * 0.4})`;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(f.x, sy - f.h / 2, f.w, f.h);
+        ctx.shadowBlur = 0;
+      }
+    }
+    return;
+  }
+
+  // Wall / Gate / Gap
+  if (seg.wallRects) {
+    for (const r of seg.wallRects) {
+      if (r.w <= 0 || r.h <= 0) continue;
+      const ry = r.y - scrollY;
+      // Ice wall gradient
+      const wg = ctx.createLinearGradient(r.x, ry, r.x, ry + r.h);
+      if (seg.type === 'GAP') {
+        wg.addColorStop(0, 'rgba(30,50,80,0.9)');
+        wg.addColorStop(1, 'rgba(10,20,40,0.95)');
+      } else {
+        wg.addColorStop(0, 'rgba(140,210,255,0.85)');
+        wg.addColorStop(1, 'rgba(80,160,220,0.7)');
+      }
+      ctx.fillStyle = wg;
+      ctx.fillRect(r.x, ry, r.w, r.h);
+
+      // Highlight
+      ctx.fillStyle = 'rgba(255,255,255,0.18)';
+      ctx.fillRect(r.x, ry, r.w, 3);
+
+      // Glow
+      ctx.shadowColor = seg.type === 'GAP' ? 'rgba(0,0,0,0.8)' : 'rgba(100,200,255,0.5)';
+      ctx.shadowBlur = 8;
+      ctx.shadowBlur = 0;
+    }
+  }
+
+  // Gate label
+  if (seg.type === 'GATE') {
+    const gx = seg.gapX + seg.gapW / 2;
+    ctx.fillStyle = 'rgba(127,240,255,0.25)';
+    ctx.beginPath(); ctx.arc(gx, sy + 9, 4, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // Gap void glow
+  if (seg.type === 'GAP' && seg.gap) {
+    const g = seg.gap;
+    const gy = g.y - scrollY;
+    const vg = ctx.createRadialGradient(g.x + g.w / 2, gy + g.h / 2, 0, g.x + g.w / 2, gy + g.h / 2, g.w / 2);
+    vg.addColorStop(0, 'rgba(0,50,120,0.7)');
+    vg.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = vg;
+    ctx.fillRect(g.x, gy, g.w, g.h);
+  }
+
+  // Cores
+  if (seg.hasCores) {
+    for (const core of seg.cores) {
+      if (core.collected) continue;
+      const coreSY = core.y - scrollY;
+      const pulse = 0.7 + 0.3 * Math.sin(time * 0.004 + core.x);
+      // Glow
+      const cg = ctx.createRadialGradient(core.x, coreSY, 0, core.x, coreSY, CORE_R * 2.5);
+      cg.addColorStop(0, `hsla(195,100%,80%,${0.6 * pulse})`);
+      cg.addColorStop(1, 'transparent');
+      ctx.fillStyle = cg;
+      ctx.beginPath(); ctx.arc(core.x, coreSY, CORE_R * 2.5, 0, Math.PI * 2); ctx.fill();
+      // Core body
+      ctx.fillStyle = `hsl(195,100%,${70 + 15 * pulse}%)`;
+      ctx.beginPath(); ctx.arc(core.x, coreSY, CORE_R * pulse, 0, Math.PI * 2); ctx.fill();
+      // Inner sparkle
+      ctx.fillStyle = 'rgba(255,255,255,0.8)';
+      ctx.beginPath(); ctx.arc(core.x - 3, coreSY - 3, 3, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+}
+
+function renderPlayer() {
+  // Trail
+  for (let i = player.trail.length - 1; i >= 0; i--) {
+    const t = player.trail[i];
+    const a = (1 - i / player.trail.length) * 0.25;
+    ctx.globalAlpha = a;
+    const tw = PLAYER_W * (1 - i * 0.04);
+    const th = PLAYER_H * (1 - i * 0.04);
+    ctx.fillStyle = overdrive ? `hsl(${bgHue + 40},100%,75%)` : 'rgba(127,240,255,0.6)';
+    ctx.beginPath();
+    ctx.roundRect(t.x - tw / 2, t.y - th / 2, tw, th, 6);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // Tilt based on vx
+  const tilt = clamp(player.vx * 0.008, -0.35, 0.35);
+  ctx.save();
+  ctx.translate(player.x, player.y);
+  ctx.rotate(tilt);
+
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath();
+  ctx.ellipse(2, PLAYER_H / 2 + 4, PLAYER_W / 2 - 2, 5, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Body
+  const bodyGrad = ctx.createLinearGradient(-PLAYER_W / 2, -PLAYER_H / 2, PLAYER_W / 2, PLAYER_H / 2);
+  if (overdrive) {
+    bodyGrad.addColorStop(0, `hsl(${bgHue},100%,80%)`);
+    bodyGrad.addColorStop(0.5, `hsl(${bgHue+40},100%,70%)`);
+    bodyGrad.addColorStop(1, `hsl(${bgHue+80},90%,60%)`);
+  } else {
+    bodyGrad.addColorStop(0, '#d0f0ff');
+    bodyGrad.addColorStop(0.5, '#5bbcff');
+    bodyGrad.addColorStop(1, '#1a80d0');
+  }
+  ctx.fillStyle = bodyGrad;
+  ctx.beginPath();
+  ctx.roundRect(-PLAYER_W / 2, -PLAYER_H / 2, PLAYER_W, PLAYER_H, 8);
+  ctx.fill();
+
+  // Highlight
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.beginPath();
+  ctx.roundRect(-PLAYER_W / 2 + 3, -PLAYER_H / 2 + 3, PLAYER_W / 2, 10, 4);
+  ctx.fill();
+
+  // Skis
+  ctx.fillStyle = overdrive ? `hsl(${bgHue+20},90%,50%)` : '#0050a0';
+  ctx.fillRect(-PLAYER_W / 2 - 4, PLAYER_H / 2 - 5, PLAYER_W + 8, 6);
+
+  // Glow if overdrive
+  if (overdrive) {
+    ctx.shadowColor = `hsl(${bgHue},100%,70%)`;
+    ctx.shadowBlur = 18;
+    ctx.fillStyle = 'transparent';
+    ctx.beginPath();
+    ctx.roundRect(-PLAYER_W / 2, -PLAYER_H / 2, PLAYER_W, PLAYER_H, 8);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
+  ctx.restore();
+}
+
+function renderHUD() {
+  const sc = Math.floor(score);
+  const dist = Math.floor(distance);
+  const cx = CHANNEL_X(), cw = CHANNEL_W();
+
+  // Top HUD bar
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  ctx.beginPath();
+  ctx.roundRect(cx + 4, 8, cw - 8, 52, 8);
+  ctx.fill();
+
+  ctx.fillStyle = '#e8f4ff';
+  ctx.font = 'bold 18px system-ui';
+  ctx.textAlign = 'left';
+  ctx.fillText(`${sc.toLocaleString()}`, cx + 14, 31);
+
+  ctx.fillStyle = '#7ab8d4';
+  ctx.font = '11px system-ui';
+  ctx.fillText(`BEST: ${Math.max(bestScore, sc).toLocaleString()}`, cx + 14, 50);
+
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#e8f4ff';
+  ctx.font = 'bold 14px system-ui';
+  ctx.fillText(`${dist}m`, cx + cw - 14, 28);
+  ctx.fillStyle = '#7ab8d4';
+  ctx.font = '11px system-ui';
+  ctx.fillText(`x${multiplier.toFixed(1)}`, cx + cw - 14, 50);
+
+  // Core meter
+  const meterX = cx + cw / 2 - (CORE_METER_MAX * 20) / 2;
+  const meterY = 16;
+  for (let i = 0; i < CORE_METER_MAX; i++) {
+    const filled = i < coreMeter;
+    const mx = meterX + i * 20;
+    ctx.fillStyle = filled ? `hsl(195,100%,${overdrive ? 90 : 70}%)` : 'rgba(127,240,255,0.15)';
+    ctx.beginPath();
+    ctx.arc(mx + 8, meterY + 8, 7, 0, Math.PI * 2);
+    ctx.fill();
+    if (filled) {
+      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      ctx.beginPath();
+      ctx.arc(mx + 6, meterY + 6, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // Overdrive bar
+  if (overdrive) {
+    const barW = cw - 30;
+    const barH = 5;
+    const barX = cx + 15;
+    const barY = H - 20;
+    const prog = overdriveTimer / overdriveMax;
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.beginPath(); ctx.roundRect(barX, barY, barW, barH, 3); ctx.fill();
+    const og = ctx.createLinearGradient(barX, 0, barX + barW, 0);
+    og.addColorStop(0, `hsl(${bgHue},100%,70%)`);
+    og.addColorStop(1, `hsl(${bgHue+60},100%,80%)`);
+    ctx.fillStyle = og;
+    ctx.beginPath(); ctx.roundRect(barX, barY, barW * prog, barH, 3); ctx.fill();
+    ctx.fillStyle = `hsl(${bgHue},100%,80%)`;
+    ctx.font = 'bold 11px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('OVERDRIVE', W / 2, barY - 4);
+    ctx.textAlign = 'left';
+  }
+}
+
+function renderPopTexts() {
+  for (const t of popTexts) {
+    const a = clamp(t.life / t.maxLife, 0, 1);
+    ctx.globalAlpha = a;
+    ctx.fillStyle = t.color;
+    ctx.font = `bold ${t.size}px system-ui`;
+    ctx.textAlign = 'center';
+    ctx.fillText(t.txt, t.x, t.y);
+  }
+  ctx.globalAlpha = 1;
+  ctx.textAlign = 'left';
+}
+
+// ─── IDLE FRAME (start/gameover background) ──────────────────────────────────
+function drawIdleFrame() {
+  ctx.fillStyle = `hsl(210,55%,7%)`;
+  ctx.fillRect(0, 0, W, H);
+
+  const cx = CHANNEL_X(), cw = CHANNEL_W();
+  ctx.fillStyle = 'rgba(160,220,255,0.05)';
+  ctx.fillRect(cx, 0, cw, H);
+
+  // Subtle animated lines
+  ctx.strokeStyle = 'rgba(127,240,255,0.07)';
+  ctx.lineWidth = 1;
+  const t = Date.now() / 1000;
+  for (let y = (t * 80) % 60; y < H + 60; y += 60) {
+    ctx.beginPath(); ctx.moveTo(cx, y); ctx.lineTo(cx + cw, y); ctx.stroke();
+  }
+}
+
+// ─── INPUT ────────────────────────────────────────────────────────────────────
+function startGame() {
+  state = 'playing';
+  const overlay = document.getElementById('overlay');
+  overlay.classList.add('hidden');
+  initGame();
+  lastTime = performance.now();
+  frameId = requestAnimationFrame(update);
+}
+
+wrapper.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  if (state === 'start' || state === 'gameover') {
+    if (state === 'gameover') { startGame(); return; }
+    startGame();
+  } else if (state === 'playing') {
+    holding = true;
+  }
+}, { passive: false });
+
+wrapper.addEventListener('pointerup', e => {
+  e.preventDefault();
+  if (state === 'playing') holding = false;
+}, { passive: false });
+
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    if (state === 'start' || state === 'gameover') { startGame(); return; }
+    holding = true;
+  }
+});
+window.addEventListener('keyup', e => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    holding = false;
+  }
+});
+
+document.getElementById('startBtn').addEventListener('click', startGame);
+
+// ─── IDLE ANIMATION ──────────────────────────────────────────────────────────
+function idleLoop() {
+  if (state === 'start') {
+    drawIdleFrame();
+    requestAnimationFrame(idleLoop);
+  }
+}
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+// Handle roundRect polyfill
+if (!CanvasRenderingContext2D.prototype.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+    r = Math.min(r, Math.min(w, h) / 2);
+    this.beginPath();
+    this.moveTo(x + r, y);
+    this.lineTo(x + w - r, y);
+    this.quadraticCurveTo(x + w, y, x + w, y + r);
+    this.lineTo(x + w, y + h - r);
+    this.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    this.lineTo(x + r, y + h);
+    this.quadraticCurveTo(x, y + h, x, y + h - r);
+    this.lineTo(x, y + r);
+    this.quadraticCurveTo(x, y, x + r, y);
+    this.closePath();
+  };
+}
+
+drawIdleFrame();
+idleLoop();
+</script>
+</body>
+</html>

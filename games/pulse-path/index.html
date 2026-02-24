@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Pulse Path - Free HTML5 Game</title>
+<meta name="description" content="Play Pulse Path - Tap to draw pulses that navigate a ship through shifting magnetic currents.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0a0a1a">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Pulse Path - Free HTML5 Game">
+<meta property="og:description" content="Play Pulse Path - Tap to draw pulses that navigate a ship through shifting magnetic currents.">
+<meta property="og:url" content="https://balinti.github.io/pulse-path/">
+<meta property="og:image" content="https://balinti.github.io/pulse-path/og-cover-1200x630.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Pulse Path - Free HTML5 Game">
+<meta name="twitter:description" content="Play Pulse Path - Tap to draw pulses that navigate a ship through shifting magnetic currents.">
+<meta name="twitter:image" content="https://balinti.github.io/pulse-path/og-cover-1200x630.png">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "VideoGame",
+  "name": "Pulse Path",
+  "description": "Tap to draw pulses that navigate a ship through shifting magnetic currents.",
+  "genre": "Hyper-casual",
+  "playMode": "SinglePlayer",
+  "applicationCategory": "Game",
+  "operatingSystem": "Any",
+  "url": "https://balinti.github.io/pulse-path/"
+}
+</script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#0a0a1a;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;font-family:'Segoe UI',system-ui,sans-serif;overflow:hidden}
+#game-wrap{position:relative;width:100%;max-width:420px;height:100dvh;max-height:750px;display:flex;flex-direction:column;align-items:center;justify-content:center}
+#canvas{display:block;width:100%;height:100%;touch-action:none;cursor:pointer}
+#seo-block{width:100%;max-width:420px;padding:8px 12px;background:#0d0d20;color:#444;font-size:11px;line-height:1.5;text-align:center;border-top:1px solid #1a1a30}
+#seo-block a{color:#555;text-decoration:none}
+#challenge-banner{position:fixed;top:0;left:50%;transform:translateX(-50%);background:linear-gradient(90deg,#ff4400,#ff8800);color:#fff;padding:6px 18px;border-radius:0 0 10px 10px;font-size:13px;font-weight:700;z-index:100;letter-spacing:.5px;display:none}
+</style>
+</head>
+<body>
+<div id="challenge-banner"></div>
+<div id="game-wrap">
+<canvas id="canvas"></canvas>
+</div>
+<div id="seo-block">
+<strong>Pulse Path</strong> &mdash; A free hyper-casual browser game. Flip polarity to guide your ship through magnetic gates.
+<br><a href="https://balinti.github.io/pulse-path/">Play Pulse Path online</a> &mdash; No download needed.
+</div>
+<script>
+(function(){
+'use strict';
+
+// ─── Challenge banner ───────────────────────────────────────────
+const urlParams = new URLSearchParams(location.search);
+const challengeScore = parseInt(urlParams.get('challenge')) || 0;
+if(challengeScore > 0){
+  const banner = document.getElementById('challenge-banner');
+  banner.textContent = `Challenge: Beat ${challengeScore}!`;
+  banner.style.display = 'block';
+  setTimeout(()=>{ banner.style.opacity='0'; banner.style.transition='opacity 1s'; }, 5000);
+  setTimeout(()=>{ banner.style.display='none'; }, 6000);
+}
+
+// ─── Canvas setup ───────────────────────────────────────────────
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const wrap = document.getElementById('game-wrap');
+
+let W, H, DPR;
+function resize(){
+  const rect = wrap.getBoundingClientRect();
+  W = rect.width; H = rect.height;
+  DPR = window.devicePixelRatio || 1;
+  canvas.width  = W * DPR;
+  canvas.height = H * DPR;
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+resize();
+window.addEventListener('resize', ()=>{ resize(); if(state==='playing') resetGame(); });
+
+// ─── Constants ──────────────────────────────────────────────────
+const LANE_W   = ()=> Math.min(W * 0.72, 300);
+const WALL_W   = ()=> (W - LANE_W()) / 2;
+const GATE_H   = 28;
+const SHIP_SZ  = 14;
+const BASE_SPD = ()=> H * 0.0028;
+
+// ─── State ──────────────────────────────────────────────────────
+let state = 'start'; // start | playing | gameover
+let score, combo, highScore, shield;
+let shakeAmt, shakeDur;
+let hue;
+let polarity; // 'blue'|'red'
+let ship, gates, particles, popTexts;
+let speed, spawnTimer, spawnInterval;
+let gameFrame;
+let trailPoints;
+let perfectStreak;
+
+// ─── High score ─────────────────────────────────────────────────
+function loadHS(){ return parseInt(localStorage.getItem('pulsepath_hs')||'0'); }
+function saveHS(s){ if(s>loadHS()) localStorage.setItem('pulsepath_hs',s); }
+
+// ─── Colors ─────────────────────────────────────────────────────
+function blueColor(a=1){ return `hsla(200,100%,60%,${a})`; }
+function redColor(a=1){  return `hsla(0,100%,60%,${a})`; }
+function shipColor(a=1){ return polarity==='blue' ? blueColor(a) : redColor(a); }
+function gateColor(type,a=1){
+  if(type==='blue') return blueColor(a);
+  if(type==='red')  return redColor(a);
+  return `hsla(0,0%,75%,${a})`;
+}
+
+// ─── Particles ──────────────────────────────────────────────────
+function spawnParticles(x,y,count,col,speed=2,life=40){
+  for(let i=0;i<count;i++){
+    const ang = Math.random()*Math.PI*2;
+    const spd = (Math.random()*0.8+0.2)*speed;
+    particles.push({x,y,vx:Math.cos(ang)*spd,vy:Math.sin(ang)*spd,life,maxLife:life,col,r:Math.random()*3+1});
+  }
+}
+function spawnRing(x,y,col){
+  particles.push({x,y,r:8,maxR:60,life:30,maxLife:30,col,type:'ring'});
+}
+
+// ─── Gates ──────────────────────────────────────────────────────
+function makeGate(y){
+  const laneX = WALL_W();
+  const laneW = LANE_W();
+  const types = ['blue','red','blue','red','blue','blue','red','red'];
+  // Neutral gates appear after score 15
+  if(score>=15 && Math.random()<0.12) types.push('neutral');
+  const type = types[Math.floor(Math.random()*types.length)];
+  // Opening width decreases with difficulty
+  const minOpen = 48, maxOpen = laneW * 0.62;
+  const progress = Math.min(score/40,1);
+  const openW = maxOpen - (maxOpen-minOpen)*progress;
+  const maxX = laneW - openW;
+  const openX = laneX + Math.random()*maxX;
+  return { y, openX, openW, type, passed:false, perfect:false };
+}
+
+// ─── Reset / init ───────────────────────────────────────────────
+function resetGame(){
+  score = 0; combo = 0; hue = 200;
+  shield = true; shakeAmt = 0; shakeDur = 0;
+  polarity = 'blue';
+  speed = BASE_SPD();
+  spawnTimer = 0;
+  spawnInterval = H * 0.38;
+  gameFrame = 0;
+  perfectStreak = 0;
+  highScore = loadHS();
+  ship = { x: W/2, y: H*0.72, vx:0, vy:0 };
+  gates = [];
+  particles = [];
+  popTexts = [];
+  trailPoints = [];
+  // Spawn first gate immediately
+  gates.push(makeGate(ship.y - H*0.28));
+}
+
+// ─── Flip polarity ──────────────────────────────────────────────
+function flip(){
+  polarity = polarity==='blue' ? 'red' : 'blue';
+  spawnRing(ship.x, ship.y, shipColor());
+  spawnParticles(ship.x, ship.y, 10, shipColor(), 3, 35);
+}
+
+// ─── Input ──────────────────────────────────────────────────────
+canvas.addEventListener('pointerdown', e=>{
+  e.preventDefault();
+  handleTap();
+});
+window.addEventListener('keydown', e=>{
+  if(e.code==='Space'||e.code==='Enter') handleTap();
+});
+function handleTap(){
+  if(state==='start')    { state='playing'; resetGame(); return; }
+  if(state==='gameover') { state='playing'; resetGame(); return; }
+  if(state==='playing')  flip();
+}
+
+// ─── Screen shake ───────────────────────────────────────────────
+function triggerShake(amt, dur){ shakeAmt=amt; shakeDur=dur; }
+
+// ─── Update ─────────────────────────────────────────────────────
+function update(){
+  if(state!=='playing') return;
+  gameFrame++;
+  hue = (hue+0.4)%360;
+
+  // Difficulty ramp
+  speed = BASE_SPD() + score * 0.018 * BASE_SPD();
+  speed = Math.min(speed, BASE_SPD()*3.2);
+
+  // Spawn gates
+  spawnTimer += speed;
+  if(spawnTimer >= spawnInterval || gates.length===0){
+    spawnTimer = 0;
+    const lastY = gates.length>0 ? gates[gates.length-1].y : ship.y - H*0.25;
+    gates.push(makeGate(lastY - spawnInterval));
+  }
+
+  // Move gates down
+  for(const g of gates) g.y += speed;
+
+  // Magnetic force on ship
+  const nearGate = gates.find(g=>!g.passed && g.y > ship.y - GATE_H && g.y < ship.y + 80);
+  if(nearGate){
+    const coreX = nearGate.openX + nearGate.openW/2;
+    const dx = coreX - ship.x;
+    let force = 0;
+    if(nearGate.type==='neutral'){
+      force = 0; // neutral: no force
+    } else if(nearGate.type===polarity){
+      force = dx * 0.018; // matching: pull toward center
+    } else {
+      force = -dx * 0.012; // opposite: push away
+    }
+    ship.vx += force;
+  }
+
+  // Dampen & apply velocity
+  ship.vx *= 0.82;
+  ship.x += ship.vx;
+
+  // Trail
+  trailPoints.unshift({x:ship.x,y:ship.y,col:shipColor()});
+  if(trailPoints.length>22) trailPoints.pop();
+
+  // Shake decay
+  if(shakeDur>0){ shakeDur--; if(shakeDur<=0) shakeAmt=0; }
+
+  // Update particles
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    if(p.type==='ring'){
+      p.r += (p.maxR-8)/p.maxLife * 2;
+      p.life--;
+      if(p.life<=0) particles.splice(i,1);
+    } else {
+      p.x+=p.vx; p.y+=p.vy;
+      p.vy+=0.06; // gravity
+      p.life--;
+      if(p.life<=0) particles.splice(i,1);
+    }
+  }
+
+  // Update pop texts
+  for(let i=popTexts.length-1;i>=0;i--){
+    const t=popTexts[i];
+    t.y-=1.2; t.life--;
+    if(t.life<=0) popTexts.splice(i,1);
+  }
+
+  // Gate logic
+  const laneX = WALL_W();
+  for(const g of gates){
+    if(!g.passed && g.y > ship.y + SHIP_SZ + 2){
+      // Gate passed – check if ship was in opening
+      const inOpening = ship.x > g.openX + SHIP_SZ && ship.x < g.openX+g.openW - SHIP_SZ;
+      if(!inOpening){
+        // Missed gate = game over
+        doGameOver();
+        return;
+      }
+      g.passed = true;
+      score++;
+      combo++;
+      // Perfect check: within middle 30% of opening
+      const midX = g.openX + g.openW/2;
+      const margin = g.openW * 0.18;
+      if(Math.abs(ship.x - midX) < margin){
+        perfectStreak++;
+        g.perfect = true;
+        spawnParticles(ship.x, ship.y, 20, shipColor(), 4, 50);
+        popTexts.push({x:ship.x,y:ship.y-30,text:'PERFECT!',col:shipColor(),life:55,size:18});
+        if(perfectStreak%10===0){
+          triggerShake(3,12);
+          popTexts.push({x:W/2,y:H*0.4,text:`STREAK x${perfectStreak}`,col:'#ffdd00',life:70,size:22});
+        }
+      } else {
+        perfectStreak = 0;
+        combo = 0;
+      }
+      spawnParticles(ship.x, ship.y, 8, shipColor(), 2.5, 30);
+      if(score > highScore) highScore = score;
+    }
+  }
+
+  // Remove offscreen gates
+  gates = gates.filter(g=>g.y < H+60);
+
+  // Wall collision
+  const lx = laneX + SHIP_SZ;
+  const rx = laneX + LANE_W() - SHIP_SZ;
+  if(ship.x < lx || ship.x > rx){
+    ship.x = Math.max(lx, Math.min(rx, ship.x));
+    if(shield){
+      // Use shield
+      shield = false;
+      ship.vx *= -0.5;
+      triggerShake(6, 18);
+      spawnParticles(ship.x, ship.y, 30, '#ffff00', 5, 60);
+      spawnRing(ship.x, ship.y, '#ffff00');
+      popTexts.push({x:ship.x,y:ship.y-40,text:'SHIELD!',col:'#ffff00',life:60,size:20});
+    } else {
+      doGameOver();
+    }
+  }
+}
+
+function doGameOver(){
+  state = 'gameover';
+  saveHS(score);
+  highScore = loadHS();
+  triggerShake(12, 30);
+  spawnParticles(ship.x, ship.y, 50, shipColor(), 6, 70);
+  spawnRing(ship.x, ship.y, shipColor());
+}
+
+// ─── Draw helpers ───────────────────────────────────────────────
+function drawLane(){
+  const lx = WALL_W(), lw = LANE_W();
+  // Walls
+  const wallGrad = ctx.createLinearGradient(0,0,0,H);
+  wallGrad.addColorStop(0,'#12122a');
+  wallGrad.addColorStop(1,'#0a0a18');
+  ctx.fillStyle=wallGrad;
+  ctx.fillRect(0,0,lx,H);
+  ctx.fillRect(lx+lw,0,lx,H);
+  // Lane background
+  const laneGrad = ctx.createLinearGradient(lx,0,lx+lw,0);
+  laneGrad.addColorStop(0,'#0e0e22');
+  laneGrad.addColorStop(0.5,'#13132e');
+  laneGrad.addColorStop(1,'#0e0e22');
+  ctx.fillStyle=laneGrad;
+  ctx.fillRect(lx,0,lw,H);
+  // Wall edges glow
+  ctx.strokeStyle=`hsla(${hue},80%,55%,0.5)`;
+  ctx.lineWidth=2;
+  ctx.shadowBlur=10;
+  ctx.shadowColor=`hsla(${hue},80%,55%,0.4)`;
+  ctx.beginPath(); ctx.moveTo(lx,0); ctx.lineTo(lx,H); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(lx+lw,0); ctx.lineTo(lx+lw,H); ctx.stroke();
+  ctx.shadowBlur=0;
+  // Lane scanlines
+  ctx.strokeStyle='rgba(255,255,255,0.025)';
+  ctx.lineWidth=1;
+  for(let y=(gameFrame*speed)%20;y<H;y+=20){
+    ctx.beginPath(); ctx.moveTo(lx,y); ctx.lineTo(lx+lw,y); ctx.stroke();
+  }
+}
+
+function drawGate(g){
+  const lx=WALL_W(), lw=LANE_W();
+  const col = gateColor(g.type);
+  const alpha = g.passed ? 0.3 : 1;
+  // Gate bars (left and right of opening)
+  ctx.fillStyle = gateColor(g.type, alpha*0.9);
+  ctx.shadowBlur = g.passed ? 4 : 14;
+  ctx.shadowColor = gateColor(g.type);
+  // Left bar
+  ctx.fillRect(lx, g.y-GATE_H/2, g.openX-lx, GATE_H);
+  // Right bar
+  const rightStart = g.openX + g.openW;
+  ctx.fillRect(rightStart, g.y-GATE_H/2, (lx+lw)-rightStart, GATE_H);
+  ctx.shadowBlur=0;
+
+  // Magnet core in opening
+  const coreX = g.openX + g.openW/2;
+  const coreR = 8;
+  const coreGrad = ctx.createRadialGradient(coreX, g.y, 0, coreX, g.y, coreR*2.5);
+  coreGrad.addColorStop(0, gateColor(g.type,1));
+  coreGrad.addColorStop(1, gateColor(g.type,0));
+  ctx.fillStyle = coreGrad;
+  ctx.beginPath();
+  ctx.arc(coreX, g.y, coreR*2.5, 0, Math.PI*2);
+  ctx.fill();
+
+  // Core dot
+  ctx.fillStyle = g.passed ? gateColor(g.type,0.3) : '#fff';
+  ctx.shadowBlur = 12;
+  ctx.shadowColor = gateColor(g.type);
+  ctx.beginPath(); ctx.arc(coreX, g.y, coreR/2, 0, Math.PI*2); ctx.fill();
+  ctx.shadowBlur=0;
+
+  // Field lines (arrows indicating pull/push relative to ship polarity)
+  if(!g.passed && g.type!=='neutral'){
+    const pulling = g.type===polarity;
+    drawFieldLines(g, coreX, pulling);
+  }
+
+  // Perfect flash
+  if(g.perfect){
+    ctx.strokeStyle='rgba(255,255,255,0.7)';
+    ctx.lineWidth=2;
+    ctx.beginPath();
+    ctx.rect(g.openX, g.y-GATE_H/2-2, g.openW, GATE_H+4);
+    ctx.stroke();
+  }
+}
+
+function drawFieldLines(g, coreX, pulling){
+  const t = gameFrame * 0.07;
+  ctx.strokeStyle = gateColor(g.type, 0.55);
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([4,6]);
+  const count = 3;
+  for(let i=0;i<count;i++){
+    const frac = (i+1)/(count+1);
+    const lx2 = g.openX + frac*g.openW;
+    const offset = pulling ? -14 : 14;
+    const animY = g.y + offset * Math.sin(t + i*1.1);
+    ctx.beginPath();
+    ctx.moveTo(lx2, g.y-18);
+    ctx.lineTo(lx2, animY);
+    ctx.stroke();
+    // Arrowhead
+    const dir = pulling ? -1 : 1;
+    ctx.beginPath();
+    ctx.moveTo(lx2, g.y + offset*dir);
+    ctx.lineTo(lx2-4, g.y + (offset-8)*dir);
+    ctx.lineTo(lx2+4, g.y + (offset-8)*dir);
+    ctx.closePath();
+    ctx.fillStyle = gateColor(g.type, 0.55);
+    ctx.fill();
+  }
+  ctx.setLineDash([]);
+}
+
+function drawShip(){
+  // Trail
+  for(let i=0;i<trailPoints.length;i++){
+    const tp = trailPoints[i];
+    const a = (1-i/trailPoints.length)*0.5;
+    const s = SHIP_SZ*(1-i/trailPoints.length)*0.7;
+    ctx.fillStyle = polarity==='blue' ? blueColor(a) : redColor(a);
+    ctx.beginPath();
+    ctx.arc(tp.x, tp.y, s, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  // Shield ring
+  if(shield){
+    const shieldAlpha = 0.3 + 0.2*Math.sin(gameFrame*0.12);
+    ctx.strokeStyle = `rgba(255,220,0,${shieldAlpha})`;
+    ctx.lineWidth = 2;
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = '#ffdd00';
+    ctx.beginPath(); ctx.arc(ship.x, ship.y, SHIP_SZ+8, 0, Math.PI*2); ctx.stroke();
+    ctx.shadowBlur=0;
+  }
+
+  // Ship body (diamond)
+  const sz = SHIP_SZ;
+  ctx.save();
+  ctx.translate(ship.x, ship.y);
+  // Glow
+  ctx.shadowBlur = 20;
+  ctx.shadowColor = shipColor();
+  // Body
+  ctx.fillStyle = shipColor();
+  ctx.beginPath();
+  ctx.moveTo(0, -sz);
+  ctx.lineTo(sz*0.6, 0);
+  ctx.lineTo(0, sz*0.7);
+  ctx.lineTo(-sz*0.6, 0);
+  ctx.closePath();
+  ctx.fill();
+  // Core highlight
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  ctx.beginPath();
+  ctx.moveTo(0, -sz*0.5);
+  ctx.lineTo(sz*0.25, -sz*0.1);
+  ctx.lineTo(0, sz*0.1);
+  ctx.lineTo(-sz*0.25, -sz*0.1);
+  ctx.closePath();
+  ctx.fill();
+  ctx.shadowBlur=0;
+  ctx.restore();
+}
+
+function drawParticles(){
+  for(const p of particles){
+    if(p.type==='ring'){
+      const a = p.life/p.maxLife;
+      ctx.strokeStyle = p.col.replace(/[\d.]+\)$/,`${a})`).replace('hsla','hsla').replace('hsl','hsla');
+      // Simpler: just use globalAlpha
+      ctx.globalAlpha = a;
+      ctx.strokeStyle = p.col;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2); ctx.stroke();
+      ctx.globalAlpha=1;
+    } else {
+      const a = p.life/p.maxLife;
+      ctx.globalAlpha = a;
+      ctx.fillStyle = p.col;
+      ctx.shadowBlur = 8;
+      ctx.shadowColor = p.col;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r*a+0.5, 0, Math.PI*2); ctx.fill();
+      ctx.shadowBlur=0;
+      ctx.globalAlpha=1;
+    }
+  }
+}
+
+function drawPopTexts(){
+  for(const t of popTexts){
+    const a = Math.min(1, t.life/20);
+    ctx.globalAlpha = a;
+    ctx.fillStyle = t.col;
+    ctx.shadowBlur = 14;
+    ctx.shadowColor = t.col;
+    ctx.font = `bold ${t.size}px 'Segoe UI',sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText(t.text, t.x, t.y);
+    ctx.shadowBlur=0;
+    ctx.globalAlpha=1;
+  }
+}
+
+function drawHUD(){
+  // Score
+  ctx.fillStyle = '#fff';
+  ctx.globalAlpha = 0.9;
+  ctx.font = 'bold 28px monospace';
+  ctx.textAlign = 'center';
+  ctx.shadowBlur = 8;
+  ctx.shadowColor = shipColor();
+  ctx.fillText(score, W/2, 46);
+  ctx.shadowBlur = 0;
+  // High score
+  ctx.font = '11px monospace';
+  ctx.fillStyle = '#888';
+  ctx.fillText(`BEST ${highScore}`, W/2, 62);
+  // Polarity indicator
+  const lx = WALL_W();
+  ctx.font = 'bold 11px monospace';
+  ctx.fillStyle = polarity==='blue' ? blueColor() : redColor();
+  ctx.shadowBlur = 8;
+  ctx.shadowColor = shipColor();
+  ctx.fillText(polarity.toUpperCase(), W/2, H-16);
+  ctx.shadowBlur=0;
+  ctx.globalAlpha=1;
+  // Shield icon
+  if(shield){
+    ctx.font='13px monospace';
+    ctx.fillStyle='#ffdd00';
+    ctx.textAlign='left';
+    ctx.fillText('SHIELD', lx+6, H-16);
+  }
+  // Combo
+  if(combo>1){
+    ctx.font=`bold 13px monospace`;
+    ctx.fillStyle=`hsla(${hue},90%,65%,0.9)`;
+    ctx.textAlign='right';
+    ctx.fillText(`x${combo} COMBO`, WALL_W()+LANE_W()-6, H-16);
+  }
+}
+
+function drawStart(){
+  // Background gradient
+  const bg = ctx.createLinearGradient(0,0,0,H);
+  bg.addColorStop(0,'#0a0a1a');
+  bg.addColorStop(1,'#0d0d22');
+  ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
+  drawLane();
+
+  // Animated pulse rings
+  const t = Date.now()*0.001;
+  for(let i=0;i<3;i++){
+    const r = 30 + i*40 + (t*30)%120;
+    const a = Math.max(0, 1 - r/180);
+    ctx.strokeStyle = `hsla(200,100%,60%,${a*0.4})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(W/2, H*0.42, r, 0, Math.PI*2); ctx.stroke();
+  }
+
+  // Title
+  ctx.textAlign='center';
+  ctx.font='bold 40px monospace';
+  ctx.fillStyle='#fff';
+  ctx.shadowBlur=20; ctx.shadowColor='#00aaff';
+  ctx.fillText('PULSE PATH', W/2, H*0.38);
+  ctx.shadowBlur=0;
+
+  ctx.font='14px monospace';
+  ctx.fillStyle='rgba(255,255,255,0.5)';
+  ctx.fillText('POLARITY FLIP', W/2, H*0.38+28);
+
+  // Instructions
+  const bx=W/2, by=H*0.56;
+  const bw=200, bh=46;
+  ctx.fillStyle='rgba(0,170,255,0.15)';
+  ctx.strokeStyle='rgba(0,170,255,0.6)';
+  ctx.lineWidth=2;
+  ctx.shadowBlur=12; ctx.shadowColor='#00aaff';
+  roundRect(ctx, bx-bw/2, by, bw, bh, 10);
+  ctx.fill(); ctx.stroke();
+  ctx.shadowBlur=0;
+  ctx.font='bold 16px monospace';
+  ctx.fillStyle='#00aaff';
+  ctx.fillText('TAP TO START', bx, by+30);
+
+  ctx.font='12px monospace';
+  ctx.fillStyle='rgba(255,255,255,0.4)';
+  ctx.fillText('Tap to flip polarity • match gates', W/2, H*0.68);
+  ctx.fillText('Blue ↔ Red  •  Neutral gates = safe', W/2, H*0.68+20);
+
+  // High score
+  const hs = loadHS();
+  if(hs>0){
+    ctx.font='13px monospace';
+    ctx.fillStyle='rgba(255,220,0,0.8)';
+    ctx.fillText(`BEST: ${hs}`, W/2, H*0.78);
+  }
+}
+
+function drawGameOver(){
+  drawLane();
+  // Darken overlay
+  ctx.fillStyle='rgba(0,0,0,0.55)';
+  ctx.fillRect(0,0,W,H);
+
+  ctx.textAlign='center';
+  ctx.font='bold 36px monospace';
+  ctx.fillStyle='#ff4444';
+  ctx.shadowBlur=20; ctx.shadowColor='#ff0000';
+  ctx.fillText('GAME OVER', W/2, H*0.3);
+  ctx.shadowBlur=0;
+
+  ctx.font='bold 52px monospace';
+  ctx.fillStyle='#fff';
+  ctx.shadowBlur=14; ctx.shadowColor=`hsla(${hue},80%,60%,1)`;
+  ctx.fillText(score, W/2, H*0.44);
+  ctx.shadowBlur=0;
+
+  ctx.font='14px monospace';
+  ctx.fillStyle='rgba(255,220,0,0.9)';
+  ctx.fillText(`BEST: ${highScore}`, W/2, H*0.53);
+
+  if(perfectStreak>0||combo>0){
+    ctx.font='12px monospace';
+    ctx.fillStyle='rgba(100,200,255,0.7)';
+    ctx.fillText(`Perfect streak: ${perfectStreak}`, W/2, H*0.59);
+  }
+
+  // Buttons
+  drawButton('PLAY AGAIN', W/2, H*0.67, 180, 44, '#00aaff');
+  drawButton('SHARE', W/2, H*0.76, 180, 44, '#ff6600');
+}
+
+function drawButton(label, cx, cy, bw, bh, col){
+  ctx.fillStyle = col+'22';
+  ctx.strokeStyle = col;
+  ctx.lineWidth=2;
+  ctx.shadowBlur=12; ctx.shadowColor=col;
+  roundRect(ctx, cx-bw/2, cy, bw, bh, 10);
+  ctx.fill(); ctx.stroke();
+  ctx.shadowBlur=0;
+  ctx.font='bold 15px monospace';
+  ctx.fillStyle='#fff';
+  ctx.fillText(label, cx, cy+28);
+}
+
+function roundRect(c,x,y,w,h,r){
+  c.beginPath();
+  c.moveTo(x+r,y);
+  c.lineTo(x+w-r,y);
+  c.quadraticCurveTo(x+w,y,x+w,y+r);
+  c.lineTo(x+w,y+h-r);
+  c.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  c.lineTo(x+r,y+h);
+  c.quadraticCurveTo(x,y+h,x,y+h-r);
+  c.lineTo(x,y+r);
+  c.quadraticCurveTo(x,y,x+r,y);
+  c.closePath();
+}
+
+// Game over tap detection for buttons
+canvas.addEventListener('pointerup', e=>{
+  if(state!=='gameover') return;
+  const rect=canvas.getBoundingClientRect();
+  const sx=canvas.width/rect.width, sy=canvas.height/rect.height;
+  const px=(e.clientX-rect.left);
+  const py=(e.clientY-rect.top);
+  // Play again button
+  const btn1y=H*0.67, btn1h=44, btn1w=180;
+  if(px>W/2-btn1w/2&&px<W/2+btn1w/2&&py>btn1y&&py<btn1y+btn1h){
+    state='playing'; resetGame(); return;
+  }
+  // Share button
+  const btn2y=H*0.76, btn2h=44, btn2w=180;
+  if(px>W/2-btn2w/2&&px<W/2+btn2w/2&&py>btn2y&&py<btn2y+btn2h){
+    doShare(); return;
+  }
+});
+
+function doShare(){
+  const url = location.origin+location.pathname+'?challenge='+score;
+  const text = `I scored ${score} in Pulse Path! Can you beat me? ${url}`;
+  if(navigator.share){
+    navigator.share({title:'Pulse Path',text,url}).catch(()=>{});
+  } else {
+    navigator.clipboard.writeText(url).then(()=>{
+      popTexts.push({x:W/2,y:H*0.5,text:'Link copied!',col:'#88ff88',life:80,size:16});
+    }).catch(()=>{
+      prompt('Copy this link:',url);
+    });
+  }
+}
+
+// ─── Main render loop ───────────────────────────────────────────
+function render(){
+  ctx.clearRect(0,0,W,H);
+  const sx = shakeAmt>0 ? (Math.random()-0.5)*shakeAmt : 0;
+  const sy = shakeAmt>0 ? (Math.random()-0.5)*shakeAmt : 0;
+  ctx.save();
+  if(shakeAmt>0) ctx.translate(sx,sy);
+
+  if(state==='start'){
+    drawStart();
+  } else if(state==='playing'){
+    drawLane();
+    for(const g of gates) drawGate(g);
+    drawParticles();
+    drawShip();
+    drawPopTexts();
+    drawHUD();
+  } else if(state==='gameover'){
+    drawGate; // no-op
+    drawParticles();
+    drawPopTexts();
+    drawGameOver();
+  }
+  ctx.restore();
+  requestAnimationFrame(loop);
+}
+
+function loop(){
+  update();
+  render();
+}
+
+// ─── Kick off ───────────────────────────────────────────────────
+highScore = loadHS();
+gameFrame = 0;
+hue = 200;
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

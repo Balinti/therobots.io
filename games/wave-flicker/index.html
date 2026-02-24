@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Wave Flicker - Free HTML5 Game</title>
+<meta name="description" content="Play Wave Flicker - Tap to time your moves as the vaporwave world flips directions at random intervals.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0b0014">
+<link rel="canonical" href="https://balinti.github.io/wave-flicker/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Wave Flicker - Free HTML5 Game">
+<meta property="og:description" content="Play Wave Flicker - Tap to time your moves as the vaporwave world flips directions at random intervals.">
+<meta property="og:url" content="https://balinti.github.io/wave-flicker/">
+<meta property="og:image" content="https://balinti.github.io/wave-flicker/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Wave Flicker - Free HTML5 Game">
+<meta name="twitter:description" content="Play Wave Flicker - Tap to time your moves as the vaporwave world flips directions at random intervals.">
+<meta name="twitter:image" content="https://balinti.github.io/wave-flicker/og.png">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#0b0014;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:'Segoe UI',sans-serif;overflow:hidden}
+#adtop{width:100%;max-width:420px;height:60px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+#wrap{position:relative;width:100%;max-width:420px;flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden}
+canvas{display:block;width:100%;height:100%;touch-action:none}
+#adbot{width:100%;max-width:420px;height:60px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+#ui-overlay{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;display:flex;flex-direction:column;align-items:center;justify-content:center}
+#share-btn{position:absolute;bottom:80px;left:50%;transform:translateX(-50%);padding:10px 28px;background:linear-gradient(135deg,#ff2d78,#6c00ff);color:#fff;border:none;border-radius:24px;font-size:15px;font-weight:700;cursor:pointer;pointer-events:all;display:none;letter-spacing:1px;box-shadow:0 0 18px #ff2d7888}
+#challenge-banner{position:absolute;top:8px;left:50%;transform:translateX(-50%);background:rgba(108,0,255,0.7);color:#fff;padding:4px 14px;border-radius:12px;font-size:12px;display:none;pointer-events:none;white-space:nowrap}
+#seo-section{width:100%;max-width:420px;padding:12px 16px;color:#7b5fa0;font-size:12px;line-height:1.6;background:#0b0014;overflow-y:auto;max-height:0;transition:max-height 0.3s}
+</style>
+</head>
+<body>
+<div id="adtop"></div>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <div id="ui-overlay">
+    <div id="challenge-banner"></div>
+    <button id="share-btn">Share Score</button>
+  </div>
+</div>
+<div id="adbot"></div>
+
+<div id="seo-section">
+<p><strong>Wave Flicker</strong> is a free hyper-casual HTML5 browser game built with pure vanilla JavaScript and the Canvas 2D API. No downloads, no plugins — just tap and play instantly in any modern browser on desktop or mobile.</p>
+<p>In Wave Flicker, you control a neon orb riding through a vaporwave dimension split into two lanes. Your orb auto-runs forward while obstacles and gates rush toward you from the right. Tap (or press Space/Enter) to flip between the top and bottom lanes — but timing is everything.</p>
+<p>Every few seconds, the <strong>Flicker Meter</strong> counts down to zero, triggering a visual polarity swap that flips the entire aesthetic of the world. While the visuals invert, your controls stay the same — tap always flips your lane. The trick is reading the incoming gate patterns while the background pulses and chromatic aberration flashes across the screen.</p>
+<p>Perfect flips — taps synchronized with the beat moment — reward you with combo multipliers and score bonuses. Chain perfect flips together to watch your multiplier soar. Miss a beat and your chain resets, but you keep playing. Only crashing into an obstacle ends the run.</p>
+<p><strong>Daily Beat mode</strong> uses your local date as a seed, so every player gets the same procedurally generated pattern each day. Compare your scores with friends using the built-in Share feature, or challenge them to beat your exact score with a shareable link.</p>
+<p>Wave Flicker features particle trails, screen shake, hit-stop feedback, and a full vaporwave color palette that cycles through HSL hues — all running at 60 fps. Designed for short addictive sessions, it rewards both reflexes and rhythm.</p>
+<p>How high can your multiplier go? Play Wave Flicker free online now.</p>
+</div>
+
+<script>
+(()=>{
+"use strict";
+
+// ── PRNG (mulberry32) ──────────────────────────────────────────────
+function mulberry32(seed){
+  return function(){
+    seed|=0; seed=seed+0x6D2B79F5|0;
+    let t=Math.imul(seed^seed>>>15,1|seed);
+    t=t+Math.imul(t^t>>>7,61|t)^t;
+    return ((t^t>>>14)>>>0)/4294967296;
+  };
+}
+function dateToSeed(d){
+  const s=d.toISOString().slice(0,10).replace(/-/g,'');
+  return parseInt(s,10);
+}
+const today=new Date();
+const dailySeed=dateToSeed(today);
+let rng=mulberry32(dailySeed);
+
+// ── URL params ─────────────────────────────────────────────────────
+const params=new URLSearchParams(location.search);
+const challengeScore=params.has('challenge')?parseInt(params.get('challenge'))||0:0;
+const challengeSeed=params.has('seed')?params.get('seed'):'';
+if(challengeSeed){
+  const cs=parseInt(challengeSeed.replace(/-/g,''),10);
+  if(!isNaN(cs)) rng=mulberry32(cs);
+}
+
+// ── DOM / Canvas setup ─────────────────────────────────────────────
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+const wrap=document.getElementById('wrap');
+const shareBtn=document.getElementById('share-btn');
+const challengeBanner=document.getElementById('challenge-banner');
+
+if(challengeScore>0){
+  challengeBanner.style.display='block';
+  challengeBanner.textContent=`Challenge: Beat ${challengeScore}`;
+}
+
+let W,H,dpr;
+function resize(){
+  const rect=wrap.getBoundingClientRect();
+  W=rect.width; H=rect.height;
+  dpr=Math.min(window.devicePixelRatio||1,2);
+  canvas.width=Math.round(W*dpr);
+  canvas.height=Math.round(H*dpr);
+  canvas.style.width=W+'px';
+  canvas.style.height=H+'px';
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+resize();
+window.addEventListener('resize',()=>{resize();});
+
+// ── Constants ──────────────────────────────────────────────────────
+const LANE_TOP_F=0.35;
+const LANE_BOT_F=0.65;
+const PLAYER_X_F=0.22;
+const PLAYER_R=12;
+const EASE_K=12; // lane easing speed
+
+// ── Game state ─────────────────────────────────────────────────────
+let state='start'; // start | playing | gameover
+let score=0;
+let bestScore=parseInt(localStorage.getItem('wf_best')||'0',10);
+let mult=1;
+let perfectChain=0;
+let elapsedTime=0;
+let lastTime=0;
+
+// Player
+let playerLane=0; // 0=top, 1=bottom
+let playerY=0;
+let playerTargetY=0;
+let playerHue=180;
+
+// Polarity
+let polarity=1; // 1 or -1 (visual only)
+let beatTimer=0;
+let beatPeriod=2.20;
+
+// Obstacles & Gates
+let obstacles=[];
+let gates=[];
+let nextObsTime=0.35;
+let nextGateTime=0.55;
+
+// Particles
+let particles=[];
+
+// Screen shake
+let shakeAmp=0, shakeDur=0, shakeTime=0;
+
+// Hit-stop
+let hitStopTime=0;
+const HIT_STOP_DUR=0.12;
+
+// Perfect timing
+let lastFlipBeat=null; // dBeat at flip time
+let perfectWindowNow=0.18;
+let perfectBurstActive=0;
+
+// Chromatic flicker
+let flickerFrame=0;
+
+// Colors / hue
+let bgHue=270;
+let bgPulse=0; // 0..1 pulsing on beat
+
+// Near-miss
+let nearMissText=[];
+
+// Delta from PB
+let pbDeltaText='';
+
+// Daily beat display
+const dailyBeatKey='wf_daily_'+today.toISOString().slice(0,10);
+let dailyBestToday=parseInt(localStorage.getItem(dailyBeatKey)||'0',10);
+
+// ── Speed / interval helpers ───────────────────────────────────────
+function speed(t){ return 220+2.2*t+28*(1-Math.exp(-t/18)); }
+function iObs(t){ return Math.max(0.42,Math.min(0.95,0.95-0.0065*t)); }
+function iGate(t){ return Math.max(0.45,Math.min(0.80,0.80-0.0045*t)); }
+function tBeat(t){ return Math.max(1.35,Math.min(2.20,2.20-0.010*t)); }
+function wPerf(t){ return Math.max(0.10,Math.min(0.18,0.18-0.0009*t)); }
+
+// ── Particle system ────────────────────────────────────────────────
+let trailAccum=0;
+function spawnTrail(x,y,hue){
+  trailAccum=0;
+  const life=0.25+rng()*0.20;
+  const angle=Math.PI+(rng()-0.5)*0.6;
+  const spd=(20+rng()*30);
+  particles.push({
+    type:'trail',x,y,
+    vx:Math.cos(angle)*spd,vy:Math.sin(angle)*spd,
+    life,maxLife:life,
+    hue,r:3+rng()*3
+  });
+}
+function spawnPerfectBurst(x,y,hue){
+  // 28 ring particles
+  for(let i=0;i<28;i++){
+    const a=(i/28)*Math.PI*2;
+    const spd=60+rng()*60;
+    const life=0.35+rng()*0.25;
+    particles.push({
+      type:'burst',x,y,
+      vx:Math.cos(a)*spd,vy:Math.sin(a)*spd,
+      life,maxLife:life,
+      hue:(hue+rng()*60-30+360)%360,
+      r:2+rng()*3
+    });
+  }
+  // expanding ring
+  particles.push({type:'ring',x,y,r:0,maxR:55,life:0.4,maxLife:0.4,hue});
+}
+function spawnCrash(x,y){
+  for(let i=0;i<80;i++){
+    const a=rng()*Math.PI*2;
+    const spd=40+rng()*120;
+    const life=0.3+rng()*0.5;
+    particles.push({
+      type:'crash',x,y,
+      vx:Math.cos(a)*spd,vy:Math.sin(a)*spd,
+      life,maxLife:life,
+      hue:(rng()*60+280)%360,
+      r:1.5+rng()*3.5
+    });
+  }
+}
+function updateParticles(dt){
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    p.life-=dt;
+    if(p.life<=0){ particles.splice(i,1); continue; }
+    if(p.type==='ring'){
+      p.r=p.maxR*(1-p.life/p.maxLife);
+    } else {
+      p.x+=p.vx*dt;
+      p.y+=p.vy*dt;
+      if(p.type!=='trail') p.vy+=80*dt; // gravity for burst/crash
+    }
+  }
+}
+function drawParticles(){
+  for(const p of particles){
+    const alpha=p.life/p.maxLife;
+    if(p.type==='ring'){
+      ctx.save();
+      ctx.strokeStyle=`hsla(${p.hue},100%,70%,${alpha*0.7})`;
+      ctx.lineWidth=2;
+      ctx.beginPath();
+      ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+      ctx.stroke();
+      ctx.restore();
+    } else {
+      ctx.save();
+      ctx.globalAlpha=alpha;
+      ctx.fillStyle=`hsl(${p.hue},100%,65%)`;
+      ctx.beginPath();
+      ctx.arc(p.x,p.y,p.r*(p.type==='trail'?alpha:1),0,Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+}
+
+// ── Obstacle / Gate spawning ───────────────────────────────────────
+function spawnObstacle(t){
+  const lane=rng()<0.5?0:1;
+  const w=18+rng()*10;
+  const h=W*0.06;
+  obstacles.push({
+    lane,
+    x:W+w,
+    w,h,
+    hue:(bgHue+180)%360,
+    speed:speed(t)
+  });
+}
+function spawnGate(t){
+  // gap in a lane; passing through scores
+  const lane=rng()<0.5?0:1;
+  const isRisky=rng()<0.25;
+  gates.push({
+    lane,
+    x:W+20,
+    w:isRisky?22:32,
+    hue:(bgHue+90)%360,
+    isRisky,
+    scored:false,
+    speed:speed(t)
+  });
+}
+
+// ── Collision detection ────────────────────────────────────────────
+function circleRectCollide(cx,cy,cr,rx,ry,rw,rh){
+  const nx=Math.max(rx,Math.min(cx,rx+rw));
+  const ny=Math.max(ry,Math.min(cy,ry+rh));
+  const dx=cx-nx, dy=cy-ny;
+  return dx*dx+dy*dy<cr*cr;
+}
+
+// ── Input ──────────────────────────────────────────────────────────
+function handleInput(){
+  if(state==='start'){ startGame(); return; }
+  if(state==='gameover'){ restartGame(); return; }
+  if(state==='playing') flipLane();
+}
+canvas.addEventListener('pointerdown',e=>{ e.preventDefault(); handleInput(); });
+document.addEventListener('keydown',e=>{
+  if(e.code==='Space'||e.code==='Enter'){ e.preventDefault(); handleInput(); }
+});
+
+// ── Game lifecycle ─────────────────────────────────────────────────
+function startGame(){
+  state='playing';
+  score=0; mult=1; perfectChain=0;
+  elapsedTime=0;
+  playerLane=0;
+  playerY=H*LANE_TOP_F;
+  playerTargetY=playerY;
+  obstacles=[]; gates=[]; particles=[];
+  nextObsTime=0.35; nextGateTime=0.55;
+  beatTimer=0; beatPeriod=2.20;
+  shakeAmp=0; shakeDur=0; shakeTime=0;
+  hitStopTime=0;
+  bgHue=270; bgPulse=0;
+  flickerFrame=0;
+  pbDeltaText='';
+  nearMissText=[];
+  rng=mulberry32(dailySeed+(challengeSeed?0:0));
+  lastTime=performance.now();
+  shareBtn.style.display='none';
+}
+function restartGame(){ startGame(); }
+
+function endGame(){
+  state='gameover';
+  spawnCrash(W*PLAYER_X_F, playerY);
+  triggerShake(0.22,10);
+  hitStopTime=HIT_STOP_DUR;
+  if(score>bestScore){
+    bestScore=score;
+    localStorage.setItem('wf_best',bestScore);
+  }
+  if(score>dailyBestToday){
+    dailyBestToday=score;
+    localStorage.setItem(dailyBeatKey,dailyBestToday);
+  }
+  const diff=bestScore-score;
+  pbDeltaText=diff===0?'New PB!':diff>0?`${diff} from PB`:'New PB!';
+  shareBtn.style.display='block';
+}
+
+function flipLane(){
+  playerLane=playerLane===0?1:0;
+  playerTargetY=playerLane===0?H*LANE_TOP_F:H*LANE_BOT_F;
+  // check perfect
+  const dBeat=Math.min(beatTimer, beatPeriod-beatTimer);
+  perfectWindowNow=wPerf(elapsedTime);
+  if(dBeat<=perfectWindowNow){
+    // perfect flip
+    perfectChain++;
+    mult=1+Math.floor(perfectChain/3);
+    score+=2*mult;
+    spawnPerfectBurst(W*PLAYER_X_F, playerY, playerHue);
+    triggerShake(0.10,4);
+    perfectBurstActive=0.35;
+  } else {
+    // non-perfect
+    perfectChain=0;
+    mult=1;
+  }
+}
+
+function triggerShake(dur,amp){
+  shakeDur=dur; shakeTime=dur; shakeAmp=amp;
+}
+
+// ── Update ─────────────────────────────────────────────────────────
+function update(now){
+  const rawDt=Math.min((now-lastTime)/1000,0.05);
+  lastTime=now;
+
+  if(state!=='playing') return;
+  if(hitStopTime>0){
+    hitStopTime-=rawDt;
+    return; // freeze
+  }
+  const dt=rawDt;
+  elapsedTime+=dt;
+
+  // Hue cycling
+  bgHue=(bgHue+8*dt)%360;
+  playerHue=(bgHue+180)%360;
+
+  // Beat / flicker meter
+  beatPeriod=tBeat(elapsedTime);
+  beatTimer+=dt;
+  if(beatTimer>=beatPeriod){
+    beatTimer-=beatPeriod;
+    polarity*=-1;
+    bgPulse=1.0;
+    flickerFrame=2; // chromatic for 2 frames
+  }
+  bgPulse=Math.max(0,bgPulse-dt*4);
+
+  // Screen shake decay
+  if(shakeTime>0) shakeTime-=dt;
+  else shakeAmp=0;
+
+  // Perfect burst decay
+  if(perfectBurstActive>0) perfectBurstActive-=dt;
+
+  // Player easing
+  playerY+=(playerTargetY-playerY)*Math.min(1,EASE_K*dt);
+
+  // Speed
+  const spd=speed(elapsedTime);
+
+  // Spawn obstacles
+  if(elapsedTime>=nextObsTime){
+    spawnObstacle(elapsedTime);
+    nextObsTime=elapsedTime+iObs(elapsedTime)*(0.8+rng()*0.4);
+  }
+  // Spawn gates
+  if(elapsedTime>=nextGateTime){
+    spawnGate(elapsedTime);
+    nextGateTime=elapsedTime+iGate(elapsedTime)*(0.8+rng()*0.4);
+  }
+
+  // Update obstacles
+  const laneY=[H*LANE_TOP_F, H*LANE_BOT_F];
+  for(let i=obstacles.length-1;i>=0;i--){
+    const o=obstacles[i];
+    o.x-=o.speed*dt;
+    if(o.x+o.w<0){ obstacles.splice(i,1); continue; }
+    // collision
+    const oy=laneY[o.lane];
+    const oh=o.h||H*0.06;
+    if(circleRectCollide(W*PLAYER_X_F,playerY,PLAYER_R,o.x-o.w/2,oy-oh/2,o.w,oh)){
+      endGame(); return;
+    }
+    // near miss
+    const dx=Math.abs(W*PLAYER_X_F-(o.x-o.w/2+o.w/2));
+    const dy=Math.abs(playerY-oy);
+    if(!o.nearMissed && dx<40 && dy>oh/2+PLAYER_R && dy<oh/2+PLAYER_R+20){
+      o.nearMissed=true;
+      triggerShake(0.07,2);
+      nearMissText.push({text:'Near!',x:W*PLAYER_X_F,y:playerY-30,life:0.8,maxLife:0.8});
+    }
+  }
+
+  // Update gates
+  for(let i=gates.length-1;i>=0;i--){
+    const g=gates[i];
+    g.x-=g.speed*dt;
+    if(g.x+g.w<0){ gates.splice(i,1); continue; }
+    // scoring: player passes gate center
+    if(!g.scored && g.x<W*PLAYER_X_F){
+      if(playerLane===g.lane){
+        const pts=(g.isRisky?2:1)*mult;
+        score+=pts;
+        g.scored=true;
+      } else {
+        g.scored=true; // missed, no score, no crash
+      }
+    }
+  }
+
+  // Trail particles (90/sec)
+  trailAccum+=dt;
+  const trailInterval=1/90;
+  while(trailAccum>=trailInterval){
+    spawnTrail(W*PLAYER_X_F,playerY,playerHue);
+    trailAccum-=trailInterval;
+  }
+
+  // Near miss text update
+  for(let i=nearMissText.length-1;i>=0;i--){
+    nearMissText[i].life-=dt;
+    nearMissText[i].y-=40*dt;
+    if(nearMissText[i].life<=0) nearMissText.splice(i,1);
+  }
+
+  // PB delta during run
+  if(bestScore>0){
+    const diff=bestScore-score;
+    pbDeltaText=diff>0?`-${diff} from PB`:diff<0?`+${Math.abs(diff)} over PB`:'= PB';
+  } else pbDeltaText='';
+
+  updateParticles(dt);
+}
+
+// ── Draw ───────────────────────────────────────────────────────────
+function draw(){
+  ctx.save();
+
+  // Screen shake
+  let sx=0,sy=0;
+  if(shakeTime>0 && shakeAmp>0){
+    const f=shakeTime/shakeDur;
+    sx=(Math.random()-0.5)*shakeAmp*f*2;
+    sy=(Math.random()-0.5)*shakeAmp*f*2;
+    ctx.translate(sx,sy);
+  }
+
+  // Background gradient
+  const lightness=polarity===1?5:8;
+  const pulse=bgPulse*12;
+  const grad=ctx.createLinearGradient(0,0,0,H);
+  grad.addColorStop(0,`hsl(${bgHue},80%,${lightness+pulse+2}%)`);
+  grad.addColorStop(0.5,`hsl(${(bgHue+30)%360},70%,${lightness+pulse}%)`);
+  grad.addColorStop(1,`hsl(${(bgHue+60)%360},80%,${lightness+pulse+2}%)`);
+  ctx.fillStyle=grad;
+  ctx.fillRect(-2,-2,W+4,H+4);
+
+  // Grid lines (vaporwave floor)
+  drawGrid();
+
+  // Lane tracks
+  drawLane(H*LANE_TOP_F, polarity===1);
+  drawLane(H*LANE_BOT_F, polarity===-1);
+
+  // Gates
+  for(const g of gates) drawGate(g);
+
+  // Obstacles
+  for(const o of obstacles) drawObstacle(o);
+
+  // Particles
+  drawParticles();
+
+  // Player
+  drawPlayer();
+
+  // Chromatic flicker
+  if(flickerFrame>0){
+    flickerFrame--;
+    drawChromaticFlicker();
+  }
+
+  // HUD
+  drawHUD();
+
+  // Near miss texts
+  for(const nm of nearMissText){
+    ctx.save();
+    ctx.globalAlpha=nm.life/nm.maxLife;
+    ctx.fillStyle='#fff';
+    ctx.font='bold 13px sans-serif';
+    ctx.textAlign='center';
+    ctx.fillText(nm.text,nm.x,nm.y);
+    ctx.restore();
+  }
+
+  // Start / Gameover screens
+  if(state==='start') drawStart();
+  else if(state==='gameover') drawGameover();
+
+  ctx.restore();
+}
+
+function drawGrid(){
+  ctx.save();
+  ctx.globalAlpha=0.07+bgPulse*0.06;
+  ctx.strokeStyle=`hsl(${bgHue},100%,70%)`;
+  ctx.lineWidth=1;
+  // horizontal lines
+  const numH=8;
+  for(let i=0;i<=numH;i++){
+    const y=H*i/numH;
+    ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke();
+  }
+  // vertical lines
+  const numV=10;
+  for(let i=0;i<=numV;i++){
+    const x=W*i/numV;
+    ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawLane(y, bright){
+  ctx.save();
+  const h=H*0.12;
+  const grad=ctx.createLinearGradient(0,y-h/2,0,y+h/2);
+  const l=bright?18:10;
+  const p=bgPulse*15;
+  grad.addColorStop(0,`hsla(${bgHue},80%,${l+p}%,0)`);
+  grad.addColorStop(0.5,`hsla(${bgHue},80%,${l+p}%,0.35)`);
+  grad.addColorStop(1,`hsla(${bgHue},80%,${l+p}%,0)`);
+  ctx.fillStyle=grad;
+  ctx.fillRect(0,y-h/2,W,h);
+  // center line
+  ctx.strokeStyle=`hsla(${(bgHue+180)%360},100%,70%,${0.4+bgPulse*0.4})`;
+  ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke();
+  ctx.restore();
+}
+
+function drawObstacle(o){
+  const laneY=[H*LANE_TOP_F,H*LANE_BOT_F];
+  const oy=laneY[o.lane];
+  const oh=H*0.06;
+  ctx.save();
+  const grad=ctx.createLinearGradient(o.x-o.w/2,oy-oh/2,o.x+o.w/2,oy+oh/2);
+  grad.addColorStop(0,`hsl(${o.hue},100%,60%)`);
+  grad.addColorStop(1,`hsl(${(o.hue+40)%360},100%,45%)`);
+  ctx.fillStyle=grad;
+  ctx.shadowColor=`hsl(${o.hue},100%,70%)`;
+  ctx.shadowBlur=10;
+  ctx.beginPath();
+  ctx.roundRect(o.x-o.w/2,oy-oh/2,o.w,oh,4);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawGate(g){
+  const laneY=[H*LANE_TOP_F,H*LANE_BOT_F];
+  const gy=laneY[g.lane];
+  const gh=H*0.09;
+  ctx.save();
+  ctx.strokeStyle=`hsl(${g.hue},100%,${g.isRisky?75:60}%)`;
+  ctx.lineWidth=g.isRisky?2:2.5;
+  ctx.shadowColor=`hsl(${g.hue},100%,80%)`;
+  ctx.shadowBlur=12;
+  ctx.globalAlpha=0.9;
+  // draw gate as two horizontal bars
+  ctx.beginPath();
+  ctx.moveTo(g.x,gy-gh/2); ctx.lineTo(g.x+g.w,gy-gh/2);
+  ctx.moveTo(g.x,gy+gh/2); ctx.lineTo(g.x+g.w,gy+gh/2);
+  ctx.stroke();
+  // vertical sides
+  ctx.beginPath();
+  ctx.moveTo(g.x,gy-gh/2); ctx.lineTo(g.x,gy+gh/2);
+  ctx.moveTo(g.x+g.w,gy-gh/2); ctx.lineTo(g.x+g.w,gy+gh/2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawPlayer(){
+  const x=W*PLAYER_X_F, y=playerY;
+  ctx.save();
+  // glow
+  ctx.shadowColor=`hsl(${playerHue},100%,70%)`;
+  ctx.shadowBlur=20+bgPulse*10;
+  // body
+  const grad=ctx.createRadialGradient(x-3,y-3,1,x,y,PLAYER_R);
+  grad.addColorStop(0,`hsl(${playerHue},100%,90%)`);
+  grad.addColorStop(1,`hsl(${playerHue},100%,55%)`);
+  ctx.fillStyle=grad;
+  ctx.beginPath();
+  ctx.arc(x,y,PLAYER_R,0,Math.PI*2);
+  ctx.fill();
+  // rim
+  ctx.strokeStyle=`hsl(${(playerHue+60)%360},100%,80%)`;
+  ctx.lineWidth=1.5;
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawChromaticFlicker(){
+  // redraw player with color offsets
+  const x=W*PLAYER_X_F, y=playerY;
+  ctx.save();
+  ctx.globalAlpha=0.35;
+  ctx.globalCompositeOperation='screen';
+  // pink offset
+  ctx.fillStyle='#ff2d78';
+  ctx.beginPath();
+  ctx.arc(x-4,y,PLAYER_R,0,Math.PI*2);
+  ctx.fill();
+  // cyan offset
+  ctx.fillStyle='#00e5ff';
+  ctx.beginPath();
+  ctx.arc(x+4,y,PLAYER_R,0,Math.PI*2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawHUD(){
+  ctx.save();
+  const pad=12;
+
+  // Score
+  ctx.fillStyle='#fff';
+  ctx.font=`bold ${Math.round(W*0.07)}px sans-serif`;
+  ctx.textAlign='center';
+  ctx.shadowColor='rgba(0,0,0,0.5)';
+  ctx.shadowBlur=4;
+  ctx.fillText(score,W/2,pad+W*0.07);
+
+  // Mult
+  if(mult>1){
+    ctx.font=`bold ${Math.round(W*0.045)}px sans-serif`;
+    ctx.fillStyle=`hsl(${playerHue},100%,70%)`;
+    ctx.fillText(`×${mult}`,W/2,pad+W*0.07+W*0.05);
+  }
+
+  // Best
+  ctx.font=`${Math.round(W*0.032)}px sans-serif`;
+  ctx.fillStyle='rgba(255,255,255,0.5)';
+  ctx.textAlign='right';
+  ctx.fillText(`Best: ${bestScore}`,W-pad,pad+W*0.04);
+
+  // PB delta
+  if(pbDeltaText && state==='playing'){
+    ctx.font=`${Math.round(W*0.028)}px sans-serif`;
+    ctx.fillStyle='rgba(255,255,255,0.4)';
+    ctx.textAlign='right';
+    ctx.fillText(pbDeltaText,W-pad,pad+W*0.075);
+  }
+
+  // Flicker Meter (circle countdown)
+  drawFlickerMeter();
+
+  ctx.restore();
+}
+
+function drawFlickerMeter(){
+  const cx=30, cy=H-36, r=18;
+  const frac= beatPeriod>0 ? 1-(beatTimer/beatPeriod) : 0;
+  ctx.save();
+  // bg circle
+  ctx.strokeStyle='rgba(255,255,255,0.15)';
+  ctx.lineWidth=3;
+  ctx.beginPath();
+  ctx.arc(cx,cy,r,0,Math.PI*2);
+  ctx.stroke();
+  // fill arc
+  const startAngle=-Math.PI/2;
+  const endAngle=startAngle+frac*Math.PI*2;
+  const meterHue=(bgHue+90)%360;
+  ctx.strokeStyle=`hsl(${meterHue},100%,70%)`;
+  ctx.lineWidth=3;
+  ctx.shadowColor=`hsl(${meterHue},100%,80%)`;
+  ctx.shadowBlur=6;
+  ctx.beginPath();
+  ctx.arc(cx,cy,r,startAngle,endAngle);
+  ctx.stroke();
+  // label
+  ctx.fillStyle='rgba(255,255,255,0.6)';
+  ctx.font=`9px sans-serif`;
+  ctx.textAlign='center';
+  ctx.textBaseline='middle';
+  ctx.shadowBlur=0;
+  ctx.fillText('BEAT',cx,cy);
+  ctx.textBaseline='alphabetic';
+  ctx.restore();
+}
+
+function drawStart(){
+  ctx.save();
+  ctx.fillStyle='rgba(11,0,20,0.72)';
+  ctx.fillRect(0,0,W,H);
+  // Title
+  ctx.textAlign='center';
+  ctx.shadowColor=`hsl(${bgHue},100%,70%)`;
+  ctx.shadowBlur=24;
+  ctx.fillStyle=`hsl(${bgHue},100%,80%)`;
+  ctx.font=`bold ${Math.round(W*0.13)}px sans-serif`;
+  ctx.fillText('WAVE',W/2,H*0.36);
+  ctx.fillStyle=`hsl(${(bgHue+180)%360},100%,75%)`;
+  ctx.fillText('FLICKER',W/2,H*0.36+W*0.14);
+  // subtitle
+  ctx.shadowBlur=8;
+  ctx.fillStyle='rgba(255,255,255,0.75)';
+  ctx.font=`${Math.round(W*0.045)}px sans-serif`;
+  ctx.fillText('Tap to Start',W/2,H*0.62);
+  // daily beat info
+  ctx.font=`${Math.round(W*0.032)}px sans-serif`;
+  ctx.fillStyle='rgba(255,255,255,0.4)';
+  const dateStr=today.toLocaleDateString(undefined,{month:'short',day:'numeric'});
+  ctx.fillText(`Daily Beat · ${dateStr}`,W/2,H*0.72);
+  if(dailyBestToday>0){
+    ctx.fillText(`Today's Best: ${dailyBestToday}`,W/2,H*0.77);
+  }
+  if(bestScore>0){
+    ctx.fillStyle='rgba(255,255,255,0.3)';
+    ctx.fillText(`All-time Best: ${bestScore}`,W/2,H*0.82);
+  }
+  ctx.restore();
+}
+
+function drawGameover(){
+  ctx.save();
+  ctx.fillStyle='rgba(11,0,20,0.82)';
+  ctx.fillRect(0,0,W,H);
+  ctx.textAlign='center';
+  ctx.shadowColor=`hsl(${bgHue},100%,70%)`;
+  ctx.shadowBlur=18;
+  ctx.fillStyle='#ff2d78';
+  ctx.font=`bold ${Math.round(W*0.09)}px sans-serif`;
+  ctx.fillText('GAME OVER',W/2,H*0.32);
+  ctx.shadowBlur=8;
+  ctx.fillStyle='#fff';
+  ctx.font=`bold ${Math.round(W*0.13)}px sans-serif`;
+  ctx.fillText(score,W/2,H*0.46);
+  ctx.font=`${Math.round(W*0.038)}px sans-serif`;
+  ctx.fillStyle='rgba(255,255,255,0.6)';
+  ctx.fillText(`Best: ${bestScore}`,W/2,H*0.55);
+  // PB delta
+  if(pbDeltaText){
+    ctx.font=`bold ${Math.round(W*0.038)}px sans-serif`;
+    ctx.fillStyle=pbDeltaText.startsWith('New')?'#7fff7f':'rgba(255,255,255,0.5)';
+    ctx.fillText(pbDeltaText,W/2,H*0.62);
+  }
+  ctx.fillStyle='rgba(255,255,255,0.7)';
+  ctx.font=`${Math.round(W*0.042)}px sans-serif`;
+  ctx.fillText('Tap to Retry',W/2,H*0.75);
+  ctx.restore();
+}
+
+// ── Share ──────────────────────────────────────────────────────────
+shareBtn.addEventListener('click',async(e)=>{
+  e.stopPropagation();
+  const dateStr=today.toISOString().slice(0,10);
+  const url=`https://balinti.github.io/wave-flicker/?challenge=${score}&seed=${dateStr}`;
+  const text=`I scored ${score} on Wave Flicker! Can you beat me?`;
+  if(navigator.share){
+    try{ await navigator.share({title:'Wave Flicker',text,url}); return; }catch(ex){}
+  }
+  try{
+    await navigator.clipboard.writeText(url);
+    shareBtn.textContent='Link Copied!';
+    setTimeout(()=>{ shareBtn.textContent='Share Score'; },2000);
+  }catch(ex){
+    shareBtn.textContent='Copy: '+url;
+  }
+});
+
+// ── Main loop ──────────────────────────────────────────────────────
+function loop(now){
+  update(now);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// Initialize player position
+playerY=H*LANE_TOP_F;
+playerTargetY=playerY;
+requestAnimationFrame(loop);
+
+})();
+</script>
+
+<section style="padding:16px;color:#5a4070;font-size:11px;line-height:1.7;max-width:420px;margin:0 auto">
+<h2 style="color:#7b5fa0;font-size:13px;margin-bottom:8px">About Wave Flicker</h2>
+<p>Wave Flicker is a free browser-based hyper-casual game. No install needed — just open and play. Tap to flip between two lanes and time your moves to the beat to build massive multipliers. The Flicker Meter triggers periodic polarity shifts that transform the vaporwave visuals, keeping every run fresh and challenging.</p>
+<p>Features include particle effects, screen shake, chromatic aberration flicker, a daily seed-based "Daily Beat" mode, and shareable challenge links. Built with vanilla JavaScript and HTML5 Canvas — no frameworks, no ads interrupting gameplay.</p>
+<p>Works on iPhone, Android, desktop browsers, and any device with a modern browser. Your high score is saved locally. Challenge friends with a direct link and see who rules the daily leaderboard.</p>
+</section>
+
+</body>
+</html>

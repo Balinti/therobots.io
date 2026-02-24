@@ -1,0 +1,985 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Swing Drift - Free HTML5 Game</title>
+<meta name="description" content="Play Swing Drift - Tap to swing across icy canyons while the color palette shifts with each successful jump.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0a0a1a">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Swing Drift - Free HTML5 Game">
+<meta property="og:description" content="Tap to swing across icy canyons while the color palette shifts with each successful jump. How far can you drift?">
+<meta property="og:url" content="https://balinti.github.io/swing-drift/">
+<meta property="og:image" content="https://balinti.github.io/swing-drift/preview.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Swing Drift - Free HTML5 Game">
+<meta name="twitter:description" content="Tap to swing across icy canyons while the color palette shifts with each successful jump.">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{
+    background:#0a0a1a;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    min-height:100vh;
+    font-family:'Segoe UI',system-ui,sans-serif;
+    color:#e0e8ff;
+    overflow-x:hidden;
+  }
+  h1{
+    font-size:1.4rem;
+    font-weight:700;
+    letter-spacing:2px;
+    color:#88ccff;
+    padding:8px 0 2px;
+    text-shadow:0 0 16px #44aaff88;
+  }
+  #game-wrap{
+    position:relative;
+    width:100%;
+    max-width:420px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+  }
+  #canvas-container{
+    position:relative;
+    width:100%;
+    max-width:420px;
+  }
+  canvas{
+    display:block;
+    width:100%;
+    height:auto;
+    border-radius:12px;
+    box-shadow:0 0 40px #0044ff44,0 0 80px #000a;
+    touch-action:none;
+  }
+  #ui-bar{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    width:100%;
+    max-width:420px;
+    padding:6px 8px 2px;
+    font-size:0.78rem;
+    color:#88aacc;
+  }
+  #mute-btn{
+    background:none;
+    border:1px solid #334;
+    color:#88aacc;
+    border-radius:6px;
+    padding:2px 8px;
+    cursor:pointer;
+    font-size:0.75rem;
+    transition:border-color 0.2s;
+  }
+  #mute-btn:hover{border-color:#88aacc;}
+  #challenge-banner{
+    display:none;
+    background:linear-gradient(90deg,#0044aa88,#0088ff44);
+    border:1px solid #0088ff88;
+    border-radius:8px;
+    padding:6px 12px;
+    font-size:0.78rem;
+    color:#aaddff;
+    width:100%;
+    max-width:420px;
+    text-align:center;
+    margin-bottom:4px;
+  }
+  #info-section{
+    width:100%;
+    max-width:420px;
+    padding:16px 16px 32px;
+    color:#667799;
+    font-size:0.8rem;
+    line-height:1.6;
+  }
+  #info-section h2{font-size:0.95rem;color:#88aacc;margin:12px 0 6px;}
+  #info-section h3{font-size:0.85rem;color:#7799bb;margin:10px 0 4px;}
+  #info-section p{margin-bottom:6px;}
+  #info-section ul{padding-left:16px;}
+  #info-section li{margin-bottom:4px;}
+</style>
+</head>
+<body>
+<h1>SWING DRIFT</h1>
+<div id="game-wrap">
+  <div id="challenge-banner" id="challenge-banner"></div>
+  <div id="ui-bar">
+    <span id="score-display">Score: 0</span>
+    <button id="mute-btn">🔊 Sound</button>
+    <span id="best-display">Best: 0</span>
+  </div>
+  <div id="canvas-container">
+    <canvas id="gc"></canvas>
+  </div>
+</div>
+<div id="info-section">
+  <h2>How to Play</h2>
+  <p><strong>Tap / Click / Space</strong> to attach to the glowing anchor and swing. Release automatically at the sweet spot, or tap again to panic-drop for risky plays.</p>
+  <p>After landing you <em>slide</em> on ice — hold the button while grounded to reduce friction and build speed. Let go to brake.</p>
+  <ul>
+    <li>Perfect releases fill your <strong>Heat meter</strong> for better control</li>
+    <li>Chain combos for score multipliers</li>
+    <li>Avoid falling into gaps or losing momentum</li>
+    <li>Glass Ice (blue) = very slippery &bull; Powder Snow (white) = more grip</li>
+  </ul>
+  <h2>FAQ</h2>
+  <h3>What is the sweet spot?</h3>
+  <p>The arc line you see while swinging marks the ideal release point. Letting go at the right moment launches you forward with maximum control.</p>
+  <h3>What is the Heat meter?</h3>
+  <p>Perfect releases build Heat (shown as the orange bar). Heat temporarily gives you more control over sliding and makes visuals more vivid.</p>
+  <h3>What are the two lanes?</h3>
+  <p>The risky high line offers more combos and speed; the safe low line keeps you stable. Your lane choice emerges naturally from where you land and slide — no button needed.</p>
+  <h3>Does progress save?</h3>
+  <p>Your best score is saved locally in your browser automatically.</p>
+</div>
+<script>
+(function(){
+'use strict';
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+const CANVAS_W = 420, CANVAS_H = 750;
+const DPR = Math.min(window.devicePixelRatio||1, 2);
+const GRAVITY = 0.45;
+const SWING_DAMPING = 0.995;
+const PLAYER_R = 12;
+const PLATFORM_H = 18;
+const ANCHOR_R = 10;
+const LS_KEY = 'swingdrift_best';
+
+// ─── Canvas setup ─────────────────────────────────────────────────────────────
+const canvas = document.getElementById('gc');
+const ctx = canvas.getContext('2d');
+canvas.width = CANVAS_W * DPR;
+canvas.height = CANVAS_H * DPR;
+canvas.style.width = CANVAS_W + 'px';
+canvas.style.height = CANVAS_H + 'px';
+ctx.scale(DPR, DPR);
+
+// ─── State ────────────────────────────────────────────────────────────────────
+let state = 'start';
+let score = 0, combo = 0, best = parseInt(localStorage.getItem(LS_KEY)||'0');
+let hue = 200, hueTarget = 200;
+let heat = 0; // 0-1
+let muted = false;
+let frameCount = 0;
+let difficultyT = 0;
+let cameraX = 0, cameraY = 0;
+let shakeX = 0, shakeY = 0, shakeMag = 0, shakeDuration = 0;
+let freezeFrames = 0;
+let holdingInput = false;
+let ghostArc = null; // {x,y,r,angle,label}
+
+// ─── Challenge param ──────────────────────────────────────────────────────────
+const urlParams = new URLSearchParams(window.location.search);
+const challengeScore = parseInt(urlParams.get('challengeScore')||'0');
+if(challengeScore>0){
+  const cb = document.getElementById('challenge-banner');
+  cb.style.display='block';
+  cb.textContent=`🏆 Challenge: Beat ${challengeScore} points!`;
+}
+
+// ─── Player ───────────────────────────────────────────────────────────────────
+const player = {
+  x:100, y:400, vx:3, vy:0,
+  onGround:false, platform:null,
+  attached:false, anchorIdx:-1,
+  ropeLen:0, angle:0, omega:0,
+  lastPlatformX:0,
+  alive:true
+};
+
+// ─── World objects ────────────────────────────────────────────────────────────
+let platforms = [];
+let anchors = [];
+let particles = [];
+let activeAnchorIdx = 0;
+
+// ─── Difficulty ───────────────────────────────────────────────────────────────
+function getD(){ return Math.min(1, difficultyT/3000); }
+
+// ─── Platform generation ──────────────────────────────────────────────────────
+let nextPlatX = 0;
+
+function spawnPlatform(x){
+  const D = getD();
+  const gapMin = 180 + D*80;
+  const gapMax = 280 + D*120;
+  const gap = gapMin + Math.random()*(gapMax-gapMin);
+  const w = 100 + Math.random()*80 - D*20;
+  const lane = Math.random()<0.45 ? 'high' : 'low';
+  const baseY = lane==='high' ? 280+Math.random()*80 : 420+Math.random()*100;
+  const iceType = Math.random()<0.4+D*0.3 ? 'glass' : 'powder';
+  const px = x + gap;
+  platforms.push({x:px, y:baseY, w:Math.max(60,w), h:PLATFORM_H,
+    iceType, mu: iceType==='glass'?0.015:0.06, lane});
+  // spawn anchor above platform
+  const ax = px + w*0.5 + (Math.random()-0.5)*60;
+  const ay = baseY - 80 - Math.random()*60;
+  anchors.push({x:ax, y:ay, active:false, pulse:0});
+  nextPlatX = px;
+  return px;
+}
+
+function initWorld(){
+  platforms=[];anchors=[];
+  nextPlatX=0;
+  // starting platform
+  platforms.push({x:-200,y:500,w:280,h:PLATFORM_H,iceType:'powder',mu:0.08,lane:'low'});
+  anchors.push({x:80,y:360,active:true,pulse:0});
+  activeAnchorIdx=0;
+  let px=80;
+  for(let i=0;i<12;i++) px=spawnPlatform(px);
+}
+
+function ensureWorld(){
+  const rightEdge = cameraX + CANVAS_W + 600;
+  while(nextPlatX < rightEdge) nextPlatX = spawnPlatform(nextPlatX);
+  // cull far left
+  const leftEdge = cameraX - 400;
+  platforms = platforms.filter(p=>p.x+p.w>leftEdge);
+  anchors = anchors.filter(a=>a.x>leftEdge);
+}
+
+// ─── Particle system ──────────────────────────────────────────────────────────
+function spawnParticles(x,y,count,speedMul,hueOff,type){
+  for(let i=0;i<count;i++){
+    const angle = Math.random()*Math.PI*2;
+    const speed = (0.5+Math.random()*1.5)*speedMul;
+    particles.push({
+      x,y,
+      vx:Math.cos(angle)*speed,
+      vy:Math.sin(angle)*speed - (type==='burst'?2:0),
+      life:1, decay:0.025+Math.random()*0.02,
+      r:2+Math.random()*4,
+      hue:(hue+hueOff+Math.random()*30)%360,
+      type
+    });
+  }
+}
+
+function spawnIceSpray(x,y){
+  spawnParticles(x,y,8,2,40,'ice');
+}
+function spawnPerfectBurst(x,y){
+  spawnParticles(x,y,20,3.5,0,'burst');
+  spawnParticles(x,y,10,2,-60,'burst');
+}
+function spawnDeathBurst(x,y){
+  spawnParticles(x,y,35,4,120,'death');
+}
+
+// ─── Screen shake ─────────────────────────────────────────────────────────────
+function triggerShake(mag,dur){
+  shakeMag=Math.max(shakeMag,mag);
+  shakeDuration=Math.max(shakeDuration,dur);
+}
+function triggerFreeze(ms){
+  freezeFrames=Math.max(freezeFrames,Math.round(ms/16));
+}
+
+// ─── Input ────────────────────────────────────────────────────────────────────
+let inputPressed = false;
+
+function onPress(){
+  holdingInput=true;
+  if(state==='start'){startGame();return;}
+  if(state==='gameover'){resetGame();return;}
+  if(state==='playing') handleSwingInput();
+}
+function onRelease(){holdingInput=false;}
+
+canvas.addEventListener('pointerdown',e=>{e.preventDefault();onPress();});
+canvas.addEventListener('pointerup',e=>{e.preventDefault();onRelease();});
+window.addEventListener('keydown',e=>{
+  if(e.code==='Space'||e.code==='Enter'){e.preventDefault();if(!inputPressed){inputPressed=true;onPress();}}
+});
+window.addEventListener('keyup',e=>{
+  if(e.code==='Space'||e.code==='Enter'){inputPressed=false;onRelease();}
+});
+
+document.getElementById('mute-btn').addEventListener('click',e=>{
+  muted=!muted;
+  e.currentTarget.textContent=muted?'🔇 Muted':'🔊 Sound';
+});
+
+// ─── Swing input handler ──────────────────────────────────────────────────────
+function handleSwingInput(){
+  if(player.attached){
+    // panic drop
+    detachPlayer(true);
+  } else if(player.onGround){
+    // try to attach to active anchor
+    tryAttach();
+  } else {
+    // in air, try attach
+    tryAttach();
+  }
+}
+
+function tryAttach(){
+  const a = anchors[activeAnchorIdx];
+  if(!a) return;
+  const dist = Math.hypot(player.x-a.x, player.y-a.y);
+  const maxRange = 220;
+  if(dist>maxRange) return;
+  player.attached=true;
+  player.anchorIdx=activeAnchorIdx;
+  player.ropeLen=dist;
+  player.angle=Math.atan2(player.y-a.y, player.x-a.x);
+  // angular velocity from current velocity
+  const perp = {x:-Math.sin(player.angle), y:Math.cos(player.angle)};
+  player.omega=(player.vx*perp.x+player.vy*perp.y)/dist;
+  player.onGround=false;
+  player.platform=null;
+}
+
+function detachPlayer(panic){
+  if(!player.attached) return;
+  const a = anchors[player.anchorIdx];
+  // compute velocity from swing
+  player.vx = -Math.sin(player.angle)*player.omega*player.ropeLen;
+  player.vy = Math.cos(player.angle)*player.omega*player.ropeLen;
+  player.attached=false;
+
+  // check if near sweet spot
+  const sweetAngle = Math.PI*0.55; // ~99 degrees, slightly past vertical
+  const angDiff = Math.abs(normalizeAngle(player.angle) - (-Math.PI/2));
+  const sweetWindow = 0.18 + (1-getD())*0.12;
+
+  if(!panic && angDiff < sweetWindow){
+    // perfect or good
+    combo++;
+    const isPerfect = angDiff < sweetWindow*0.4;
+    if(isPerfect){
+      heat=Math.min(1,heat+0.3);
+      score+=10*combo;
+      spawnPerfectBurst(player.x,player.y);
+      triggerShake(2,200);
+      hueTarget=(hueTarget+30)%360;
+    } else {
+      score+=5*combo;
+      heat=Math.min(1,heat+0.1);
+    }
+    // clear ghost arc
+    ghostArc=null;
+  } else if(!panic){
+    // bad release
+    combo=Math.max(0,combo-1);
+    heat=Math.max(0,heat-0.15);
+  }
+
+  // advance active anchor
+  advanceActiveAnchor();
+}
+
+function advanceActiveAnchor(){
+  if(anchors[activeAnchorIdx]) anchors[activeAnchorIdx].active=false;
+  // find next anchor ahead of player
+  let best=-1,bestX=Infinity;
+  for(let i=0;i<anchors.length;i++){
+    if(anchors[i].x>player.x && anchors[i].x<player.x+500){
+      if(anchors[i].x<bestX){bestX=anchors[i].x;best=i;}
+    }
+  }
+  if(best>=0){activeAnchorIdx=best;anchors[best].active=true;}
+}
+
+function normalizeAngle(a){
+  while(a>Math.PI)a-=Math.PI*2;
+  while(a<-Math.PI)a+=Math.PI*2;
+  return a;
+}
+
+// ─── Auto release ─────────────────────────────────────────────────────────────
+function checkAutoRelease(){
+  if(!player.attached) return;
+  const normAngle = normalizeAngle(player.angle);
+  // sweet spot: between -PI/2-window and -PI/2+window (past vertical, moving forward)
+  const sweetWindow = 0.18+(1-getD())*0.12;
+  const targetAngle = -Math.PI/2;
+  const diff = Math.abs(normAngle - targetAngle);
+  if(diff < sweetWindow && player.omega < 0){
+    // auto release at sweet spot
+    detachAutoRelease();
+  }
+}
+
+function detachAutoRelease(){
+  const a = anchors[player.anchorIdx];
+  player.vx = -Math.sin(player.angle)*player.omega*player.ropeLen;
+  player.vy = Math.cos(player.angle)*player.omega*player.ropeLen;
+  player.attached=false;
+  combo++;
+  heat=Math.min(1,heat+0.2);
+  score+=7*combo;
+  spawnPerfectBurst(player.x,player.y);
+  hueTarget=(hueTarget+20)%360;
+  ghostArc=null;
+  advanceActiveAnchor();
+}
+
+// ─── Ghost arc ────────────────────────────────────────────────────────────────
+function updateGhostArc(){
+  if(!player.attached) return;
+  const a = anchors[player.anchorIdx];
+  if(!a) return;
+  // position of sweet spot
+  const targetAngle = -Math.PI/2;
+  const gx = a.x + Math.cos(targetAngle)*player.ropeLen;
+  const gy = a.y + Math.sin(targetAngle)*player.ropeLen;
+  ghostArc = {ax:a.x,ay:a.y,r:player.ropeLen,targetAngle,gx,gy};
+}
+
+// ─── Physics update ───────────────────────────────────────────────────────────
+function updatePhysics(dt){
+  if(freezeFrames>0){freezeFrames--;return;}
+
+  // swing
+  if(player.attached){
+    const a = anchors[player.anchorIdx];
+    if(!a){player.attached=false;}else{
+      // pendulum
+      const sinA = Math.sin(player.angle);
+      player.omega += (-GRAVITY/player.ropeLen)*sinA*dt;
+      player.omega *= SWING_DAMPING;
+      // clamp
+      player.omega = Math.max(-0.08,Math.min(0.08,player.omega));
+      player.angle += player.omega*dt;
+      player.x = a.x + Math.cos(player.angle)*player.ropeLen;
+      player.y = a.y + Math.sin(player.angle)*player.ropeLen;
+      player.vx=0;player.vy=0;
+      checkAutoRelease();
+      updateGhostArc();
+    }
+    return;
+  }
+
+  // gravity
+  player.vy += GRAVITY*dt;
+
+  // ground collision
+  player.onGround=false;
+  for(const p of platforms){
+    if(player.x>p.x && player.x<p.x+p.w){
+      const top = p.y;
+      if(player.y+PLAYER_R>=top && player.y+PLAYER_R<=top+20 && player.vy>=0){
+        player.y=top-PLAYER_R;
+        player.vy=0;
+        player.onGround=true;
+        player.platform=p;
+        if(!p._landed){
+          p._landed=true;
+          spawnIceSpray(player.x,player.y+PLAYER_R);
+        }
+        break;
+      }
+    }
+  }
+
+  // sliding friction
+  if(player.onGround && player.platform){
+    const p = player.platform;
+    let friction = p.mu;
+    // heat bonus
+    friction += heat*0.03;
+    // commit to speed: holding pointer lowers friction
+    if(holdingInput) friction *= 0.3;
+    const sign = player.vx>0?1:-1;
+    player.vx -= sign*friction*dt*60;
+    if(Math.abs(player.vx)<0.1) player.vx=0;
+    // distance score
+    score += Math.abs(player.vx)*0.01;
+    spawnIceSpray(player.x+Math.random()*10-5, player.y+PLAYER_R);
+  } else {
+    // air resistance minimal
+    player.vx *= 0.999;
+  }
+
+  player.x += player.vx*dt;
+  player.y += player.vy*dt;
+
+  // fall death
+  if(player.y > CANVAS_H + cameraY + 200){
+    killPlayer('fell');
+  }
+  // moved too far left
+  if(player.x < cameraX - PLAYER_R*2){
+    killPlayer('too slow');
+  }
+}
+
+function killPlayer(reason){
+  if(!player.alive) return;
+  player.alive=false;
+  spawnDeathBurst(player.x-cameraX, player.y-cameraY);
+  triggerShake(12,600);
+  triggerFreeze(100);
+  // ghost arc label
+  if(player.attached){
+    const a = anchors[player.anchorIdx];
+    ghostArc={ax:a.x,ay:a.y,r:player.ropeLen,
+      targetAngle:-Math.PI/2,
+      gx:a.x,gy:a.y+player.ropeLen,
+      label:reason==='fell'?'Too early / Too fast':'No grip'};
+  }
+  if(score>best){
+    best=Math.floor(score);
+    localStorage.setItem(LS_KEY,best);
+  }
+  document.getElementById('best-display').textContent='Best: '+best;
+  setTimeout(()=>{ state='gameover'; },700);
+}
+
+// ─── Camera ───────────────────────────────────────────────────────────────────
+function updateCamera(){
+  const targetX = player.x - CANVAS_W*0.3;
+  const targetY = player.y - CANVAS_H*0.55;
+  cameraX += (targetX-cameraX)*0.08;
+  cameraY += (targetY-cameraY)*0.06;
+  cameraY = Math.max(-100, Math.min(200, cameraY));
+
+  if(shakeDuration>0){
+    shakeX=(Math.random()-0.5)*shakeMag;
+    shakeY=(Math.random()-0.5)*shakeMag;
+    shakeMag*=0.88;
+    shakeDuration-=16;
+    if(shakeDuration<=0){shakeX=0;shakeY=0;shakeMag=0;}
+  } else {shakeX=0;shakeY=0;}
+}
+
+// ─── HSL palette ──────────────────────────────────────────────────────────────
+function updateHue(){
+  hue += (hueTarget-hue)*0.02;
+  hueTarget += 0.05;
+  if(combo>4) hueTarget+=0.1;
+}
+
+// ─── Score / UI ───────────────────────────────────────────────────────────────
+function updateScoreDisplay(){
+  document.getElementById('score-display').textContent='Score: '+Math.floor(score);
+  document.getElementById('best-display').textContent='Best: '+best;
+}
+
+// ─── Drawing ──────────────────────────────────────────────────────────────────
+function drawBackground(){
+  const grad = ctx.createLinearGradient(0,0,0,CANVAS_H);
+  const h1=Math.floor(hue)%360;
+  const h2=(h1+40)%360;
+  grad.addColorStop(0,`hsl(${h1},60%,8%)`);
+  grad.addColorStop(1,`hsl(${h2},50%,4%)`);
+  ctx.fillStyle=grad;
+  ctx.fillRect(0,0,CANVAS_W,CANVAS_H);
+
+  // distant stars
+  ctx.fillStyle=`hsla(${h1},80%,80%,0.3)`;
+  for(let i=0;i<60;i++){
+    const sx=((i*137+cameraX*0.05)%CANVAS_W+CANVAS_W)%CANVAS_W;
+    const sy=((i*97+cameraY*0.03)%CANVAS_H+CANVAS_H)%CANVAS_H;
+    ctx.fillRect(sx,sy,1,1);
+  }
+}
+
+function worldToScreen(wx,wy){
+  return {x:wx-cameraX+shakeX, y:wy-cameraY+shakeY};
+}
+
+function drawPlatforms(){
+  for(const p of platforms){
+    const s=worldToScreen(p.x,p.y);
+    if(s.x>CANVAS_W+20||s.x+p.w<-20) continue;
+    const isGlass=p.iceType==='glass';
+    // platform body
+    const grad=ctx.createLinearGradient(s.x,s.y,s.x,s.y+p.h);
+    if(isGlass){
+      grad.addColorStop(0,`hsla(${(hue+180)%360},80%,70%,0.9)`);
+      grad.addColorStop(1,`hsla(${(hue+200)%360},70%,40%,0.7)`);
+    } else {
+      grad.addColorStop(0,`hsla(${hue},20%,90%,0.95)`);
+      grad.addColorStop(1,`hsla(${hue},30%,60%,0.8)`);
+    }
+    ctx.fillStyle=grad;
+    ctx.beginPath();
+    ctx.roundRect(s.x,s.y,p.w,p.h,4);
+    ctx.fill();
+    // edge highlight
+    ctx.strokeStyle=isGlass?`hsla(${(hue+180)%360},90%,85%,0.6)`:`rgba(255,255,255,0.4)`;
+    ctx.lineWidth=1.5;
+    ctx.stroke();
+    // label
+    ctx.fillStyle=isGlass?`hsla(${(hue+200)%360},80%,85%,0.8)`:`rgba(255,255,255,0.6)`;
+    ctx.font='bold 9px monospace';
+    ctx.fillText(isGlass?'ICE':'SNOW',s.x+4,s.y+12);
+  }
+}
+
+function drawAnchors(){
+  for(let i=0;i<anchors.length;i++){
+    const a=anchors[i];
+    const s=worldToScreen(a.x,a.y);
+    if(s.x<-60||s.x>CANVAS_W+60) continue;
+    const isActive=i===activeAnchorIdx;
+    a.pulse=(a.pulse||0)+0.06;
+    const pScale=1+Math.sin(a.pulse)*0.2*(isActive?1:0);
+    ctx.save();
+    ctx.translate(s.x,s.y);
+    ctx.scale(pScale,pScale);
+    if(isActive){
+      // glow rings
+      for(let r=3;r>=1;r--){
+        ctx.beginPath();
+        ctx.arc(0,0,ANCHOR_R+r*8,0,Math.PI*2);
+        ctx.strokeStyle=`hsla(${hue},90%,70%,${0.12/r})`;
+        ctx.lineWidth=r*2;
+        ctx.stroke();
+      }
+      ctx.beginPath();
+      ctx.arc(0,0,ANCHOR_R,0,Math.PI*2);
+      ctx.fillStyle=`hsl(${hue},90%,65%)`;
+      ctx.fill();
+      ctx.strokeStyle='white';
+      ctx.lineWidth=2;
+      ctx.stroke();
+    } else {
+      ctx.beginPath();
+      ctx.arc(0,0,ANCHOR_R*0.7,0,Math.PI*2);
+      ctx.fillStyle=`hsla(${hue},50%,50%,0.4)`;
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
+function drawRope(){
+  if(!player.attached) return;
+  const a=anchors[player.anchorIdx];
+  if(!a) return;
+  const sa=worldToScreen(a.x,a.y);
+  const sp=worldToScreen(player.x,player.y);
+  ctx.beginPath();
+  ctx.moveTo(sa.x,sa.y);
+  ctx.lineTo(sp.x,sp.y);
+  ctx.strokeStyle=`hsla(${hue},70%,70%,0.7)`;
+  ctx.lineWidth=2;
+  ctx.stroke();
+}
+
+function drawSweetSpotArc(){
+  if(!player.attached) return;
+  const a=anchors[player.anchorIdx];
+  if(!a) return;
+  const sa=worldToScreen(a.x,a.y);
+  const sweetWindow=0.18+(1-getD())*0.12;
+  const startA=-Math.PI/2-sweetWindow;
+  const endA=-Math.PI/2+sweetWindow;
+  // check if in window
+  const normAngle=normalizeAngle(player.angle);
+  const diff=Math.abs(normAngle-(-Math.PI/2));
+  const inWindow=diff<sweetWindow;
+  ctx.beginPath();
+  ctx.arc(sa.x,sa.y,player.ropeLen,startA,endA);
+  ctx.strokeStyle=inWindow?`hsla(${hue},100%,80%,0.9)`:`hsla(${hue},80%,60%,0.35)`;
+  ctx.lineWidth=inWindow?4:2;
+  ctx.stroke();
+  // tick marks
+  const tickA=-Math.PI/2;
+  const tx=sa.x+Math.cos(tickA)*player.ropeLen;
+  const ty=sa.y+Math.sin(tickA)*player.ropeLen;
+  ctx.beginPath();
+  ctx.arc(tx,ty,5,0,Math.PI*2);
+  ctx.fillStyle=inWindow?`hsl(${hue},100%,80%)`:`hsla(${hue},80%,60%,0.5)`;
+  ctx.fill();
+}
+
+function drawGhostArc(){
+  if(!ghostArc||state==='playing') return;
+  if(!ghostArc.gx) return;
+  const s=worldToScreen(ghostArc.gx,ghostArc.gy);
+  const sa=worldToScreen(ghostArc.ax,ghostArc.ay);
+  ctx.beginPath();
+  ctx.arc(sa.x,sa.y,ghostArc.r,ghostArc.targetAngle-0.2,ghostArc.targetAngle+0.2);
+  ctx.strokeStyle='rgba(255,80,80,0.6)';
+  ctx.lineWidth=3;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(s.x,s.y,8,0,Math.PI*2);
+  ctx.fillStyle='rgba(255,80,80,0.7)';
+  ctx.fill();
+  if(ghostArc.label){
+    ctx.fillStyle='rgba(255,100,100,0.9)';
+    ctx.font='bold 11px monospace';
+    ctx.fillText(ghostArc.label, s.x+12,s.y-4);
+  }
+}
+
+function drawPlayer(){
+  const s=worldToScreen(player.x,player.y);
+  // heat aura
+  if(heat>0.2){
+    ctx.beginPath();
+    ctx.arc(s.x,s.y,PLAYER_R+heat*12,0,Math.PI*2);
+    ctx.fillStyle=`hsla(30,100%,60%,${heat*0.2})`;
+    ctx.fill();
+  }
+  // body
+  const grad=ctx.createRadialGradient(s.x-4,s.y-4,2,s.x,s.y,PLAYER_R);
+  grad.addColorStop(0,`hsl(${(hue+20)%360},90%,85%)`);
+  grad.addColorStop(1,`hsl(${hue},70%,50%)`);
+  ctx.beginPath();
+  ctx.arc(s.x,s.y,PLAYER_R,0,Math.PI*2);
+  ctx.fillStyle=grad;
+  ctx.fill();
+  ctx.strokeStyle=`hsl(${hue},80%,80%)`;
+  ctx.lineWidth=2;
+  ctx.stroke();
+}
+
+function drawParticles(){
+  for(const p of particles){
+    const s=worldToScreen(p.x,p.y);
+    ctx.globalAlpha=p.life;
+    ctx.beginPath();
+    ctx.arc(s.x,s.y,p.r*p.life,0,Math.PI*2);
+    ctx.fillStyle=`hsl(${p.hue},80%,70%)`;
+    ctx.fill();
+  }
+  ctx.globalAlpha=1;
+}
+
+function drawHeatMeter(){
+  const bw=120,bh=8,bx=CANVAS_W/2-bw/2,by=CANVAS_H-28;
+  ctx.fillStyle='rgba(0,0,0,0.4)';
+  ctx.beginPath();
+  ctx.roundRect(bx,by,bw,bh,4);
+  ctx.fill();
+  if(heat>0){
+    const grad=ctx.createLinearGradient(bx,by,bx+bw*heat,by);
+    grad.addColorStop(0,`hsl(30,100%,50%)`);
+    grad.addColorStop(1,`hsl(50,100%,70%)`);
+    ctx.fillStyle=grad;
+    ctx.beginPath();
+    ctx.roundRect(bx,by,bw*heat,bh,4);
+    ctx.fill();
+  }
+  ctx.fillStyle='rgba(255,200,100,0.5)';
+  ctx.font='8px monospace';
+  ctx.fillText('HEAT',bx-28,by+8);
+}
+
+function drawCombo(){
+  if(combo>1){
+    ctx.save();
+    ctx.globalAlpha=Math.min(1,(combo-1)/5);
+    ctx.fillStyle=`hsl(${hue},90%,70%)`;
+    ctx.font=`bold ${18+combo*2}px monospace`;
+    ctx.textAlign='center';
+    ctx.fillText(`x${combo} COMBO`,CANVAS_W/2,50);
+    ctx.textAlign='left';
+    ctx.restore();
+  }
+}
+
+// ─── Overlays ─────────────────────────────────────────────────────────────────
+function drawStartScreen(){
+  ctx.fillStyle='rgba(0,0,20,0.75)';
+  ctx.fillRect(0,0,CANVAS_W,CANVAS_H);
+  ctx.textAlign='center';
+  ctx.fillStyle=`hsl(${hue},80%,70%)`;
+  ctx.font='bold 48px monospace';
+  ctx.fillText('SWING',CANVAS_W/2,280);
+  ctx.fillStyle=`hsl(${(hue+60)%360},90%,75%)`;
+  ctx.font='bold 48px monospace';
+  ctx.fillText('DRIFT',CANVAS_W/2,330);
+
+  ctx.fillStyle='rgba(200,220,255,0.7)';
+  ctx.font='16px monospace';
+  ctx.fillText('Tap to Start',CANVAS_W/2,400);
+
+  const pulse=0.7+0.3*Math.sin(frameCount*0.06);
+  ctx.globalAlpha=pulse;
+  ctx.fillStyle=`hsl(${hue},70%,60%)`;
+  ctx.font='13px monospace';
+  ctx.fillText('▼ Tap / Space / Enter ▼',CANVAS_W/2,440);
+  ctx.globalAlpha=1;
+
+  if(best>0){
+    ctx.fillStyle='rgba(150,180,220,0.6)';
+    ctx.font='12px monospace';
+    ctx.fillText(`Best: ${best}`,CANVAS_W/2,480);
+  }
+  if(challengeScore>0){
+    ctx.fillStyle=`hsl(${hue},90%,65%)`;
+    ctx.font='bold 13px monospace';
+    ctx.fillText(`🏆 Beat ${challengeScore}!`,CANVAS_W/2,510);
+  }
+  ctx.textAlign='left';
+}
+
+function drawGameOverScreen(){
+  ctx.fillStyle='rgba(0,0,20,0.8)';
+  ctx.fillRect(0,0,CANVAS_W,CANVAS_H);
+  ctx.textAlign='center';
+  ctx.fillStyle='rgba(255,80,80,0.9)';
+  ctx.font='bold 38px monospace';
+  ctx.fillText('GAME OVER',CANVAS_W/2,250);
+  ctx.fillStyle=`hsl(${hue},80%,70%)`;
+  ctx.font='bold 26px monospace';
+  ctx.fillText(`Score: ${Math.floor(score)}`,CANVAS_W/2,300);
+  ctx.fillStyle='rgba(180,200,240,0.7)';
+  ctx.font='16px monospace';
+  ctx.fillText(`Best: ${best}`,CANVAS_W/2,330);
+  if(score>=best && score>0){
+    ctx.fillStyle=`hsl(50,100%,65%)`;
+    ctx.font='bold 14px monospace';
+    ctx.fillText('New Best!',CANVAS_W/2,358);
+  }
+  if(challengeScore>0){
+    const won=Math.floor(score)>challengeScore;
+    ctx.fillStyle=won?`hsl(120,90%,65%)`:`hsl(0,80%,65%)`;
+    ctx.font='bold 13px monospace';
+    ctx.fillText(won?`✓ Beat the challenge (${challengeScore})!`:`Challenge: ${challengeScore} — Try again!`,CANVAS_W/2,385);
+  }
+  ctx.fillStyle='rgba(200,220,255,0.7)';
+  ctx.font='16px monospace';
+  ctx.fillText('Tap to Retry',CANVAS_W/2,430);
+  // share button hint
+  ctx.fillStyle=`hsla(${hue},70%,65%,0.7)`;
+  ctx.font='12px monospace';
+  ctx.fillText('[ Share ]',CANVAS_W/2,464);
+  ctx.textAlign='left';
+}
+
+// Share functionality on gameover tap in share area
+canvas.addEventListener('click',e=>{
+  if(state!=='gameover') return;
+  const rect=canvas.getBoundingClientRect();
+  const scaleX=CANVAS_W/rect.width;
+  const cy=(e.clientY-rect.top)*scaleX;
+  if(cy>450&&cy<480){
+    handleShare();
+  }
+});
+
+function handleShare(){
+  const url=`${location.origin}${location.pathname}?challengeScore=${Math.floor(score)}`;
+  const text=`I scored ${Math.floor(score)} in Swing Drift! Can you beat me? ${url}`;
+  if(navigator.share){
+    navigator.share({title:'Swing Drift',text,url}).catch(()=>{});
+  } else {
+    navigator.clipboard.writeText(text).then(()=>{
+      // brief visual feedback handled by overlay redraw
+    }).catch(()=>{});
+  }
+}
+
+// ─── Update particles ─────────────────────────────────────────────────────────
+function updateParticles(dt){
+  for(const p of particles){
+    p.x+=p.vx*dt;
+    p.y+=p.vy*dt;
+    p.vy+=0.05*dt;
+    p.life-=p.decay*dt;
+  }
+  for(let i=particles.length-1;i>=0;i--){
+    if(particles[i].life<=0) particles.splice(i,1);
+  }
+}
+
+// ─── Game states ──────────────────────────────────────────────────────────────
+function startGame(){
+  state='playing';
+  resetGame(true);
+}
+
+function resetGame(fresh){
+  score=0;combo=0;heat=0;
+  hue=200;hueTarget=200;
+  frameCount=0;difficultyT=0;
+  cameraX=0;cameraY=0;
+  shakeX=0;shakeY=0;shakeMag=0;shakeDuration=0;
+  freezeFrames=0;
+  ghostArc=null;
+  particles=[];
+  holdingInput=false;
+  player.x=100;player.y=450;player.vx=3;player.vy=0;
+  player.onGround=false;player.platform=null;
+  player.attached=false;player.anchorIdx=-1;
+  player.ropeLen=0;player.angle=0;player.omega=0;
+  player.alive=true;
+  initWorld();
+  activeAnchorIdx=0;
+  if(anchors[0]) anchors[0].active=true;
+  state='playing';
+}
+
+// ─── Main loop ────────────────────────────────────────────────────────────────
+let lastTime=0;
+function loop(ts){
+  requestAnimationFrame(loop);
+  const rawDt=lastTime?Math.min((ts-lastTime)/16,3):1;
+  lastTime=ts;
+  const dt=rawDt;
+  frameCount++;
+
+  updateHue();
+
+  drawBackground();
+
+  if(state==='start'){
+    // animate idle world
+    drawPlatforms();
+    drawAnchors();
+    drawStartScreen();
+    return;
+  }
+
+  if(state==='gameover'){
+    updateCamera();
+    drawPlatforms();
+    drawAnchors();
+    drawRope();
+    drawSweetSpotArc();
+    drawGhostArc();
+    drawPlayer();
+    updateParticles(dt);
+    drawParticles();
+    drawHeatMeter();
+    drawCombo();
+    drawGameOverScreen();
+    return;
+  }
+
+  // playing
+  difficultyT+=dt;
+  updatePhysics(dt);
+  updateCamera();
+  ensureWorld();
+  updateParticles(dt);
+  updateScoreDisplay();
+
+  // draw world
+  drawPlatforms();
+  drawAnchors();
+  drawRope();
+  drawSweetSpotArc();
+  drawGhostArc();
+  drawPlayer();
+  drawParticles();
+  drawHeatMeter();
+  drawCombo();
+
+  // heat decay
+  heat=Math.max(0,heat-0.0005*dt);
+}
+
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

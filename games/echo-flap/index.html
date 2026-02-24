@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Echo Flap - Free HTML5 Game</title>
+<meta name="description" content="Play Echo Flap - Tap to fly between echoing circles, multiplying combos for rhythmic and minimalist gameplay.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0a0a1a">
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="Echo Flap - Free HTML5 Game">
+<meta property="og:description" content="Play Echo Flap - Tap to fly between echoing circles, multiplying combos for rhythmic and minimalist gameplay.">
+<meta property="og:url" content="https://balinti.github.io/echo-flap/">
+<meta property="og:image" content="https://balinti.github.io/echo-flap/og-image.png">
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Echo Flap - Free HTML5 Game">
+<meta name="twitter:description" content="Play Echo Flap - Tap to fly between echoing circles, multiplying combos for rhythmic and minimalist gameplay.">
+<meta name="twitter:image" content="https://balinti.github.io/echo-flap/og-image.png">
+<!-- AdSense -->
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 100%; height: 100%;
+    background: #050510;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+  }
+  #wrap {
+    position: relative;
+    width: min(420px, 100vw);
+    height: min(750px, 100vh);
+    background: radial-gradient(ellipse at 50% 30%, #0d0d2b 0%, #050510 70%);
+    overflow: hidden;
+    border-radius: 0;
+  }
+  canvas {
+    display: block;
+    width: 100%; height: 100%;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    cursor: pointer;
+  }
+  #seo-text {
+    position: absolute;
+    left: -9999px;
+    top: -9999px;
+    width: 1px; height: 1px;
+    overflow: hidden;
+    aria-hidden: false;
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="canvas"></canvas>
+  <div id="seo-text">
+    <h1>Echo Flap - Free HTML5 Browser Game</h1>
+    <p>Echo Flap is a hyper-casual timing game. Your dot orbits concentric rings. Tap, press Space, or press Enter to snap inward when your dot aligns with the glowing Pulse Gate arc. Hit perfect windows for bonus points and combo multipliers. Miss and the rings shatter. How deep can you go?</p>
+    <p>Controls: Tap on mobile, click with mouse, or press Space/Enter on keyboard. Try to beat your high score and challenge your friends!</p>
+  </div>
+</div>
+<script>
+(function() {
+  'use strict';
+
+  // ─── Constants ───────────────────────────────────────────────────────────────
+  const TAU = Math.PI * 2;
+  const LS_KEY = 'echoFlapHigh';
+
+  function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+  function rand(lo, hi) { return lo + Math.random() * (hi - lo); }
+  function normAngle(a) { return ((a % TAU) + TAU) % TAU; }
+  function angDist(a, b) {
+    const d = normAngle(b - a);
+    return d > Math.PI ? d - TAU : d;
+  }
+  function lerp(a, b, t) { return a + (b - a) * t; }
+
+  // ─── Setup ───────────────────────────────────────────────────────────────────
+  const wrap = document.getElementById('wrap');
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+
+  const DPR = Math.min(window.devicePixelRatio || 1, 2);
+  let W, H, CX, CY;
+
+  function resize() {
+    const r = wrap.getBoundingClientRect();
+    W = r.width; H = r.height;
+    canvas.width = W * DPR;
+    canvas.height = H * DPR;
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    CX = W / 2; CY = H / 2;
+  }
+
+  // ─── Challenge param ─────────────────────────────────────────────────────────
+  const urlParams = new URLSearchParams(window.location.search);
+  const challengeScore = parseInt(urlParams.get('challenge')) || 0;
+
+  // ─── High score ──────────────────────────────────────────────────────────────
+  let highScore = parseInt(localStorage.getItem(LS_KEY)) || 0;
+  function saveHigh(s) {
+    if (s > highScore) { highScore = s; localStorage.setItem(LS_KEY, s); }
+  }
+
+  // ─── Game state ──────────────────────────────────────────────────────────────
+  let state = 'start'; // 'start' | 'playing' | 'gameover'
+  let score = 0;
+  let combo = 0;
+  let comboMeter = 0;   // 0..1
+  let multiplier = 1;
+  let hue = 200;
+  let rings = [];
+  let particles = [];
+  let shakeX = 0, shakeY = 0, shakePow = 0;
+  let vignette = 0;
+  let nearMissFlash = 0;
+  let flipTelegraph = 0; // countdown timer for arrow indicator
+  let flipTelegraphRingIdx = -1;
+  let scorePopups = [];
+  let animFrame;
+  let lastTime = 0;
+
+  // Player dot
+  let dot = { angle: 0, ringIdx: 0, speed: 1.2 };
+
+  // ─── Ring definition ─────────────────────────────────────────────────────────
+  const BASE_RING_COUNT = 7;
+  const RING_SPACING = 44;
+  const INNER_RADIUS = 32;
+
+  function getRingRadius(idx) {
+    return INNER_RADIUS + idx * RING_SPACING;
+  }
+
+  // difficulty params
+  function getDifficulty() {
+    const s = score;
+    return {
+      orbitSpeed: clamp(1.2 + s * 0.018, 1.2, 4.0),
+      gateSize: clamp(0.55 - s * 0.006, 0.18, 0.55),   // radians
+      perfectWindow: clamp(0.18 - s * 0.002, 0.06, 0.18),
+      gateSlide: s > 8 ? clamp((s - 8) * 0.08, 0, 0.6) : 0,
+      fakeGateChance: s > 15 ? clamp((s - 15) * 0.03, 0, 0.35) : 0,
+      flipChance: s > 12 ? clamp((s - 12) * 0.04, 0, 0.5) : 0,
+    };
+  }
+
+  function seedRing(idx) {
+    const diff = getDifficulty();
+    const isFake = Math.random() < diff.fakeGateChance;
+    const gateAngle = rand(0, TAU);
+    const flipOnSnap = !isFake && Math.random() < diff.flipChance;
+    return {
+      idx,
+      gateAngle,
+      gateSize: diff.gateSize * (isFake ? 0.9 : 1),
+      isFake,
+      flipOnSnap,
+      slideSpeed: diff.gateSlide * (Math.random() < 0.5 ? 1 : -1),
+      pulsePhase: Math.random() * TAU,
+    };
+  }
+
+  function initRings() {
+    rings = [];
+    for (let i = 0; i < BASE_RING_COUNT; i++) rings.push(seedRing(i));
+  }
+
+  function reseedRingsAbove(fromIdx) {
+    // Reassign ring indices: shift everything "inward" and add new outer ring
+    // Actually: player moves inward (smaller idx) so we reseed outer rings
+    // rings array: idx 0 = innermost, higher idx = outer
+    // Player starts at outermost ring (rings.length-1) and moves inward
+    // When player snaps to ring idx-1, we drop ring idx and add new outer ring
+    const diff = getDifficulty();
+    const newRing = seedRing(rings.length);
+    newRing.gateAngle = rand(0, TAU);
+    newRing.slideSpeed = diff.gateSlide * (Math.random() < 0.5 ? 1 : -1);
+    rings.push(newRing);
+    // reassign indices
+    rings.forEach((r, i) => { r.idx = i; });
+
+    // Telegraph flip?
+    const targetRing = rings[dot.ringIdx - 1];
+    if (targetRing && targetRing.flipOnSnap) {
+      flipTelegraph = 0.4;
+      flipTelegraphRingIdx = dot.ringIdx - 1;
+    }
+  }
+
+  // ─── Particles ───────────────────────────────────────────────────────────────
+  function spawnParticles(x, y, count, color, speed, life) {
+    for (let i = 0; i < count; i++) {
+      const angle = rand(0, TAU);
+      const spd = rand(speed * 0.4, speed);
+      particles.push({
+        x, y,
+        vx: Math.cos(angle) * spd,
+        vy: Math.sin(angle) * spd,
+        life, maxLife: life,
+        color,
+        size: rand(2, 5),
+      });
+    }
+  }
+
+  function spawnShatterParticles(cx, cy, radius) {
+    const count = 24;
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * TAU + rand(-0.15, 0.15);
+      const spd = rand(80, 220);
+      const r = rand(radius * 0.6, radius * 1.1);
+      particles.push({
+        x: cx + Math.cos(angle) * r,
+        y: cy + Math.sin(angle) * r,
+        vx: Math.cos(angle) * spd,
+        vy: Math.sin(angle) * spd,
+        life: rand(0.5, 1.2), maxLife: 1.2,
+        color: `hsl(${hue},90%,65%)`,
+        size: rand(3, 7),
+      });
+    }
+  }
+
+  // ─── Score popup ─────────────────────────────────────────────────────────────
+  function spawnPopup(text, x, y, color) {
+    scorePopups.push({ text, x, y, life: 0.9, maxLife: 0.9, color });
+  }
+
+  // ─── Snap logic ──────────────────────────────────────────────────────────────
+  function trySnap() {
+    if (state !== 'playing') return;
+    const ring = rings[dot.ringIdx];
+    if (!ring) return;
+    const diff = getDifficulty();
+    const d = Math.abs(angDist(dot.angle, ring.gateAngle));
+    const half = ring.gateSize / 2;
+
+    if (ring.isFake) {
+      // Fake gate: always fail
+      triggerGameOver();
+      return;
+    }
+
+    if (d <= diff.perfectWindow / 2) {
+      // Perfect
+      const pts = 2 * multiplier;
+      score += pts;
+      comboMeter = Math.min(1, comboMeter + 0.35);
+      combo++;
+      const px = CX + Math.cos(dot.angle) * getRingRadius(dot.ringIdx);
+      const py = CY + Math.sin(dot.angle) * getRingRadius(dot.ringIdx);
+      spawnParticles(px, py, 10, `hsl(${hue+40},100%,75%)`, 120, 0.5);
+      spawnPopup(`PERFECT +${pts}`, px, py - 20, `hsl(${hue+40},100%,75%)`);
+      advanceDot(ring);
+    } else if (d <= half) {
+      // Normal hit
+      const pts = 1 * multiplier;
+      score += pts;
+      comboMeter = Math.min(1, comboMeter + 0.18);
+      combo++;
+      const px = CX + Math.cos(dot.angle) * getRingRadius(dot.ringIdx);
+      const py = CY + Math.sin(dot.angle) * getRingRadius(dot.ringIdx);
+      spawnParticles(px, py, 6, `hsl(${hue},90%,65%)`, 90, 0.4);
+      spawnPopup(`+${pts}`, px, py - 15, `hsl(${hue},90%,70%)`);
+      advanceDot(ring);
+    } else if (d <= half * 1.45) {
+      // Near miss - flash red, fail
+      nearMissFlash = 0.35;
+      triggerGameOver();
+    } else {
+      triggerGameOver();
+    }
+  }
+
+  function advanceDot(ring) {
+    // Handle flip
+    if (ring.flipOnSnap) {
+      dot.speed = -dot.speed;
+    }
+    // Move dot inward
+    dot.ringIdx--;
+    if (dot.ringIdx < 0) dot.ringIdx = 0;
+    // Reseed outer rings
+    reseedRingsAbove(dot.ringIdx);
+    // Update hue
+    hue = (hue + 18) % 360;
+    updateMultiplier();
+  }
+
+  function updateMultiplier() {
+    if (comboMeter > 0.8) multiplier = 5;
+    else if (comboMeter > 0.6) multiplier = 4;
+    else if (comboMeter > 0.4) multiplier = 3;
+    else if (comboMeter > 0.2) multiplier = 2;
+    else multiplier = 1;
+  }
+
+  function triggerGameOver() {
+    state = 'gameover';
+    saveHigh(score);
+    // Shatter all rings
+    rings.forEach(r => {
+      spawnShatterParticles(CX, CY, getRingRadius(r.idx));
+    });
+    shakePow = 18;
+    vignette = 1;
+  }
+
+  // ─── Start game ──────────────────────────────────────────────────────────────
+  function startGame() {
+    score = 0; combo = 0; comboMeter = 0; multiplier = 1;
+    hue = 200;
+    particles = []; scorePopups = [];
+    shakeX = 0; shakeY = 0; shakePow = 0; vignette = 0;
+    nearMissFlash = 0; flipTelegraph = 0;
+    initRings();
+    dot.ringIdx = rings.length - 1; // start at outermost
+    dot.angle = 0;
+    dot.speed = 1.2;
+    state = 'playing';
+  }
+
+  // ─── Share ───────────────────────────────────────────────────────────────────
+  function shareScore() {
+    const url = `https://balinti.github.io/echo-flap/?challenge=${score}`;
+    const text = `I scored ${score} in Echo Flap! Can you beat me? 🎯`;
+    if (navigator.share) {
+      navigator.share({ title: 'Echo Flap', text, url }).catch(() => {});
+    } else {
+      navigator.clipboard.writeText(`${text}\n${url}`).then(() => {
+        spawnPopup('Copied!', CX, CY - 60, '#fff');
+      }).catch(() => {
+        spawnPopup('Share: ' + url, CX, CY - 60, '#aaa');
+      });
+    }
+  }
+
+  // ─── Input ───────────────────────────────────────────────────────────────────
+  canvas.addEventListener('pointerdown', function(e) {
+    e.preventDefault();
+    if (state === 'start') { startGame(); return; }
+    if (state === 'gameover') {
+      // Check share button area
+      const rect = canvas.getBoundingClientRect();
+      const mx = (e.clientX - rect.left) * (W / rect.width);
+      const my = (e.clientY - rect.top) * (H / rect.height);
+      // Share button: CX-90..CX-10, CY+120..CY+155
+      if (mx > CX - 95 && mx < CX - 5 && my > CY + 115 && my < CY + 160) {
+        shareScore(); return;
+      }
+      // Challenge stored
+      startGame(); return;
+    }
+    trySnap();
+  }, { passive: false });
+
+  document.addEventListener('keydown', function(e) {
+    if (e.code === 'Space' || e.code === 'Enter') {
+      e.preventDefault();
+      if (state === 'start') { startGame(); return; }
+      if (state === 'gameover') { startGame(); return; }
+      trySnap();
+    }
+  });
+
+  // ─── Main loop ───────────────────────────────────────────────────────────────
+  function loop(ts) {
+    animFrame = requestAnimationFrame(loop);
+    const dt = Math.min((ts - lastTime) / 1000, 0.033);
+    lastTime = ts;
+
+    if (state === 'playing') update(dt);
+    updateParticles(dt);
+    updateShake(dt);
+    draw(dt);
+  }
+
+  function update(dt) {
+    const diff = getDifficulty();
+
+    // Update dot orbit speed (use current score's difficulty)
+    dot.speed = Math.sign(dot.speed) * diff.orbitSpeed;
+    dot.angle = normAngle(dot.angle + dot.speed * dt);
+
+    // Update gate positions
+    rings.forEach(r => {
+      r.gateAngle = normAngle(r.gateAngle + r.slideSpeed * dt);
+      r.pulsePhase += dt * 3.5;
+    });
+
+    // Decay combo meter
+    comboMeter = Math.max(0, comboMeter - dt * 0.12);
+    updateMultiplier();
+
+    // Flip telegraph countdown
+    if (flipTelegraph > 0) flipTelegraph -= dt;
+
+    // Near miss flash decay
+    if (nearMissFlash > 0) nearMissFlash -= dt;
+
+    // Vignette decay
+    if (vignette > 0) vignette -= dt * 2;
+
+    // Hue cycle
+    hue = (hue + dt * 8) % 360;
+  }
+
+  function updateParticles(dt) {
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vx *= 0.92;
+      p.vy *= 0.92;
+      p.life -= dt;
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+    for (let i = scorePopups.length - 1; i >= 0; i--) {
+      const p = scorePopups[i];
+      p.y -= dt * 55;
+      p.life -= dt;
+      if (p.life <= 0) scorePopups.splice(i, 1);
+    }
+  }
+
+  function updateShake(dt) {
+    if (shakePow > 0) {
+      shakePow -= dt * 28;
+      if (shakePow < 0) shakePow = 0;
+      shakeX = (Math.random() - 0.5) * shakePow;
+      shakeY = (Math.random() - 0.5) * shakePow;
+    } else {
+      shakeX = 0; shakeY = 0;
+    }
+  }
+
+  // ─── Drawing ─────────────────────────────────────────────────────────────────
+  function draw(dt) {
+    ctx.clearRect(0, 0, W, H);
+
+    // Background
+    const bg = ctx.createRadialGradient(CX, CY, 0, CX, CY, Math.max(W, H) * 0.7);
+    bg.addColorStop(0, `hsl(${hue},30%,7%)`);
+    bg.addColorStop(1, '#030308');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.save();
+    ctx.translate(CX + shakeX, CY + shakeY);
+
+    if (state === 'playing' || state === 'gameover') {
+      drawRings();
+      drawDot();
+      drawFlipTelegraph();
+    }
+
+    drawParticles();
+    ctx.restore();
+
+    drawScorePopups();
+    drawHUD();
+
+    if (state === 'start') drawStartScreen();
+    if (state === 'gameover') drawGameOverScreen();
+
+    // Vignette
+    if (vignette > 0 || nearMissFlash > 0) {
+      const vig = Math.max(vignette, nearMissFlash);
+      const vigColor = nearMissFlash > vignette
+        ? `rgba(255,50,50,${vig * 0.55})`
+        : `rgba(180,20,20,${vig * 0.45})`;
+      const vigGrad = ctx.createRadialGradient(CX, CY, H * 0.25, CX, CY, H * 0.8);
+      vigGrad.addColorStop(0, 'rgba(0,0,0,0)');
+      vigGrad.addColorStop(1, vigColor);
+      ctx.fillStyle = vigGrad;
+      ctx.fillRect(0, 0, W, H);
+    }
+  }
+
+  function drawRings() {
+    const diff = getDifficulty();
+    rings.forEach(r => {
+      const radius = getRingRadius(r.idx - dot.ringIdx + Math.floor(rings.length / 2));
+      if (radius < 10 || radius > Math.max(W, H)) return;
+
+      const isActive = r.idx === dot.ringIdx;
+      const alpha = isActive ? 1 : clamp(0.25 + (r.idx - dot.ringIdx) * 0.08, 0.12, 0.7);
+      const ringHue = (hue + r.idx * 22) % 360;
+
+      // Ring base
+      ctx.beginPath();
+      ctx.arc(0, 0, radius, 0, TAU);
+      ctx.strokeStyle = `hsla(${ringHue},60%,45%,${alpha * 0.4})`;
+      ctx.lineWidth = isActive ? 2 : 1;
+      ctx.stroke();
+
+      // Gate arc
+      if (!r.isFake) {
+        const pulse = 0.5 + 0.5 * Math.sin(r.pulsePhase);
+        const gAlpha = isActive ? (0.7 + 0.3 * pulse) : alpha * 0.5;
+        const gHue = (ringHue + 40) % 360;
+        const half = r.gateSize / 2;
+
+        ctx.beginPath();
+        ctx.arc(0, 0, radius, r.gateAngle - half, r.gateAngle + half);
+        ctx.strokeStyle = `hsla(${gHue},100%,70%,${gAlpha})`;
+        ctx.lineWidth = isActive ? 4 + pulse * 2 : 2;
+        ctx.stroke();
+
+        // Perfect window indicator (inner bright line)
+        if (isActive) {
+          const pw = diff.perfectWindow / 2;
+          ctx.beginPath();
+          ctx.arc(0, 0, radius, r.gateAngle - pw, r.gateAngle + pw);
+          ctx.strokeStyle = `hsla(${gHue+20},100%,90%,${0.5 + 0.5 * pulse})`;
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        }
+      } else {
+        // Fake gate: dim, slightly different hue, no pulse
+        const half = r.gateSize / 2;
+        ctx.beginPath();
+        ctx.arc(0, 0, radius, r.gateAngle - half, r.gateAngle + half);
+        ctx.strokeStyle = `hsla(${(ringHue + 160) % 360},40%,40%,${alpha * 0.25})`;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+    });
+  }
+
+  function drawDot() {
+    const radius = getRingRadius(Math.floor(rings.length / 2));
+    const dx = Math.cos(dot.angle) * radius;
+    const dy = Math.sin(dot.angle) * radius;
+
+    // Glow
+    const grd = ctx.createRadialGradient(dx, dy, 0, dx, dy, 14);
+    grd.addColorStop(0, `hsla(${hue},100%,85%,0.8)`);
+    grd.addColorStop(1, `hsla(${hue},100%,60%,0)`);
+    ctx.beginPath();
+    ctx.arc(dx, dy, 14, 0, TAU);
+    ctx.fillStyle = grd;
+    ctx.fill();
+
+    // Core
+    ctx.beginPath();
+    ctx.arc(dx, dy, 5, 0, TAU);
+    ctx.fillStyle = `hsl(${hue},100%,90%)`;
+    ctx.fill();
+
+    // Trail
+    for (let i = 1; i <= 5; i++) {
+      const ta = normAngle(dot.angle - Math.sign(dot.speed) * i * 0.08);
+      const tx = Math.cos(ta) * radius;
+      const ty = Math.sin(ta) * radius;
+      ctx.beginPath();
+      ctx.arc(tx, ty, 5 - i * 0.7, 0, TAU);
+      ctx.fillStyle = `hsla(${hue},100%,80%,${0.35 - i * 0.06})`;
+      ctx.fill();
+    }
+  }
+
+  function drawFlipTelegraph() {
+    if (flipTelegraph <= 0) return;
+    const alpha = clamp(flipTelegraph / 0.4, 0, 1);
+    const ringIdx = flipTelegraphRingIdx;
+    if (ringIdx < 0) return;
+    const relIdx = ringIdx - dot.ringIdx;
+    const radius = getRingRadius(relIdx + Math.floor(rings.length / 2));
+    // Draw arrow at top of ring
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = `hsl(${(hue+180)%360},100%,75%)`;
+    ctx.fillStyle = `hsl(${(hue+180)%360},100%,75%)`;
+    ctx.lineWidth = 2;
+    // Arrow pointing left/right at top
+    const ax = 0, ay = -radius - 16;
+    ctx.beginPath();
+    ctx.moveTo(ax - 10, ay);
+    ctx.lineTo(ax + 10, ay);
+    ctx.moveTo(ax + 6, ay - 5);
+    ctx.lineTo(ax + 10, ay);
+    ctx.lineTo(ax + 6, ay + 5);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(ax - 6, ay - 5);
+    ctx.lineTo(ax - 10, ay);
+    ctx.lineTo(ax - 6, ay + 5);
+    ctx.stroke();
+    // Label
+    ctx.font = 'bold 11px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('FLIP', ax, ay - 10);
+    ctx.restore();
+  }
+
+  function drawParticles() {
+    particles.forEach(p => {
+      const alpha = clamp(p.life / p.maxLife, 0, 1);
+      ctx.beginPath();
+      ctx.arc(p.x - CX - shakeX, p.y - CY - shakeY, p.size * alpha, 0, TAU);
+      ctx.fillStyle = p.color.replace(')', `,${alpha})`).replace('hsl(', 'hsla(').replace('hsla(', 'hsla(');
+      // simpler:
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = p.color;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    });
+  }
+
+  function drawScorePopups() {
+    scorePopups.forEach(p => {
+      const alpha = clamp(p.life / p.maxLife, 0, 1);
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.font = 'bold 15px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = p.color;
+      ctx.fillText(p.text, p.x, p.y);
+      ctx.restore();
+    });
+  }
+
+  function drawHUD() {
+    if (state !== 'playing') return;
+
+    // Score
+    ctx.font = 'bold 32px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = `hsl(${hue},80%,85%)`;
+    ctx.fillText(score, CX, 52);
+
+    // High score
+    if (highScore > 0) {
+      ctx.font = '13px system-ui';
+      ctx.fillStyle = `hsla(${hue},60%,70%,0.6)`;
+      ctx.fillText(`Best: ${highScore}`, CX, 72);
+    }
+
+    // Challenge indicator
+    if (challengeScore > 0) {
+      const beatStr = score >= challengeScore ? '✓ Beaten!' : `Beat: ${challengeScore}`;
+      ctx.font = '13px system-ui';
+      ctx.fillStyle = score >= challengeScore ? `hsl(120,80%,65%)` : `hsla(40,100%,70%,0.8)`;
+      ctx.fillText(beatStr, CX, 88);
+    }
+
+    // Combo meter
+    const meterW = 100, meterH = 6;
+    const mx = CX - meterW / 2, my = H - 38;
+    ctx.fillStyle = 'rgba(255,255,255,0.1)';
+    ctx.beginPath();
+    ctx.roundRect(mx, my, meterW, meterH, 3);
+    ctx.fill();
+
+    const meterFill = ctx.createLinearGradient(mx, my, mx + meterW, my);
+    meterFill.addColorStop(0, `hsl(${hue},90%,60%)`);
+    meterFill.addColorStop(1, `hsl(${(hue+80)%360},100%,75%)`);
+    ctx.fillStyle = meterFill;
+    ctx.beginPath();
+    ctx.roundRect(mx, my, meterW * comboMeter, meterH, 3);
+    ctx.fill();
+
+    // Multiplier
+    if (multiplier > 1) {
+      ctx.font = `bold ${14 + multiplier * 2}px system-ui`;
+      ctx.textAlign = 'right';
+      ctx.fillStyle = `hsl(${(hue+80)%360},100%,75%)`;
+      ctx.fillText(`×${multiplier}`, mx + meterW + 28, my + 8);
+    }
+
+    // Combo count
+    if (combo > 1) {
+      ctx.font = '12px system-ui';
+      ctx.textAlign = 'left';
+      ctx.fillStyle = `hsla(${hue},80%,70%,0.7)`;
+      ctx.fillText(`${combo} combo`, mx - 4, my + 8);
+    }
+  }
+
+  function drawStartScreen() {
+    // Semi-transparent overlay
+    ctx.fillStyle = 'rgba(5,5,20,0.72)';
+    ctx.fillRect(0, 0, W, H);
+
+    // Title
+    ctx.save();
+    ctx.textAlign = 'center';
+
+    // Glow effect for title
+    ctx.shadowColor = `hsl(${hue},100%,70%)`;
+    ctx.shadowBlur = 24;
+    ctx.font = 'bold 52px system-ui';
+    ctx.fillStyle = `hsl(${hue},90%,80%)`;
+    ctx.fillText('ECHO', CX, CY - 60);
+    ctx.font = 'bold 52px system-ui';
+    ctx.fillStyle = `hsl(${(hue+60)%360},90%,80%)`;
+    ctx.fillText('FLAP', CX, CY - 5);
+    ctx.shadowBlur = 0;
+
+    ctx.font = '16px system-ui';
+    ctx.fillStyle = 'rgba(200,200,255,0.75)';
+    ctx.fillText('Snap the dot through the pulse gate', CX, CY + 38);
+
+    // Challenge label
+    if (challengeScore > 0) {
+      ctx.font = 'bold 15px system-ui';
+      ctx.fillStyle = `hsl(40,100%,70%)`;
+      ctx.fillText(`🎯 Beat ${challengeScore}!`, CX, CY + 66);
+    }
+
+    // Tap to start
+    const pulseAlpha = 0.6 + 0.4 * Math.sin(Date.now() / 500);
+    ctx.font = 'bold 18px system-ui';
+    ctx.fillStyle = `hsla(${hue},100%,85%,${pulseAlpha})`;
+    ctx.fillText('TAP TO START', CX, CY + 106);
+
+    // High score
+    if (highScore > 0) {
+      ctx.font = '14px system-ui';
+      ctx.fillStyle = `hsla(${hue},60%,70%,0.5)`;
+      ctx.fillText(`Best: ${highScore}`, CX, CY + 134);
+    }
+
+    ctx.restore();
+  }
+
+  function drawGameOverScreen() {
+    ctx.fillStyle = 'rgba(5,5,20,0.8)';
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.save();
+    ctx.textAlign = 'center';
+
+    ctx.font = 'bold 28px system-ui';
+    ctx.fillStyle = `hsl(${(hue+180)%360},80%,70%)`;
+    ctx.fillText('SHATTERED', CX, CY - 80);
+
+    ctx.font = 'bold 68px system-ui';
+    ctx.shadowColor = `hsl(${hue},100%,65%)`;
+    ctx.shadowBlur = 20;
+    ctx.fillStyle = `hsl(${hue},90%,82%)`;
+    ctx.fillText(score, CX, CY - 8);
+    ctx.shadowBlur = 0;
+
+    if (score >= highScore && score > 0) {
+      ctx.font = 'bold 16px system-ui';
+      ctx.fillStyle = `hsl(50,100%,72%)`;
+      ctx.fillText('NEW BEST!', CX, CY + 24);
+    } else if (highScore > 0) {
+      ctx.font = '14px system-ui';
+      ctx.fillStyle = `hsla(${hue},50%,65%,0.6)`;
+      ctx.fillText(`Best: ${highScore}`, CX, CY + 24);
+    }
+
+    if (challengeScore > 0) {
+      const beaten = score >= challengeScore;
+      ctx.font = 'bold 14px system-ui';
+      ctx.fillStyle = beaten ? 'hsl(120,80%,65%)' : 'hsl(0,80%,65%)';
+      ctx.fillText(beaten ? `✓ You beat ${challengeScore}!` : `Challenge: ${challengeScore} (Keep trying!)`, CX, CY + 50);
+    }
+
+    // Share button
+    roundButton(CX - 50, CY + 115, 90, 40, 'SHARE', `hsl(${hue},70%,45%)`, '#fff');
+
+    // Tap to retry
+    const pulseAlpha = 0.6 + 0.4 * Math.sin(Date.now() / 500);
+    ctx.font = 'bold 16px system-ui';
+    ctx.fillStyle = `hsla(200,80%,80%,${pulseAlpha})`;
+    ctx.fillText('TAP TO RETRY', CX, CY + 185);
+
+    ctx.restore();
+  }
+
+  function roundButton(x, y, w, h, label, bg, fg) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, 8);
+    ctx.fillStyle = bg;
+    ctx.fill();
+    ctx.font = 'bold 14px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = fg;
+    ctx.fillText(label, x + w / 2, y + h / 2 + 5);
+    ctx.restore();
+  }
+
+  // ─── Init ─────────────────────────────────────────────────────────────────────
+  resize();
+  window.addEventListener('resize', resize);
+
+  // Animate start screen even before playing
+  requestAnimationFrame(function startAnim(ts) {
+    lastTime = ts;
+    animFrame = requestAnimationFrame(loop);
+    // Draw start screen immediately
+    hue = (hue + 0.04) % 360;
+    draw(0);
+  });
+
+  // Kick off the loop by drawing start
+  // (loop starts via rAF above)
+
+})();
+</script>
+</body>
+</html>

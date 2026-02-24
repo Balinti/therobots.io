@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Pulse Orbit - Free HTML5 Game</title>
+<meta name="description" content="Play Pulse Orbit - Tap to launch pulses perfectly timed to orbit planets and multiply combos across the galaxy.">
+<meta name="theme-color" content="#0a0a1a">
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="Pulse Orbit - Free HTML5 Game">
+<meta property="og:description" content="Tap to launch pulses perfectly timed to orbit planets and multiply combos across the galaxy.">
+<meta property="og:url" content="https://balinti.github.io/pulse-orbit/">
+<meta property="og:image" content="https://balinti.github.io/pulse-orbit/og-image.png">
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Pulse Orbit - Free HTML5 Game">
+<meta name="twitter:description" content="Tap to launch pulses perfectly timed to orbit planets and multiply combos across the galaxy.">
+<meta name="twitter:image" content="https://balinti.github.io/pulse-orbit/og-image.png">
+<!-- AdSense -->
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden;background:#050510;font-family:'Segoe UI',system-ui,sans-serif}
+body{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;touch-action:manipulation}
+#game-wrap{position:relative;width:100%;max-width:420px;display:flex;flex-direction:column;align-items:center}
+#canvas-container{position:relative;width:100%;max-width:420px}
+canvas{display:block;width:100%;height:auto;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+h1.visually-hidden{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+#about-section{width:100%;max-width:420px;color:#aaa;font-size:13px;line-height:1.6;padding:8px 12px;background:rgba(255,255,255,0.03);border-top:1px solid rgba(255,255,255,0.07)}
+#about-toggle{background:none;border:none;color:#7af;cursor:pointer;font-size:13px;padding:4px 0;width:100%;text-align:left;display:flex;align-items:center;gap:6px}
+#about-toggle::after{content:'▶';font-size:10px;transition:transform 0.2s}
+#about-toggle.open::after{transform:rotate(90deg)}
+#about-body{display:none;padding-top:6px}
+#about-toggle.open+#about-body{display:block}
+</style>
+</head>
+<body>
+<h1 class="visually-hidden">Pulse Orbit: Snap Chain</h1>
+<div id="game-wrap">
+  <div id="canvas-container">
+    <canvas id="gameCanvas"></canvas>
+  </div>
+  <section id="about-section" aria-label="About and How to Play">
+    <button id="about-toggle" aria-expanded="false">About / How to Play</button>
+    <div id="about-body">
+      <p><strong>Pulse Orbit</strong> is a hyper-casual skill game about timing and rhythm.</p>
+      <ul style="padding-left:16px;margin-top:6px">
+        <li>A <em>pulse</em> flies toward a planet's orbit ring.</li>
+        <li><strong>Tap / Space / Enter</strong> to SNAP it onto the orbit when it passes through the bright lock-zone arc.</li>
+        <li>The pulse orbits autonomously; survive enough laps to charge up, then it auto-launches to the next planet.</li>
+        <li>Miss the lock-zone &rarr; shatter &rarr; game over.</li>
+        <li>After ~45 seconds, fork choices appear: safe (bigger zone, lower points) vs risky (tiny zone, high multiplier).</li>
+        <li>Chain perfect snaps to multiply your score!</li>
+      </ul>
+    </div>
+  </section>
+</div>
+<script>
+(function(){
+'use strict';
+
+// ─── DOM / Canvas setup ───────────────────────────────────────────────────────
+const canvas = document.getElementById('gameCanvas');
+const ctx    = canvas.getContext('2d');
+const DPR    = Math.min(window.devicePixelRatio || 1, 3);
+
+let W = 0, H = 0;
+
+function resize(){
+  const cont = document.getElementById('canvas-container');
+  const vw   = Math.min(cont.offsetWidth, 420);
+  const vh   = Math.min(window.innerHeight * 0.88, 750);
+  const side = Math.min(vw, vh);
+  canvas.width  = side * DPR;
+  canvas.height = side * DPR;
+  canvas.style.width  = side + 'px';
+  canvas.style.height = side + 'px';
+  W = canvas.width;
+  H = canvas.height;
+  ctx.scale(DPR, DPR);
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ─── Persist high score ───────────────────────────────────────────────────────
+const HS_KEY = 'pulseOrbit_highScore';
+function getHS(){ return parseInt(localStorage.getItem(HS_KEY)||'0',10); }
+function setHS(v){ localStorage.setItem(HS_KEY, String(v)); }
+
+// ─── Utility ──────────────────────────────────────────────────────────────────
+function rnd(a,b){ return a + Math.random()*(b-a); }
+function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
+function lerpAngle(a,b,t){
+  let d = b - a;
+  while(d > Math.PI) d -= Math.PI*2;
+  while(d < -Math.PI) d += Math.PI*2;
+  return a + d*t;
+}
+function angleDiff(a,b){
+  let d = b - a;
+  while(d > Math.PI) d -= Math.PI*2;
+  while(d < -Math.PI) d += Math.PI*2;
+  return Math.abs(d);
+}
+
+// ─── Stars ────────────────────────────────────────────────────────────────────
+const STAR_COUNT = 80;
+const stars = Array.from({length:STAR_COUNT},()=>({
+  x: rnd(0,1), y: rnd(0,1),
+  r: rnd(0.5,2.2),
+  a: rnd(0.2,0.9),
+  twinkle: rnd(0,Math.PI*2),
+  speed: rnd(0.5,2)
+}));
+
+// ─── Particles ────────────────────────────────────────────────────────────────
+const particles = [];
+function spawnParticles(x, y, count, hue, speed, life){
+  for(let i=0;i<count;i++){
+    const ang = rnd(0, Math.PI*2);
+    const spd = rnd(speed*0.3, speed);
+    particles.push({
+      x, y,
+      vx: Math.cos(ang)*spd,
+      vy: Math.sin(ang)*spd,
+      life: life, maxLife: life,
+      hue: hue + rnd(-20,20),
+      r: rnd(2,5)*DPR/DPR
+    });
+  }
+}
+
+function updateParticles(dt){
+  for(let i=particles.length-1;i>=0;i--){
+    const p = particles[i];
+    p.x += p.vx * dt * 60;
+    p.y += p.vy * dt * 60;
+    p.vx *= 0.92;
+    p.vy *= 0.92;
+    p.life -= dt;
+    if(p.life<=0) particles.splice(i,1);
+  }
+}
+
+function drawParticles(){
+  for(const p of particles){
+    const alpha = clamp(p.life/p.maxLife, 0, 1);
+    ctx.globalAlpha = alpha * 0.9;
+    ctx.fillStyle = `hsl(${p.hue},100%,65%)`;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r * alpha, 0, Math.PI*2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ─── Screen Shake ─────────────────────────────────────────────────────────────
+let shakeAmt = 0, shakeDur = 0;
+function triggerShake(amt, dur){ shakeAmt=amt; shakeDur=dur; }
+let shakeX=0, shakeY=0;
+function updateShake(dt){
+  if(shakeDur>0){
+    shakeDur-=dt;
+    shakeX = rnd(-shakeAmt,shakeAmt);
+    shakeY = rnd(-shakeAmt,shakeAmt);
+    shakeAmt*=0.85;
+    if(shakeDur<=0){shakeX=0;shakeY=0;}
+  }
+}
+
+// ─── Game State ───────────────────────────────────────────────────────────────
+let state = 'start'; // 'start' | 'playing' | 'gameover'
+let score = 0;
+let combo = 0;
+let multiplier = 1;
+let highScore = getHS();
+let gameTime = 0;  // seconds since game start
+let colorHue = 0;
+let graceActive = true; // graze system active for first 45s
+
+// ─── Planet / Orbit ───────────────────────────────────────────────────────────
+const CX = () => (W/DPR)/2;
+const CY = () => (H/DPR)/2;
+
+let planet = null;
+let pulse  = null;
+let nextPlanet = null; // fork system
+
+// difficulty params
+function getDiff(){
+  const t = clamp(gameTime, 0, 180);
+  const orbitSpeed   = 1.2 + t * 0.012;           // rad/s
+  const lockZoneSize = Math.max(0.22, 0.55 - t*0.0018); // radians (half arc)
+  const lapsRequired = Math.min(5, 2 + Math.floor(t/30));
+  const hasGap       = t > 20;
+  const gapSize      = Math.min(1.8, 0.6 + t*0.008);
+  return { orbitSpeed, lockZoneSize, lapsRequired, hasGap, gapSize };
+}
+
+function makePlanet(x, y, fromFork=false, riskLevel=0){
+  const d = getDiff();
+  const orbitRadius = rnd(60,85);
+  const lockZoneSize = d.lockZoneSize * (riskLevel===1 ? 0.55 : riskLevel===-1 ? 1.4 : 1);
+  const mult = riskLevel===1 ? 3 : riskLevel===-1 ? 1 : 2;
+  return {
+    x, y,
+    r: rnd(14,20),              // planet visual radius
+    orbitRadius,
+    lockAngle: rnd(0, Math.PI*2),
+    lockSize: lockZoneSize,
+    orbitSpeed: d.orbitSpeed * (rnd(0.9,1.1)) * (Math.random()<0.5?1:-1),
+    lapsRequired: d.lapsRequired,
+    hasGap: d.hasGap,
+    gapAngle: rnd(0, Math.PI*2),
+    gapSize: d.gapSize,
+    riskLevel,
+    mult,
+    hue: colorHue,
+    pulseColor: (colorHue + 120) % 360,
+    lockPulse: 0 // animation
+  };
+}
+
+function makePulse(fromX, fromY, toX, toY){
+  const dx = toX - fromX, dy = toY - fromY;
+  const dist = Math.sqrt(dx*dx+dy*dy);
+  const speed = rnd(280,340);
+  return {
+    x: fromX, y: fromY,
+    vx: dx/dist*speed,
+    vy: dy/dist*speed,
+    state: 'flying', // 'flying' | 'orbiting' | 'charging' | 'launching'
+    orbitAngle: 0,
+    lapCount: 0,
+    lastLapAngle: null,
+    laps: 0,
+    trail: [],
+    hue: colorHue,
+    chargeT: 0,
+    launchT: 0,
+    grazed: false
+  };
+}
+
+// ─── Fork system ─────────────────────────────────────────────────────────────
+let fork = null; // {planetA, planetB, highlightTimer, highlighted}
+let forkTimer = 0;
+
+// ─── Game Init ────────────────────────────────────────────────────────────────
+function startGame(){
+  score      = 0;
+  combo      = 0;
+  multiplier = 1;
+  gameTime   = 0;
+  colorHue   = rnd(0,360);
+  graceActive= true;
+  particles.length = 0;
+  fork = null;
+  forkTimer = 0;
+  shakeAmt   = 0;
+  shakeDur   = 0;
+
+  const cx = CX(), cy = CY();
+  planet = makePlanet(cx, cy - 60);
+  planet.x = cx; planet.y = cy - 30;
+  // pulse starts from bottom
+  pulse = makePulse(cx, cy + 160, planet.x, planet.y);
+  state = 'playing';
+}
+
+// ─── Snap logic ───────────────────────────────────────────────────────────────
+function trySnap(){
+  if(state !== 'playing') return;
+  if(!pulse || pulse.state !== 'flying') return;
+
+  // compute angle of pulse relative to current planet
+  const dx = pulse.x - planet.x;
+  const dy = pulse.y - planet.y;
+  const dist = Math.sqrt(dx*dx+dy*dy);
+  const pulseAngle = Math.atan2(dy, dx);
+
+  // check proximity: must be near orbit ring
+  const orbitDist = Math.abs(dist - planet.orbitRadius);
+  const lockDiff  = angleDiff(pulseAngle, planet.lockAngle);
+
+  const inLock   = lockDiff < planet.lockSize;
+  const nearRing = orbitDist < planet.orbitRadius * 0.45;
+
+  if(inLock && nearRing){
+    // Perfect / Good snap
+    snapSuccess(pulseAngle);
+  } else if(nearRing && graceActive){
+    // Graze: near ring but outside lock zone, don't die in early/mid game
+    pulse.grazed = true;
+    combo = 0;
+    multiplier = 1;
+    spawnParticles(pulse.x, pulse.y, 8, 30, 2.5, 0.6);
+    snapSuccess(pulseAngle, true);
+  } else {
+    // Miss
+    snapFail();
+  }
+}
+
+function snapSuccess(angle, grazed=false){
+  pulse.state = 'orbiting';
+  pulse.orbitAngle = angle;
+  pulse.laps = 0;
+  pulse.lastLapAngle = angle;
+  pulse.chargeT = 0;
+  pulse.grazed = grazed;
+
+  if(!grazed){
+    combo++;
+    multiplier = Math.min(8, 1 + Math.floor(combo/3));
+    const pts = 10 * multiplier;
+    score += pts;
+    spawnParticles(pulse.x, pulse.y, 18, planet.hue, 4, 0.8);
+    triggerShake(2.5, 0.15);
+    // lock-pulse flash
+    planet.lockPulse = 1;
+  }
+
+  highScore = Math.max(highScore, score);
+  setHS(highScore);
+}
+
+function snapFail(){
+  spawnParticles(pulse.x, pulse.y, 28, 0, 5, 1.0);
+  triggerShake(14, 0.5);
+  pulse = null;
+  setTimeout(()=>{ state = 'gameover'; }, 400);
+}
+
+// ─── Input ────────────────────────────────────────────────────────────────────
+function handleInput(e){
+  if(e && e.preventDefault) e.preventDefault();
+  if(state === 'start'){
+    startGame();
+  } else if(state === 'playing'){
+    trySnap();
+  } else if(state === 'gameover'){
+    startGame();
+  }
+}
+
+canvas.addEventListener('pointerdown', handleInput, {passive:false});
+window.addEventListener('keydown', e=>{
+  if(e.code==='Space'||e.code==='Enter') handleInput(e);
+});
+
+// ─── Fork Generation ─────────────────────────────────────────────────────────
+function spawnFork(){
+  const cx = CX(), cy = CY();
+  const spread = 90;
+  const baseX = cx, baseY = cy - 30;
+  const pA = makePlanet(baseX - spread, baseY, false, -1); // safe
+  const pB = makePlanet(baseX + spread, baseY, false,  1); // risky
+  fork = { planetA: pA, planetB: pB, highlighted: 'A', highlightTimer: 0 };
+  planet = pA; // default to safe
+}
+
+// ─── Spawn next planet ───────────────────────────────────────────────────────
+function spawnNext(fromX, fromY){
+  colorHue = (colorHue + rnd(40,80)) % 360;
+  const cx = CX(), cy = CY();
+  const px = clamp(cx + rnd(-100,100), 80, W/DPR - 80);
+  const py = clamp(cy + rnd(-100,80),  80, H/DPR - 80);
+
+  const useFork = gameTime > 45 && Math.random() < 0.35;
+  if(useFork){
+    spawnFork();
+  } else {
+    fork = null;
+    planet = makePlanet(px, py);
+  }
+
+  pulse = makePulse(fromX, fromY, planet.x, planet.y);
+}
+
+// ─── Render helpers ──────────────────────────────────────────────────────────
+function drawGlow(x, y, r, hue, alpha=0.6){
+  const g = ctx.createRadialGradient(x,y,0, x,y,r);
+  g.addColorStop(0, `hsla(${hue},100%,70%,${alpha})`);
+  g.addColorStop(1, `hsla(${hue},100%,50%,0)`);
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(x,y,r,0,Math.PI*2);
+  ctx.fill();
+}
+
+function drawPlanet(p, alpha=1){
+  const x = p.x, y = p.y;
+  // glow behind
+  drawGlow(x, y, p.r*3.5, p.hue, 0.25*alpha);
+
+  // orbit ring
+  ctx.globalAlpha = 0.35 * alpha;
+  ctx.strokeStyle = `hsl(${p.hue},80%,55%)`;
+  ctx.lineWidth   = 1.5;
+  ctx.beginPath();
+  ctx.arc(x, y, p.orbitRadius, 0, Math.PI*2);
+  ctx.stroke();
+
+  // gap hazard
+  if(p.hasGap){
+    ctx.globalAlpha = 0.55 * alpha;
+    ctx.strokeStyle = `hsl(0,100%,55%)`;
+    ctx.lineWidth   = 3;
+    const g0 = p.gapAngle - p.gapSize/2;
+    const g1 = p.gapAngle + p.gapSize/2;
+    ctx.beginPath();
+    ctx.arc(x, y, p.orbitRadius, g0, g1);
+    ctx.stroke();
+  }
+
+  // lock zone arc (pulsing)
+  const lp = Math.sin(Date.now()*0.004) * 0.3 + 0.7;
+  const lockAlpha = (0.75 + (p.lockPulse||0)*0.5) * lp * alpha;
+  ctx.globalAlpha = lockAlpha;
+  const lockH  = (p.hue + 60) % 360;
+  ctx.strokeStyle = `hsl(${lockH},100%,72%)`;
+  ctx.lineWidth   = 4.5;
+  ctx.shadowColor = `hsl(${lockH},100%,80%)`;
+  ctx.shadowBlur  = 18;
+  ctx.beginPath();
+  ctx.arc(x, y, p.orbitRadius, p.lockAngle - p.lockSize, p.lockAngle + p.lockSize);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // planet core gradient
+  ctx.globalAlpha = 1 * alpha;
+  const pg = ctx.createRadialGradient(x-p.r*0.3, y-p.r*0.3, 0, x, y, p.r);
+  pg.addColorStop(0, `hsl(${p.hue},60%,85%)`);
+  pg.addColorStop(0.6, `hsl(${p.hue},80%,55%)`);
+  pg.addColorStop(1,   `hsl(${p.hue},90%,25%)`);
+  ctx.fillStyle = pg;
+  ctx.beginPath();
+  ctx.arc(x, y, p.r, 0, Math.PI*2);
+  ctx.fill();
+
+  // ring on planet
+  ctx.globalAlpha = 0.4 * alpha;
+  ctx.strokeStyle = `hsl(${(p.hue+40)%360},100%,75%)`;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.ellipse(x, y, p.r*1.5, p.r*0.35, 0.3, 0, Math.PI*2);
+  ctx.stroke();
+
+  ctx.globalAlpha = 1;
+}
+
+function drawPulse(pu, hue){
+  if(!pu) return;
+  // trail
+  for(let i=0;i<pu.trail.length;i++){
+    const t = i/(pu.trail.length-1||1);
+    const tp = pu.trail[i];
+    ctx.globalAlpha = t * 0.55;
+    ctx.fillStyle = `hsl(${hue},100%,70%)`;
+    ctx.beginPath();
+    ctx.arc(tp.x, tp.y, 3*(1-t*0.6), 0, Math.PI*2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // glow
+  drawGlow(pu.x, pu.y, 18, hue, 0.7);
+
+  // core
+  ctx.fillStyle = `hsl(${hue},100%,88%)`;
+  ctx.shadowColor= `hsl(${hue},100%,70%)`;
+  ctx.shadowBlur = 14;
+  ctx.beginPath();
+  ctx.arc(pu.x, pu.y, 5, 0, Math.PI*2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.globalAlpha = 1;
+}
+
+function drawStars(t){
+  for(const s of stars){
+    const twinkle = 0.5 + 0.5*Math.sin(s.twinkle + t*s.speed);
+    ctx.globalAlpha = s.a * twinkle;
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(s.x*(W/DPR), s.y*(H/DPR), s.r, 0, Math.PI*2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawHUD(){
+  const sw = W/DPR, sh = H/DPR;
+  // score
+  ctx.font = `bold ${24}px 'Segoe UI',sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.shadowColor = `hsl(${colorHue},100%,60%)`;
+  ctx.shadowBlur  = 12;
+  ctx.fillStyle   = '#fff';
+  ctx.fillText(score, sw/2, 38);
+  ctx.shadowBlur  = 0;
+
+  // combo
+  if(combo > 1){
+    ctx.font = `${14}px 'Segoe UI',sans-serif`;
+    ctx.fillStyle = `hsl(${(colorHue+90)%360},100%,70%)`;
+    ctx.fillText(`x${combo} combo · ×${multiplier}`, sw/2, 58);
+  }
+
+  // best
+  ctx.font = `${11}px 'Segoe UI',sans-serif`;
+  ctx.fillStyle = 'rgba(200,200,220,0.5)';
+  ctx.textAlign = 'right';
+  ctx.fillText(`best: ${highScore}`, sw - 12, 22);
+  ctx.textAlign = 'left';
+}
+
+// ─── Orbit update ─────────────────────────────────────────────────────────────
+function updateOrbit(dt){
+  if(!pulse || (pulse.state !== 'orbiting' && pulse.state !== 'charging')) return;
+
+  const prevAngle = pulse.orbitAngle;
+  pulse.orbitAngle += planet.orbitSpeed * dt;
+
+  // lap counting
+  // detect full rotation by checking sign change cross
+  const prev = prevAngle % (Math.PI*2);
+  const curr = pulse.orbitAngle % (Math.PI*2);
+  if(pulse.lastLapAngle !== null){
+    const start = pulse.lastLapAngle;
+    const sign  = planet.orbitSpeed > 0 ? 1 : -1;
+    // simple lap check: count full 2*PI traveled
+    if(Math.abs(pulse.orbitAngle - start) >= Math.PI*2 * (pulse.laps+1)){
+      pulse.laps++;
+      // lap tick particles
+      spawnParticles(pulse.x, pulse.y, 8, (colorHue+180)%360, 3, 0.5);
+      const pts = 5 * multiplier;
+      score += pts;
+      highScore = Math.max(highScore, score);
+      setHS(highScore);
+
+      if(pulse.laps >= planet.lapsRequired){
+        pulse.state = 'charging';
+        planet.lockPulse = 1;
+        spawnParticles(pulse.x, pulse.y, 14, colorHue, 5, 0.7);
+      }
+    }
+  }
+
+  // gap hazard check
+  if(planet.hasGap && graceActive === false){
+    const a = pulse.orbitAngle;
+    const gd = angleDiff(a, planet.gapAngle);
+    if(gd < planet.gapSize/2){
+      snapFail();
+      return;
+    }
+  }
+
+  // update position
+  pulse.x = planet.x + Math.cos(pulse.orbitAngle) * planet.orbitRadius;
+  pulse.y = planet.y + Math.sin(pulse.orbitAngle) * planet.orbitRadius;
+
+  // charging -> launch
+  if(pulse.state === 'charging'){
+    pulse.chargeT += dt;
+    if(pulse.chargeT > 0.55){
+      launchPulse();
+    }
+  }
+}
+
+function launchPulse(){
+  const fx = pulse.x, fy = pulse.y;
+  pulse.state = 'flying';
+  // choose target
+  let target = planet;
+  if(fork){
+    target = fork.highlighted === 'A' ? fork.planetA : fork.planetB;
+    planet = target;
+    fork = null;
+  }
+  // spawn next destination
+  spawnParticles(fx, fy, 12, colorHue, 4.5, 0.6);
+  spawnNext(fx, fy);
+}
+
+// ─── Flying update ────────────────────────────────────────────────────────────
+function updateFlying(dt){
+  if(!pulse || pulse.state !== 'flying') return;
+  // trail
+  pulse.trail.push({x:pulse.x, y:pulse.y});
+  if(pulse.trail.length > 18) pulse.trail.shift();
+
+  pulse.x += pulse.vx * dt;
+  pulse.y += pulse.vy * dt;
+
+  // steer toward planet
+  const dx = planet.x - pulse.x;
+  const dy = planet.y - pulse.y;
+  const dist = Math.sqrt(dx*dx+dy*dy);
+  const steer = 160;
+  pulse.vx += dx/dist * steer * dt;
+  pulse.vy += dy/dist * steer * dt;
+
+  // speed cap
+  const spd = Math.sqrt(pulse.vx*pulse.vx+pulse.vy*pulse.vy);
+  const maxSpd = 400;
+  if(spd > maxSpd){ pulse.vx=pulse.vx/spd*maxSpd; pulse.vy=pulse.vy/spd*maxSpd; }
+
+  // auto-check: if pulse passes beyond planet without snap, fail
+  const distNow = Math.sqrt((pulse.x-planet.x)**2+(pulse.y-planet.y)**2);
+  if(distNow < planet.r * 0.6 && pulse.state === 'flying'){
+    snapFail();
+  }
+}
+
+// ─── Lock zone rotation ───────────────────────────────────────────────────────
+function updateLockZone(dt){
+  if(!planet) return;
+  planet.lockAngle += planet.orbitSpeed * dt * 1.15; // slightly faster than orbit
+  if(planet.lockPulse > 0) planet.lockPulse = Math.max(0, planet.lockPulse - dt*3);
+}
+
+// ─── Fork highlight ───────────────────────────────────────────────────────────
+function updateFork(dt){
+  if(!fork) return;
+  fork.highlightTimer += dt;
+  if(fork.highlightTimer > 1.4){
+    fork.highlightTimer = 0;
+    fork.highlighted = fork.highlighted === 'A' ? 'B' : 'A';
+    planet = fork.highlighted === 'A' ? fork.planetA : fork.planetB;
+    // redirect pulse toward new target
+    if(pulse && pulse.state === 'flying'){
+      const dx = planet.x - pulse.x;
+      const dy = planet.y - pulse.y;
+      const dist = Math.sqrt(dx*dx+dy*dy);
+      const spd  = Math.sqrt(pulse.vx**2+pulse.vy**2);
+      pulse.vx = dx/dist*spd;
+      pulse.vy = dy/dist*spd;
+    }
+  }
+}
+
+// ─── Draw start/gameover screens ─────────────────────────────────────────────
+function drawStartScreen(){
+  const sw = W/DPR, sh = H/DPR;
+  // bg gradient
+  const bg = ctx.createRadialGradient(sw/2,sh/2,0, sw/2,sh/2,sw*0.7);
+  bg.addColorStop(0,'#0d0d28');
+  bg.addColorStop(1,'#050510');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0,0,sw,sh);
+  drawStars(Date.now()*0.001);
+
+  // title glow
+  ctx.save();
+  ctx.textAlign='center';
+  ctx.font=`bold 42px 'Segoe UI',sans-serif`;
+  ctx.shadowColor=`hsl(${colorHue},100%,70%)`;
+  ctx.shadowBlur=28;
+  ctx.fillStyle=`hsl(${colorHue},100%,80%)`;
+  ctx.fillText('PULSE',sw/2,sh/2-40);
+  ctx.fillText('ORBIT',sw/2,sh/2+10);
+  ctx.shadowBlur=0;
+  ctx.font=`18px 'Segoe UI',sans-serif`;
+  ctx.fillStyle='rgba(200,210,255,0.7)';
+  ctx.fillText('Tap to Start',sw/2,sh/2+58);
+  ctx.font=`12px 'Segoe UI',sans-serif`;
+  ctx.fillStyle='rgba(150,160,200,0.45)';
+  ctx.fillText('best: '+highScore, sw/2, sh/2+82);
+  ctx.restore();
+}
+
+function drawGameoverScreen(){
+  const sw = W/DPR, sh = H/DPR;
+  // semi overlay
+  ctx.fillStyle='rgba(5,5,16,0.72)';
+  ctx.fillRect(0,0,sw,sh);
+
+  ctx.save();
+  ctx.textAlign='center';
+  ctx.font=`bold 36px 'Segoe UI',sans-serif`;
+  ctx.fillStyle='#ff4466';
+  ctx.shadowColor='#ff2244';
+  ctx.shadowBlur=22;
+  ctx.fillText('SHATTERED',sw/2,sh/2-44);
+  ctx.shadowBlur=0;
+
+  ctx.font=`bold 28px 'Segoe UI',sans-serif`;
+  ctx.fillStyle='#fff';
+  ctx.fillText(score,sw/2,sh/2+4);
+
+  ctx.font=`14px 'Segoe UI',sans-serif`;
+  ctx.fillStyle='rgba(170,180,220,0.7)';
+  ctx.fillText('best: '+highScore,sw/2,sh/2+32);
+
+  ctx.font=`16px 'Segoe UI',sans-serif`;
+  ctx.fillStyle='rgba(200,220,255,0.8)';
+  const blink = Math.sin(Date.now()*0.004)>0;
+  if(blink) ctx.fillText('Tap to Retry',sw/2,sh/2+68);
+  ctx.restore();
+}
+
+// ─── Main loop ────────────────────────────────────────────────────────────────
+let lastTime = 0;
+
+function loop(ts){
+  requestAnimationFrame(loop);
+  const dt = clamp((ts - lastTime)*0.001, 0, 0.05);
+  lastTime = ts;
+
+  const sw = W/DPR, sh = H/DPR;
+  updateShake(dt);
+
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
+
+  // background
+  const bg = ctx.createRadialGradient(sw/2,sh/2,0, sw/2,sh/2,sw*0.8);
+  bg.addColorStop(0,'#0d0d28');
+  bg.addColorStop(1,'#050510');
+  ctx.fillStyle=bg;
+  ctx.fillRect(0,0,sw,sh);
+
+  if(state === 'start'){
+    ctx.restore();
+    drawStartScreen();
+    colorHue = (colorHue + dt*20) % 360;
+    return;
+  }
+
+  drawStars(ts*0.001);
+
+  if(state === 'playing'){
+    gameTime += dt;
+    if(gameTime > 45) graceActive = false;
+    colorHue = (colorHue + dt*15) % 360;
+
+    updateLockZone(dt);
+    updateFork(dt);
+    updateFlying(dt);
+    updateOrbit(dt);
+    updateParticles(dt);
+
+    // draw fork planets
+    if(fork){
+      const isHighA = fork.highlighted === 'A';
+      drawPlanet(fork.planetA, isHighA ? 1 : 0.45);
+      drawPlanet(fork.planetB, isHighA ? 0.45 : 1);
+      // fork labels
+      ctx.save();
+      ctx.textAlign='center';
+      ctx.font=`bold 11px 'Segoe UI',sans-serif`;
+      ctx.fillStyle=`hsl(${fork.planetA.hue},80%,70%)`;
+      ctx.fillText('SAFE',fork.planetA.x, fork.planetA.y - fork.planetA.r - 28);
+      ctx.fillStyle=`hsl(${fork.planetB.hue},100%,70%)`;
+      ctx.fillText('RISKY ×3',fork.planetB.x, fork.planetB.y - fork.planetB.r - 28);
+      ctx.restore();
+    } else {
+      drawPlanet(planet);
+    }
+
+    if(pulse) drawPulse(pulse, pulse.hue);
+    drawParticles();
+    drawHUD();
+  }
+
+  if(state === 'gameover'){
+    updateParticles(dt);
+    if(planet) drawPlanet(planet, 0.4);
+    drawParticles();
+    ctx.restore();
+    drawGameoverScreen();
+    return;
+  }
+
+  ctx.restore();
+}
+
+requestAnimationFrame(loop);
+
+// ─── About toggle ─────────────────────────────────────────────────────────────
+const toggle = document.getElementById('about-toggle');
+toggle.addEventListener('click',()=>{
+  const open = toggle.classList.toggle('open');
+  toggle.setAttribute('aria-expanded', open);
+});
+
+// prevent double tap zoom
+document.addEventListener('touchend', e=>{ if(e.touches.length===0) e.preventDefault(); }, {passive:false});
+
+})();
+</script>
+</body>
+</html>

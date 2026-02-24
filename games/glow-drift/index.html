@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Glow Drift – Tap Turn Rush | Hyper-Casual Neon Racing Game</title>
+<meta name="description" content="Glow Drift: Tap Turn Rush – a hyper-casual neon racing game. Drift through glowing L-corners, hit gates for multipliers, and chase high scores. Play free in your browser!">
+<meta name="theme-color" content="#0a0a1a">
+<meta property="og:title" content="Glow Drift – Tap Turn Rush">
+<meta property="og:description" content="Drift through neon L-corners, hit gates, build combos. How far can you go?">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://balinti.github.io/glow-drift/og.png">
+<meta property="og:url" content="https://balinti.github.io/glow-drift/">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Glow Drift – Tap Turn Rush">
+<meta name="twitter:description" content="Drift through neon L-corners, hit gates, build combos. How far can you go?">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXXXXXXXXXX" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#0a0a1a;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;color:#fff;touch-action:none;user-select:none;-webkit-user-select:none}
+#wrap{position:relative;width:100%;max-width:420px;height:100vh;height:100dvh;max-height:750px;margin:0 auto;overflow:hidden}
+canvas{display:block;width:100%;height:100%}
+.overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:10;transition:opacity .3s;pointer-events:auto}
+.overlay.hidden{opacity:0;pointer-events:none}
+#startOverlay{background:radial-gradient(ellipse at 50% 40%,rgba(20,0,60,.92),rgba(5,5,15,.97))}
+#gameoverOverlay{background:radial-gradient(ellipse at 50% 40%,rgba(60,0,20,.92),rgba(5,5,15,.97))}
+.title{font-size:2.6em;font-weight:900;letter-spacing:-.02em;text-transform:uppercase;text-shadow:0 0 30px rgba(0,200,255,.6),0 0 60px rgba(0,200,255,.3);margin-bottom:.1em;text-align:center;line-height:1.1}
+.subtitle{font-size:1em;opacity:.7;margin-bottom:1.5em;letter-spacing:.15em;text-transform:uppercase}
+.tap-hint{font-size:1.1em;opacity:.85;animation:pulse 1.6s ease-in-out infinite;letter-spacing:.08em;margin-top:.5em}
+.challenge-hint{font-size:1em;color:#ff6;margin-bottom:1em;text-shadow:0 0 10px rgba(255,255,0,.4)}
+@keyframes pulse{0%,100%{opacity:.5;transform:scale(1)}50%{opacity:1;transform:scale(1.04)}}
+.go-stats{text-align:center;margin-bottom:1.2em}
+.go-score{font-size:3em;font-weight:900;text-shadow:0 0 20px rgba(255,100,50,.5)}
+.go-best{font-size:1em;opacity:.7;margin-top:.2em}
+.go-details{display:flex;gap:1.5em;justify-content:center;margin:.8em 0;font-size:.85em;opacity:.8}
+.go-details span{display:flex;flex-direction:column;align-items:center;gap:.15em}
+.go-details b{font-size:1.3em;font-weight:700}
+.share-row{display:flex;gap:.6em;margin-top:.6em}
+.share-btn{padding:.5em 1.1em;border:1px solid rgba(255,255,255,.25);border-radius:6px;background:rgba(255,255,255,.08);color:#fff;font-size:.85em;cursor:pointer;backdrop-filter:blur(4px);transition:background .2s}
+.share-btn:hover{background:rgba(255,255,255,.18)}
+.share-btn:active{transform:scale(.96)}
+#seo{position:absolute;bottom:0;left:0;right:0;padding:8px 12px;font-size:10px;opacity:.25;line-height:1.4;z-index:1;pointer-events:none}
+</style>
+</head>
+<body>
+<div id="wrap">
+<canvas id="c"></canvas>
+<div id="startOverlay" class="overlay">
+<div class="title">Glow<br>Drift</div>
+<div class="subtitle">Tap Turn Rush</div>
+<div id="challengeHint" class="challenge-hint" style="display:none"></div>
+<div class="tap-hint">Tap or Space to Start</div>
+</div>
+<div id="gameoverOverlay" class="overlay hidden">
+<div class="go-stats">
+<div class="go-score" id="goScore">0</div>
+<div class="go-best" id="goBest">Best: 0</div>
+</div>
+<div class="go-details">
+<span><b id="goGates">0</b>Gates</span>
+<span><b id="goPeak">1x</b>Peak</span>
+<span><b id="goPerfect">0</b>Perfect</span>
+</div>
+<div class="share-row">
+<button class="share-btn" id="shareBtn">Share Score</button>
+<button class="share-btn" id="challengeBtn">Challenge</button>
+</div>
+<div class="tap-hint" style="margin-top:1em">Tap to Retry</div>
+</div>
+<div id="seo">
+<p>Glow Drift: Tap Turn Rush is a free hyper-casual neon racing game. Drift through glowing L-shaped corners, pass through gates to build your score multiplier, and compete for the highest score. Features increasing difficulty, particle effects, and combo scoring. Play instantly in your browser on mobile or desktop.</p>
+</div>
+</div>
+<script>
+(function(){
+'use strict';
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const wrap = document.getElementById('wrap');
+const startOverlay = document.getElementById('startOverlay');
+const gameoverOverlay = document.getElementById('gameoverOverlay');
+const challengeHint = document.getElementById('challengeHint');
+const goScore = document.getElementById('goScore');
+const goBest = document.getElementById('goBest');
+const goGates = document.getElementById('goGates');
+const goPeak = document.getElementById('goPeak');
+const goPerfect = document.getElementById('goPerfect');
+const shareBtn = document.getElementById('shareBtn');
+const challengeBtn = document.getElementById('challengeBtn');
+
+// DPR scaling
+const DPR = Math.min(window.devicePixelRatio || 1, 2);
+let W, H;
+
+function resize() {
+  const r = wrap.getBoundingClientRect();
+  W = r.width;
+  H = r.height;
+  canvas.width = W * DPR;
+  canvas.height = H * DPR;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+}
+resize();
+window.addEventListener('resize', resize);
+
+// --- Constants ---
+const LANE_W = 60;
+const TRACK_W = 120;
+const CAR_W = 14;
+const CAR_L = 28;
+const BASE_SPEED = 180;
+const SPEED_RAMP = 0.6;
+const MAX_SPEED = 450;
+const BASE_CORNER_DIST = 320;
+const MIN_CORNER_DIST = 160;
+const CORNER_SHRINK_RATE = 0.15;
+
+// Directions: 0=down, 1=right, 2=up, 3=left
+const DX = [0, 1, 0, -1];
+const DY = [1, 0, -1, 0];
+
+// --- State ---
+let state = 'start'; // start, playing, gameover
+let score = 0;
+let best = parseInt(localStorage.getItem('gd_best') || '0', 10);
+let challengeScore = 0;
+let hue = 200;
+let gameTime = 0;
+let speed = BASE_SPEED;
+let multiplier = 1;
+let peakMultiplier = 1;
+let gatesHit = 0;
+let perfectTurns = 0;
+let combo = 0;
+let shakeTime = 0;
+let shakeIntensity = 0;
+let tapQueued = false;
+let firstCorner = true;
+
+// Track segments
+let segments = [];
+let segIdx = 0;
+let segProgress = 0;
+
+// Car position on screen
+let carScreenX = 0;
+let carScreenY = 0;
+let carAngle = 0;
+let drifting = false;
+let driftTimer = 0;
+const DRIFT_DURATION = 0.25;
+let driftFrom = 0;
+let driftTo = 0;
+
+// Camera
+let camX = 0;
+let camY = 0;
+
+// Gates
+let gates = [];
+
+// Speed lines
+let speedLines = [];
+
+// Trail
+let trail = [];
+const MAX_TRAIL = 80;
+
+// --- Particle Pool ---
+const MAX_PARTICLES = 300;
+const particles = [];
+for (let i = 0; i < MAX_PARTICLES; i++) {
+  particles.push({ alive: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, maxLife: 1, r: 2, hue: 0, type: 'spark' });
+}
+
+function spawnParticle(x, y, vx, vy, life, r, h, type) {
+  for (let i = 0; i < MAX_PARTICLES; i++) {
+    const p = particles[i];
+    if (!p.alive) {
+      p.alive = true;
+      p.x = x; p.y = y; p.vx = vx; p.vy = vy;
+      p.life = life; p.maxLife = life; p.r = r; p.hue = h; p.type = type || 'spark';
+      return p;
+    }
+  }
+  return null;
+}
+
+function updateParticles(dt) {
+  for (let i = 0; i < MAX_PARTICLES; i++) {
+    const p = particles[i];
+    if (!p.alive) continue;
+    p.life -= dt;
+    if (p.life <= 0) { p.alive = false; continue; }
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    if (p.type === 'spark') {
+      p.vy += 200 * dt;
+    }
+  }
+}
+
+function drawParticles(ox, oy) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < MAX_PARTICLES; i++) {
+    const p = particles[i];
+    if (!p.alive) continue;
+    const a = p.life / p.maxLife;
+    const sx = (p.x - ox) * DPR;
+    const sy = (p.y - oy) * DPR;
+    if (sx < -50 * DPR || sx > (W + 50) * DPR || sy < -50 * DPR || sy > (H + 50) * DPR) continue;
+    ctx.globalAlpha = a * 0.9;
+    ctx.fillStyle = `hsl(${p.hue},100%,70%)`;
+    ctx.beginPath();
+    ctx.arc(sx, sy, p.r * DPR * a, 0, Math.PI * 2);
+    ctx.fill();
+    if (p.type === 'ring') {
+      ctx.strokeStyle = `hsl(${p.hue},100%,80%)`;
+      ctx.lineWidth = 2 * DPR * a;
+      ctx.beginPath();
+      ctx.arc(sx, sy, p.r * DPR * 1.5 * (1 - a * 0.5), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+// --- Segment generation ---
+function genSegment(prevDir, prevEndX, prevEndY, isFirst) {
+  // Determine turn: always L-shaped corners
+  // Choose a new direction perpendicular to current
+  let newDir;
+  if (prevDir === 0 || prevDir === 2) {
+    newDir = Math.random() < 0.5 ? 1 : 3;
+  } else {
+    newDir = Math.random() < 0.5 ? 0 : 2;
+  }
+
+  const elapsed = gameTime;
+  const diff = Math.min(elapsed / 120, 1);
+  let dist = isFirst ? 200 : Math.max(MIN_CORNER_DIST, BASE_CORNER_DIST - elapsed * CORNER_SHRINK_RATE);
+  if (isFirst) dist = 200;
+
+  // Double corner chance after 45s
+  const doubleCorner = !isFirst && elapsed > 45 && Math.random() < 0.15;
+
+  const endX = prevEndX + DX[newDir] * dist;
+  const endY = prevEndY + DY[newDir] * dist;
+
+  // Gates along segment
+  const segGates = [];
+  const gateCount = isFirst ? 1 : (2 + (Math.random() < 0.3 + diff * 0.3 ? 1 : 0));
+  for (let g = 0; g < gateCount; g++) {
+    const t = isFirst ? 0.5 : (0.2 + (g / gateCount) * 0.6 + Math.random() * 0.1);
+    const gx = prevEndX + DX[newDir] * dist * t;
+    const gy = prevEndY + DY[newDir] * dist * t;
+    // Risk: offset from center
+    const risk = isFirst ? 0 : (Math.random() * 0.6 * (0.3 + diff * 0.7));
+    const perpDir = (newDir + 1) % 4;
+    const offset = (Math.random() < 0.5 ? 1 : -1) * risk * TRACK_W * 0.35;
+    segGates.push({
+      x: gx + DX[perpDir] * offset,
+      y: gy + DY[perpDir] * offset,
+      dir: newDir,
+      width: isFirst ? 50 : Math.max(22, 40 - diff * 15),
+      hit: false,
+      t: t
+    });
+  }
+
+  return {
+    dir: newDir,
+    startX: prevEndX,
+    startY: prevEndY,
+    endX: endX,
+    endY: endY,
+    length: dist,
+    gates: segGates,
+    doubleCorner: doubleCorner
+  };
+}
+
+function initTrack() {
+  segments = [];
+  // First segment goes down
+  const startX = W / 2;
+  const startY = H * 0.3;
+  const firstEnd = startY + 200;
+  segments.push({
+    dir: 0,
+    startX: startX,
+    startY: startY,
+    endX: startX,
+    endY: firstEnd,
+    length: 200,
+    gates: [{
+      x: startX,
+      y: startY + 100,
+      dir: 0,
+      width: 50,
+      hit: false,
+      t: 0.5
+    }]
+  });
+  // Generate ahead
+  for (let i = 0; i < 6; i++) {
+    const prev = segments[segments.length - 1];
+    segments.push(genSegment(prev.dir, prev.endX, prev.endY, i === 0));
+  }
+}
+
+function ensureSegments() {
+  while (segIdx + 4 >= segments.length) {
+    const prev = segments[segments.length - 1];
+    segments.push(genSegment(prev.dir, prev.endX, prev.endY, false));
+  }
+}
+
+// --- Speed lines ---
+function initSpeedLines() {
+  speedLines = [];
+  for (let i = 0; i < 20; i++) {
+    speedLines.push({
+      x: Math.random() * W,
+      y: Math.random() * H,
+      len: 5 + Math.random() * 15,
+      speed: 100 + Math.random() * 200,
+      alpha: 0.1 + Math.random() * 0.2
+    });
+  }
+}
+
+// --- Game init ---
+function initGame() {
+  score = 0;
+  multiplier = 1;
+  peakMultiplier = 1;
+  gatesHit = 0;
+  perfectTurns = 0;
+  combo = 0;
+  gameTime = 0;
+  speed = BASE_SPEED;
+  shakeTime = 0;
+  shakeIntensity = 0;
+  tapQueued = false;
+  firstCorner = true;
+  drifting = false;
+  driftTimer = 0;
+  segIdx = 0;
+  segProgress = 0;
+  trail.length = 0;
+  hue = 200;
+
+  for (let i = 0; i < MAX_PARTICLES; i++) particles[i].alive = false;
+
+  initTrack();
+  initSpeedLines();
+
+  const seg = segments[0];
+  camX = seg.startX - W / 2;
+  camY = seg.startY - H * 0.35;
+  carScreenX = seg.startX;
+  carScreenY = seg.startY;
+  carAngle = Math.PI / 2; // facing down initially
+}
+
+// --- Challenge URL ---
+function parseChallenge() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const c = params.get('challenge');
+    if (c) {
+      challengeScore = parseInt(c, 10) || 0;
+      if (challengeScore > 0) {
+        challengeHint.textContent = `Beat ${challengeScore.toLocaleString()}!`;
+        challengeHint.style.display = 'block';
+      }
+    }
+  } catch(e) {}
+}
+parseChallenge();
+
+// --- Scoring ---
+function addScore(pts) {
+  score += Math.round(pts * multiplier);
+}
+
+function bumpMultiplier() {
+  multiplier = Math.min(multiplier + 0.5, 10);
+  if (multiplier > peakMultiplier) peakMultiplier = multiplier;
+}
+
+function resetMultiplier() {
+  if (multiplier > 1) {
+    multiplier = 1;
+    combo = 0;
+  }
+}
+
+// --- Input ---
+let inputDown = false;
+
+function handleInput() {
+  if (state === 'start') {
+    state = 'playing';
+    startOverlay.classList.add('hidden');
+    initGame();
+    return;
+  }
+  if (state === 'gameover') {
+    if (gameTime > 0.5) {
+      state = 'playing';
+      gameoverOverlay.classList.add('hidden');
+      initGame();
+    }
+    return;
+  }
+  if (state === 'playing') {
+    tapQueued = true;
+  }
+}
+
+document.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  handleInput();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    handleInput();
+  }
+});
+
+// --- Share ---
+function getShareText(s) {
+  return `I scored ${s.toLocaleString()} in Glow Drift! Can you beat it?`;
+}
+function getShareUrl(s) {
+  const base = window.location.origin + window.location.pathname;
+  return base + '?challenge=' + s;
+}
+
+shareBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const text = getShareText(score);
+  if (navigator.share) {
+    navigator.share({ title: 'Glow Drift', text: text, url: getShareUrl(score) }).catch(() => {});
+  } else {
+    navigator.clipboard.writeText(text + ' ' + getShareUrl(score)).then(() => {
+      shareBtn.textContent = 'Copied!';
+      setTimeout(() => shareBtn.textContent = 'Share Score', 1500);
+    }).catch(() => {});
+  }
+});
+
+challengeBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const text = `I challenge you to beat ${score.toLocaleString()} in Glow Drift!`;
+  const url = getShareUrl(score);
+  if (navigator.share) {
+    navigator.share({ title: 'Glow Drift Challenge', text: text, url: url }).catch(() => {});
+  } else {
+    navigator.clipboard.writeText(text + ' ' + url).then(() => {
+      challengeBtn.textContent = 'Copied!';
+      setTimeout(() => challengeBtn.textContent = 'Challenge', 1500);
+    }).catch(() => {});
+  }
+});
+
+// --- Gameover ---
+function triggerGameover() {
+  state = 'gameover';
+  gameTime = 0;
+  shakeTime = 0.4;
+  shakeIntensity = 12;
+
+  // Crash particles
+  for (let i = 0; i < 40; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const spd = 80 + Math.random() * 250;
+    spawnParticle(carScreenX, carScreenY, Math.cos(angle) * spd, Math.sin(angle) * spd, 0.6 + Math.random() * 0.8, 2 + Math.random() * 4, hue + Math.random() * 60, 'spark');
+  }
+  // Shatter
+  for (let i = 0; i < 15; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const spd = 30 + Math.random() * 100;
+    spawnParticle(carScreenX, carScreenY, Math.cos(angle) * spd, Math.sin(angle) * spd, 0.8 + Math.random() * 0.5, 4 + Math.random() * 6, hue - 30, 'ring');
+  }
+
+  if (score > best) {
+    best = score;
+    localStorage.setItem('gd_best', String(best));
+  }
+
+  goScore.textContent = score.toLocaleString();
+  goBest.textContent = 'Best: ' + best.toLocaleString();
+  goGates.textContent = gatesHit;
+  goPeak.textContent = peakMultiplier.toFixed(1) + 'x';
+  goPerfect.textContent = perfectTurns;
+  gameoverOverlay.classList.remove('hidden');
+}
+
+// --- Update ---
+function getCarWorldPos() {
+  if (segIdx >= segments.length) return { x: 0, y: 0 };
+  const seg = segments[segIdx];
+  const t = segProgress / seg.length;
+  const x = seg.startX + DX[seg.dir] * segProgress;
+  const y = seg.startY + DY[seg.dir] * segProgress;
+  return { x, y };
+}
+
+function dirToAngle(dir) {
+  // 0=down, 1=right, 2=up, 3=left
+  return [Math.PI / 2, 0, -Math.PI / 2, Math.PI][dir];
+}
+
+function update(dt) {
+  if (state !== 'playing') {
+    // Still update particles for gameover visual
+    updateParticles(dt);
+    if (shakeTime > 0) shakeTime -= dt;
+    return;
+  }
+
+  gameTime += dt;
+  hue = (hue + dt * 15) % 360;
+
+  // Speed ramp
+  speed = Math.min(MAX_SPEED, BASE_SPEED + gameTime * SPEED_RAMP);
+
+  // Move along current segment
+  const prevProgress = segProgress;
+  segProgress += speed * dt;
+
+  const seg = segments[segIdx];
+  if (!seg) return;
+
+  // Check gates
+  for (const gate of seg.gates) {
+    if (gate.hit) continue;
+    const gateProgress = gate.t * seg.length;
+    if (prevProgress < gateProgress && segProgress >= gateProgress) {
+      // Check if car passes through gate
+      const carPos = getCarWorldPos();
+      const perpDir = (seg.dir + 1) % 4;
+      const dx = carPos.x - gate.x;
+      const dy = carPos.y - gate.y;
+      const perpDist = Math.abs(DX[perpDir] * dx + DY[perpDir] * dy) + Math.abs(DX[(perpDir+1)%4] * dx + DY[(perpDir+1)%4] * dy) * 0.3;
+
+      if (perpDist < gate.width / 2 + CAR_W / 2) {
+        gate.hit = true;
+        gatesHit++;
+        combo++;
+        bumpMultiplier();
+        addScore(50 + combo * 10);
+
+        // Gate burst particles
+        for (let i = 0; i < 20; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const spd = 50 + Math.random() * 150;
+          spawnParticle(gate.x, gate.y, Math.cos(angle) * spd, Math.sin(angle) * spd, 0.4 + Math.random() * 0.4, 2 + Math.random() * 3, hue + 30, 'ring');
+        }
+
+        shakeTime = 0.08;
+        shakeIntensity = 3;
+
+        // Near-miss bonus
+        if (perpDist > gate.width / 2 - 8) {
+          addScore(25);
+        }
+      } else {
+        // Missed gate
+        resetMultiplier();
+      }
+    }
+  }
+
+  // Reached end of segment = corner
+  if (segProgress >= seg.length) {
+    if (tapQueued) {
+      // Successful turn
+      tapQueued = false;
+      const overshoot = segProgress - seg.length;
+      segIdx++;
+      segProgress = overshoot;
+      ensureSegments();
+
+      // Start drift animation
+      drifting = true;
+      driftTimer = 0;
+      driftFrom = dirToAngle(seg.dir);
+      driftTo = dirToAngle(segments[segIdx].dir);
+
+      // Normalize angle diff
+      while (driftTo - driftFrom > Math.PI) driftTo -= Math.PI * 2;
+      while (driftTo - driftFrom < -Math.PI) driftTo += Math.PI * 2;
+
+      // Perfect turn bonus
+      if (overshoot < 10) {
+        perfectTurns++;
+        addScore(100);
+        // Perfect turn particles
+        const pos = getCarWorldPos();
+        for (let i = 0; i < 12; i++) {
+          const a = Math.random() * Math.PI * 2;
+          spawnParticle(pos.x, pos.y, Math.cos(a) * 100, Math.sin(a) * 100, 0.5, 3, 50, 'ring');
+        }
+      }
+
+      // Drift sparks
+      const cornerPos = { x: seg.endX, y: seg.endY };
+      for (let i = 0; i < 15; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const spd = 40 + Math.random() * 120;
+        spawnParticle(cornerPos.x, cornerPos.y, Math.cos(a) * spd, Math.sin(a) * spd, 0.3 + Math.random() * 0.3, 1.5 + Math.random() * 2, hue + 60, 'spark');
+      }
+
+      shakeTime = 0.1;
+      shakeIntensity = 4;
+
+      addScore(10);
+      firstCorner = false;
+    } else {
+      // Missed turn - crash
+      triggerGameover();
+      return;
+    }
+  }
+
+  // Drift animation
+  if (drifting) {
+    driftTimer += dt;
+    if (driftTimer >= DRIFT_DURATION) {
+      drifting = false;
+      carAngle = driftTo;
+    } else {
+      const t = driftTimer / DRIFT_DURATION;
+      const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+      carAngle = driftFrom + (driftTo - driftFrom) * ease;
+    }
+  } else if (segIdx < segments.length) {
+    carAngle = dirToAngle(segments[segIdx].dir);
+  }
+
+  // Car world position
+  const carWorld = getCarWorldPos();
+  carScreenX = carWorld.x;
+  carScreenY = carWorld.y;
+
+  // Trail
+  trail.push({ x: carScreenX, y: carScreenY, age: 0, hue: hue });
+  if (trail.length > MAX_TRAIL) trail.shift();
+  for (const t of trail) t.age += dt;
+
+  // Camera smooth follow
+  const targetCamX = carScreenX - W / 2;
+  const targetCamY = carScreenY - H * 0.4;
+  const camSmooth = 1 - Math.pow(0.01, dt);
+  camX += (targetCamX - camX) * camSmooth;
+  camY += (targetCamY - camY) * camSmooth;
+
+  // Drift sparks continuous
+  if (drifting) {
+    if (Math.random() < 0.6) {
+      const a = carAngle + Math.PI + (Math.random() - 0.5) * 0.8;
+      spawnParticle(carScreenX, carScreenY, Math.cos(a) * (60 + Math.random() * 80), Math.sin(a) * (60 + Math.random() * 80), 0.2 + Math.random() * 0.2, 1 + Math.random() * 2, hue + 40, 'spark');
+    }
+  }
+
+  // Speed line particles at high speed
+  if (speed > 250 && Math.random() < (speed - 250) / 200 * dt * 30) {
+    const sx = carScreenX + (Math.random() - 0.5) * W * 0.8;
+    const sy = carScreenY - H * 0.5;
+    spawnParticle(sx, sy, 0, speed * 0.5, 0.3, 1, 0, 'spark');
+  }
+
+  // Score ticks over time
+  addScore(dt * 5);
+
+  // Shake decay
+  if (shakeTime > 0) shakeTime -= dt;
+
+  updateParticles(dt);
+
+  // Speed lines
+  for (const sl of speedLines) {
+    sl.y += sl.speed * dt * (speed / BASE_SPEED);
+    if (sl.y > H) { sl.y = -sl.len; sl.x = Math.random() * W; }
+  }
+
+  // Hazards after 45s - wall narrowing visual (handled by track width modulation)
+}
+
+// --- Render ---
+function render() {
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+  // Screen shake offset
+  let shakeOx = 0, shakeOy = 0;
+  if (shakeTime > 0) {
+    const si = shakeIntensity * (shakeTime / 0.4);
+    shakeOx = (Math.random() - 0.5) * si * 2;
+    shakeOy = (Math.random() - 0.5) * si * 2;
+  }
+
+  // Background gradient with hue cycling
+  const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+  bgGrad.addColorStop(0, `hsl(${(hue + 180) % 360},30%,6%)`);
+  bgGrad.addColorStop(1, `hsl(${(hue + 220) % 360},25%,4%)`);
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Speed lines background
+  if (state === 'playing') {
+    ctx.globalAlpha = Math.min(0.15, (speed - BASE_SPEED) / 300 * 0.15);
+    ctx.strokeStyle = `hsl(${hue},60%,60%)`;
+    ctx.lineWidth = 1;
+    for (const sl of speedLines) {
+      ctx.beginPath();
+      ctx.moveTo(sl.x + shakeOx, sl.y + shakeOy);
+      ctx.lineTo(sl.x + shakeOx, sl.y + sl.len + shakeOy);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  if (state === 'start') return;
+
+  const ox = camX - shakeOx;
+  const oy = camY - shakeOy;
+
+  // Draw track segments
+  const viewMinX = ox - 50;
+  const viewMaxX = ox + W + 50;
+  const viewMinY = oy - 50;
+  const viewMaxY = oy + H + 50;
+
+  for (let si = Math.max(0, segIdx - 1); si < segments.length && si < segIdx + 8; si++) {
+    const s = segments[si];
+    const sx1 = s.startX - ox;
+    const sy1 = s.startY - oy;
+    const sx2 = s.endX - ox;
+    const sy2 = s.endY - oy;
+
+    // Track body
+    const elapsed = gameTime;
+    const hazardNarrow = elapsed > 45 ? Math.sin(elapsed * 2) * 8 : 0;
+    const tw = TRACK_W - hazardNarrow;
+
+    ctx.strokeStyle = `hsla(${hue},40%,25%,0.5)`;
+    ctx.lineWidth = tw;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(sx1, sy1);
+    ctx.lineTo(sx2, sy2);
+    ctx.stroke();
+
+    // Track edges
+    ctx.strokeStyle = `hsla(${hue},70%,50%,0.35)`;
+    ctx.lineWidth = 2;
+    const perpX = DX[(s.dir + 1) % 4] * tw / 2;
+    const perpY = DY[(s.dir + 1) % 4] * tw / 2;
+    ctx.beginPath();
+    ctx.moveTo(sx1 + perpX, sy1 + perpY);
+    ctx.lineTo(sx2 + perpX, sy2 + perpY);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(sx1 - perpX, sy1 - perpY);
+    ctx.lineTo(sx2 - perpX, sy2 - perpY);
+    ctx.stroke();
+
+    // Gates
+    for (const gate of s.gates) {
+      const gx = gate.x - ox;
+      const gy = gate.y - oy;
+      const gateAlpha = gate.hit ? 0.15 : 0.7;
+      const gateColor = gate.hit ? `hsla(120,80%,60%,${gateAlpha})` : `hsla(${(hue + 90) % 360},90%,65%,${gateAlpha})`;
+      ctx.strokeStyle = gateColor;
+      ctx.lineWidth = gate.hit ? 1 : 3;
+      const gPerpX = DX[(gate.dir + 1) % 4] * gate.width / 2;
+      const gPerpY = DY[(gate.dir + 1) % 4] * gate.width / 2;
+      ctx.beginPath();
+      ctx.moveTo(gx - gPerpX, gy - gPerpY);
+      ctx.lineTo(gx + gPerpX, gy + gPerpY);
+      ctx.stroke();
+
+      // Gate glow
+      if (!gate.hit) {
+        ctx.shadowColor = gateColor;
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.moveTo(gx - gPerpX, gy - gPerpY);
+        ctx.lineTo(gx + gPerpX, gy + gPerpY);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+      }
+    }
+
+    // Corner indicator
+    if (si >= segIdx) {
+      const cx = s.endX - ox;
+      const cy = s.endY - oy;
+      const cornerAlpha = si === segIdx ? 0.6 + Math.sin(gameTime * 6) * 0.2 : 0.25;
+      ctx.fillStyle = `hsla(${(hue + 40) % 360},80%,60%,${cornerAlpha})`;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+      ctx.fill();
+      if (si === segIdx) {
+        ctx.strokeStyle = `hsla(${(hue + 40) % 360},80%,60%,${cornerAlpha * 0.5})`;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 12 + Math.sin(gameTime * 8) * 3, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+  }
+
+  // Trail
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const trailIntensity = Math.min(1, multiplier / 5);
+  for (let i = 1; i < trail.length; i++) {
+    const t = trail[i];
+    const tp = trail[i - 1];
+    const a = Math.max(0, 1 - t.age * 3) * (0.2 + trailIntensity * 0.5);
+    if (a <= 0) continue;
+    ctx.strokeStyle = `hsla(${t.hue},100%,65%,${a})`;
+    ctx.lineWidth = (3 + multiplier * 1.5) * (1 - t.age * 2);
+    if (ctx.lineWidth <= 0) continue;
+    ctx.beginPath();
+    ctx.moveTo(tp.x - ox, tp.y - oy);
+    ctx.lineTo(t.x - ox, t.y - oy);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // Particles
+  drawParticles(ox, oy);
+
+  // Car
+  const cx = carScreenX - ox;
+  const cy = carScreenY - oy;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(carAngle);
+
+  // Car glow
+  const carGlow = ctx.createRadialGradient(0, 0, 2, 0, 0, CAR_L);
+  carGlow.addColorStop(0, `hsla(${hue},100%,70%,0.4)`);
+  carGlow.addColorStop(1, `hsla(${hue},100%,70%,0)`);
+  ctx.fillStyle = carGlow;
+  ctx.fillRect(-CAR_L, -CAR_L, CAR_L * 2, CAR_L * 2);
+
+  // Car body
+  ctx.fillStyle = `hsl(${hue},90%,75%)`;
+  ctx.shadowColor = `hsl(${hue},100%,70%)`;
+  ctx.shadowBlur = 15;
+  ctx.beginPath();
+  ctx.moveTo(CAR_L / 2, 0);
+  ctx.lineTo(-CAR_L / 2, -CAR_W / 2);
+  ctx.lineTo(-CAR_L / 2 + 4, 0);
+  ctx.lineTo(-CAR_L / 2, CAR_W / 2);
+  ctx.closePath();
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Drift indicator
+  if (drifting) {
+    ctx.strokeStyle = `hsla(${hue + 60},100%,70%,0.7)`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, CAR_L * 0.7, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+
+  // HUD - drawn on canvas
+  if (state === 'playing') {
+    // Score
+    ctx.fillStyle = '#fff';
+    ctx.font = `bold ${20}px 'Segoe UI',system-ui,sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText(Math.round(score).toLocaleString(), W / 2, 36);
+
+    // Multiplier
+    if (multiplier > 1) {
+      const mAlpha = 0.6 + Math.sin(gameTime * 5) * 0.2;
+      ctx.fillStyle = `hsla(${hue + 30},100%,70%,${mAlpha})`;
+      ctx.font = `bold ${16}px 'Segoe UI',system-ui,sans-serif`;
+      ctx.fillText(multiplier.toFixed(1) + 'x', W / 2, 56);
+    }
+
+    // Combo
+    if (combo > 1) {
+      ctx.fillStyle = `hsla(50,100%,70%,0.7)`;
+      ctx.font = `bold ${13}px 'Segoe UI',system-ui,sans-serif`;
+      ctx.fillText('Combo ' + combo, W / 2, 72);
+    }
+
+    // Tap hint for first corner
+    if (firstCorner && segIdx === 0) {
+      const cornerDist = segments[0].length - segProgress;
+      if (cornerDist < 150 && cornerDist > 0) {
+        const hintAlpha = 0.5 + Math.sin(gameTime * 8) * 0.3;
+        ctx.fillStyle = `rgba(255,255,255,${hintAlpha})`;
+        ctx.font = `bold ${16}px 'Segoe UI',system-ui,sans-serif`;
+        ctx.fillText('TAP!', W / 2, H * 0.7);
+      }
+    }
+  }
+}
+
+// --- Game loop ---
+let lastTime = 0;
+
+function loop(ts) {
+  requestAnimationFrame(loop);
+
+  if (lastTime === 0) { lastTime = ts; return; }
+  let dt = (ts - lastTime) / 1000;
+  lastTime = ts;
+  // Clamp dt to prevent spiral of death
+  if (dt > 0.05) dt = 0.05;
+
+  update(dt);
+  render();
+}
+
+// Show best on start
+if (best > 0) {
+  // Could show best on start overlay but keeping it clean
+}
+
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

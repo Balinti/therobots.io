@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Tide Titan - Free HTML5 Game</title>
+<meta name="description" content="Play Tide Titan - Tap to grow your underwater titan and surprise enemies as random powerups appear.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0a1628">
+<link rel="canonical" href="https://balinti.github.io/tide-titan/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Tide Titan - Free HTML5 Game">
+<meta property="og:description" content="Play Tide Titan - Tap to grow your underwater titan and surprise enemies as random powerups appear.">
+<meta property="og:url" content="https://balinti.github.io/tide-titan/">
+<meta property="og:image" content="https://balinti.github.io/tide-titan/og-image.png">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow-x:hidden;background:#0a1628;color:#c8daf0;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;-webkit-tap-highlight-color:transparent}
+body{display:flex;flex-direction:column;align-items:center;min-height:100vh;min-height:100dvh}
+.header{text-align:center;padding:18px 12px 10px;max-width:420px;width:100%}
+.header h1{font-size:1.5rem;letter-spacing:2px;background:linear-gradient(90deg,#00d4ff,#7b61ff,#00d4ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;text-transform:uppercase}
+.header p{font-size:.82rem;opacity:.6;margin-top:4px}
+#game-wrap{position:relative;width:100%;max-width:420px;aspect-ratio:420/750;background:#0d1f3c;border-radius:12px;overflow:hidden;touch-action:manipulation;box-shadow:0 0 40px rgba(0,120,255,.15)}
+canvas{display:block;width:100%;height:100%;cursor:pointer}
+.footer{max-width:420px;width:100%;padding:16px 14px 32px;font-size:.78rem;line-height:1.6;opacity:.55}
+.footer h2{font-size:.9rem;margin:10px 0 4px;opacity:.8}
+.footer p{margin-bottom:6px}
+.footer details{margin-top:6px}
+.footer summary{cursor:pointer;opacity:.7}
+#toast{position:fixed;bottom:20%;left:50%;transform:translateX(-50%);background:rgba(0,212,255,.92);color:#0a1628;padding:8px 22px;border-radius:20px;font-size:.85rem;font-weight:600;pointer-events:none;opacity:0;transition:opacity .3s;z-index:99}
+#toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div class="header">
+<h1>Tide Titan</h1>
+<p>Tap or press Space to toggle size &mdash; grow big to smash, shrink to slip through gates! Use touch drag or arrow keys to steer.</p>
+</div>
+<div id="game-wrap">
+<canvas id="c"></canvas>
+</div>
+<div class="footer">
+<h2>How to Play</h2>
+<p>Your Titan auto-swims forward through an underwater obstacle course. Tap the screen or press Space/Enter to toggle between Small and Big forms. Drag on screen or use Up/Down arrow keys to steer vertically.</p>
+<p><strong>Small:</strong> Faster, fits through coral gates. <strong>Big:</strong> Slower, smashes enemies and weak walls for bonus points.</p>
+<p>Build combos with perfect interactions to fill your Tide Meter. A full meter triggers Tide Surge &mdash; 2 seconds of unstoppable power!</p>
+<details>
+<summary>FAQ</summary>
+<p><strong>Q: What are mines?</strong><br>A: Red blinking obstacles that appear after 25 seconds. They are always deadly regardless of size &mdash; dodge them!</p>
+<p><strong>Q: How does scoring work?</strong><br>A: Distance points accumulate automatically. Smashing enemies/walls in Big form and passing gates in Small form give bonus points multiplied by your current combo.</p>
+<p><strong>Q: Is this game free?</strong><br>A: Yes! Tide Titan is a free browser game. No downloads or installs required.</p>
+</details>
+</div>
+<div id="toast"></div>
+
+<script>
+'use strict';
+(() => {
+// ═══════════════════════════════════════
+// CONSTANTS
+// ═══════════════════════════════════════
+const CW = 420, CH = 750;
+const DPR = Math.min(window.devicePixelRatio || 1, 2);
+const LS_KEY = 'tideTitanHighScore';
+
+const TITAN_X = 85;
+const SMALL_R = 16, BIG_R = 30;
+const TITAN_STEER_SPEED = 4.5;
+const TITAN_STEER_ACCEL = 0.35;
+
+const GATE_BAR_W = 18;
+const ENEMY_SIZE = 28;
+const WALL_W = 40, WALL_H = 50;
+const MINE_R = 14;
+
+const SURGE_DURATION = 2000;
+const TIDE_MAX = 8;
+const MAX_PARTICLES = 150;
+
+// Difficulty phases (seconds)
+const P1 = 10, P2 = 25, P3 = 45, P4 = 70;
+
+// ═══════════════════════════════════════
+// CANVAS
+// ═══════════════════════════════════════
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const wrap = document.getElementById('game-wrap');
+
+function resize() {
+  const r = wrap.getBoundingClientRect();
+  canvas.width = r.width * DPR;
+  canvas.height = r.height * DPR;
+}
+resize();
+window.addEventListener('resize', resize);
+
+function setTx() {
+  const sx = canvas.width / CW, sy = canvas.height / CH;
+  ctx.setTransform(sx, 0, 0, sy, 0, 0);
+}
+
+// ═══════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════
+let state = 'start';
+let big = false;
+let ty = CH / 2;       // titan Y
+let tvy = 0;           // titan velocity Y
+let targetY = CH / 2;  // where titan steers toward
+let steerActive = false;
+let score = 0, hi = +(localStorage.getItem(LS_KEY)) || 0;
+let combo = 0, maxCombo = 0;
+let tide = 0;
+let surging = false, surgeT = 0;
+let gt = 0;            // game time ms
+let spd = 2.4;         // scroll speed
+let obs = [];          // obstacles
+let parts = [];        // particles
+let slines = [];       // speed lines
+let shX = 0, shY = 0, shM = 0;
+let hue = 200;
+let lt = 0;            // last frame time
+let spawnAcc = 0;
+let pIdx = 0;          // pattern index
+let dScore = 0;
+let flash = 0;
+let keysDown = {};
+
+// ═══════════════════════════════════════
+// DETERMINISTIC PATTERNS
+// ═══════════════════════════════════════
+function phaseTypes(t) {
+  const s = t / 1000;
+  if (s < P1) return ['gate','enemy','gate','enemy'];
+  if (s < P2) return ['gate','enemy','gate','enemy','gate','gate','enemy'];
+  if (s < P3) return ['gate','enemy','wall','gate','mine','enemy','wall','gate'];
+  if (s < P4) return ['gate','enemy','wall','mine','gate','wall','enemy','mine','gate','enemy'];
+  return ['gate','enemy','wall','mine','gate','gate','mine','enemy','wall','gate','mine','enemy'];
+}
+
+function spacing(t) {
+  const s = t / 1000;
+  if (s < P1) return 240;
+  if (s < P2) return 195;
+  if (s < P3) return 165;
+  if (s < P4) return 140;
+  return Math.max(110, 135 - (s - 70) * 0.15);
+}
+
+function scrollSpd(t) {
+  const s = t / 1000;
+  if (s < P1) return 2.4;
+  if (s < P2) return 2.8;
+  if (s < P3) return 3.2;
+  if (s < P4) return 3.6;
+  return Math.min(3.6 + (s - 70) * 0.012, 5.5);
+}
+
+// Deterministic Y placement
+const ySlots = [0.18, 0.3, 0.42, 0.55, 0.68, 0.78, 0.35, 0.5, 0.62, 0.25, 0.72, 0.45];
+function slotY(idx, pad) {
+  return pad + (CH - pad * 2) * ySlots[idx % ySlots.length];
+}
+
+// ═══════════════════════════════════════
+// SPAWNING
+// ═══════════════════════════════════════
+function spawn() {
+  const types = phaseTypes(gt);
+  const type = types[pIdx % types.length];
+  pIdx++;
+  const x = CW + 60;
+
+  if (type === 'gate') {
+    const cy = slotY(pIdx, 80);
+    const s = gt / 1000;
+    // Gap shrinks over time. Small titan (r=16) needs gap > 32. Start at 80.
+    const gap = s > 45 ? Math.max(48, 80 - (s - 45) * 0.35) : 80;
+    obs.push({ type:'gate', x, y:cy, gap, passed:false });
+  } else if (type === 'enemy') {
+    obs.push({ type:'enemy', x, y: slotY(pIdx, 60), s: ENEMY_SIZE, alive:true });
+  } else if (type === 'wall') {
+    obs.push({ type:'wall', x, y: slotY(pIdx, 60), w:WALL_W, h:WALL_H, alive:true });
+  } else {
+    obs.push({ type:'mine', x, y: slotY(pIdx, 50), r:MINE_R });
+  }
+}
+
+// ═══════════════════════════════════════
+// PARTICLES
+// ═══════════════════════════════════════
+function emit(x, y, n, col, szMin, szMax, spdMax, life) {
+  for (let i = 0; i < n && parts.length < MAX_PARTICLES; i++) {
+    const a = (i / n) * Math.PI * 2 + pIdx * 0.4;
+    const v = 0.5 + (i % 5) / 5 * spdMax;
+    parts.push({ x, y, vx:Math.cos(a)*v, vy:Math.sin(a)*v,
+      life, ml:life, sz: szMin + (i%3)/3*(szMax-szMin), col });
+  }
+}
+
+function smashFX(x, y) {
+  emit(x, y, 14, `hsl(${hue},80%,70%)`, 2, 6, 4, 550);
+  emit(x, y, 8, 'hsl(190,90%,80%)', 3, 5, 2.5, 700);
+}
+
+function sparkleFX(x, y) {
+  emit(x, y, 7, 'hsl(50,100%,85%)', 1.5, 3, 2, 400);
+  // ring
+  parts.push({ x, y, vx:0, vy:0, life:450, ml:450, sz:0, col:'ring', rMax:45 });
+}
+
+// ═══════════════════════════════════════
+// COLLISION
+// ═══════════════════════════════════════
+function cRect(cx, cy, cr, rx, ry, rw, rh) {
+  const nx = Math.max(rx, Math.min(cx, rx+rw));
+  const ny = Math.max(ry, Math.min(cy, ry+rh));
+  const dx = cx-nx, dy = cy-ny;
+  return dx*dx+dy*dy < cr*cr;
+}
+function cCirc(x1,y1,r1,x2,y2,r2) {
+  const dx=x1-x2,dy=y1-y2,d=r1+r2;
+  return dx*dx+dy*dy<d*d;
+}
+
+// ═══════════════════════════════════════
+// SHAKE
+// ═══════════════════════════════════════
+function shake(m) { shM = Math.max(shM, m); }
+
+function updShake() {
+  if (shM > 0.2) {
+    shX = Math.sin(gt*0.047)*shM*(((pIdx*37)%3)-1);
+    shY = Math.cos(gt*0.063)*shM*(((pIdx*53)%3)-1);
+    shM *= 0.88;
+  } else { shX = shY = shM = 0; }
+}
+
+// ═══════════════════════════════════════
+// INPUT
+// ═══════════════════════════════════════
+function canvasXY(e) {
+  const r = canvas.getBoundingClientRect();
+  return { x:(e.clientX-r.left)*CW/r.width, y:(e.clientY-r.top)*CH/r.height };
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  if (state === 'start') { startGame(); return; }
+  if (state === 'gameover') {
+    const p = canvasXY(e);
+    // Share button bounds
+    const by = CH/2+75, bh = 36;
+    if (p.y > by && p.y < by+bh && p.x > CW/2-70 && p.x < CW/2+70) {
+      doShare(); return;
+    }
+    state = 'start'; return;
+  }
+  // Playing: toggle size + set steer target
+  if (!surging) big = !big;
+  const p = canvasXY(e);
+  targetY = p.y;
+  steerActive = true;
+});
+
+canvas.addEventListener('pointermove', (e) => {
+  if (state === 'playing' && e.buttons > 0) {
+    const p = canvasXY(e);
+    targetY = p.y;
+    steerActive = true;
+  }
+});
+
+canvas.addEventListener('pointerup', () => { steerActive = false; });
+canvas.addEventListener('pointercancel', () => { steerActive = false; });
+
+document.addEventListener('keydown', (e) => {
+  keysDown[e.code] = true;
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    if (state === 'start') startGame();
+    else if (state === 'playing' && !surging) big = !big;
+    else if (state === 'gameover') state = 'start';
+  }
+});
+document.addEventListener('keyup', (e) => { keysDown[e.code] = false; });
+
+// ═══════════════════════════════════════
+// SHARE
+// ═══════════════════════════════════════
+function doShare() {
+  const url = `https://balinti.github.io/tide-titan/?score=${Math.floor(score)}&combo=${maxCombo}`;
+  const txt = `I scored ${Math.floor(score)} in Tide Titan with a ${maxCombo}x combo! Can you beat me?`;
+  if (navigator.share) {
+    navigator.share({ title:'Tide Titan', text:txt, url }).catch(()=>{});
+  } else if (navigator.clipboard) {
+    navigator.clipboard.writeText(url).then(()=>toast('Copied!')).catch(()=>{});
+  }
+}
+
+function toast(m) {
+  const el = document.getElementById('toast');
+  el.textContent = m;
+  el.classList.add('show');
+  setTimeout(()=> el.classList.remove('show'), 1800);
+}
+
+// ═══════════════════════════════════════
+// GAME INIT
+// ═══════════════════════════════════════
+function startGame() {
+  state = 'playing';
+  big = false; ty = CH/2; tvy = 0; targetY = CH/2; steerActive = false;
+  score = 0; combo = 0; maxCombo = 0; tide = 0;
+  surging = false; surgeT = 0;
+  gt = 0; spd = 2.4; obs = []; parts = []; slines = [];
+  pIdx = 0; spawnAcc = 0; dScore = 0;
+  shM = 0; shX = shY = 0; flash = 0;
+}
+
+function die() {
+  state = 'gameover';
+  if (score > hi) { hi = Math.floor(score); localStorage.setItem(LS_KEY, hi); }
+  shake(14); flash = 0.6;
+}
+
+// ═══════════════════════════════════════
+// UPDATE
+// ═══════════════════════════════════════
+function update(dt) {
+  if (state !== 'playing') return;
+
+  gt += dt;
+  hue = (hue + dt * 0.03) % 360;
+
+  spd = scrollSpd(gt);
+  const es = surging ? spd * 1.3 : spd; // effective speed
+
+  // --- Titan steering ---
+  // Keyboard
+  if (keysDown['ArrowUp'] || keysDown['KeyW']) tvy -= TITAN_STEER_ACCEL;
+  if (keysDown['ArrowDown'] || keysDown['KeyS']) tvy += TITAN_STEER_ACCEL;
+
+  // Pointer steer toward targetY
+  if (steerActive) {
+    const diff = targetY - ty;
+    if (Math.abs(diff) > 3) {
+      tvy += Math.sign(diff) * TITAN_STEER_ACCEL * 1.2;
+    }
+  }
+
+  // Natural gentle bob
+  tvy += Math.sin(gt * 0.002) * 0.03;
+
+  // Friction
+  tvy *= 0.92;
+
+  // Clamp speed
+  const maxV = TITAN_STEER_SPEED;
+  if (tvy > maxV) tvy = maxV;
+  if (tvy < -maxV) tvy = -maxV;
+
+  ty += tvy;
+  ty = Math.max(35, Math.min(CH - 35, ty));
+
+  const tr = big ? BIG_R : SMALL_R;
+
+  // Distance score
+  dScore += es * 0.1;
+  score = dScore;
+
+  // Surge
+  if (surging) {
+    surgeT -= dt;
+    big = true;
+    if (surgeT <= 0) { surging = false; big = false; }
+  }
+
+  // Spawn
+  spawnAcc += es;
+  const sp = spacing(gt);
+  if (spawnAcc >= sp) { spawnAcc -= sp; spawn(); }
+
+  // Update obstacles + collisions
+  for (let i = obs.length - 1; i >= 0; i--) {
+    const o = obs[i];
+    o.x -= es;
+    if (o.x < -80) { obs.splice(i,1); continue; }
+
+    if (o.type === 'gate') {
+      const topH = o.y - o.gap/2;
+      const botY = o.y + o.gap/2;
+      const bx = o.x - GATE_BAR_W/2;
+      const hitT = cRect(TITAN_X, ty, tr, bx, 0, GATE_BAR_W, topH);
+      const hitB = cRect(TITAN_X, ty, tr, bx, botY, GATE_BAR_W, CH - botY);
+      if (hitT || hitB) { die(); return; }
+      if (!o.passed && o.x < TITAN_X - tr) {
+        o.passed = true;
+        if (!big) {
+          combo++; maxCombo = Math.max(maxCombo, combo);
+          score += 10 * combo;
+          tide = Math.min(TIDE_MAX, tide + 1);
+          sparkleFX(TITAN_X + 20, ty);
+          checkSurge();
+        }
+      }
+    } else if (o.type === 'enemy' && o.alive) {
+      const hs = o.s/2;
+      if (cRect(TITAN_X, ty, tr, o.x-hs, o.y-hs, o.s, o.s)) {
+        if (big || surging) {
+          o.alive = false;
+          combo++; maxCombo = Math.max(maxCombo, combo);
+          score += 25 * combo * (surging?2:1);
+          tide = Math.min(TIDE_MAX, tide+1);
+          shake(5); smashFX(o.x, o.y);
+          checkSurge();
+        } else { die(); return; }
+      }
+    } else if (o.type === 'wall' && o.alive) {
+      if (cRect(TITAN_X, ty, tr, o.x-o.w/2, o.y-o.h/2, o.w, o.h)) {
+        if (big || surging) {
+          o.alive = false;
+          combo++; maxCombo = Math.max(maxCombo, combo);
+          score += 20 * combo * (surging?2:1);
+          tide = Math.min(TIDE_MAX, tide+1);
+          shake(6); smashFX(o.x, o.y);
+          checkSurge();
+        } else { die(); return; }
+      }
+    } else if (o.type === 'mine') {
+      if (cCirc(TITAN_X, ty, tr, o.x, o.y, o.r)) {
+        smashFX(o.x, o.y); die(); return;
+      }
+    }
+  }
+
+  // Particles
+  for (let i = parts.length-1; i >= 0; i--) {
+    const p = parts[i];
+    p.x += p.vx; p.y += p.vy;
+    p.life -= dt;
+    if (p.life <= 0) parts.splice(i,1);
+  }
+
+  // Speed lines
+  for (let i = slines.length-1; i >= 0; i--) {
+    slines[i].x -= es * 2.5;
+    slines[i].life -= dt;
+    if (slines[i].life <= 0 || slines[i].x < -50) slines.splice(i,1);
+  }
+  if (slines.length < 25 && pIdx % 3 === 0) {
+    slines.push({ x:CW+10, y:20+((pIdx*73)%(CH-40)), len:20+(pIdx*7)%30, life:700 });
+  }
+
+  updShake();
+  if (flash > 0) flash *= 0.92;
+}
+
+function checkSurge() {
+  if (tide >= TIDE_MAX && !surging) {
+    surging = true; surgeT = SURGE_DURATION; tide = 0; big = true;
+    shake(10); flash = 0.4;
+    emit(TITAN_X, ty, 20, 'hsl(180,100%,80%)', 3, 8, 5, 900);
+  }
+}
+
+// ═══════════════════════════════════════
+// RENDER
+// ═══════════════════════════════════════
+function render() {
+  setTx();
+
+  if (state === 'start') { drawBG(); drawStart(); return; }
+
+  ctx.save();
+  ctx.translate(shX, shY);
+  if (surging) {
+    const z = 1 + Math.sin(gt*0.01)*0.015;
+    ctx.translate(CW/2,CH/2); ctx.scale(z,z); ctx.translate(-CW/2,-CH/2);
+  }
+
+  drawBG();
+  drawSpeedLines();
+  drawObstacles();
+  drawParticles();
+  drawTitan();
+  drawFlash();
+
+  if (state === 'playing') { ctx.restore(); drawHUD(); }
+  else { ctx.restore(); drawGameOver(); }
+}
+
+function drawBG() {
+  const g = ctx.createLinearGradient(0,0,0,CH);
+  g.addColorStop(0,'#0a1628'); g.addColorStop(0.5,'#0d1f3c'); g.addColorStop(1,'#081320');
+  ctx.fillStyle = g; ctx.fillRect(0,0,CW,CH);
+
+  // Caustics
+  ctx.globalAlpha = 0.035;
+  const t = (gt||Date.now()*0.001)*0.001;
+  for (let i=0;i<5;i++) {
+    const cx=(100+i*90+Math.sin(t+i)*40)%CW;
+    const cy=(150+i*120+Math.cos(t*0.7+i)*30)%CH;
+    const r=60+i*15;
+    const cg=ctx.createRadialGradient(cx,cy,0,cx,cy,r);
+    cg.addColorStop(0,`hsl(${190+i*15},80%,60%)`); cg.addColorStop(1,'transparent');
+    ctx.fillStyle=cg; ctx.fillRect(cx-r,cy-r,r*2,r*2);
+  }
+  ctx.globalAlpha=1;
+}
+
+function drawSpeedLines() {
+  ctx.lineWidth=1;
+  for (const sl of slines) {
+    ctx.globalAlpha = (sl.life/700)*0.18;
+    ctx.strokeStyle='#4af';
+    ctx.beginPath(); ctx.moveTo(sl.x,sl.y); ctx.lineTo(sl.x+sl.len,sl.y); ctx.stroke();
+  }
+  ctx.globalAlpha=1;
+}
+
+function drawObstacles() {
+  for (const o of obs) {
+    if (o.type==='gate') drawGate(o);
+    else if (o.type==='enemy'&&o.alive) drawEnemy(o);
+    else if (o.type==='wall'&&o.alive) drawWall(o);
+    else if (o.type==='mine') drawMine(o);
+  }
+}
+
+function drawGate(o) {
+  const topH=o.y-o.gap/2, botY=o.y+o.gap/2;
+  const bx=o.x-GATE_BAR_W/2;
+
+  const cg=ctx.createLinearGradient(bx,0,bx+GATE_BAR_W,0);
+  cg.addColorStop(0,'#ff6b4a'); cg.addColorStop(0.5,'#ff8866'); cg.addColorStop(1,'#ff5533');
+  ctx.fillStyle=cg;
+  ctx.fillRect(bx,0,GATE_BAR_W,topH);
+  ctx.fillRect(bx,botY,GATE_BAR_W,CH-botY);
+
+  // Nubs on bar ends
+  ctx.fillStyle='#ff9977';
+  ctx.beginPath(); ctx.arc(o.x, topH, 6, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(o.x, botY, 6, 0, Math.PI*2); ctx.fill();
+
+  // Gap arrows
+  ctx.globalAlpha=0.25;
+  ctx.strokeStyle='#0ff';
+  ctx.lineWidth=1;
+  ctx.setLineDash([3,3]);
+  ctx.beginPath();
+  ctx.moveTo(bx-4, topH+2); ctx.lineTo(bx+GATE_BAR_W+4, topH+2);
+  ctx.moveTo(bx-4, botY-2); ctx.lineTo(bx+GATE_BAR_W+4, botY-2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.globalAlpha=1;
+}
+
+function drawEnemy(o) {
+  const cx=o.x, cy=o.y, s=o.s/2;
+  ctx.fillStyle='#aa44ff'; ctx.strokeStyle='#cc77ff'; ctx.lineWidth=2;
+  ctx.beginPath();
+  for (let i=0;i<6;i++) {
+    const a=(i/6)*Math.PI*2-Math.PI/2;
+    const sp=i%2===0?s*1.3:s*0.7;
+    const px=cx+Math.cos(a)*sp, py=cy+Math.sin(a)*sp;
+    i===0?ctx.moveTo(px,py):ctx.lineTo(px,py);
+  }
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+
+  ctx.fillStyle='#ff3366';
+  ctx.beginPath(); ctx.arc(cx-4,cy-2,3,0,Math.PI*2); ctx.arc(cx+4,cy-2,3,0,Math.PI*2); ctx.fill();
+}
+
+function drawWall(o) {
+  const wx=o.x-o.w/2, wy=o.y-o.h/2;
+  ctx.fillStyle='#5a7a5a'; ctx.strokeStyle='#7a9a7a'; ctx.lineWidth=2;
+  ctx.fillRect(wx,wy,o.w,o.h); ctx.strokeRect(wx,wy,o.w,o.h);
+
+  ctx.strokeStyle='#3a5a3a'; ctx.lineWidth=1;
+  ctx.beginPath();
+  ctx.moveTo(wx+o.w*0.3,wy); ctx.lineTo(wx+o.w*0.5,wy+o.h*0.4); ctx.lineTo(wx+o.w*0.7,wy+o.h);
+  ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(wx,wy+o.h*0.6); ctx.lineTo(wx+o.w*0.5,wy+o.h*0.4); ctx.stroke();
+
+  ctx.fillStyle='rgba(200,255,200,0.35)'; ctx.font='8px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText('WEAK',o.x,o.y+2);
+}
+
+function drawMine(o) {
+  const blink = Math.sin((gt||0)*0.008) > 0;
+  ctx.fillStyle = blink?'#ff2244':'#cc1133';
+  ctx.beginPath(); ctx.arc(o.x,o.y,o.r,0,Math.PI*2); ctx.fill();
+
+  ctx.strokeStyle='#ff4466'; ctx.lineWidth=2;
+  for (let i=0;i<8;i++) {
+    const a=(i/8)*Math.PI*2;
+    ctx.beginPath();
+    ctx.moveTo(o.x+Math.cos(a)*o.r, o.y+Math.sin(a)*o.r);
+    ctx.lineTo(o.x+Math.cos(a)*(o.r+6), o.y+Math.sin(a)*(o.r+6));
+    ctx.stroke();
+  }
+  ctx.fillStyle='#fff'; ctx.font='bold 10px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText('!',o.x,o.y);
+}
+
+function drawParticles() {
+  for (const p of parts) {
+    const a = Math.max(0, p.life/p.ml);
+    if (p.col==='ring') {
+      const prog=1-a, r=prog*(p.rMax||45);
+      ctx.globalAlpha=a*0.6; ctx.strokeStyle='hsl(50,100%,85%)'; ctx.lineWidth=2*a;
+      ctx.beginPath(); ctx.arc(p.x,p.y,r,0,Math.PI*2); ctx.stroke();
+    } else {
+      ctx.globalAlpha=a; ctx.fillStyle=p.col;
+      ctx.beginPath(); ctx.arc(p.x,p.y,p.sz*a,0,Math.PI*2); ctx.fill();
+    }
+  }
+  ctx.globalAlpha=1;
+}
+
+function drawTitan() {
+  const r = big ? BIG_R : SMALL_R;
+  const x = TITAN_X, y = ty;
+
+  // Glow
+  ctx.globalAlpha=0.3;
+  const gCol = surging ? 'hsl(180,100%,70%)' : `hsl(${hue},80%,60%)`;
+  const gl = ctx.createRadialGradient(x,y,r*0.5,x,y,r*2);
+  gl.addColorStop(0,gCol); gl.addColorStop(1,'transparent');
+  ctx.fillStyle=gl; ctx.fillRect(x-r*2,y-r*2,r*4,r*4);
+  ctx.globalAlpha=1;
+
+  // Body
+  const bc = surging?'hsl(180,100%,65%)':`hsl(${hue},75%,55%)`;
+  const bl = surging?'hsl(180,100%,85%)':`hsl(${hue},80%,75%)`;
+  ctx.fillStyle=bc;
+  ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
+
+  // Highlight
+  ctx.fillStyle=bl;
+  ctx.beginPath(); ctx.arc(x-r*0.2,y-r*0.2,r*0.45,0,Math.PI*2); ctx.fill();
+
+  // Eye
+  ctx.fillStyle='#fff';
+  ctx.beginPath(); ctx.arc(x+r*0.3,y-r*0.15,r*0.22,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#111';
+  ctx.beginPath(); ctx.arc(x+r*0.35,y-r*0.15,r*0.1,0,Math.PI*2); ctx.fill();
+
+  // Tail
+  ctx.fillStyle=bc;
+  ctx.beginPath();
+  ctx.moveTo(x-r,y); ctx.lineTo(x-r-r*0.6,y-r*0.4); ctx.lineTo(x-r-r*0.6,y+r*0.4);
+  ctx.closePath(); ctx.fill();
+
+  // Size label
+  ctx.fillStyle = big?'rgba(255,136,68,0.6)':'rgba(68,221,255,0.6)';
+  ctx.font = 'bold 9px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(big?'BIG':'SMl', x, y+r+12);
+
+  // Surge ring
+  if (surging) {
+    ctx.strokeStyle=`hsl(${(gt*0.3)%360},100%,70%)`;
+    ctx.lineWidth=3; ctx.globalAlpha=0.6+Math.sin(gt*0.01)*0.3;
+    ctx.beginPath(); ctx.arc(x,y,r+6,0,Math.PI*2); ctx.stroke();
+    ctx.globalAlpha=1;
+  }
+}
+
+function drawFlash() {
+  if (flash > 0.01) {
+    ctx.globalAlpha=flash;
+    ctx.fillStyle=surging?'#00d4ff':'#ff4444';
+    ctx.fillRect(0,0,CW,CH);
+    ctx.globalAlpha=1;
+  }
+}
+
+function drawHUD() {
+  setTx(); // fresh transform for HUD (no shake)
+
+  ctx.fillStyle='#fff'; ctx.font='bold 20px sans-serif'; ctx.textAlign='left'; ctx.textBaseline='top';
+  ctx.fillText(Math.floor(score),14,14);
+
+  if (combo>0) {
+    ctx.fillStyle=`hsl(${hue},90%,70%)`; ctx.font='bold 14px sans-serif';
+    ctx.fillText(`${combo}x COMBO`,14,38);
+  }
+
+  ctx.fillStyle=big?'#ff8844':'#44ddff'; ctx.font='bold 12px sans-serif'; ctx.textAlign='right';
+  ctx.fillText(big?'BIG':'SMALL',CW-14,14);
+
+  // Tide meter
+  const mx=CW-14, mw=80, mh=8;
+  ctx.fillStyle='rgba(255,255,255,0.4)'; ctx.font='9px sans-serif'; ctx.textAlign='right';
+  ctx.fillText('TIDE',mx,30);
+  const bx=mx-mw, by=35;
+  ctx.fillStyle='rgba(255,255,255,0.1)'; ctx.fillRect(bx,by,mw,mh);
+  const fill=tide/TIDE_MAX;
+  if (fill>0) {
+    const fg=ctx.createLinearGradient(bx,0,bx+mw*fill,0);
+    fg.addColorStop(0,'#0088ff'); fg.addColorStop(1,'#00ddff');
+    ctx.fillStyle=fg; ctx.fillRect(bx,by,mw*fill,mh);
+  }
+  ctx.strokeStyle='rgba(255,255,255,0.2)'; ctx.lineWidth=1; ctx.strokeRect(bx,by,mw,mh);
+
+  if (surging) {
+    ctx.fillStyle=`hsl(${(gt*0.5)%360},100%,70%)`; ctx.font='bold 16px sans-serif'; ctx.textAlign='center';
+    ctx.fillText('TIDE SURGE!',CW/2,56);
+  }
+}
+
+function drawStart() {
+  ctx.fillStyle='#fff'; ctx.font='bold 36px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText('TIDE TITAN',CW/2,CH*0.28);
+
+  ctx.fillStyle='#00d4ff'; ctx.font='14px sans-serif';
+  ctx.fillText('Inflate / Deflate Rush',CW/2,CH*0.28+36);
+
+  // Animated preview titan
+  const pr=20+Math.sin(Date.now()*0.003)*8;
+  ctx.fillStyle=`hsl(${(Date.now()*0.05)%360},75%,55%)`;
+  ctx.beginPath(); ctx.arc(CW/2,CH*0.46,pr,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#fff';
+  ctx.beginPath(); ctx.arc(CW/2+pr*0.3,CH*0.46-pr*0.15,pr*0.22,0,Math.PI*2); ctx.fill();
+  // Tail
+  ctx.fillStyle=`hsl(${(Date.now()*0.05)%360},75%,55%)`;
+  ctx.beginPath(); ctx.moveTo(CW/2-pr,CH*0.46);
+  ctx.lineTo(CW/2-pr-pr*0.6,CH*0.46-pr*0.4);
+  ctx.lineTo(CW/2-pr-pr*0.6,CH*0.46+pr*0.4);
+  ctx.closePath(); ctx.fill();
+
+  ctx.fillStyle='rgba(255,255,255,0.5)'; ctx.font='13px sans-serif';
+  ctx.fillText('Tap / Space = toggle size',CW/2,CH*0.58);
+  ctx.fillText('Drag / Arrow keys = steer up/down',CW/2,CH*0.58+22);
+  ctx.fillText('BIG smashes enemies & walls',CW/2,CH*0.58+50);
+  ctx.fillText('SMALL slips through gates',CW/2,CH*0.58+72);
+
+  const pulse=0.6+Math.sin(Date.now()*0.005)*0.4;
+  ctx.globalAlpha=pulse; ctx.fillStyle='#00d4ff'; ctx.font='bold 18px sans-serif';
+  ctx.fillText('TAP TO START',CW/2,CH*0.78);
+  ctx.globalAlpha=1;
+
+  if (hi>0) {
+    ctx.fillStyle='rgba(255,255,255,0.35)'; ctx.font='12px sans-serif';
+    ctx.fillText('Best: '+hi,CW/2,CH*0.85);
+  }
+}
+
+function drawGameOver() {
+  setTx();
+  ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fillRect(0,0,CW,CH);
+  const cy=CH/2;
+
+  ctx.fillStyle='#ff4466'; ctx.font='bold 32px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText('GAME OVER',CW/2,cy-70);
+
+  ctx.fillStyle='#fff'; ctx.font='bold 24px sans-serif';
+  ctx.fillText(Math.floor(score),CW/2,cy-30);
+
+  ctx.fillStyle='rgba(255,255,255,0.5)'; ctx.font='13px sans-serif';
+  ctx.fillText('Max Combo: '+maxCombo+'x',CW/2,cy);
+
+  if (Math.floor(score)>=hi && hi>0) {
+    ctx.fillStyle='#ffdd44'; ctx.font='bold 14px sans-serif';
+    ctx.fillText('NEW HIGH SCORE!',CW/2,cy+25);
+  }
+
+  ctx.fillStyle='rgba(255,255,255,0.3)'; ctx.font='12px sans-serif';
+  ctx.fillText('Best: '+hi,CW/2,cy+50);
+
+  // Share btn
+  const bx=CW/2-70, by=cy+75, bw=140, bh=36, br=18;
+  ctx.fillStyle='#00d4ff';
+  ctx.beginPath();
+  ctx.moveTo(bx+br,by); ctx.lineTo(bx+bw-br,by);
+  ctx.quadraticCurveTo(bx+bw,by,bx+bw,by+br);
+  ctx.lineTo(bx+bw,by+bh-br);
+  ctx.quadraticCurveTo(bx+bw,by+bh,bx+bw-br,by+bh);
+  ctx.lineTo(bx+br,by+bh);
+  ctx.quadraticCurveTo(bx,by+bh,bx,by+bh-br);
+  ctx.lineTo(bx,by+br);
+  ctx.quadraticCurveTo(bx,by,bx+br,by);
+  ctx.fill();
+  ctx.fillStyle='#0a1628'; ctx.font='bold 13px sans-serif';
+  ctx.fillText('SHARE SCORE',CW/2,cy+93);
+
+  const p2=0.5+Math.sin(Date.now()*0.004)*0.5;
+  ctx.globalAlpha=p2; ctx.fillStyle='#fff'; ctx.font='14px sans-serif';
+  ctx.fillText('Tap to play again',CW/2,cy+140);
+  ctx.globalAlpha=1;
+}
+
+// ═══════════════════════════════════════
+// LOOP
+// ═══════════════════════════════════════
+function loop(now) {
+  if (!lt) lt = now;
+  const dt = Math.min(now - lt, 33);
+  lt = now;
+  update(dt);
+  render();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

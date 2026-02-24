@@ -1,0 +1,1010 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Glitch Beam - Free HTML5 Game</title>
+<meta name="description" content="Play Glitch Beam - Balance your character on a glowing neon beam as controls randomly reverse direction.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0a0a1a">
+<link rel="canonical" href="https://balinti.github.io/glitch-beam/">
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="Glitch Beam - Free HTML5 Game">
+<meta property="og:description" content="Play Glitch Beam - Balance your character on a glowing neon beam as controls randomly reverse direction.">
+<meta property="og:url" content="https://balinti.github.io/glitch-beam/">
+<meta property="og:image" content="https://balinti.github.io/glitch-beam/?ogimg=1">
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Glitch Beam - Free HTML5 Game">
+<meta name="twitter:description" content="Play Glitch Beam - Balance your character on a glowing neon beam as controls randomly reverse direction.">
+<meta name="twitter:image" content="https://balinti.github.io/glitch-beam/?ogimg=1">
+<!-- AdSense -->
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:#0a0a1a;font-family:'Segoe UI',system-ui,sans-serif;color:#fff;overflow-x:hidden}
+body{display:flex;flex-direction:column;align-items:center;min-height:100vh}
+#wrap{width:100%;max-width:420px;display:flex;flex-direction:column;align-items:center;position:relative}
+#hud{width:100%;max-width:420px;height:86px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;position:relative;z-index:10;flex-shrink:0}
+.hud-block{display:flex;flex-direction:column;align-items:center;min-width:80px}
+.hud-label{font-size:10px;letter-spacing:2px;opacity:.55;text-transform:uppercase;margin-bottom:2px}
+.hud-val{font-size:26px;font-weight:700;letter-spacing:1px;text-shadow:0 0 12px currentColor}
+#scoreVal{color:#00f7ff}
+#multVal{font-size:20px;color:#ff3cff;min-width:52px;text-align:center}
+#bestVal{color:#ffcc00}
+#glitchBar{position:absolute;bottom:0;left:0;right:0;height:4px;background:rgba(255,50,255,.18);display:none}
+#glitchFill{height:100%;background:linear-gradient(90deg,#ff3cff,#00f7ff);width:100%;transform-origin:left;transition:none}
+#canvasWrap{width:100%;position:relative;flex-shrink:0}
+canvas{display:block;width:100%;height:100%}
+#hud-bot{width:100%;max-width:420px;height:44px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+#chainTxt{font-size:13px;letter-spacing:1px;color:#ff3cff;opacity:0;transition:opacity .3s}
+#shareBanner{display:none;background:linear-gradient(90deg,#1a0028,#001a28);border:1px solid #ff3cff44;padding:8px 16px;border-radius:8px;font-size:13px;text-align:center;margin:6px 0;width:100%;max-width:420px}
+footer{width:100%;max-width:420px;padding:12px 16px 24px;color:rgba(255,255,255,.4);font-size:12px}
+details{margin-top:10px;background:rgba(255,255,255,.04);border-radius:8px;padding:10px 14px}
+summary{cursor:pointer;font-size:13px;font-weight:600;color:rgba(255,255,255,.7);list-style:none;outline:none}
+summary::-webkit-details-marker{display:none}
+summary::before{content:"▶ "}
+details[open] summary::before{content:"▼ "}
+details p,details li{font-size:12px;line-height:1.7;color:rgba(255,255,255,.5);margin-top:6px}
+details ul{padding-left:18px}
+details h3{font-size:13px;margin-top:10px;color:rgba(255,255,255,.65)}
+</style>
+</head>
+<body>
+<div id="shareBanner"></div>
+<div id="wrap">
+  <div id="hud">
+    <div class="hud-block">
+      <div class="hud-label">Score</div>
+      <div class="hud-val" id="scoreVal">0</div>
+    </div>
+    <div class="hud-block">
+      <div class="hud-label">Mult</div>
+      <div class="hud-val" id="multVal">x1</div>
+    </div>
+    <div class="hud-block">
+      <div class="hud-label">Best</div>
+      <div class="hud-val" id="bestVal">0</div>
+    </div>
+    <div id="glitchBar"><div id="glitchFill"></div></div>
+  </div>
+  <div id="canvasWrap">
+    <canvas id="c"></canvas>
+  </div>
+  <div id="hud-bot">
+    <div id="chainTxt">CHAIN x0</div>
+  </div>
+</div>
+
+<footer>
+  <details>
+    <summary>How to Play — Glitch Beam</summary>
+    <p>Glitch Beam is a fast-paced hyper-casual game. Your runner clings to either the top or bottom rail of a neon beam that curves through space.</p>
+    <ul>
+      <li><strong>Tap / Space / Enter</strong> to flip between the top and bottom rail.</li>
+      <li>Dodge hazards by being on the safe rail.</li>
+      <li>Pass through score gates on the correct side for points and chain multipliers.</li>
+      <li>Collect data bits for bonus points.</li>
+      <li><strong>Glitch Zones</strong> invert which rail is safe — watch for the color shift and countdown bar.</li>
+      <li><strong>Beam Fractures</strong> narrow the beam temporarily. Stay inside!</li>
+      <li>Near-miss flips right before a hazard earn bonus points and sparks.</li>
+    </ul>
+    <h3>FAQ</h3>
+    <p><strong>Q: Does Glitch Beam work on mobile?</strong><br>A: Yes! Tap anywhere to flip your runner.</p>
+    <p><strong>Q: How is the score calculated?</strong><br>A: Survival time × multiplier, plus gate bonuses, bit pickups, and near-miss rewards.</p>
+    <p><strong>Q: What is a Glitch Zone?</strong><br>A: A timed section where the safe and hazard rails swap. A countdown bar and screen color shift warn you in advance.</p>
+    <p><strong>Q: How do I increase the multiplier?</strong><br>A: Pass through score gates quickly in succession to build a chain. Max multiplier is x8.</p>
+  </details>
+</footer>
+
+<script>
+(function(){
+'use strict';
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const clamp = (v,a,b) => v<a?a:v>b?b:v;
+const lerp = (a,b,t) => a+(b-a)*t;
+const rand = (a,b) => a+Math.random()*(b-a);
+const randInt = (a,b) => Math.floor(rand(a,b+1));
+
+// ── Share banner on load ──────────────────────────────────────────────────────
+(function checkShareParams(){
+  const p = new URLSearchParams(location.search);
+  if(p.has('score')){
+    const sc = parseInt(p.get('score'))||0;
+    const ch = parseInt(p.get('chain'))||0;
+    const banner = $('shareBanner');
+    banner.style.display='block';
+    banner.innerHTML = `🎮 Can you beat <strong>${sc}</strong> points (chain ×${ch})? <span style="opacity:.6">Play Glitch Beam!</span>`;
+  }
+})();
+
+// ── Canvas setup ─────────────────────────────────────────────────────────────
+const canvas = $('c');
+const ctx = canvas.getContext('2d');
+const DPR = Math.min(window.devicePixelRatio||1,2);
+
+let CW,CH; // logical canvas size (CSS px)
+let cxW,cxH; // physical pixel size
+
+function resize(){
+  CW = Math.min(420, window.innerWidth);
+  const hudH = 86+44;
+  CH = Math.min(750, window.innerHeight) - hudH;
+  CH = Math.max(CH, 300);
+  canvas.style.width = CW+'px';
+  canvas.style.height = CH+'px';
+  cxW = CW*DPR;
+  cxH = CH*DPR;
+  canvas.width = cxW;
+  canvas.height = cxH;
+  ctx.scale(DPR,DPR);
+  $('canvasWrap').style.height = CH+'px';
+}
+resize();
+window.addEventListener('resize',()=>{resize();if(state==='playing') gameOver();});
+
+// ── State ─────────────────────────────────────────────────────────────────────
+const LS_KEY = 'gbeam_fliprush_best';
+let state = 'start'; // 'start'|'playing'|'gameover'
+let bestScore = parseInt(localStorage.getItem(LS_KEY)||'0');
+$('bestVal').textContent = Math.floor(bestScore);
+
+// ── Game vars ─────────────────────────────────────────────────────────────────
+let t,dt,lastTime;
+let score,mult,chain,chainTimer,chainDecay;
+let baseHue,phase,speed;
+let flipTime; // time of last flip
+let bestMult,longestChain,nearMissCount,bitsCollected;
+let objects; // hazards, gates, bits
+let particles;
+let shake,shakeT;
+let flashAlpha;
+let glitchActive,glitchTimer,glitchDuration,glitchCount,glitchNext,glitchSafeSide;
+let fractureActive,fractureTimer,fractureDuration,fractureCount,fractureNext,fractureNarrow;
+let hazardSpacing,hazardTimer;
+let gateSpacing,gateTimer;
+let bitSpacing,bitTimer;
+let inputBlocked;
+let goDelay; // gameover tap delay
+let runner;
+
+// Floating texts
+let floatTexts = [];
+
+function initGame(){
+  t=0; dt=0; lastTime=null;
+  score=0; mult=1; chain=0; chainTimer=0; chainDecay=1;
+  baseHue=180; phase=0; speed=220;
+  flipTime=-999;
+  bestMult=1; longestChain=0; nearMissCount=0; bitsCollected=0;
+  objects=[];
+  particles=[];
+  floatTexts=[];
+  shake=0; shakeT=0;
+  flashAlpha=0;
+  glitchActive=false; glitchTimer=0; glitchDuration=0; glitchCount=0; glitchNext=12; glitchSafeSide=0;
+  fractureActive=false; fractureTimer=0; fractureDuration=0; fractureCount=0; fractureNext=22; fractureNarrow=0;
+  hazardSpacing=380; hazardTimer=hazardSpacing;
+  gateSpacing=420; gateTimer=gateSpacing;
+  bitSpacing=340; bitTimer=bitSpacing;
+  inputBlocked=false; goDelay=0;
+
+  const rx = CW*0.28;
+  const midY = CH*0.5;
+  runner = {
+    x: rx,
+    rail: 0, // 0=top, 1=bottom
+    y: midY, // visual y
+    targetY: midY,
+    alive: true,
+    flipAnim: 0 // 0..1 flip squeeze anim
+  };
+  updateHUD();
+}
+
+// ── Input ─────────────────────────────────────────────────────────────────────
+function onInput(e){
+  if(e && e.type==='pointerdown'){
+    // Check if tap was on a button (gameover overlay)
+    if(e.target && e.target.tagName==='BUTTON') return;
+  }
+  if(state==='start'){
+    state='playing';
+    initGame();
+    requestAnimationFrame(loop);
+    return;
+  }
+  if(state==='gameover'){
+    if(goDelay>0) return; // too soon
+    state='start'; // go to start screen first? No, retry directly
+    state='playing';
+    initGame();
+    return;
+  }
+  if(state==='playing' && !inputBlocked){
+    flip();
+  }
+}
+
+canvas.addEventListener('pointerdown', onInput, {passive:true});
+document.addEventListener('keydown',e=>{
+  if(e.code==='Space'||e.code==='Enter'){e.preventDefault();onInput(e);}
+},{passive:false});
+
+// ── Flip ──────────────────────────────────────────────────────────────────────
+function flip(){
+  runner.rail = runner.rail===0?1:0;
+  flipTime = t;
+  runner.flipAnim = 1;
+  // trail burst
+  for(let i=0;i<6;i++) spawnParticle(runner.x, runner.y, 'trail');
+}
+
+// ── Beam geometry ─────────────────────────────────────────────────────────────
+function beamCY(xPos){
+  const A = clamp(20 + t*1.4, 20, 90);
+  return CH*0.5 + A*Math.sin(phase + xPos*0.015);
+}
+function beamHalfThick(){
+  const base = clamp(52 - t*0.35, 18, 52);
+  if(fractureActive) return base - fractureNarrow*clamp(fractureTimer/0.25,0,1);
+  return base;
+}
+function railY(rail, xPos){
+  const cy = beamCY(xPos);
+  const ht = beamHalfThick();
+  return rail===0 ? cy-ht : cy+ht;
+}
+
+// ── Particles ─────────────────────────────────────────────────────────────────
+function spawnParticle(x,y,type,opts={}){
+  if(particles.length>=260) return;
+  const p = {x,y,type,life:1,maxLife:1,...opts};
+  if(type==='trail'){
+    p.vx = rand(-40,0); p.vy = rand(-30,30);
+    p.hue = baseHue; p.size=rand(2,5);
+    p.maxLife = rand(0.25,0.5);
+    p.life = p.maxLife;
+  } else if(type==='burst'){
+    const ang = rand(0,Math.PI*2);
+    const spd = rand(60,180);
+    p.vx=Math.cos(ang)*spd; p.vy=Math.sin(ang)*spd;
+    p.hue=opts.hue||baseHue; p.size=rand(3,7);
+    p.maxLife=rand(0.4,0.8);p.life=p.maxLife;
+  } else if(type==='spark'){
+    const ang = rand(-0.5,0.5);
+    p.vx=rand(60,140)*Math.cos(ang); p.vy=rand(-40,40);
+    p.hue=60; p.size=rand(1.5,3);
+    p.maxLife=rand(0.2,0.4);p.life=p.maxLife;
+  } else if(type==='crash'){
+    const ang = rand(0,Math.PI*2);
+    const spd = rand(80,220);
+    p.vx=Math.cos(ang)*spd; p.vy=Math.sin(ang)*spd;
+    p.hue=opts.hue||0; p.size=rand(4,10);
+    p.maxLife=rand(0.5,1.1);p.life=p.maxLife;
+  } else if(type==='bit'){
+    const ang = rand(0,Math.PI*2);
+    p.vx=Math.cos(ang)*rand(30,90); p.vy=Math.sin(ang)*rand(30,90);
+    p.hue=60; p.size=rand(2,4);
+    p.maxLife=rand(0.3,0.6);p.life=p.maxLife;
+  }
+  particles.push(p);
+}
+
+function updateParticles(dt){
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    p.life-=dt;
+    if(p.life<=0){particles.splice(i,1);continue;}
+    p.x+=p.vx*dt;
+    p.y+=p.vy*dt;
+    p.vy+=60*dt; // gravity
+  }
+}
+
+// ── Objects (hazards, gates, bits) ──────────────────────────────────────────
+function spawnHazard(){
+  // decide which rail is hazard (0 or 1)
+  // During glitch, safe side is glitchSafeSide, so hazard is on the OTHER rail from safe
+  const hzRail = Math.random()<0.5?0:1;
+  objects.push({
+    type:'hazard',
+    x: CW+40,
+    rail: hzRail,
+    w:14, h:20,
+    passed:false,
+    nearMissed:false
+  });
+}
+
+function spawnGate(){
+  // gate: two halves, correct side gives points; which side is correct depends on glitch
+  const safeSide = glitchActive ? (1-glitchSafeSide) : (Math.random()<0.5?0:1);
+  objects.push({
+    type:'gate',
+    x: CW+40,
+    safeSide,
+    w:10, h:0, // h unused
+    passed:false,
+    hue: glitchActive?300:baseHue
+  });
+}
+
+function spawnBit(){
+  const r = Math.random()<0.5?0:1;
+  objects.push({
+    type:'bit',
+    x: CW+40,
+    rail: r,
+    r: 7,
+    collected:false
+  });
+}
+
+// ── Scoring ───────────────────────────────────────────────────────────────────
+function addChain(){
+  const now = t;
+  if(now-chainTimer<1.25){
+    chain++;
+  } else {
+    chain=1;
+  }
+  chainTimer=now;
+  longestChain = Math.max(longestChain,chain);
+  mult = clamp(1+Math.floor((chain-1)/2), 1, 8);
+  bestMult = Math.max(bestMult,mult);
+  // shake on mult increase
+  if(mult>1) addShake(0.5*(mult*0.15));
+}
+
+function addShake(mag){ shake=Math.max(shake,mag); shakeT=0.25; }
+function addFloatText(txt,x,y,hue){
+  floatTexts.push({txt,x,y,life:1.2,vy:-45,hue:hue||baseHue});
+}
+
+function updateHUD(){
+  $('scoreVal').textContent = Math.floor(score);
+  $('multVal').textContent = 'x'+mult;
+  $('bestVal').textContent = Math.floor(bestScore);
+  const ct=$('chainTxt');
+  if(chain>0){ct.textContent='CHAIN x'+chain;ct.style.opacity=1;}
+  else ct.style.opacity=0;
+}
+
+// ── Main update ───────────────────────────────────────────────────────────────
+function update(rawDt){
+  dt = Math.min(rawDt, 0.05);
+  t += dt;
+
+  // Speed ramp
+  speed = clamp(220 + 7.2*t, 220, 520);
+
+  // Phase
+  phase -= speed*0.004*dt;
+  baseHue = (baseHue + 15*dt)%360;
+
+  // Flash decay
+  flashAlpha = Math.max(0, flashAlpha-3*dt);
+
+  // Shake
+  if(shakeT>0){shakeT-=dt;if(shakeT<=0)shake=0;}
+
+  // Runner ease
+  const ty = railY(runner.rail, runner.x);
+  runner.y = lerp(runner.y, ty, 1-Math.pow(0.02,dt*12));
+  runner.targetY = ty;
+  runner.flipAnim = Math.max(0, runner.flipAnim-dt*6);
+
+  // Chain decay
+  if(chain>0 && t-chainTimer>2.2){
+    const decay = dt/1.5;
+    chainDecay -= decay;
+    if(chainDecay<=0){chain=0;chainDecay=1;mult=1;}
+  } else {
+    chainDecay=1;
+  }
+
+  // Glitch schedule
+  if(!glitchActive && t>=glitchNext){
+    glitchActive=true;
+    glitchTimer=0;
+    glitchDuration = clamp(3.0+0.15*glitchCount, 3.0, 5.0);
+    glitchCount++;
+    glitchNext = t + 12 + glitchCount*18;
+    glitchSafeSide = Math.random()<0.5?0:1;
+    $('glitchBar').style.display='block';
+  }
+  if(glitchActive){
+    glitchTimer+=dt;
+    const fill=$('glitchFill');
+    fill.style.transform=`scaleX(${1-glitchTimer/glitchDuration})`;
+    if(glitchTimer>=glitchDuration){
+      glitchActive=false;
+      glitchTimer=0;
+      $('glitchBar').style.display='none';
+    }
+  }
+
+  // Fracture schedule
+  if(!fractureActive && t>=fractureNext){
+    fractureActive=true;
+    fractureTimer=0;
+    fractureDuration = clamp(1.35+0.05*fractureCount, 1.35, 2.1);
+    fractureCount++;
+    fractureNext = t + 22 + fractureCount*16;
+    fractureNarrow = clamp(12+fractureCount*2, 12, 26);
+  }
+  if(fractureActive){
+    fractureTimer+=dt;
+    if(fractureTimer>=fractureDuration){
+      fractureActive=false; fractureTimer=0;
+    }
+  }
+
+  // Hazard spacing decreases
+  const spacingMult = clamp(1-t*0.008, 0.45, 1);
+
+  // Spawn objects by distance (use timer in px)
+  hazardTimer -= speed*dt;
+  if(hazardTimer<=0){spawnHazard();hazardTimer=hazardSpacing*spacingMult+rand(-40,40);}
+
+  gateTimer -= speed*dt;
+  if(gateTimer<=0){spawnGate();gateTimer=gateSpacing*spacingMult+rand(-60,60);}
+
+  bitTimer -= speed*dt;
+  if(bitTimer<=0){spawnBit();bitTimer=bitSpacing*spacingMult+rand(-50,50);}
+
+  // Move objects
+  for(let i=objects.length-1;i>=0;i--){
+    const o=objects[i];
+    o.x -= speed*dt;
+    if(o.x < -80){objects.splice(i,1);continue;}
+
+    const ry = railY(runner.rail, runner.x);
+    const cy = beamCY(runner.x);
+    const ht = beamHalfThick();
+
+    if(o.type==='hazard' && !o.passed && !o.nearMissed){
+      // Near-miss check
+      const dist = Math.abs(o.x - runner.x);
+      if(dist<30 && t-flipTime<0.18){
+        // near miss!
+        o.nearMissed=true;
+        nearMissCount++;
+        const pts=Math.floor(15*mult);
+        score+=pts;
+        addShake(0.4);
+        addFloatText('NEAR MISS! +'+pts, runner.x, runner.y-20, 60);
+        for(let k=0;k<10;k++) spawnParticle(runner.x, runner.y,'spark');
+      }
+    }
+
+    if(o.type==='hazard' && !o.passed){
+      if(o.x<runner.x){
+        o.passed=true;
+        // Check collision: runner on same rail?
+        if(o.rail===runner.rail){
+          // Also check vertical proximity
+          const oy = railY(o.rail, o.x);
+          if(Math.abs(runner.y-oy)<22){
+            doGameOver();return;
+          }
+        }
+      }
+    }
+
+    if(o.type==='gate' && !o.passed){
+      if(o.x<runner.x){
+        o.passed=true;
+        if(runner.rail===o.safeSide){
+          // correct!
+          const pts=Math.floor(30*mult);
+          score+=pts;
+          addChain();
+          addFloatText('+'+pts, runner.x, runner.y-30, o.hue);
+          for(let k=0;k<5;k++) spawnParticle(runner.x,runner.y,'trail');
+        }
+      }
+    }
+
+    if(o.type==='bit' && !o.collected){
+      const bcy=beamCY(o.x);
+      const bht=beamHalfThick();
+      const by=o.rail===0?bcy-bht:bcy+bht;
+      const dx=o.x-runner.x, dy=by-runner.y;
+      if(dx*dx+dy*dy<(o.r+12)*(o.r+12)){
+        o.collected=true;
+        bitsCollected++;
+        const pts=Math.floor(12*mult);
+        score+=pts;
+        addFloatText('+'+pts,runner.x,runner.y-20,60);
+        for(let k=0;k<8;k++) spawnParticle(o.x,by,'bit');
+      }
+    }
+  }
+
+  // Beam edge collision during fracture
+  if(fractureActive){
+    const ry=runner.y;
+    const cy=beamCY(runner.x);
+    const ht=beamHalfThick();
+    if(ry<cy-ht-8||ry>cy+ht+8){
+      doGameOver();return;
+    }
+  }
+
+  // Survival score
+  score += dt*10*mult;
+  bestScore = Math.max(bestScore,score);
+
+  updateParticles(dt);
+
+  // Float texts
+  for(let i=floatTexts.length-1;i>=0;i--){
+    const f=floatTexts[i];
+    f.life-=dt;f.y+=f.vy*dt;
+    if(f.life<=0)floatTexts.splice(i,1);
+  }
+
+  updateHUD();
+}
+
+// ── Game Over ─────────────────────────────────────────────────────────────────
+function doGameOver(){
+  if(!runner.alive) return;
+  runner.alive=false;
+  // Big burst
+  for(let i=0;i<40;i++) spawnParticle(runner.x,runner.y,'crash',{hue:rand(0,360)});
+  addShake(3);
+  flashAlpha=1;
+  const isNew = score>bestScore-1;
+  if(score>bestScore) bestScore=score;
+  localStorage.setItem(LS_KEY,Math.floor(bestScore));
+  $('bestVal').textContent=Math.floor(bestScore);
+  state='gameover';
+  goDelay=0.3;
+  inputBlocked=true;
+  setTimeout(()=>{inputBlocked=false;},350);
+}
+
+function gameOver(){doGameOver();}
+
+// ── Rendering ─────────────────────────────────────────────────────────────────
+function drawBG(){
+  const gh=ctx.createLinearGradient(0,0,0,CH);
+  const h=glitchActive?((baseHue+140)%360):baseHue;
+  gh.addColorStop(0,`hsl(${h},30%,5%)`);
+  gh.addColorStop(1,`hsl(${(h+60)%360},20%,3%)`);
+  ctx.fillStyle=gh;
+  ctx.fillRect(0,0,CW,CH);
+}
+
+function drawBeam(){
+  const steps=60;
+  const ht=beamHalfThick();
+  // glow
+  ctx.save();
+  ctx.globalAlpha=0.18;
+  ctx.strokeStyle=glitchActive?`hsl(${(baseHue+140)%360},100%,65%)`:`hsl(${baseHue},100%,65%)`;
+  ctx.lineWidth=ht*2+16;
+  ctx.beginPath();
+  for(let i=0;i<=steps;i++){
+    const x=CW*i/steps;
+    const y=beamCY(x);
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+  ctx.globalAlpha=1;
+  ctx.restore();
+
+  // fracture edge glow
+  if(fractureActive){
+    const frac=fractureTimer/fractureDuration;
+    ctx.save();
+    ctx.globalAlpha=0.5*Math.sin(frac*Math.PI);
+    ctx.strokeStyle='#ff3030';
+    ctx.lineWidth=3;
+    for(let rail=0;rail<2;rail++){
+      ctx.beginPath();
+      for(let i=0;i<=steps;i++){
+        const x=CW*i/steps;
+        const y=railY(rail,x);
+        i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // core beam
+  const coreH=glitchActive?((baseHue+140)%360):baseHue;
+  ctx.save();
+  ctx.globalAlpha=0.55;
+  ctx.strokeStyle=`hsl(${coreH},90%,70%)`;
+  ctx.lineWidth=ht*2;
+  ctx.beginPath();
+  for(let i=0;i<=steps;i++){
+    const x=CW*i/steps;
+    const y=beamCY(x);
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+  ctx.restore();
+
+  // rail lines
+  for(let rail=0;rail<2;rail++){
+    ctx.save();
+    ctx.globalAlpha=0.8;
+    ctx.strokeStyle=glitchActive?
+      (rail===glitchSafeSide?`hsl(120,100%,60%)`:`hsl(0,100%,60%)`):
+      `hsl(${(coreH+30)%360},100%,80%)`;
+    ctx.lineWidth=2;
+    ctx.beginPath();
+    for(let i=0;i<=steps;i++){
+      const x=CW*i/steps;
+      const y=railY(rail,x);
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function drawObjects(){
+  for(const o of objects){
+    if(o.type==='hazard'){
+      const y=railY(o.rail,o.x);
+      ctx.save();
+      ctx.shadowColor='#ff3030';ctx.shadowBlur=12;
+      ctx.fillStyle='#ff3030';
+      const w=o.w,h=o.h||20;
+      ctx.fillRect(o.x-w/2,y-h/2,w,h);
+      // X mark
+      ctx.strokeStyle='#fff';ctx.lineWidth=2;
+      ctx.beginPath();
+      ctx.moveTo(o.x-4,y-4);ctx.lineTo(o.x+4,y+4);
+      ctx.moveTo(o.x+4,y-4);ctx.lineTo(o.x-4,y+4);
+      ctx.stroke();
+      ctx.restore();
+    } else if(o.type==='gate'){
+      // Draw gate as two arched halves
+      for(let r=0;r<2;r++){
+        const y=railY(r,o.x);
+        const safe=r===o.safeSide;
+        ctx.save();
+        ctx.globalAlpha=0.85;
+        ctx.strokeStyle=safe?`hsl(${o.hue},100%,65%)`:'rgba(255,50,50,0.6)';
+        ctx.lineWidth=3;
+        ctx.shadowColor=safe?`hsl(${o.hue},100%,65%)`:'#ff3030';
+        ctx.shadowBlur=10;
+        ctx.beginPath();
+        ctx.arc(o.x,y,10,0,Math.PI*2);
+        ctx.stroke();
+        if(safe){
+          ctx.fillStyle=`hsla(${o.hue},100%,65%,0.25)`;
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+    } else if(o.type==='bit' && !o.collected){
+      const cy=beamCY(o.x);
+      const ht=beamHalfThick();
+      const y=o.rail===0?cy-ht:cy+ht;
+      const pulse=0.8+0.2*Math.sin(t*6+o.x);
+      ctx.save();
+      ctx.globalAlpha=pulse;
+      ctx.fillStyle='#ffcc00';
+      ctx.shadowColor='#ffcc00';ctx.shadowBlur=14;
+      ctx.beginPath();ctx.arc(o.x,y,o.r,0,Math.PI*2);ctx.fill();
+      ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.stroke();
+      ctx.restore();
+    }
+  }
+}
+
+function drawRunner(){
+  const x=runner.x, y=runner.y;
+  const sq=runner.flipAnim;
+  const scaleX=1+sq*0.3;
+  const scaleY=1-sq*0.4;
+  const hue=baseHue;
+  ctx.save();
+  ctx.translate(x,y);
+  ctx.scale(scaleX,scaleY);
+  // Glitch chromatic offset during glitch
+  if(glitchActive){
+    ctx.save();ctx.globalAlpha=0.5;
+    ctx.fillStyle='cyan';
+    ctx.fillRect(-9-3,-9,18,18);
+    ctx.fillStyle='magenta';
+    ctx.fillRect(-9+3,-9,18,18);
+    ctx.restore();
+  }
+  ctx.shadowColor=`hsl(${hue},100%,70%)`;ctx.shadowBlur=20;
+  ctx.fillStyle=`hsl(${hue},90%,65%)`;
+  ctx.fillRect(-9,-9,18,18);
+  ctx.strokeStyle='#fff';ctx.lineWidth=2;
+  ctx.strokeRect(-9,-9,18,18);
+  ctx.restore();
+
+  // Trail particles
+  if(state==='playing' && t%0.04<dt*1.2){
+    spawnParticle(x+rand(-2,2),y+rand(-2,2),'trail');
+  }
+}
+
+function drawParticles(){
+  for(const p of particles){
+    const a=p.life/p.maxLife;
+    ctx.save();
+    ctx.globalAlpha=a*0.85;
+    ctx.fillStyle=`hsl(${p.hue},100%,70%)`;
+    ctx.shadowColor=`hsl(${p.hue},100%,70%)`;ctx.shadowBlur=8;
+    ctx.beginPath();ctx.arc(p.x,p.y,p.size*a,0,Math.PI*2);ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawFloatTexts(){
+  for(const f of floatTexts){
+    const a=f.life>0.8?1:(f.life/0.8);
+    ctx.save();
+    ctx.globalAlpha=a;
+    ctx.font=`bold 16px 'Segoe UI',sans-serif`;
+    ctx.fillStyle=`hsl(${f.hue},100%,70%)`;
+    ctx.textAlign='center';
+    ctx.shadowColor=`hsl(${f.hue},100%,70%)`;ctx.shadowBlur=10;
+    ctx.fillText(f.txt,f.x,f.y);
+    ctx.restore();
+  }
+}
+
+function drawGlitchOverlay(){
+  if(!glitchActive) return;
+  // Scanlines
+  ctx.save();
+  ctx.globalAlpha=0.06;
+  ctx.fillStyle='#000';
+  for(let y=0;y<CH;y+=4){ctx.fillRect(0,y,CW,2);}
+  ctx.restore();
+  // Jitter: slight translate handled in loop
+}
+
+function drawStartScreen(){
+  ctx.save();
+  ctx.globalAlpha=0.92;
+  ctx.fillStyle='rgba(10,10,26,0.75)';
+  ctx.fillRect(0,0,CW,CH);
+  ctx.restore();
+
+  const cx=CW/2, cy=CH/2;
+  // Title
+  ctx.save();
+  ctx.textAlign='center';
+  ctx.font=`bold 44px 'Segoe UI',sans-serif`;
+  ctx.fillStyle=`hsl(${baseHue},100%,70%)`;
+  ctx.shadowColor=`hsl(${baseHue},100%,70%)`;ctx.shadowBlur=24;
+  ctx.fillText('GLITCH',cx,cy-50);
+  ctx.fillStyle=`hsl(${(baseHue+60)%360},100%,70%)`;
+  ctx.shadowColor=`hsl(${(baseHue+60)%360},100%,70%)`;
+  ctx.fillText('BEAM',cx,cy);
+  ctx.restore();
+
+  // Subtitle
+  ctx.save();
+  ctx.textAlign='center';
+  ctx.font=`16px 'Segoe UI',sans-serif`;
+  ctx.fillStyle='rgba(255,255,255,0.6)';
+  ctx.fillText('Flip Rush',cx,cy+26);
+  ctx.restore();
+
+  // Tap to start pulse
+  const pulse=0.6+0.4*Math.sin(t*3);
+  ctx.save();
+  ctx.textAlign='center';
+  ctx.font=`bold 18px 'Segoe UI',sans-serif`;
+  ctx.globalAlpha=pulse;
+  ctx.fillStyle='#fff';
+  ctx.fillText('TAP TO START',cx,cy+72);
+  ctx.restore();
+}
+
+function drawGameOver(){
+  const sc=Math.floor(score);
+  const isNew=sc>=Math.floor(bestScore);
+
+  ctx.save();
+  ctx.globalAlpha=0.88;
+  ctx.fillStyle='rgba(10,10,26,0.85)';
+  ctx.fillRect(0,0,CW,CH);
+  ctx.restore();
+
+  const cx=CW/2, cy=CH/2-40;
+
+  // GAME OVER title
+  ctx.save();
+  ctx.textAlign='center';
+  ctx.font=`bold 36px 'Segoe UI',sans-serif`;
+  ctx.fillStyle='#ff3c3c';
+  ctx.shadowColor='#ff3c3c';ctx.shadowBlur=20;
+  ctx.fillText('GAME OVER',cx,cy-60);
+  ctx.restore();
+
+  // Score
+  ctx.save();
+  ctx.textAlign='center';
+  ctx.font=`bold 52px 'Segoe UI',sans-serif`;
+  ctx.fillStyle=`hsl(${baseHue},100%,70%)`;
+  ctx.shadowColor=`hsl(${baseHue},100%,70%)`;ctx.shadowBlur=16;
+  ctx.fillText(sc,cx,cy-8);
+  ctx.restore();
+
+  if(isNew){
+    ctx.save();
+    ctx.textAlign='center';
+    ctx.font=`bold 15px 'Segoe UI',sans-serif`;
+    ctx.fillStyle='#ffcc00';
+    ctx.shadowColor='#ffcc00';ctx.shadowBlur=10;
+    ctx.fillText('★ NEW BEST! ★',cx,cy+20);
+    ctx.restore();
+  }
+
+  // Stats
+  const stats=[
+    ['Best',Math.floor(bestScore)],
+    ['Best Mult','x'+bestMult],
+    ['Longest Chain',longestChain],
+    ['Near Misses',nearMissCount],
+    ['Bits Collected',bitsCollected]
+  ];
+  ctx.save();
+  ctx.textAlign='left';
+  ctx.font=`14px 'Segoe UI',sans-serif`;
+  const sx=cx-90;
+  stats.forEach(([label,val],i)=>{
+    const y=cy+46+i*24;
+    ctx.fillStyle='rgba(255,255,255,0.45)';
+    ctx.fillText(label,sx,y);
+    ctx.fillStyle='rgba(255,255,255,0.9)';
+    ctx.textAlign='right';
+    ctx.fillText(val,sx+180,y);
+    ctx.textAlign='left';
+  });
+  ctx.restore();
+
+  // Tap to retry
+  const pulse=0.5+0.5*Math.sin(t*3);
+  ctx.save();
+  ctx.textAlign='center';
+  ctx.font=`bold 16px 'Segoe UI',sans-serif`;
+  ctx.globalAlpha=goDelay>0?0.3:pulse;
+  ctx.fillStyle='#fff';
+  ctx.fillText('TAP TO RETRY',cx,cy+180);
+  ctx.restore();
+}
+
+function drawFlash(){
+  if(flashAlpha<=0) return;
+  ctx.save();
+  ctx.globalAlpha=flashAlpha;
+  ctx.fillStyle='#fff';
+  ctx.fillRect(0,0,CW,CH);
+  ctx.restore();
+}
+
+function drawFrame(){
+  ctx.save();
+  // Screen shake
+  let sx=0,sy=0;
+  if(shake>0){
+    sx=(Math.random()-0.5)*shake*18;
+    sy=(Math.random()-0.5)*shake*18;
+    ctx.translate(sx,sy);
+  }
+  // Glitch jitter
+  if(glitchActive){
+    ctx.translate((Math.random()-0.5)*3,(Math.random()-0.5)*2);
+  }
+
+  drawBG();
+  drawGlitchOverlay();
+  drawBeam();
+  drawObjects();
+  drawRunner();
+  drawParticles();
+  drawFloatTexts();
+  drawFlash();
+
+  if(state==='start') drawStartScreen();
+  if(state==='gameover'){
+    if(goDelay>0) goDelay-=dt;
+    drawGameOver();
+  }
+
+  ctx.restore();
+}
+
+// ── Game Loop ─────────────────────────────────────────────────────────────────
+let animId=null;
+function loop(ts){
+  if(!lastTime) lastTime=ts;
+  const raw=(ts-lastTime)/1000;
+  lastTime=ts;
+
+  if(state==='playing') update(raw);
+  else {
+    // animate bg/beam on start/gameover
+    dt=Math.min(raw,0.05);
+    t+=dt;
+    phase-=60*0.004*dt;
+    baseHue=(baseHue+15*dt)%360;
+    flashAlpha=Math.max(0,flashAlpha-3*dt);
+    if(shakeT>0){shakeT-=dt;if(shakeT<=0)shake=0;}
+    updateParticles(dt);
+    for(let i=floatTexts.length-1;i>=0;i--){
+      const f=floatTexts[i];f.life-=dt;f.y+=f.vy*dt;
+      if(f.life<=0)floatTexts.splice(i,1);
+    }
+  }
+
+  drawFrame();
+  animId=requestAnimationFrame(loop);
+}
+
+// ── Share functionality ───────────────────────────────────────────────────────
+function doShare(){
+  const sc=Math.floor(score);
+  const url=`https://balinti.github.io/glitch-beam/?ref=share&score=${sc}&chain=${longestChain}`;
+  const text=`I scored ${sc} in Glitch Beam! Beat me if you can. 🎮`;
+  if(navigator.share){
+    navigator.share({title:'Glitch Beam',text,url}).catch(()=>{});
+  } else {
+    navigator.clipboard.writeText(text+' '+url).then(()=>{
+      addFloatText('Link Copied!',CW/2,CH/2,baseHue);
+    }).catch(()=>{
+      prompt('Copy this link:',url);
+    });
+  }
+}
+
+// ── Generate OG image data URL ────────────────────────────────────────────────
+function genOGImage(){
+  const oc=document.createElement('canvas');
+  oc.width=1200;oc.height=630;
+  const ox=oc.getContext('2d');
+  const g=ox.createLinearGradient(0,0,1200,630);
+  g.addColorStop(0,'#0a0a1a');g.addColorStop(1,'#1a0a2a');
+  ox.fillStyle=g;ox.fillRect(0,0,1200,630);
+  ox.font='bold 90px sans-serif';ox.fillStyle='#00f7ff';
+  ox.textAlign='center';ox.shadowColor='#00f7ff';ox.shadowBlur=30;
+  ox.fillText('GLITCH BEAM',600,260);
+  ox.font='bold 40px sans-serif';ox.fillStyle='#ff3cff';ox.shadowColor='#ff3cff';
+  ox.fillText('Flip Rush — Free HTML5 Game',600,340);
+  ox.font='22px sans-serif';ox.fillStyle='rgba(255,255,255,0.5)';ox.shadowBlur=0;
+  ox.fillText('balinti.github.io/glitch-beam',600,410);
+  const dataUrl=oc.toDataURL('image/png');
+  // set og:image meta dynamically (for share only; crawlers won't run JS)
+  document.querySelectorAll('meta[property="og:image"],meta[name="twitter:image"]').forEach(m=>{
+    if(!m.content.includes('data:')) m.content=dataUrl;
+  });
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+genOGImage();
+initGame();
+t=0; dt=0; lastTime=null;
+state='start';
+updateHUD();
+$('bestVal').textContent=Math.floor(bestScore);
+animId=requestAnimationFrame(loop);
+
+// Prevent scroll on canvas touch
+canvas.addEventListener('touchstart',e=>e.preventDefault(),{passive:false});
+canvas.addEventListener('touchmove',e=>e.preventDefault(),{passive:false});
+
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1083 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Flip Fathom - Free HTML5 Game</title>
+  <meta name="description" content="Play Flip Fathom - Tap to flip gravity and guide your diver through underwater caves, chaining combos for high scores.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a0f2e">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Flip Fathom - Free HTML5 Game">
+  <meta property="og:description" content="Tap to flip gravity and guide your diver through underwater caves. Chain glowing rings for combo multipliers!">
+  <meta property="og:url" content="https://balinti.github.io/flip-fathom/">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Flip Fathom - Free HTML5 Game">
+  <meta name="twitter:description" content="Tap to flip gravity and guide your diver through underwater caves. Chain glowing rings for combo multipliers!">
+
+  <link rel="canonical" href="https://balinti.github.io/flip-fathom/">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #050914;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      overflow-x: hidden;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      color: #cce6ff;
+    }
+    #game-wrap {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      max-height: 750px;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    #gameCanvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+      cursor: pointer;
+    }
+    #how-to-play {
+      width: 100%;
+      max-width: 420px;
+      padding: 12px 16px 90px;
+      font-size: 13px;
+      color: #4a6fa5;
+      line-height: 1.6;
+    }
+    #how-to-play summary {
+      cursor: pointer;
+      color: #6a9fd8;
+      font-weight: 600;
+      margin-bottom: 8px;
+      list-style: none;
+    }
+    #how-to-play summary::before { content: '▶ '; }
+    details[open] summary::before { content: '▼ '; }
+    #how-to-play p { margin-bottom: 6px; }
+  </style>
+</head>
+<body>
+<div id="game-wrap">
+  <canvas id="gameCanvas"></canvas>
+</div>
+
+<section id="how-to-play">
+  <details>
+    <summary>How to Play Flip Fathom</summary>
+    <p><strong>Flip Fathom</strong> is a hyper-casual underwater arcade game. Guide your glowing diver through bioluminescent caves.</p>
+    <p><strong>Controls:</strong> Tap / click or press Space / Enter to flip between the ceiling rail and floor rail.</p>
+    <p><strong>Rings:</strong> Collect glowing rings to build your streak and score multiplier (up to 8x). Rings alternate rails — plan your flips!</p>
+    <p><strong>Hazards:</strong> Avoid Jelly Pulses (lane zaps with a telegraph flash) and Spike Gates (blocking one lane). Touching a hazard ends the run.</p>
+    <p><strong>Scoring:</strong> Score = distance × 0.1 + ring points. Ring points = 50 × multiplier. Multiplier increases every 3 rings in a streak.</p>
+    <p><strong>Tips:</strong> Touch a wall to reset your streak (run continues). Don't miss rings — your streak window is tight!</p>
+  </details>
+</section>
+
+<script>
+(function() {
+'use strict';
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+const LANE_HALF = 130;       // distance from center to each rail center (CSS px)
+const PLAYER_R  = 14;        // player radius
+const RING_R    = 18;        // ring collect radius
+const SPRING_K  = 22;        // spring stiffness
+const SPRING_D  = 7.8;       // damping
+const FLIP_IMPULSE = -2.2;   // velocity impulse on flip (toward target)
+
+// ─── Canvas Setup ────────────────────────────────────────────────────────────
+const canvas = document.getElementById('gameCanvas');
+const ctx    = canvas.getContext('2d');
+
+let W = 0, H = 0, DPR = 1;
+
+function resize() {
+  const wrap = document.getElementById('game-wrap');
+  const rect  = wrap.getBoundingClientRect();
+  W = Math.round(rect.width);
+  H = Math.round(Math.min(rect.height, 750));
+  DPR = Math.min(window.devicePixelRatio || 1, 3);
+  canvas.width  = W * DPR;
+  canvas.height = H * DPR;
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ─── State ───────────────────────────────────────────────────────────────────
+let state = 'start';         // 'start' | 'playing' | 'gameover'
+let tRun  = 0;               // seconds since game start
+let score = 0;
+let sessionBest = 0;
+let persistBest = parseInt(localStorage.getItem('ff_best') || '0');
+let streak = 0;
+let peakMult = 1;
+let distance = 0;            // pixels scrolled
+
+// Player spring
+let player = { y:0, vy:0, lane:1, targetY:0 }; // lane: 0=top, 1=bottom
+
+// Scroll
+let scrollX = 0;
+let scrollSpeed = 220;
+
+// Objects
+let rings = [];
+let hazards = [];
+let particles = [];
+
+// Shake
+let shakeAmt = 0, shakeDecay = 0.88;
+
+// HSL hue cycling
+let bgHue = 210;
+
+// Timers for spawning
+let ringTimer  = 0;
+let hazardTimer = 0;
+let nextRingLane = 0;   // which lane next ring appears on
+
+// Game over
+let goTips = [
+  'Tip: Rings always alternate rails — pre-flip early!',
+  'Tip: Spike Gates only block one lane. Read the telegraph!',
+  'Tip: Every 3 rings in a streak boosts your multiplier.',
+  'Tip: Wall touches reset streak but don\'t end the run.',
+  'Tip: Jelly Pulses flash before activating — that\'s your window!',
+  'Tip: Higher multiplier = exponentially higher scores.',
+];
+let currentTip = '';
+
+// Challenge param
+let challengeScore = 0;
+(function() {
+  const q = new URLSearchParams(window.location.search);
+  const c = q.get('challenge');
+  if (c) { challengeScore = parseInt(c) || 0; }
+})();
+
+// Share button hit region (gameover screen)
+let shareBtnRect = null;
+
+// Button hit regions on start/gameover
+let startBtnRect = null;
+
+// ─── Input ────────────────────────────────────────────────────────────────────
+function handleInput(e) {
+  if (e && e.preventDefault) e.preventDefault();
+  if (state === 'start') {
+    startGame();
+  } else if (state === 'playing') {
+    flip();
+  } else if (state === 'gameover') {
+    // Check share button hit
+    if (e && shareBtnRect) {
+      const r = canvas.getBoundingClientRect();
+      let cx, cy;
+      if (e.clientX !== undefined) {
+        cx = (e.clientX - r.left) * (W / r.width);
+        cy = (e.clientY - r.top)  * (H / r.height);
+      }
+      if (cx !== undefined &&
+          cx >= shareBtnRect.x && cx <= shareBtnRect.x + shareBtnRect.w &&
+          cy >= shareBtnRect.y && cy <= shareBtnRect.y + shareBtnRect.h) {
+        doShare();
+        return;
+      }
+    }
+    startGame();
+  }
+}
+
+canvas.addEventListener('pointerdown', handleInput, { passive: false });
+window.addEventListener('keydown', function(e) {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    handleInput(e);
+  }
+});
+
+// ─── Game Init / Reset ────────────────────────────────────────────────────────
+function startGame() {
+  state       = 'playing';
+  tRun        = 0;
+  score       = 0;
+  streak      = 0;
+  peakMult    = 1;
+  distance    = 0;
+  scrollX     = 0;
+  scrollSpeed = 220;
+  shakeAmt    = 0;
+  bgHue       = 210;
+  rings       = [];
+  hazards     = [];
+  particles   = [];
+  ringTimer   = 0.5;   // first ring soon
+  hazardTimer = 8.5;
+  nextRingLane = Math.random() < 0.5 ? 0 : 1;
+
+  // Player starts on bottom rail, vertically centered on that rail
+  player.lane    = 1;
+  player.y       = railY(1);
+  player.targetY = railY(1);
+  player.vy      = 0;
+}
+
+function railY(lane) {
+  // lane 0 = top, lane 1 = bottom
+  const cx = H / 2;
+  return lane === 0 ? cx - LANE_HALF : cx + LANE_HALF;
+}
+
+function flip() {
+  player.lane    = player.lane === 0 ? 1 : 0;
+  player.targetY = railY(player.lane);
+  // Apply impulse toward target
+  const dir = player.targetY > player.y ? 1 : -1;
+  player.vy  = dir * Math.abs(FLIP_IMPULSE) * 180;
+}
+
+// ─── Spawning ─────────────────────────────────────────────────────────────────
+function ringInterval() {
+  return Math.max(0.62, Math.min(1.20, 1.20 - 0.010 * tRun));
+}
+function hazardInterval() {
+  return Math.max(1.25, Math.min(2.80, 2.80 - 0.020 * tRun));
+}
+function multiplier() {
+  return Math.min(8, 1 + Math.floor(streak / 3));
+}
+
+function spawnRing() {
+  const lane = nextRingLane;
+  nextRingLane = lane === 0 ? 1 : 0;
+  rings.push({
+    x: W + 60,
+    y: railY(lane),
+    lane,
+    hue: Math.random() * 360,
+    phase: Math.random() * Math.PI * 2,
+    collected: false,
+    alpha: 1,
+  });
+}
+
+function spawnHazard() {
+  if (tRun < 8) return;
+  const type = Math.random() < 0.5 ? 'jelly' : 'spike';
+  const lane = Math.random() < 0.5 ? 0 : 1;
+  if (type === 'jelly') {
+    hazards.push({
+      type: 'jelly',
+      x: W + 80,
+      lane,
+      phase: 0,        // 0=telegraph, 1=active
+      telegraphT: 0,
+      telegraphDur: 0.9,
+      activeDur: 0.55,
+      activeT: 0,
+      alpha: 1,
+      done: false,
+    });
+  } else {
+    // spike gate: blocks one lane with lethal spikes
+    hazards.push({
+      type: 'spike',
+      x: W + 80,
+      lane,
+      alpha: 1,
+      done: false,
+    });
+  }
+}
+
+// ─── Particles ────────────────────────────────────────────────────────────────
+function emitBurst(x, y, count, hue, speed, life) {
+  for (let i = 0; i < count; i++) {
+    const a  = Math.random() * Math.PI * 2;
+    const s  = speed * (0.4 + Math.random() * 0.6);
+    particles.push({
+      x, y,
+      vx: Math.cos(a) * s,
+      vy: Math.sin(a) * s,
+      life: life * (0.6 + Math.random() * 0.4),
+      maxLife: life,
+      r: 2 + Math.random() * 4,
+      hue: hue + (Math.random() - 0.5) * 40,
+      alpha: 1,
+    });
+  }
+}
+
+// ─── Update ───────────────────────────────────────────────────────────────────
+let lastTime = 0;
+
+function update(ts) {
+  if (!lastTime) lastTime = ts;
+  let dt = Math.min((ts - lastTime) / 1000, 0.05);
+  lastTime = ts;
+
+  if (state !== 'playing') return;
+
+  tRun += dt;
+  bgHue = (bgHue + dt * 4) % 360;
+
+  // Scroll speed
+  scrollSpeed = Math.min(520, 220 + 9.5 * tRun);
+  const dx = scrollSpeed * dt;
+  scrollX  += dx;
+  distance += dx;
+
+  // Score from distance
+  score = Math.floor(distance * 0.10);
+
+  // Player spring physics
+  const diff = player.targetY - player.y;
+  const acc  = SPRING_K * diff - SPRING_D * player.vy;
+  player.vy += acc * dt * 60;
+  player.y  += player.vy * dt;
+
+  // Wall-touch streak reset check
+  const topRailY    = railY(0);
+  const bottomRailY = railY(1);
+  const distToTop   = Math.abs(player.y - topRailY);
+  const distToBot   = Math.abs(player.y - bottomRailY);
+  const minDist     = Math.min(distToTop, distToBot);
+  if (minDist > LANE_HALF - PLAYER_R + 4) {
+    // touching wall zone
+    if (streak > 0) {
+      streak = 0;
+      addShake(1.5);
+    }
+  }
+
+  // Clamp player to canvas bounds
+  const margin = PLAYER_R + 4;
+  if (player.y < margin) { player.y = margin; player.vy = Math.abs(player.vy) * 0.3; }
+  if (player.y > H - margin) { player.y = H - margin; player.vy = -Math.abs(player.vy) * 0.3; }
+
+  // Spawn rings
+  ringTimer -= dt;
+  if (ringTimer <= 0) {
+    spawnRing();
+    ringTimer = ringInterval();
+  }
+
+  // Spawn hazards
+  hazardTimer -= dt;
+  if (hazardTimer <= 0) {
+    spawnHazard();
+    hazardTimer = hazardInterval();
+  }
+
+  // Update rings
+  for (let i = rings.length - 1; i >= 0; i--) {
+    const rg = rings[i];
+    rg.x    -= dx;
+    rg.phase += dt * 3;
+    if (rg.collected) {
+      rg.alpha -= dt * 4;
+      if (rg.alpha <= 0) rings.splice(i, 1);
+      continue;
+    }
+    // Collect check
+    const d2 = (player.x || W * 0.28) - rg.x;
+    const dy2 = player.y - rg.y;
+    if (Math.sqrt(d2*d2 + dy2*dy2) < RING_R + PLAYER_R) {
+      rg.collected = true;
+      streak++;
+      const mult = multiplier();
+      if (mult > peakMult) peakMult = mult;
+      const pts = 50 * mult;
+      score += pts;
+      emitBurst(rg.x, rg.y, 14, rg.hue, 120, 0.7);
+      addShake(1.2);
+      // Level-up burst on multiplier increase
+      if (streak % 3 === 0) {
+        emitBurst(player.x || W * 0.28, player.y, 24, bgHue, 180, 1.0);
+      }
+    }
+    // Off screen
+    if (rg.x < -80) rings.splice(i, 1);
+  }
+
+  // Update hazards
+  for (let i = hazards.length - 1; i >= 0; i--) {
+    const hz = hazards[i];
+    hz.x -= dx;
+
+    if (hz.type === 'jelly') {
+      if (hz.phase === 0) {
+        hz.telegraphT += dt;
+        if (hz.telegraphT >= hz.telegraphDur) {
+          hz.phase = 1;
+          hz.activeT = 0;
+        }
+      } else {
+        hz.activeT += dt;
+        if (hz.activeT >= hz.activeDur) {
+          hz.done = true;
+        }
+        // Collision only when active
+        if (!hz.done) {
+          const hzY = railY(hz.lane);
+          const px = player.x || W * 0.28;
+          const dx2 = px - hz.x;
+          const dy2 = player.y - hzY;
+          if (Math.abs(dx2) < 36 && Math.abs(dy2) < 40) {
+            gameOver();
+            return;
+          }
+        }
+      }
+    } else { // spike
+      // Always lethal
+      const hzY = railY(hz.lane);
+      const px = player.x || W * 0.28;
+      const dx2 = px - hz.x;
+      const dy2 = player.y - hzY;
+      if (Math.abs(dx2) < 30 && Math.abs(dy2) < 36) {
+        gameOver();
+        return;
+      }
+    }
+
+    if (hz.x < -120 || hz.done) hazards.splice(i, 1);
+  }
+
+  // Update particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x  += p.vx * dt;
+    p.y  += p.vy * dt;
+    p.vx *= 0.92;
+    p.vy *= 0.92;
+    p.life -= dt;
+    p.alpha = Math.max(0, p.life / p.maxLife);
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+
+  // Shake decay
+  shakeAmt *= shakeDecay;
+  if (shakeAmt < 0.05) shakeAmt = 0;
+
+  // Session best
+  if (score > sessionBest) sessionBest = score;
+}
+
+function addShake(amt) {
+  shakeAmt = Math.min(shakeAmt + amt, 18);
+}
+
+function gameOver() {
+  state = 'gameover';
+  addShake(14);
+  if (score > persistBest) {
+    persistBest = score;
+    localStorage.setItem('ff_best', persistBest);
+  }
+  if (score > sessionBest) sessionBest = score;
+  currentTip = goTips[Math.floor(Math.random() * goTips.length)];
+  emitBurst(player.x || W * 0.28, player.y, 30, 0, 160, 1.2);
+  lastTime = 0;
+}
+
+// ─── Drawing ──────────────────────────────────────────────────────────────────
+function draw(ts) {
+  const cx = W / 2;
+  const cy = H / 2;
+
+  // Shake offset
+  const sx = shakeAmt > 0 ? (Math.random() - 0.5) * shakeAmt * 2 : 0;
+  const sy = shakeAmt > 0 ? (Math.random() - 0.5) * shakeAmt * 2 : 0;
+
+  ctx.save();
+  ctx.translate(sx, sy);
+
+  // Background gradient
+  const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+  bgGrad.addColorStop(0,   `hsl(${bgHue}, 60%, 6%)`);
+  bgGrad.addColorStop(0.5, `hsl(${(bgHue + 30) % 360}, 55%, 4%)`);
+  bgGrad.addColorStop(1,   `hsl(${(bgHue + 60) % 360}, 60%, 6%)`);
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Ambient bioluminescent glow lines
+  drawAmbientLines(ts);
+
+  if (state === 'start') {
+    drawStartScreen();
+  } else if (state === 'playing' || state === 'gameover') {
+    drawGame(ts);
+    drawHUD();
+    if (state === 'gameover') drawGameOver();
+  }
+
+  // Particles (drawn on top)
+  drawParticles();
+
+  ctx.restore();
+}
+
+function drawAmbientLines(ts) {
+  const t = ts / 1000;
+  for (let i = 0; i < 5; i++) {
+    const yOff = (i / 5) * H;
+    const alpha = 0.04 + 0.02 * Math.sin(t * 0.7 + i);
+    ctx.strokeStyle = `hsla(${(bgHue + i * 40) % 360}, 80%, 60%, ${alpha})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, yOff + Math.sin(t * 0.5 + i) * 20);
+    ctx.bezierCurveTo(W * 0.33, yOff + Math.sin(t * 0.6 + i + 1) * 30,
+                      W * 0.66, yOff + Math.sin(t * 0.4 + i + 2) * 25,
+                      W,         yOff + Math.sin(t * 0.55 + i + 3) * 20);
+    ctx.stroke();
+  }
+}
+
+function drawGame(ts) {
+  const t = ts / 1000;
+  const topY = railY(0);
+  const botY = railY(1);
+  const px = W * 0.28;
+
+  // Draw rails
+  drawRail(topY, 0, t);
+  drawRail(botY, 1, t);
+
+  // Draw hazards (behind player)
+  for (const hz of hazards) drawHazard(hz, t);
+
+  // Draw rings
+  for (const rg of rings) drawRing(rg, t);
+
+  // Draw player
+  drawPlayer(px, player.y, t);
+}
+
+function drawRail(y, lane, t) {
+  const hue = lane === 0 ? (bgHue + 40) % 360 : (bgHue + 200) % 360;
+
+  // Outer glow
+  ctx.save();
+  ctx.shadowColor = `hsl(${hue}, 90%, 55%)`;
+  ctx.shadowBlur  = 22;
+  ctx.strokeStyle = `hsl(${hue}, 80%, 55%)`;
+  ctx.lineWidth   = 4;
+  ctx.beginPath();
+  ctx.moveTo(0, y);
+  ctx.lineTo(W, y);
+  ctx.stroke();
+  // Inner bright line
+  ctx.shadowBlur  = 8;
+  ctx.strokeStyle = `hsl(${hue}, 100%, 80%)`;
+  ctx.lineWidth   = 1.5;
+  ctx.stroke();
+  ctx.restore();
+
+  // Rail dot accents
+  ctx.save();
+  const spacing = 80;
+  const offset  = (scrollX * 0.5) % spacing;
+  for (let x = -offset; x < W + spacing; x += spacing) {
+    const pulse = 0.5 + 0.5 * Math.sin(t * 3 + x * 0.05);
+    ctx.fillStyle = `hsla(${hue}, 100%, 80%, ${0.3 * pulse})`;
+    ctx.beginPath();
+    ctx.arc(x, y, 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawPlayer(x, y, t) {
+  const hue = (bgHue + 120) % 360;
+  const pulse = 0.85 + 0.15 * Math.sin(t * 4);
+
+  ctx.save();
+  // Glow aura
+  ctx.shadowColor = `hsl(${hue}, 100%, 60%)`;
+  ctx.shadowBlur  = 24 * pulse;
+
+  // Body
+  ctx.fillStyle = `hsl(${hue}, 90%, 65%)`;
+  ctx.beginPath();
+  ctx.arc(x, y, PLAYER_R * pulse, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Inner highlight
+  ctx.fillStyle = `hsla(${hue}, 80%, 90%, 0.6)`;
+  ctx.beginPath();
+  ctx.arc(x - PLAYER_R * 0.3, y - PLAYER_R * 0.3, PLAYER_R * 0.4, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Trail
+  const mult = multiplier();
+  const trailHue = (hue + mult * 15) % 360;
+  for (let i = 1; i <= 5; i++) {
+    const tx = x - i * 10;
+    const alpha = (1 - i / 6) * 0.4;
+    ctx.fillStyle = `hsla(${trailHue}, 90%, 65%, ${alpha})`;
+    ctx.beginPath();
+    ctx.arc(tx, y, PLAYER_R * (1 - i * 0.12) * pulse, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+function drawRing(rg, t) {
+  if (rg.alpha <= 0) return;
+  const breathe = 1 + 0.12 * Math.sin(rg.phase);
+  const r = RING_R * breathe;
+
+  ctx.save();
+  ctx.globalAlpha = rg.alpha;
+
+  // Outer glow
+  ctx.shadowColor = `hsl(${rg.hue}, 100%, 60%)`;
+  ctx.shadowBlur  = 18 + 6 * Math.sin(rg.phase);
+  ctx.strokeStyle = `hsl(${rg.hue}, 90%, 55%)`;
+  ctx.lineWidth   = 3.5;
+  ctx.beginPath();
+  ctx.arc(rg.x, rg.y, r, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Inner
+  ctx.shadowBlur  = 8;
+  ctx.strokeStyle = `hsl(${rg.hue}, 100%, 80%)`;
+  ctx.lineWidth   = 1.5;
+  ctx.stroke();
+
+  // Center dot
+  ctx.fillStyle = `hsla(${rg.hue}, 100%, 85%, 0.7)`;
+  ctx.beginPath();
+  ctx.arc(rg.x, rg.y, 4, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawHazard(hz, t) {
+  if (hz.done) return;
+  const hzY = railY(hz.lane);
+
+  ctx.save();
+  if (hz.type === 'jelly') {
+    const progress = hz.phase === 0 ? hz.telegraphT / hz.telegraphDur : 1;
+    const pulse = Math.sin(t * 10 + hz.x * 0.05);
+    const alpha = hz.phase === 0
+      ? 0.3 + 0.5 * progress + 0.1 * pulse
+      : 0.9 + 0.1 * Math.abs(pulse);
+
+    const hue = hz.phase === 0 ? 55 : 30; // yellow telegraph, orange active
+
+    ctx.shadowColor = `hsl(${hue}, 100%, 60%)`;
+    ctx.shadowBlur  = hz.phase === 0 ? 14 : 28;
+
+    // Jellyfish body (dome)
+    ctx.fillStyle = `hsla(${hue}, 90%, 55%, ${alpha * 0.6})`;
+    ctx.strokeStyle = `hsla(${hue}, 100%, 70%, ${alpha})`;
+    ctx.lineWidth = 2.5;
+    const sign = hz.lane === 0 ? 1 : -1; // dome faces inward
+    ctx.beginPath();
+    ctx.ellipse(hz.x, hzY + sign * 8, 22, 14, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Tentacles
+    for (let i = -2; i <= 2; i++) {
+      const tx = hz.x + i * 8;
+      const ty1 = hzY + sign * 16;
+      const ty2 = hzY + sign * (32 + 8 * Math.sin(t * 6 + i));
+      ctx.strokeStyle = `hsla(${hue}, 100%, 70%, ${alpha * 0.7})`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(tx, ty1);
+      ctx.quadraticCurveTo(tx + 4 * Math.sin(t * 5 + i), (ty1 + ty2) / 2, tx, ty2);
+      ctx.stroke();
+    }
+
+    // Telegraph flash warning bar
+    if (hz.phase === 0) {
+      ctx.fillStyle = `hsla(55, 100%, 60%, ${0.08 + 0.12 * progress})`;
+      ctx.fillRect(hz.x - 30, hzY - 60, 60, 120);
+    }
+  } else {
+    // Spike gate
+    ctx.shadowColor = 'hsl(0, 100%, 55%)';
+    ctx.shadowBlur  = 20;
+
+    const sign = hz.lane === 0 ? 1 : -1;
+    const baseY = hzY;
+    const spikeCount = 5;
+    const spikeW = 10, spikeH = 30;
+
+    // Red bar
+    ctx.fillStyle = 'hsla(0, 85%, 40%, 0.7)';
+    ctx.fillRect(hz.x - 4, baseY - 8 * sign, 8, 60 * sign);
+
+    // Spikes
+    ctx.fillStyle = 'hsl(0, 90%, 55%)';
+    for (let i = 0; i < spikeCount; i++) {
+      const sx = hz.x - (spikeW * spikeCount / 2) + i * spikeW + spikeW / 2;
+      ctx.beginPath();
+      ctx.moveTo(sx - spikeW / 2, baseY + sign * 6);
+      ctx.lineTo(sx, baseY + sign * (6 + spikeH));
+      ctx.lineTo(sx + spikeW / 2, baseY + sign * 6);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
+function drawParticles() {
+  ctx.save();
+  for (const p of particles) {
+    ctx.globalAlpha = p.alpha;
+    ctx.fillStyle   = `hsl(${p.hue}, 90%, 65%)`;
+    ctx.shadowColor = `hsl(${p.hue}, 100%, 70%)`;
+    ctx.shadowBlur  = 8;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r * p.alpha, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawHUD() {
+  const mult = multiplier();
+  const topY = railY(0);
+  const botY = railY(1);
+
+  ctx.save();
+  ctx.textBaseline = 'top';
+  ctx.font = 'bold 28px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.shadowColor = `hsl(${bgHue}, 100%, 60%)`;
+  ctx.shadowBlur  = 12;
+  ctx.fillText(score.toLocaleString(), 12, 12);
+
+  ctx.font = '14px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = 'rgba(180,220,255,0.8)';
+  ctx.shadowBlur = 6;
+  ctx.fillText(`Best: ${persistBest.toLocaleString()}`, 12, 46);
+
+  // Multiplier badge
+  if (mult > 1) {
+    const mStr = `×${mult}`;
+    ctx.font = 'bold 20px "Segoe UI", system-ui, sans-serif';
+    const mHue = (bgHue + mult * 25) % 360;
+    ctx.fillStyle   = `hsl(${mHue}, 100%, 65%)`;
+    ctx.shadowColor = `hsl(${mHue}, 100%, 70%)`;
+    ctx.shadowBlur  = 16;
+    ctx.fillText(mStr, W - ctx.measureText(mStr).width - 12, 12);
+  }
+
+  // Streak dots
+  if (streak > 0) {
+    const dotR = 4, dotSpacing = 12;
+    const startX = W - Math.min(streak % 3 === 0 ? 3 : streak % 3, 3) * dotSpacing - 12;
+    const dotCount = streak % 3 === 0 ? 3 : streak % 3;
+    for (let i = 0; i < dotCount; i++) {
+      const hue = (bgHue + i * 40) % 360;
+      ctx.fillStyle   = `hsl(${hue}, 100%, 65%)`;
+      ctx.shadowColor = `hsl(${hue}, 100%, 70%)`;
+      ctx.shadowBlur  = 8;
+      ctx.beginPath();
+      ctx.arc(W - 12 - i * dotSpacing, 46, dotR, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  ctx.restore();
+}
+
+function drawStartScreen() {
+  ctx.save();
+  const cx = W / 2;
+  const cy = H / 2;
+
+  // Title glow
+  ctx.font = 'bold 46px "Segoe UI", system-ui, sans-serif';
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+
+  // Shadow layers
+  for (let i = 3; i >= 0; i--) {
+    ctx.shadowColor = `hsl(${bgHue}, 100%, 60%)`;
+    ctx.shadowBlur  = 30 - i * 6;
+    ctx.fillStyle   = `hsl(${(bgHue + i * 10) % 360}, 90%, ${50 + i * 8}%)`;
+    ctx.fillText('FLIP FATHOM', cx, cy - 80);
+  }
+
+  ctx.font = '16px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle   = 'rgba(160,210,255,0.85)';
+  ctx.shadowBlur  = 6;
+  ctx.fillText('Glowline Drift', cx, cy - 44);
+
+  // Challenge display
+  if (challengeScore > 0) {
+    ctx.font = 'bold 15px "Segoe UI", system-ui, sans-serif';
+    ctx.fillStyle = `hsl(55, 100%, 65%)`;
+    ctx.shadowColor = 'hsl(55, 100%, 60%)';
+    ctx.shadowBlur = 12;
+    ctx.fillText(`Beat your friend's score: ${challengeScore.toLocaleString()}`, cx, cy - 14);
+  }
+
+  // Best score
+  if (persistBest > 0) {
+    ctx.font = '14px "Segoe UI", system-ui, sans-serif';
+    ctx.fillStyle = 'rgba(140,190,255,0.7)';
+    ctx.shadowBlur = 4;
+    ctx.fillText(`Personal best: ${persistBest.toLocaleString()}`, cx, cy + (challengeScore > 0 ? 10 : -10));
+  }
+
+  // Start button
+  const btnY = cy + 60;
+  const btnW = 200, btnH = 52;
+  const bx = cx - btnW / 2;
+  startBtnRect = { x: bx, y: btnY, w: btnW, h: btnH };
+
+  const btnGrad = ctx.createLinearGradient(bx, btnY, bx + btnW, btnY + btnH);
+  btnGrad.addColorStop(0, `hsl(${bgHue}, 80%, 35%)`);
+  btnGrad.addColorStop(1, `hsl(${(bgHue + 60) % 360}, 80%, 30%)`);
+  ctx.shadowColor = `hsl(${bgHue}, 90%, 60%)`;
+  ctx.shadowBlur  = 20;
+  ctx.fillStyle   = btnGrad;
+  roundRect(bx, btnY, btnW, btnH, 26);
+  ctx.fill();
+  ctx.strokeStyle = `hsl(${bgHue}, 80%, 55%)`;
+  ctx.lineWidth   = 2;
+  roundRect(bx, btnY, btnW, btnH, 26);
+  ctx.stroke();
+
+  ctx.font = 'bold 20px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.95)';
+  ctx.shadowBlur = 10;
+  ctx.fillText('TAP TO DIVE', cx, btnY + btnH / 2);
+
+  // Tutorial hints
+  ctx.font = '13px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = 'rgba(120,180,240,0.65)';
+  ctx.shadowBlur = 4;
+  ctx.fillText('Tap / Space to flip between rails', cx, cy + 135);
+  ctx.fillText('Collect rings • Avoid jellyfish & spikes', cx, cy + 155);
+
+  // Rails preview
+  drawRail(railY(0), 0, 0);
+  drawRail(railY(1), 1, 0);
+
+  ctx.restore();
+}
+
+function drawGameOver() {
+  ctx.save();
+  const cx = W / 2, cy = H / 2;
+
+  // Dark overlay
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  // GAME OVER title
+  ctx.font = 'bold 40px "Segoe UI", system-ui, sans-serif';
+  ctx.shadowColor = 'hsl(0, 100%, 60%)';
+  ctx.shadowBlur  = 24;
+  ctx.fillStyle   = 'hsl(0, 90%, 65%)';
+  ctx.fillText('GAME OVER', cx, cy - 110);
+
+  // Score
+  ctx.shadowColor = `hsl(${bgHue}, 100%, 60%)`;
+  ctx.shadowBlur  = 16;
+  ctx.font = 'bold 44px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.95)';
+  ctx.fillText(score.toLocaleString(), cx, cy - 58);
+
+  // Labels
+  ctx.font = '14px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = 'rgba(160,210,255,0.75)';
+  ctx.shadowBlur = 6;
+  ctx.fillText('SCORE', cx, cy - 30);
+
+  // Peak multiplier
+  ctx.font = '15px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = `hsl(${(bgHue + 60) % 360}, 90%, 65%)`;
+  ctx.fillText(`Peak Multiplier ×${peakMult}`, cx, cy - 6);
+
+  // Best scores
+  ctx.font = '14px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = 'rgba(140,190,255,0.8)';
+  ctx.shadowBlur = 4;
+  ctx.fillText(`Personal Best: ${persistBest.toLocaleString()}`, cx, cy + 18);
+  ctx.fillText(`Session Best: ${sessionBest.toLocaleString()}`, cx, cy + 38);
+
+  // Challenge beat / not beat
+  if (challengeScore > 0) {
+    const beat = score > challengeScore;
+    ctx.font = 'bold 14px "Segoe UI", system-ui, sans-serif';
+    ctx.fillStyle   = beat ? 'hsl(120, 80%, 60%)' : 'hsl(0, 80%, 60%)';
+    ctx.shadowColor = ctx.fillStyle;
+    ctx.shadowBlur  = 10;
+    ctx.fillText(beat ? `You beat the challenge! (${challengeScore.toLocaleString()})` : `Challenge: ${challengeScore.toLocaleString()} (keep trying!)`, cx, cy + 60);
+  }
+
+  // Tip
+  ctx.font = 'italic 12px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = 'rgba(120,180,240,0.6)';
+  ctx.shadowBlur = 0;
+  const tipLines = wrapText(ctx, currentTip, W - 40);
+  tipLines.forEach((line, i) => ctx.fillText(line, cx, cy + (challengeScore > 0 ? 84 : 68) + i * 18));
+
+  // Share button
+  const sbY = cy + 120 + (challengeScore > 0 ? 20 : 0);
+  const sbW = 180, sbH = 44;
+  const sbX = cx - sbW / 2;
+  shareBtnRect = { x: sbX, y: sbY, w: sbW, h: sbH };
+
+  const sbGrad = ctx.createLinearGradient(sbX, sbY, sbX + sbW, sbY + sbH);
+  sbGrad.addColorStop(0, 'hsl(210, 70%, 30%)');
+  sbGrad.addColorStop(1, 'hsl(240, 70%, 25%)');
+  ctx.shadowColor = 'hsl(210, 100%, 60%)';
+  ctx.shadowBlur  = 14;
+  ctx.fillStyle   = sbGrad;
+  roundRect(sbX, sbY, sbW, sbH, 22);
+  ctx.fill();
+  ctx.strokeStyle = 'hsl(210, 80%, 55%)';
+  ctx.lineWidth   = 1.5;
+  roundRect(sbX, sbY, sbW, sbH, 22);
+  ctx.stroke();
+
+  ctx.font = 'bold 15px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.92)';
+  ctx.shadowBlur = 6;
+  ctx.fillText('Challenge a Friend', cx, sbY + sbH / 2);
+
+  // Retry hint
+  const retryY = sbY + sbH + 22;
+  ctx.font = '13px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = 'rgba(160,200,255,0.55)';
+  ctx.shadowBlur = 0;
+  ctx.fillText('Tap anywhere to retry', cx, retryY);
+
+  ctx.restore();
+}
+
+// ─── Web Share ────────────────────────────────────────────────────────────────
+function doShare() {
+  const url = `https://balinti.github.io/flip-fathom/?challenge=${score}`;
+  const text = `I scored ${score.toLocaleString()} in Flip Fathom with a ×${peakMult} peak multiplier! Can you beat me?`;
+  if (navigator.share) {
+    navigator.share({ title: 'Flip Fathom', text, url }).catch(() => {});
+  } else {
+    const full = `${text}\n${url}`;
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(full).then(() => showToast('Copied to clipboard!'));
+    } else {
+      showToast(url);
+    }
+  }
+}
+
+let toastAlpha = 0, toastMsg = '', toastTimer = 0;
+function showToast(msg) {
+  toastMsg = msg; toastAlpha = 1; toastTimer = 2.5;
+}
+function drawToast(dt) {
+  if (toastAlpha <= 0) return;
+  toastTimer -= dt;
+  if (toastTimer <= 0) toastAlpha = Math.max(0, toastAlpha - 0.04);
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = `rgba(10,30,80,${0.88 * toastAlpha})`;
+  const tw = Math.min(W - 40, 300), th = 38;
+  const tx = W / 2 - tw / 2, ty = H - 110;
+  roundRect(tx, ty, tw, th, 8);
+  ctx.fill();
+  ctx.font = '13px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = `rgba(200,230,255,${toastAlpha})`;
+  ctx.fillText(toastMsg, W / 2, ty + th / 2);
+  ctx.restore();
+}
+
+// ─── Utilities ────────────────────────────────────────────────────────────────
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+function wrapText(ctx, text, maxW) {
+  const words = text.split(' ');
+  const lines = [];
+  let line = '';
+  for (const w of words) {
+    const test = line ? line + ' ' + w : w;
+    if (ctx.measureText(test).width > maxW && line) {
+      lines.push(line);
+      line = w;
+    } else {
+      line = test;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+// ─── Game Loop ────────────────────────────────────────────────────────────────
+let prevTs = 0;
+function loop(ts) {
+  const dt = Math.min((ts - prevTs) / 1000, 0.05);
+  prevTs = ts;
+
+  update(ts);
+  draw(ts);
+  if (toastAlpha > 0) drawToast(dt);
+
+  requestAnimationFrame(loop);
+}
+
+// Initial state draw (start screen)
+requestAnimationFrame(function init(ts) {
+  prevTs = ts;
+  // Draw start screen once before loop
+  bgHue = 210;
+  player.y = railY(1);
+  draw(ts);
+  requestAnimationFrame(loop);
+});
+
+})();
+</script>
+</body>
+</html>

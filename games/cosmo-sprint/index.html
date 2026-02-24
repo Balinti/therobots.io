@@ -1,0 +1,985 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Cosmo Sprint - Free HTML5 Game</title>
+<meta name="description" content="Play Cosmo Sprint - Tap to dodge alien ships in an infinite space corridor, stacking combos for bonus points and power-ups.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0a0a1a">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Cosmo Sprint - Free HTML5 Game">
+<meta property="og:description" content="Play Cosmo Sprint - Tap to dodge alien ships in an infinite space corridor, stacking combos for bonus points and power-ups.">
+<meta property="og:url" content="https://balinti.github.io/cosmo-sprint/">
+<meta property="og:image" content="https://balinti.github.io/cosmo-sprint/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Cosmo Sprint - Free HTML5 Game">
+<meta name="twitter:description" content="Play Cosmo Sprint - Tap to dodge alien ships in an infinite space corridor, stacking combos for bonus points and power-ups.">
+<meta name="twitter:image" content="https://balinti.github.io/cosmo-sprint/og.png">
+<link rel="canonical" href="https://balinti.github.io/cosmo-sprint/">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "VideoGame",
+  "name": "Cosmo Sprint",
+  "description": "Tap to dodge alien ships in an infinite space corridor, stacking combos for bonus points and power-ups.",
+  "url": "https://balinti.github.io/cosmo-sprint/",
+  "image": "https://balinti.github.io/cosmo-sprint/og.png",
+  "genre": "Hyper-Casual",
+  "playMode": "SinglePlayer",
+  "applicationCategory": "Game",
+  "operatingSystem": "Web Browser"
+}
+</script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#0a0a1a;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;font-family:'Segoe UI',system-ui,sans-serif;overflow-x:hidden}
+#game-wrapper{display:flex;flex-direction:column;align-items:center;width:100%;max-width:420px;padding:8px 0}
+#canvas-container{position:relative;width:100%;max-width:420px}
+canvas{display:block;width:100%;cursor:pointer;touch-action:none}
+#about{max-width:420px;width:100%;padding:12px 16px;color:#667;font-size:12px;line-height:1.6;text-align:center}
+#about h2{font-size:13px;color:#889;margin-bottom:6px;font-weight:600}
+#about p{margin-bottom:4px}
+</style>
+</head>
+<body>
+<div id="game-wrapper">
+  <div id="canvas-container">
+    <canvas id="c"></canvas>
+  </div>
+  <div id="about">
+    <h2>How to Play Cosmo Sprint</h2>
+    <p>Tap, click, or press Space/Enter to phase-swap between the BLUE and ORANGE lanes.</p>
+    <p>Dodge obstacles, chain near-misses for multipliers, and earn SPARKS for shields.</p>
+    <p>Every 10 sparks grants a 1-hit shield. Survive as long as possible!</p>
+  </div>
+</div>
+<script>
+(function(){
+'use strict';
+
+// Virtual dimensions
+const VW = 420, VH = 750;
+const LANE_X = [VW*0.28, VW*0.72];
+const LANE_W = VW*0.38;
+const DPR = Math.min(window.devicePixelRatio||1, 2);
+
+// Canvas setup
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+function resize(){
+  const cont = document.getElementById('canvas-container');
+  const cw = Math.min(cont.offsetWidth, VW);
+  const ch = cw * (VH/VW);
+  canvas.width = cw * DPR;
+  canvas.height = ch * DPR;
+  canvas.style.width = cw+'px';
+  canvas.style.height = ch+'px';
+}
+resize();
+window.addEventListener('resize', resize);
+
+// Scale factor
+function getScale(){ return canvas.width / DPR / VW; }
+
+// --- State ---
+let state = 'start'; // start | playing | gameover
+let score = 0;
+let sparks = 0;
+let totalSparks = 0;
+let multiplier = 1;
+let nearMissChain = 0;
+let shield = 0;
+let shieldBreaking = false;
+let invulnTimer = 0;
+let hiScore = +localStorage.getItem('cosmo_hi')||0;
+let elapsed = 0; // seconds
+let hue = 200;
+let shakeAmt = 0;
+let shakeTimer = 0;
+let hitStopTimer = 0;
+let multPopTimer = 0;
+let multPopScale = 1;
+let challengeScore = 0;
+
+// Parse challenge param
+(function(){
+  const u = new URL(location.href);
+  const c = u.searchParams.get('challenge');
+  if(c){ challengeScore = parseInt(c)||0; }
+})();
+
+// Player
+const player = {
+  lane: 0, // 0=blue, 1=orange
+  x: LANE_X[0],
+  y: VH*0.75,
+  r: 14,
+  targetX: LANE_X[0],
+  trailPoints: [],
+  swapping: false,
+  swapT: 0
+};
+
+// Obstacles
+let obstacles = [];
+let particles = [];
+let rings = [];
+
+// Difficulty params
+function getDiff(){
+  const t = elapsed;
+  if(t < 10) return { speed: 220, spawnInterval: 1.6, nearMissMargin: 28, hardChance: 0 };
+  if(t < 30) return { speed: 270, spawnInterval: 1.3, nearMissMargin: 24, hardChance: 0.2 };
+  if(t < 60) return { speed: 330, spawnInterval: 1.0, nearMissMargin: 20, hardChance: 0.4 };
+  return { speed: 400, spawnInterval: 0.8, nearMissMargin: 16, hardChance: 0.6 };
+}
+
+// Pattern system
+const PATTERNS = [
+  { name:'single', weight:3, hard:false },
+  { name:'single', weight:3, hard:false },
+  { name:'lock', weight:2, hard:false },
+  { name:'stagger', weight:2, hard:false },
+  { name:'zipper', weight:2, hard:true },
+  { name:'double', weight:1, hard:true },
+  { name:'feint', weight:2, hard:true },
+  { name:'split', weight:2, hard:false },
+  { name:'calm', weight:1, hard:false },
+];
+
+let spawnTimer = 0;
+let lastPatternHard = false;
+
+function weightedPattern(diff){
+  const pool = PATTERNS.filter(p => {
+    if(p.name==='calm') return true;
+    if(p.hard && diff.hardChance===0) return false;
+    if(p.hard && lastPatternHard) return false;
+    return true;
+  });
+  const total = pool.reduce((s,p)=>s+p.weight,0);
+  let r = Math.random()*total;
+  for(const p of pool){ r-=p.weight; if(r<=0) return p; }
+  return pool[pool.length-1];
+}
+
+// Block: {lane, x, y, w, h, blink, warned}
+function makeBlock(lane, y, w, h){
+  return {
+    lane,
+    x: LANE_X[lane] - (w||LANE_W*0.55)*0.5,
+    y,
+    w: w||LANE_W*0.55,
+    h: h||32,
+    warned: false,
+    blink: 0,
+    active: true,
+    nearMissed: false,
+    passed: false
+  };
+}
+
+function spawnPattern(pattern, diff){
+  const startY = -60;
+  const rowGap = 120;
+  const blocks = [];
+  lastPatternHard = pattern.hard||false;
+
+  switch(pattern.name){
+    case 'single':{
+      const lane = Math.random()<0.5?0:1;
+      blocks.push(makeBlock(lane, startY));
+      break;
+    }
+    case 'lock':{
+      const lane = Math.random()<0.5?0:1;
+      for(let i=0;i<3;i++) blocks.push(makeBlock(lane, startY - i*rowGap));
+      break;
+    }
+    case 'stagger':{
+      let lane = Math.random()<0.5?0:1;
+      const gaps = [0,-90,-160];
+      for(const g of gaps){
+        blocks.push(makeBlock(lane, startY+g));
+        lane = 1-lane;
+      }
+      break;
+    }
+    case 'zipper':{
+      let lane = Math.random()<0.5?0:1;
+      for(let i=0;i<4;i++){
+        blocks.push(makeBlock(lane, startY - i*80));
+        lane=1-lane;
+      }
+      break;
+    }
+    case 'double':{
+      // Both lanes blocked, then calm gap
+      blocks.push(makeBlock(0, startY));
+      blocks.push(makeBlock(1, startY));
+      // gap row (no blocks) - handled by timing
+      break;
+    }
+    case 'feint':{
+      const lane = Math.random()<0.5?0:1;
+      // blink block: warn=true
+      const b = makeBlock(lane, startY-120);
+      b.blink = 1.0;
+      b.warned = true;
+      blocks.push(b);
+      blocks.push(makeBlock(lane, startY));
+      break;
+    }
+    case 'split':{
+      blocks.push(makeBlock(0, startY, LANE_W*0.65, 30));
+      blocks.push(makeBlock(1, startY, LANE_W*0.35, 34));
+      break;
+    }
+    case 'calm':{
+      // No blocks, just spacing
+      break;
+    }
+  }
+  obstacles.push(...blocks);
+}
+
+// Particles
+function spawnParticles(x, y, count, hue2, speed, life, size){
+  for(let i=0;i<count;i++){
+    const a = Math.random()*Math.PI*2;
+    const s = speed*(0.5+Math.random()*0.5);
+    particles.push({
+      x, y,
+      vx: Math.cos(a)*s,
+      vy: Math.sin(a)*s,
+      life: life*(0.7+Math.random()*0.3),
+      maxLife: life,
+      hue: hue2+(Math.random()-0.5)*40,
+      size: size*(0.5+Math.random()*0.5),
+      alpha: 1
+    });
+  }
+}
+
+function spawnRing(x, y, color, maxR){
+  rings.push({x,y,r:player.r,maxR:maxR||80,life:1,color});
+}
+
+// Audio
+let audioCtx = null;
+function initAudio(){
+  if(audioCtx) return;
+  audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+}
+function beep(freq, dur, vol, type){
+  if(!audioCtx) return;
+  try{
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.connect(g); g.connect(audioCtx.destination);
+    o.type = type||'sine';
+    o.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    g.gain.setValueAtTime(vol||0.15, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime+dur);
+    o.start(); o.stop(audioCtx.currentTime+dur);
+  }catch(e){}
+}
+
+// Input
+function handleInput(){
+  if(state==='start'){ startGame(); return; }
+  if(state==='gameover'){ resetGame(); return; }
+  if(state==='playing') swapLane();
+}
+
+function swapLane(){
+  player.lane = 1-player.lane;
+  player.targetX = LANE_X[player.lane];
+  player.swapping = true;
+  player.swapT = 0;
+  hitStopTimer = 0.07;
+  // Burst particles
+  const col = player.lane===0?220:30;
+  spawnParticles(player.x, player.y, 10, col, 120, 0.35, 5);
+  spawnRing(player.x, player.y, player.lane===0?'hsl(220,100%,65%)':'hsl(30,100%,65%)', 60);
+  beep(player.lane===0?440:550, 0.12, 0.1);
+}
+
+canvas.addEventListener('pointerdown', e=>{ e.preventDefault(); initAudio(); handleInput(); });
+document.addEventListener('keydown', e=>{
+  if(e.code==='Space'||e.code==='Enter'){ e.preventDefault(); initAudio(); handleInput(); }
+});
+
+function startGame(){
+  state='playing';
+  score=0; sparks=0; totalSparks=0; multiplier=1; nearMissChain=0;
+  shield=0; shieldBreaking=false; invulnTimer=0;
+  elapsed=0; hue=200; shakeAmt=0; shakeTimer=0; hitStopTimer=0;
+  obstacles=[]; particles=[]; rings=[];
+  player.lane=0; player.x=LANE_X[0]; player.targetX=LANE_X[0];
+  player.trailPoints=[]; player.swapping=false; player.swapT=0;
+  spawnTimer=0; lastPatternHard=false;
+}
+
+function resetGame(){
+  state='start';
+}
+
+// Score display pop
+let scorePopTimer=0, scorePopVal=0;
+function addScore(v){
+  score+=v*multiplier;
+  scorePopVal=v*multiplier;
+  scorePopTimer=0.4;
+}
+
+// Shake
+function triggerShake(amt, dur){
+  shakeAmt=Math.max(shakeAmt,amt);
+  shakeTimer=Math.max(shakeTimer,dur);
+}
+
+// --- Game update ---
+let lastTime=0;
+function update(dt){
+  if(hitStopTimer>0){ hitStopTimer-=dt; return; }
+
+  elapsed+=dt;
+  hue=(hue+dt*8)%360;
+
+  // Spawn
+  spawnTimer-=dt;
+  if(spawnTimer<=0){
+    const diff=getDiff();
+    const pat=weightedPattern(diff);
+    spawnPattern(pat, diff);
+    spawnTimer=diff.spawnInterval*(0.85+Math.random()*0.3);
+  }
+
+  // Player movement
+  if(player.swapping){
+    player.swapT+=dt*8;
+    const t=Math.min(player.swapT,1);
+    const ease=1-(1-t)*(1-t)*(1-t);
+    player.x=player.x+(player.targetX-player.x)*ease*0.25;
+    if(Math.abs(player.x-player.targetX)<1){ player.x=player.targetX; player.swapping=false; }
+  }
+
+  // Trail
+  player.trailPoints.unshift({x:player.x, y:player.y, life:1});
+  if(player.trailPoints.length>12) player.trailPoints.pop();
+  for(const p of player.trailPoints) p.life-=dt*6;
+
+  // Invulnerability
+  if(invulnTimer>0) invulnTimer-=dt;
+
+  // Obstacles
+  const diff=getDiff();
+  const speed=diff.speed;
+  const nmMargin=diff.nearMissMargin;
+
+  for(let i=obstacles.length-1;i>=0;i--){
+    const o=obstacles[i];
+    o.y+=speed*dt;
+    if(o.blink>0) o.blink=Math.max(0,o.blink-dt*2);
+
+    // Check passed
+    if(!o.passed && o.y > player.y+player.r+o.h){
+      o.passed=true;
+      // Scoring
+      if(!o.nearMissed){
+        // No near-miss in this lane this row - chain resets only if player was in same lane
+        if(o.lane===player.lane) nearMissChain=0;
+      }
+      addScore(1);
+    }
+
+    // Near-miss detection
+    if(!o.nearMissed && !o.passed){
+      const ox=o.x+o.w/2, oy=o.y+o.h/2;
+      const dx=player.x-ox, dy=player.y-oy;
+      const dist=Math.sqrt(dx*dx+dy*dy);
+      const combined=player.r+Math.max(o.w,o.h)/2+nmMargin;
+      const collide=player.r+o.w/2;
+      if(o.lane===player.lane && dist<combined && dist>collide-player.r && o.y>player.y-60 && o.y<player.y+60){
+        o.nearMissed=true;
+        nearMissChain++;
+        multiplier=Math.min(1+Math.floor(nearMissChain/2), 8);
+        multPopTimer=0.5; multPopScale=1.4;
+        sparks++;
+        totalSparks++;
+        addScore(2);
+        triggerShake(2,0.1);
+        spawnParticles(player.x,player.y,8,o.lane===0?220:30,80,0.3,4);
+        beep(880,0.08,0.08,'square');
+        if(sparks%10===0){
+          shield++;
+          spawnParticles(player.x,player.y,15,60,100,0.5,6);
+          spawnRing(player.x,player.y,'hsl(60,100%,70%)',90);
+          beep(660,0.2,0.12);
+        }
+      }
+    }
+
+    // Collision
+    if(!o.passed && invulnTimer<=0){
+      const ox=o.x+o.w/2, oy=o.y+o.h/2;
+      const dx=player.x-ox, dy=player.y-oy;
+      // Circle vs AABB
+      const nearX=Math.max(o.x, Math.min(player.x, o.x+o.w));
+      const nearY=Math.max(o.y, Math.min(player.y, o.y+o.h));
+      const ddx=player.x-nearX, ddy=player.y-nearY;
+      const distSq=ddx*ddx+ddy*ddy;
+      if(distSq<player.r*player.r && o.lane===player.lane){
+        if(shield>0){
+          shield--;
+          shieldBreaking=true;
+          setTimeout(()=>{shieldBreaking=false;},600);
+          invulnTimer=1.5;
+          hitStopTimer=0.09;
+          triggerShake(8,0.4);
+          spawnParticles(player.x,player.y,20,60,140,0.6,7);
+          beep(220,0.3,0.2,'sawtooth');
+          o.passed=true;
+        } else {
+          gameOver();
+        }
+      }
+    }
+
+    if(o.y > VH+100) obstacles.splice(i,1);
+  }
+
+  // Particles
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    p.x+=p.vx*dt; p.y+=p.vy*dt;
+    p.vy+=120*dt;
+    p.life-=dt;
+    p.alpha=p.life/p.maxLife;
+    if(p.life<=0) particles.splice(i,1);
+  }
+
+  // Rings
+  for(let i=rings.length-1;i>=0;i--){
+    const r=rings[i];
+    r.r+=200*dt;
+    r.life-=dt*3;
+    if(r.life<=0) rings.splice(i,1);
+  }
+
+  // Shake
+  if(shakeTimer>0){ shakeTimer-=dt; if(shakeTimer<=0) shakeAmt=0; }
+  else shakeAmt*=0.85;
+
+  // Score pop
+  if(scorePopTimer>0) scorePopTimer-=dt;
+  if(multPopTimer>0){ multPopTimer-=dt; multPopScale=1+(0.4*(multPopTimer/0.5)); }
+  else multPopScale=1;
+
+  // High score
+  if(score>hiScore){ hiScore=score; localStorage.setItem('cosmo_hi',hiScore); }
+}
+
+function gameOver(){
+  state='gameover';
+  triggerShake(15,0.6);
+  hitStopTimer=0.1;
+  spawnParticles(player.x,player.y,30,0,160,0.8,8);
+  beep(110,0.5,0.25,'sawtooth');
+  nearMissChain=0; multiplier=1;
+}
+
+// --- Drawing ---
+function drawStars(alpha){
+  ctx.save();
+  // static stars seeded
+  for(let i=0;i<80;i++){
+    const sx=((i*137.5)%VW);
+    const sy=((i*97.3+elapsed*10*(i%3+1))%VH);
+    const ss=0.5+((i*31)%3)*0.5;
+    const sa=0.3+((i*17)%7)*0.1;
+    ctx.fillStyle=`rgba(255,255,255,${sa*alpha})`;
+    ctx.beginPath();
+    ctx.arc(sx,sy,ss,0,Math.PI*2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawLanes(){
+  // Blue lane
+  ctx.save();
+  ctx.globalAlpha=0.12;
+  ctx.fillStyle=`hsl(${220+hue*0.05},80%,55%)`;
+  ctx.fillRect(LANE_X[0]-LANE_W/2, 0, LANE_W, VH);
+  // Orange lane
+  ctx.fillStyle=`hsl(${30+hue*0.05},80%,55%)`;
+  ctx.fillRect(LANE_X[1]-LANE_W/2, 0, LANE_W, VH);
+  ctx.globalAlpha=1;
+  // Lane borders
+  ctx.strokeStyle=`hsla(${220+hue*0.05},70%,60%,0.3)`;
+  ctx.lineWidth=1;
+  ctx.setLineDash([8,12]);
+  ctx.beginPath();
+  ctx.moveTo(LANE_X[0]-LANE_W/2,0); ctx.lineTo(LANE_X[0]-LANE_W/2,VH);
+  ctx.moveTo(LANE_X[0]+LANE_W/2,0); ctx.lineTo(LANE_X[0]+LANE_W/2,VH);
+  ctx.stroke();
+  ctx.strokeStyle=`hsla(${30+hue*0.05},70%,60%,0.3)`;
+  ctx.beginPath();
+  ctx.moveTo(LANE_X[1]-LANE_W/2,0); ctx.lineTo(LANE_X[1]-LANE_W/2,VH);
+  ctx.moveTo(LANE_X[1]+LANE_W/2,0); ctx.lineTo(LANE_X[1]+LANE_W/2,VH);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+function drawPlayer(){
+  // Trail
+  for(let i=0;i<player.trailPoints.length;i++){
+    const tp=player.trailPoints[i];
+    const a=Math.max(0,tp.life)*0.4*(1-i/player.trailPoints.length);
+    const col=player.lane===0?`hsla(${220+hue*0.1},100%,70%,${a})`:`hsla(${30+hue*0.1},100%,70%,${a})`;
+    ctx.save();
+    ctx.fillStyle=col;
+    ctx.beginPath();
+    ctx.arc(tp.x, tp.y, player.r*(1-i/player.trailPoints.length)*0.8, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Ship body
+  const laneHue = player.lane===0?220:30;
+  ctx.save();
+  ctx.translate(player.x, player.y);
+
+  // Glow
+  const grad=ctx.createRadialGradient(0,0,0,0,0,player.r*2);
+  grad.addColorStop(0,`hsla(${laneHue+hue*0.1},100%,70%,0.3)`);
+  grad.addColorStop(1,'transparent');
+  ctx.fillStyle=grad;
+  ctx.beginPath();
+  ctx.arc(0,0,player.r*2,0,Math.PI*2);
+  ctx.fill();
+
+  // Core
+  ctx.fillStyle=`hsl(${laneHue+hue*0.1},100%,75%)`;
+  ctx.beginPath();
+  // Ship shape: triangle pointing up
+  ctx.moveTo(0,-player.r*1.1);
+  ctx.lineTo(-player.r*0.7,player.r*0.8);
+  ctx.lineTo(0,player.r*0.4);
+  ctx.lineTo(player.r*0.7,player.r*0.8);
+  ctx.closePath();
+  ctx.fill();
+
+  // Engine glow
+  ctx.fillStyle=`hsla(${laneHue+40+hue*0.1},100%,80%,0.8)`;
+  ctx.beginPath();
+  ctx.arc(0,player.r*0.6,player.r*0.25,0,Math.PI*2);
+  ctx.fill();
+
+  // Shield ring
+  if(shield>0){
+    const pulse=0.7+0.3*Math.sin(elapsed*8);
+    ctx.strokeStyle=`hsla(60,100%,70%,${shieldBreaking?0.3*pulse:0.8*pulse})`;
+    ctx.lineWidth=3;
+    ctx.beginPath();
+    ctx.arc(0,0,player.r*1.6+pulse*3,0,Math.PI*2);
+    ctx.stroke();
+    if(shield>1){
+      ctx.strokeStyle=`hsla(60,100%,70%,0.4)`;
+      ctx.lineWidth=2;
+      ctx.beginPath();
+      ctx.arc(0,0,player.r*2+pulse*2,0,Math.PI*2);
+      ctx.stroke();
+    }
+  }
+
+  // Invuln flash
+  if(invulnTimer>0 && Math.floor(elapsed*12)%2===0){
+    ctx.strokeStyle=`hsla(${laneHue},100%,90%,0.5)`;
+    ctx.lineWidth=2;
+    ctx.beginPath();
+    ctx.arc(0,0,player.r*1.3,0,Math.PI*2);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+function drawObstacles(){
+  for(const o of obstacles){
+    if(o.y < -100 || o.y > VH+100) continue;
+    const lh=o.lane===0?220:30;
+    const alpha=o.blink>0?(0.3+0.7*Math.sin(elapsed*20)):1;
+    ctx.save();
+    ctx.globalAlpha=alpha;
+
+    // Shadow glow
+    ctx.shadowColor=`hsl(${lh+hue*0.05},80%,50%)`;
+    ctx.shadowBlur=12;
+
+    // Block
+    const grad=ctx.createLinearGradient(o.x,o.y,o.x,o.y+o.h);
+    grad.addColorStop(0,`hsl(${lh+hue*0.05},80%,50%)`);
+    grad.addColorStop(1,`hsl(${lh+hue*0.05},60%,35%)`);
+    ctx.fillStyle=grad;
+    ctx.beginPath();
+    ctx.roundRect(o.x,o.y,o.w,o.h,6);
+    ctx.fill();
+
+    // Edge highlight
+    ctx.strokeStyle=`hsla(${lh+hue*0.05},100%,80%,0.6)`;
+    ctx.lineWidth=1.5;
+    ctx.shadowBlur=0;
+    ctx.stroke();
+
+    // Warning chevron for feint
+    if(o.warned && o.blink>0){
+      ctx.fillStyle=`hsla(60,100%,80%,${o.blink})`;
+      ctx.font=`bold ${14}px sans-serif`;
+      ctx.textAlign='center';
+      ctx.fillText('!',o.x+o.w/2,o.y+o.h*0.75);
+    }
+
+    ctx.restore();
+  }
+}
+
+function drawParticles(){
+  for(const p of particles){
+    ctx.save();
+    ctx.globalAlpha=p.alpha;
+    ctx.fillStyle=`hsl(${p.hue},100%,70%)`;
+    ctx.beginPath();
+    ctx.arc(p.x,p.y,p.size,0,Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawRings(){
+  for(const r of rings){
+    ctx.save();
+    ctx.globalAlpha=r.life*0.8;
+    ctx.strokeStyle=r.color;
+    ctx.lineWidth=2.5;
+    ctx.beginPath();
+    ctx.arc(r.x,r.y,r.r,0,Math.PI*2);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function drawHUD(){
+  ctx.save();
+  // Score
+  ctx.textAlign='center';
+  ctx.fillStyle=`hsl(${hue},60%,80%)`;
+  ctx.font=`bold 32px 'Segoe UI',system-ui,sans-serif`;
+  ctx.fillText(Math.floor(score), VW/2, 50);
+
+  // Score pop
+  if(scorePopTimer>0 && scorePopVal>0){
+    const a=scorePopTimer/0.4;
+    const yOff=30*(1-a);
+    ctx.globalAlpha=a;
+    ctx.fillStyle=`hsl(${hue+60},100%,75%)`;
+    ctx.font=`bold 18px 'Segoe UI',system-ui,sans-serif`;
+    ctx.fillText(`+${scorePopVal}`, VW/2+60, 50-yOff);
+    ctx.globalAlpha=1;
+  }
+
+  // Hi score
+  ctx.fillStyle='rgba(255,255,255,0.3)';
+  ctx.font=`12px 'Segoe UI',system-ui,sans-serif`;
+  ctx.fillText(`BEST ${Math.floor(hiScore)}`, VW/2, 70);
+
+  // Multiplier
+  const mx=VW-20, my=40;
+  ctx.textAlign='right';
+  ctx.save();
+  ctx.translate(mx,my);
+  ctx.scale(multPopScale,multPopScale);
+  ctx.fillStyle=multiplier>1?`hsl(${hue+120},100%,70%)`:'rgba(255,255,255,0.4)';
+  ctx.font=`bold ${multiplier>1?20:14}px 'Segoe UI',system-ui,sans-serif`;
+  ctx.textAlign='center';
+  ctx.fillText(`x${multiplier}`, 0, 0);
+  ctx.restore();
+
+  // Chain
+  if(nearMissChain>0){
+    ctx.textAlign='right';
+    ctx.fillStyle=`hsla(${hue+120},80%,70%,0.8)`;
+    ctx.font=`11px 'Segoe UI',system-ui,sans-serif`;
+    ctx.fillText(`chain ${nearMissChain}`, VW-16, 58);
+  }
+
+  // Sparks
+  ctx.textAlign='left';
+  ctx.fillStyle='rgba(255,220,80,0.8)';
+  ctx.font=`13px 'Segoe UI',system-ui,sans-serif`;
+  ctx.fillText(`⚡${sparks%10}/10`, 16, 40);
+
+  // Shield pips
+  for(let i=0;i<shield;i++){
+    ctx.fillStyle=`hsl(60,100%,70%)`;
+    ctx.beginPath();
+    ctx.arc(20+i*18, 62, 6, 0, Math.PI*2);
+    ctx.fill();
+    ctx.strokeStyle='rgba(255,255,255,0.3)';
+    ctx.lineWidth=1;
+    ctx.stroke();
+  }
+
+  // Lane labels
+  ctx.textAlign='center';
+  ctx.font=`bold 10px 'Segoe UI',system-ui,sans-serif`;
+  ctx.fillStyle=`hsla(220,80%,70%,${player.lane===0?0.9:0.3})`;
+  ctx.fillText('REAL', LANE_X[0], VH-20);
+  ctx.fillStyle=`hsla(30,80%,70%,${player.lane===1?0.9:0.3})`;
+  ctx.fillText('PHASE', LANE_X[1], VH-20);
+
+  ctx.restore();
+}
+
+function drawStartScreen(){
+  ctx.save();
+  // Background dim
+  ctx.fillStyle='rgba(10,10,26,0.85)';
+  ctx.fillRect(0,0,VW,VH);
+
+  // Title
+  ctx.textAlign='center';
+  const titleHue=(hue)%360;
+  ctx.fillStyle=`hsl(${titleHue},80%,70%)`;
+  ctx.font=`bold 48px 'Segoe UI',system-ui,sans-serif`;
+  ctx.shadowColor=`hsl(${titleHue},80%,60%)`;
+  ctx.shadowBlur=20;
+  ctx.fillText('COSMO', VW/2, VH*0.32);
+  ctx.fillStyle=`hsl(${titleHue+40},80%,70%)`;
+  ctx.font=`bold 36px 'Segoe UI',system-ui,sans-serif`;
+  ctx.fillText('SPRINT', VW/2, VH*0.32+46);
+  ctx.shadowBlur=0;
+
+  // Subtitle
+  ctx.fillStyle='rgba(255,255,255,0.7)';
+  ctx.font=`15px 'Segoe UI',system-ui,sans-serif`;
+  ctx.fillText('Phase Lanes', VW/2, VH*0.32+80);
+
+  // Challenge banner
+  if(challengeScore>0){
+    ctx.fillStyle='rgba(255,200,50,0.9)';
+    ctx.font=`bold 14px 'Segoe UI',system-ui,sans-serif`;
+    ctx.fillText(`⚡ Challenge: Beat ${challengeScore}`, VW/2, VH*0.32+110);
+  }
+
+  // How to play
+  ctx.fillStyle='rgba(255,255,255,0.5)';
+  ctx.font=`13px 'Segoe UI',system-ui,sans-serif`;
+  ctx.fillText('Tap / Space to swap lanes', VW/2, VH*0.55);
+  ctx.fillText('Chain near-misses for combos', VW/2, VH*0.55+22);
+  ctx.fillText('10 sparks = 1 shield', VW/2, VH*0.55+44);
+
+  // Best
+  if(hiScore>0){
+    ctx.fillStyle='rgba(255,220,80,0.7)';
+    ctx.font=`14px 'Segoe UI',system-ui,sans-serif`;
+    ctx.fillText(`Best: ${Math.floor(hiScore)}`, VW/2, VH*0.55+80);
+  }
+
+  // Start button
+  const pulse=0.85+0.15*Math.sin(elapsed*4);
+  ctx.save();
+  ctx.translate(VW/2, VH*0.75);
+  ctx.scale(pulse,pulse);
+  ctx.fillStyle=`hsl(${titleHue},70%,55%)`;
+  ctx.beginPath();
+  ctx.roundRect(-80,-22,160,44,22);
+  ctx.fill();
+  ctx.fillStyle='white';
+  ctx.font=`bold 18px 'Segoe UI',system-ui,sans-serif`;
+  ctx.textAlign='center';
+  ctx.fillText('TAP TO START', 0, 7);
+  ctx.restore();
+
+  ctx.restore();
+}
+
+function drawGameoverScreen(){
+  ctx.save();
+  ctx.fillStyle='rgba(10,10,26,0.88)';
+  ctx.fillRect(0,0,VW,VH);
+
+  ctx.textAlign='center';
+  ctx.fillStyle=`hsl(0,80%,65%)`;
+  ctx.font=`bold 40px 'Segoe UI',system-ui,sans-serif`;
+  ctx.shadowColor='hsl(0,80%,50%)';
+  ctx.shadowBlur=16;
+  ctx.fillText('GAME OVER', VW/2, VH*0.28);
+  ctx.shadowBlur=0;
+
+  ctx.fillStyle='white';
+  ctx.font=`bold 52px 'Segoe UI',system-ui,sans-serif`;
+  ctx.fillText(Math.floor(score), VW/2, VH*0.28+70);
+
+  ctx.fillStyle='rgba(255,220,80,0.8)';
+  ctx.font=`15px 'Segoe UI',system-ui,sans-serif`;
+  ctx.fillText(`Best: ${Math.floor(hiScore)}`, VW/2, VH*0.28+100);
+
+  // Stats
+  ctx.fillStyle='rgba(255,255,255,0.5)';
+  ctx.font=`13px 'Segoe UI',system-ui,sans-serif`;
+  ctx.fillText(`Max chain: x${multiplier} | Sparks: ${totalSparks}`, VW/2, VH*0.28+130);
+
+  // Play again
+  const pulse=0.9+0.1*Math.sin(elapsed*5);
+  ctx.save();
+  ctx.translate(VW/2, VH*0.62);
+  ctx.scale(pulse,pulse);
+  ctx.fillStyle=`hsl(${hue},70%,55%)`;
+  ctx.beginPath();
+  ctx.roundRect(-75,-20,150,40,20);
+  ctx.fill();
+  ctx.fillStyle='white';
+  ctx.font=`bold 16px 'Segoe UI',system-ui,sans-serif`;
+  ctx.textAlign='center';
+  ctx.fillText('PLAY AGAIN', 0, 6);
+  ctx.restore();
+
+  // Share button
+  ctx.save();
+  ctx.translate(VW/2, VH*0.62+60);
+  ctx.fillStyle='rgba(255,255,255,0.15)';
+  ctx.beginPath();
+  ctx.roundRect(-65,-18,130,36,18);
+  ctx.fill();
+  ctx.strokeStyle='rgba(255,255,255,0.3)';
+  ctx.lineWidth=1;
+  ctx.stroke();
+  ctx.fillStyle='rgba(255,255,255,0.8)';
+  ctx.font=`14px 'Segoe UI',system-ui,sans-serif`;
+  ctx.textAlign='center';
+  ctx.fillText('⚡ Challenge Friends', 0, 6);
+  ctx.restore();
+
+  ctx.restore();
+}
+
+// Share/challenge click detection
+canvas.addEventListener('pointerup', e=>{
+  if(state!=='gameover') return;
+  const scale=getScale();
+  const rect=canvas.getBoundingClientRect();
+  const cx=(e.clientX-rect.left)/rect.width*VW;
+  const cy=(e.clientY-rect.top)/rect.height*VH;
+  // Share button area
+  const shareY=VH*0.62+60;
+  if(Math.abs(cx-VW/2)<70 && Math.abs(cy-shareY)<20){
+    const link=location.origin+location.pathname+'?challenge='+Math.floor(score);
+    if(navigator.share){
+      navigator.share({title:'Cosmo Sprint',text:`I scored ${Math.floor(score)} in Cosmo Sprint! Can you beat me?`,url:link}).catch(()=>{});
+    } else {
+      navigator.clipboard.writeText(link).then(()=>{
+        // brief feedback via temp text - skip DOM, show in canvas next frame
+        shareFlashTimer=1.5;
+      }).catch(()=>{});
+    }
+  }
+});
+let shareFlashTimer=0;
+
+// --- Render ---
+function render(){
+  const sc=getScale();
+  ctx.setTransform(DPR*sc, 0, 0, DPR*sc, 0, 0);
+
+  // Background
+  ctx.fillStyle='#08081a';
+  ctx.fillRect(0,0,VW,VH);
+
+  // Gradient overlay
+  const bg=ctx.createLinearGradient(0,0,VW,VH);
+  bg.addColorStop(0,`hsla(${hue+200},40%,8%,1)`);
+  bg.addColorStop(1,`hsla(${hue+240},40%,5%,1)`);
+  ctx.fillStyle=bg;
+  ctx.fillRect(0,0,VW,VH);
+
+  drawStars(1);
+
+  // Shake
+  let sx=0,sy=0;
+  if(shakeAmt>0.5){
+    sx=(Math.random()-0.5)*shakeAmt;
+    sy=(Math.random()-0.5)*shakeAmt;
+    ctx.translate(sx,sy);
+  }
+
+  drawLanes();
+  drawParticles();
+  drawRings();
+  drawObstacles();
+
+  if(state==='playing'||state==='gameover') drawPlayer();
+
+  if(state==='playing') drawHUD();
+
+  if(state==='start') drawStartScreen();
+  if(state==='gameover'){
+    drawHUD();
+    drawGameoverScreen();
+  }
+
+  // Share flash
+  if(shareFlashTimer>0){
+    shareFlashTimer-=0.016;
+    ctx.save();
+    ctx.fillStyle=`rgba(255,220,50,${Math.min(1,shareFlashTimer)})`;
+    ctx.font=`13px 'Segoe UI',system-ui,sans-serif`;
+    ctx.textAlign='center';
+    ctx.fillText('Link copied!', VW/2, VH*0.62+100);
+    ctx.restore();
+  }
+
+  ctx.setTransform(1,0,0,1,0,0);
+}
+
+// --- Loop ---
+function loop(ts){
+  const dt=Math.min((ts-lastTime)/1000, 0.05);
+  lastTime=ts;
+
+  if(state==='playing') update(dt);
+  else if(state==='start'||state==='gameover'){
+    // animate hue + particles on screens
+    hue=(hue+dt*8)%360;
+    elapsed+=dt;
+    for(let i=particles.length-1;i>=0;i--){
+      const p=particles[i];
+      p.x+=p.vx*dt; p.y+=p.vy*dt;
+      p.vy+=80*dt;
+      p.life-=dt;
+      p.alpha=p.life/p.maxLife;
+      if(p.life<=0) particles.splice(i,1);
+    }
+    for(let i=rings.length-1;i>=0;i--){
+      const r=rings[i];
+      r.r+=150*dt;
+      r.life-=dt*2.5;
+      if(r.life<=0) rings.splice(i,1);
+    }
+    if(shareFlashTimer>0) shareFlashTimer-=dt;
+  }
+
+  render();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(ts=>{ lastTime=ts; requestAnimationFrame(loop); });
+
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Pulse Slide - Free HTML5 Game</title>
+  <meta name="description" content="Play Pulse Slide - Slide your neon avatar along pulsating city lanes, reacting quickly to reversed swipe inputs.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a0a1a">
+  <link rel="canonical" href="https://balinti.github.io/pulse-slide/">
+  <!-- Open Graph -->
+  <meta property="og:title" content="Pulse Slide - Free HTML5 Game">
+  <meta property="og:description" content="Play Pulse Slide - Slide your neon avatar along pulsating city lanes, reacting quickly to reversed swipe inputs.">
+  <meta property="og:url" content="https://balinti.github.io/pulse-slide/">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='630' viewBox='0 0 1200 630'%3E%3Crect width='1200' height='630' fill='%230a0a1a'/%3E%3Crect x='560' y='80' width='80' height='470' fill='%23111133'/%3E%3Ctext x='600' y='340' font-family='Arial' font-size='72' font-weight='bold' fill='%2300ffcc' text-anchor='middle'%3EPULSE%3C/text%3E%3Ctext x='600' y='420' font-family='Arial' font-size='72' font-weight='bold' fill='%23ff6600' text-anchor='middle'%3ESLIDE%3C/text%3E%3Ccircle cx='380' cy='360' r='40' fill='%2300ffcc' opacity='0.8'/%3E%3Ccircle cx='820' cy='360' r='40' fill='%23ff6600' opacity='0.8'/%3E%3C/svg%3E">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Pulse Slide - Free HTML5 Game">
+  <meta name="twitter:description" content="Play Pulse Slide - Slide your neon avatar along pulsating city lanes, reacting quickly to reversed swipe inputs.">
+  <meta name="twitter:image" content="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='630' viewBox='0 0 1200 630'%3E%3Crect width='1200' height='630' fill='%230a0a1a'/%3E%3Ctext x='600' y='360' font-family='Arial' font-size='72' font-weight='bold' fill='%2300ffcc' text-anchor='middle'%3EPULSE SLIDE%3C/text%3E%3C/svg%3E">
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: #000;
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'Segoe UI', Arial, sans-serif;
+    }
+    #wrap {
+      position: relative;
+      width: min(420px, 100vw);
+      height: min(750px, 100vh);
+      overflow: hidden;
+      background: #0a0a1a;
+    }
+    canvas {
+      position: absolute; top: 0; left: 0;
+      width: 100%; height: 100%;
+      touch-action: manipulation;
+    }
+    #hud {
+      position: absolute; top: 0; left: 0; right: 0;
+      pointer-events: none;
+      padding: 14px 18px 0;
+      display: flex; justify-content: space-between; align-items: flex-start;
+      z-index: 10;
+    }
+    #score-box {
+      text-align: left;
+    }
+    #score-val {
+      font-size: 32px; font-weight: 700; color: #fff;
+      line-height: 1; letter-spacing: -1px;
+      text-shadow: 0 0 12px rgba(0,255,204,0.6);
+    }
+    #best-val {
+      font-size: 13px; color: rgba(255,255,255,0.45);
+      margin-top: 2px;
+    }
+    #charge-indicator {
+      display: flex; flex-direction: column; align-items: center; gap: 4px;
+    }
+    #charge-label {
+      font-size: 10px; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 1px;
+    }
+    #charge-dot {
+      width: 28px; height: 28px; border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.3);
+      transition: background 0.15s, box-shadow 0.15s;
+    }
+    #combo-display {
+      position: absolute; top: 90px; left: 0; right: 0;
+      text-align: center; pointer-events: none; z-index: 10;
+      font-size: 18px; font-weight: 700; color: #fff;
+      text-shadow: 0 0 10px #00ffcc;
+      opacity: 0; transition: opacity 0.3s;
+    }
+    #overlay {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      z-index: 20; pointer-events: none;
+    }
+    .overlay-card {
+      background: rgba(10,10,26,0.85);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 20px;
+      padding: 36px 32px;
+      text-align: center;
+      backdrop-filter: blur(8px);
+      max-width: 300px; width: 90%;
+    }
+    .overlay-title {
+      font-size: 42px; font-weight: 900;
+      letter-spacing: -2px; line-height: 1;
+      margin-bottom: 6px;
+    }
+    .overlay-sub {
+      font-size: 14px; color: rgba(255,255,255,0.5);
+      margin-bottom: 24px;
+    }
+    .overlay-tap {
+      font-size: 16px; font-weight: 600;
+      color: rgba(255,255,255,0.8);
+      animation: blink 1.4s ease-in-out infinite;
+    }
+    .overlay-score-big {
+      font-size: 56px; font-weight: 900; color: #fff;
+      line-height: 1; margin-bottom: 4px;
+    }
+    .overlay-best-line {
+      font-size: 14px; color: rgba(255,255,255,0.45);
+      margin-bottom: 28px;
+    }
+    @keyframes blink {
+      0%,100% { opacity: 1; } 50% { opacity: 0.3; }
+    }
+    .lane-hint {
+      display: flex; gap: 16px; margin-bottom: 20px; justify-content: center;
+    }
+    .lane-dot {
+      width: 16px; height: 16px; border-radius: 50%;
+    }
+  </style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+
+  <!-- HUD -->
+  <div id="hud">
+    <div id="score-box">
+      <div id="score-val">0</div>
+      <div id="best-val">BEST: 0</div>
+    </div>
+    <div id="charge-indicator">
+      <div id="charge-label">CHARGE</div>
+      <div id="charge-dot"></div>
+    </div>
+  </div>
+  <div id="combo-display"></div>
+
+  <!-- Overlay -->
+  <div id="overlay">
+    <div class="overlay-card" id="start-card">
+      <div class="overlay-title" style="background:linear-gradient(135deg,#00ffcc,#ff6600);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">PULSE<br>SLIDE</div>
+      <div class="overlay-sub">Match your charge to pass obstacles</div>
+      <div class="lane-hint">
+        <div class="lane-dot" style="background:#00ffcc;box-shadow:0 0 8px #00ffcc;"></div>
+        <div style="font-size:13px;color:rgba(255,255,255,0.5);align-self:center;">charge flips on beat</div>
+        <div class="lane-dot" style="background:#ff6600;box-shadow:0 0 8px #ff6600;"></div>
+      </div>
+      <div class="overlay-tap">TAP TO START</div>
+    </div>
+    <div class="overlay-card" id="gameover-card" style="display:none;">
+      <div style="font-size:16px;color:rgba(255,255,255,0.5);margin-bottom:8px;font-weight:600;letter-spacing:2px;">GAME OVER</div>
+      <div class="overlay-score-big" id="go-score">0</div>
+      <div class="overlay-best-line" id="go-best">BEST: 0</div>
+      <div class="overlay-tap">TAP TO RETRY</div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  // ─── DOM refs ───────────────────────────────────────────────────────────────
+  const wrap        = document.getElementById('wrap');
+  const canvas      = document.getElementById('c');
+  const ctx         = canvas.getContext('2d');
+  const scoreValEl  = document.getElementById('score-val');
+  const bestValEl   = document.getElementById('best-val');
+  const chargeDotEl = document.getElementById('charge-dot');
+  const comboEl     = document.getElementById('combo-display');
+  const overlay     = document.getElementById('overlay');
+  const startCard   = document.getElementById('start-card');
+  const goCard      = document.getElementById('gameover-card');
+  const goScoreEl   = document.getElementById('go-score');
+  const goBestEl    = document.getElementById('go-best');
+
+  // ─── Canvas / DPI ───────────────────────────────────────────────────────────
+  let W, H, dpr;
+  function resize() {
+    dpr = window.devicePixelRatio || 1;
+    W = wrap.clientWidth;
+    H = wrap.clientHeight;
+    canvas.width  = W * dpr;
+    canvas.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  // ─── Persistent best ────────────────────────────────────────────────────────
+  let best = parseInt(localStorage.getItem('pulseSlide_best') || '0', 10);
+  bestValEl.textContent = 'BEST: ' + best;
+
+  // ─── State ──────────────────────────────────────────────────────────────────
+  const STATE = { START: 'start', PLAYING: 'playing', OVER: 'gameover' };
+  let state = STATE.START;
+
+  // ─── Game vars ──────────────────────────────────────────────────────────────
+  const LANE_L = 0, LANE_R = 1;
+  const TEAL   = '#00ffcc', ORANGE = '#ff6600';
+  const TEAL_C  = [0, 255, 204], ORANGE_C = [255, 102, 0];
+
+  let playerLane, charge, chargeColor;
+  let score, scoreDisplay, combo, comboTimer, multiplier;
+  let timeAlive;
+  let obstacles, particles;
+  let shake, shakeTimer;
+  let freeze, freezeTimer;
+  let beatPhase, beatFlash, beatRing;
+  let lastBpm, spawnTimer, spawnInterval;
+  let bgHue;
+  let lastTs;
+  let perfectWindow;
+  let distTick;
+
+  // Road geometry helpers
+  function laneX(lane, depth) {
+    // Perspective trapezoid: horizon point at top-center
+    const horizonX = W * 0.5;
+    const roadHalfTop = W * 0.04;   // narrow at top
+    const roadHalfBot = W * 0.38;   // wide at bottom
+    const roadHalf = roadHalfTop + (roadHalfBot - roadHalfTop) * depth;
+    // lane 0 = left, lane 1 = right
+    const center = horizonX;
+    const offset = (lane === LANE_L) ? -roadHalf * 0.5 : roadHalf * 0.5;
+    return center + offset;
+  }
+
+  function depthY(depth) {
+    const horizonY = H * 0.28;
+    const playerY  = H * 0.82;
+    return horizonY + (playerY - horizonY) * depth;
+  }
+
+  function obstacleSize(depth) {
+    return 10 + depth * 46;
+  }
+
+  // Color helpers
+  function chargeToColor(c) { return c === 0 ? TEAL : ORANGE; }
+  function chargeToRGB(c)   { return c === 0 ? TEAL_C : ORANGE_C; }
+  function hexToRGB(h)       { return h === TEAL ? TEAL_C : ORANGE_C; }
+
+  // ─── Init / reset ───────────────────────────────────────────────────────────
+  function initGame() {
+    playerLane    = LANE_L;
+    charge        = 0; // 0=TEAL, 1=ORANGE
+    chargeColor   = chargeToColor(charge);
+    score         = 0;
+    scoreDisplay  = 0;
+    combo         = 0;
+    comboTimer    = 0;
+    multiplier    = 1;
+    timeAlive     = 0;
+    obstacles     = [];
+    particles     = [];
+    shake         = {x:0, y:0};
+    shakeTimer    = 0;
+    freeze        = false;
+    freezeTimer   = 0;
+    beatPhase     = 0;
+    beatFlash     = 0;
+    beatRing      = [];
+    lastBpm       = 60;
+    spawnTimer    = 0;
+    spawnInterval = 2.2;
+    perfectWindow = 0.18;
+    bgHue         = 220;
+    distTick      = 0;
+    lastTs        = null;
+    updateHUD();
+    updateChargeDot();
+  }
+
+  // ─── Difficulty ─────────────────────────────────────────────────────────────
+  function getBpm()           { return Math.min(92, 60 + timeAlive * 0.5); }
+  function getObstacleSpeed() { return 0.28 + timeAlive * 0.008; }  // t units/sec
+  function getSpawnInterval() { return Math.max(1.0, 2.2 - timeAlive * 0.02); }
+  function getPerfectWindow() { return Math.max(0.06, 0.18 - timeAlive * 0.001); }
+
+  // ─── Spawning ────────────────────────────────────────────────────────────────
+  let lastSpawnLane = -1;
+  function spawnObstacle() {
+    // Fairness: avoid consecutive triple same-lane
+    let lane;
+    if (Math.random() < 0.5) {
+      lane = LANE_L;
+    } else {
+      lane = LANE_R;
+    }
+    // If we would spawn in same lane as last two, flip
+    if (lane === lastSpawnLane && Math.random() < 0.55) {
+      lane = 1 - lane;
+    }
+    lastSpawnLane = lane;
+    const obColor = Math.random() < 0.5 ? 0 : 1; // 0=TEAL,1=ORANGE
+    obstacles.push({
+      lane, color: obColor,
+      t: 0,          // depth 0=horizon..1=player
+      passed: false,
+      passChecked: false,
+      hue: obColor === 0 ? 174 : 24,
+    });
+  }
+
+  // ─── Beat ────────────────────────────────────────────────────────────────────
+  function processBeat(dt) {
+    const bpm = getBpm();
+    lastBpm = bpm;
+    const beatDur = 60 / bpm;
+    const prevPhase = beatPhase;
+    beatPhase += dt / beatDur;
+    if (beatPhase >= 1) {
+      beatPhase -= 1;
+      // Flip charge
+      charge = 1 - charge;
+      chargeColor = chargeToColor(charge);
+      updateChargeDot();
+      // Trigger ring
+      beatRing.push({ r: 0, maxR: Math.max(W, H) * 0.7, alpha: 0.6 });
+      beatFlash = 0.35;
+    }
+    beatFlash = Math.max(0, beatFlash - dt * 1.8);
+  }
+
+  // ─── Particles ───────────────────────────────────────────────────────────────
+  function spawnParticles(x, y, color, count, big) {
+    const rgb = hexToRGB(color);
+    for (let i = 0; i < count; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = big ? (3 + Math.random() * 6) : (1.5 + Math.random() * 4);
+      particles.push({
+        x, y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - (big ? 2 : 0.5),
+        life: 1,
+        decay: 0.02 + Math.random() * 0.03,
+        size: big ? (3 + Math.random() * 5) : (2 + Math.random() * 3),
+        r: rgb[0], g: rgb[1], b: rgb[2],
+      });
+    }
+  }
+
+  function spawnCrashParticles(x, y) {
+    // Mix of both colors
+    spawnParticles(x, y, TEAL,   16, true);
+    spawnParticles(x, y, ORANGE, 16, true);
+    // Extra white flash particles
+    for (let i = 0; i < 12; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      particles.push({
+        x, y,
+        vx: Math.cos(angle) * (4 + Math.random() * 8),
+        vy: Math.sin(angle) * (4 + Math.random() * 8) - 3,
+        life: 1, decay: 0.025 + Math.random() * 0.04,
+        size: 4 + Math.random() * 7,
+        r: 255, g: 255, b: 255,
+      });
+    }
+  }
+
+  function updateParticles(dt) {
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx * dt * 60;
+      p.y += p.vy * dt * 60;
+      p.vy += 0.15 * dt * 60; // gravity
+      p.life -= p.decay * dt * 60;
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+  }
+
+  // ─── Shake ───────────────────────────────────────────────────────────────────
+  function triggerShake(strength, duration) {
+    shakeTimer = duration;
+    shake._strength = strength;
+  }
+
+  function updateShake(dt) {
+    if (shakeTimer > 0) {
+      shakeTimer -= dt;
+      const s = shake._strength * (shakeTimer / (shake._initDur || 0.3));
+      shake.x = (Math.random() * 2 - 1) * s;
+      shake.y = (Math.random() * 2 - 1) * s;
+    } else {
+      shake.x = 0; shake.y = 0;
+    }
+  }
+
+  function doShake(strength, dur) {
+    shake._strength = strength;
+    shake._initDur  = dur;
+    shakeTimer = dur;
+  }
+
+  // ─── HUD ─────────────────────────────────────────────────────────────────────
+  function updateHUD() {
+    scoreValEl.textContent = Math.floor(scoreDisplay);
+    bestValEl.textContent  = 'BEST: ' + best;
+  }
+
+  function updateChargeDot() {
+    const color = chargeToColor(charge);
+    const rgb   = chargeToRGB(charge);
+    chargeDotEl.style.background  = color;
+    chargeDotEl.style.boxShadow   = `0 0 14px 4px ${color}`;
+  }
+
+  function showCombo(c, mult) {
+    if (c >= 2) {
+      comboEl.textContent = `x${c} COMBO  ${mult}x`;
+      comboEl.style.opacity = '1';
+    } else {
+      comboEl.style.opacity = '0';
+    }
+  }
+
+  // ─── Pass check ──────────────────────────────────────────────────────────────
+  const T_PASS = 0.985;
+  function checkObstacles() {
+    for (const ob of obstacles) {
+      if (ob.passed || ob.passChecked) continue;
+      if (ob.t >= T_PASS) {
+        ob.passChecked = true;
+        const px = laneX(playerLane, 1);
+        const py = depthY(1);
+        const ox = laneX(ob.lane, ob.t);
+        const oy = depthY(ob.t);
+
+        if (ob.lane === playerLane) {
+          // Player in same lane as obstacle
+          if (ob.color === charge) {
+            // Match! Success
+            const isPerfect = beatPhase < getPerfectWindow() || beatPhase > (1 - getPerfectWindow());
+            ob.passed = true;
+            if (isPerfect) {
+              combo++;
+              comboTimer = 2.5;
+              multiplier = Math.min(8, 1 + Math.floor(combo / 3));
+              score += 150 * multiplier;
+              spawnParticles(ox, oy, chargeToColor(ob.color), 22, true);
+              doShake(3, 0.18);
+            } else {
+              combo = Math.max(0, combo - 1);
+              comboTimer = Math.max(0, comboTimer - 0.5);
+              if (combo < 2) multiplier = 1;
+              score += 100;
+              spawnParticles(ox, oy, chargeToColor(ob.color), 10, false);
+            }
+            showCombo(combo, multiplier);
+          } else {
+            // Mismatch → crash
+            spawnCrashParticles(ox, oy);
+            doShake(12, 0.55);
+            freeze      = true;
+            freezeTimer = 0.18;
+            setTimeout(() => endGame(), 250);
+          }
+        } else {
+          // Different lane: safe pass (dodged)
+          ob.passed = true;
+          score += 20;
+        }
+      }
+    }
+  }
+
+  function endGame() {
+    if (state !== STATE.PLAYING) return;
+    state = STATE.OVER;
+    const finalScore = Math.floor(score);
+    if (finalScore > best) {
+      best = finalScore;
+      localStorage.setItem('pulseSlide_best', best);
+    }
+    goScoreEl.textContent = finalScore;
+    goBestEl.textContent  = 'BEST: ' + best;
+    bestValEl.textContent  = 'BEST: ' + best;
+    goCard.style.display   = '';
+    startCard.style.display = 'none';
+    comboEl.style.opacity  = '0';
+  }
+
+  // ─── Update ──────────────────────────────────────────────────────────────────
+  function update(dt) {
+    if (freeze) {
+      freezeTimer -= dt;
+      if (freezeTimer <= 0) freeze = false;
+      updateShake(dt);
+      return;
+    }
+
+    timeAlive += dt;
+    bgHue = (bgHue + dt * 4) % 360;
+
+    // Score: distance + combo
+    distTick += dt;
+    if (distTick >= 0.1) {
+      distTick -= 0.1;
+      score += 1 * multiplier;
+    }
+
+    // Combo timeout
+    if (comboTimer > 0) {
+      comboTimer -= dt;
+      if (comboTimer <= 0) {
+        combo = 0; multiplier = 1;
+        comboEl.style.opacity = '0';
+      }
+    }
+
+    // Smooth score display
+    scoreDisplay += (score - scoreDisplay) * Math.min(1, dt * 8);
+    updateHUD();
+
+    processBeat(dt);
+    updateShake(dt);
+    updateParticles(dt);
+
+    // Move obstacles
+    const speed = getObstacleSpeed();
+    for (let i = obstacles.length - 1; i >= 0; i--) {
+      const ob = obstacles[i];
+      ob.t += dt * speed;
+      if (ob.t > 1.05) obstacles.splice(i, 1);
+    }
+
+    checkObstacles();
+
+    // Spawn
+    spawnTimer -= dt;
+    if (spawnTimer <= 0) {
+      spawnObstacle();
+      spawnTimer = getSpawnInterval() + (Math.random() - 0.5) * 0.4;
+    }
+
+    // Beat rings expand
+    for (let i = beatRing.length - 1; i >= 0; i--) {
+      const br = beatRing[i];
+      br.r += dt * 600;
+      br.alpha -= dt * 1.5;
+      if (br.alpha <= 0) beatRing.splice(i, 1);
+    }
+  }
+
+  // ─── Draw ────────────────────────────────────────────────────────────────────
+  function draw() {
+    ctx.save();
+    ctx.translate(shake.x, shake.y);
+
+    // Background
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, `hsl(${bgHue}, 25%, 4%)`);
+    grad.addColorStop(0.6, `hsl(${(bgHue+30)%360}, 20%, 6%)`);
+    grad.addColorStop(1, `hsl(${(bgHue+60)%360}, 18%, 3%)`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    drawRoad();
+    drawBeatRings();
+    drawObstacles();
+    drawPlayer();
+    drawParticles();
+    drawVignette();
+    drawBeatFlash();
+
+    ctx.restore();
+  }
+
+  function drawRoad() {
+    const horizonY = H * 0.28;
+    const playerY  = H * 0.82;
+    const centerX  = W * 0.5;
+
+    // Road surface
+    const roadGrad = ctx.createLinearGradient(0, horizonY, 0, playerY);
+    roadGrad.addColorStop(0, 'rgba(20,20,50,0.8)');
+    roadGrad.addColorStop(1, 'rgba(10,10,30,0.95)');
+    ctx.fillStyle = roadGrad;
+    ctx.beginPath();
+    ctx.moveTo(laneX(LANE_L, 0) - 20, horizonY);
+    ctx.lineTo(laneX(LANE_R, 0) + 20, horizonY);
+    ctx.lineTo(laneX(LANE_R, 1) + 60, playerY);
+    ctx.lineTo(laneX(LANE_L, 1) - 60, playerY);
+    ctx.closePath();
+    ctx.fill();
+
+    // Lane divider (center dashes)
+    const dashCount = 14;
+    for (let i = 0; i < dashCount; i++) {
+      const t0 = i / dashCount;
+      const t1 = (i + 0.5) / dashCount;
+      const x0 = centerX, y0 = horizonY + (playerY - horizonY) * t0;
+      const x1 = centerX, y1 = horizonY + (playerY - horizonY) * t1;
+      const alpha = 0.15 + t0 * 0.25;
+      const w = 1 + t0 * 3;
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x1, y1);
+      ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
+      ctx.lineWidth = w;
+      ctx.stroke();
+    }
+
+    // Road edges
+    ctx.beginPath();
+    ctx.moveTo(laneX(LANE_L, 0) - 18, horizonY);
+    ctx.lineTo(laneX(LANE_L, 1) - 58, playerY);
+    ctx.strokeStyle = 'rgba(0,255,204,0.3)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(laneX(LANE_R, 0) + 18, horizonY);
+    ctx.lineTo(laneX(LANE_R, 1) + 58, playerY);
+    ctx.strokeStyle = 'rgba(255,102,0,0.3)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Horizon glow
+    const hGrad = ctx.createRadialGradient(centerX, horizonY, 0, centerX, horizonY, W * 0.6);
+    hGrad.addColorStop(0, 'rgba(0,120,255,0.12)');
+    hGrad.addColorStop(1, 'transparent');
+    ctx.fillStyle = hGrad;
+    ctx.fillRect(0, 0, W, H * 0.5);
+  }
+
+  function drawBeatRings() {
+    const cx = W * 0.5;
+    const cy = H * 0.82; // player line
+    const rgb = chargeToRGB(charge);
+    for (const br of beatRing) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, br.r, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${br.alpha})`;
+      ctx.lineWidth = 3 * br.alpha + 1;
+      ctx.stroke();
+    }
+
+    // Beat progress arc near player
+    const arcAngle = beatPhase * Math.PI * 2 - Math.PI / 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 36, -Math.PI / 2, arcAngle);
+    ctx.strokeStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},0.6)`;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+  }
+
+  function drawObstacles() {
+    for (const ob of obstacles) {
+      const x = laneX(ob.lane, ob.t);
+      const y = depthY(ob.t);
+      const s = obstacleSize(ob.t);
+      const rgb = ob.color === 0 ? TEAL_C : ORANGE_C;
+      const color = ob.color === 0 ? TEAL : ORANGE;
+
+      // Glow
+      const glowSize = s * 2.5;
+      const glowGrad = ctx.createRadialGradient(x, y, 0, x, y, glowSize);
+      glowGrad.addColorStop(0, `rgba(${rgb[0]},${rgb[1]},${rgb[2]},0.35)`);
+      glowGrad.addColorStop(1, 'transparent');
+      ctx.fillStyle = glowGrad;
+      ctx.fillRect(x - glowSize, y - glowSize, glowSize * 2, glowSize * 2);
+
+      // Body (rotated square)
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(Math.PI / 4);
+      ctx.fillStyle = color;
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 16 * ob.t;
+      ctx.fillRect(-s * 0.6, -s * 0.6, s * 1.2, s * 1.2);
+      ctx.restore();
+
+      // Inner highlight
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(Math.PI / 4);
+      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      ctx.fillRect(-s * 0.25, -s * 0.25, s * 0.5, s * 0.5);
+      ctx.restore();
+
+      // Danger indicator when close
+      if (ob.t > 0.8) {
+        const danger = (ob.t - 0.8) / 0.185;
+        ctx.beginPath();
+        ctx.arc(x, y, s * 1.2, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(255,255,255,${danger * 0.5})`;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+    }
+  }
+
+  function drawPlayer() {
+    const px = laneX(playerLane, 1);
+    const py = depthY(1);
+    const rgb = chargeToRGB(charge);
+    const color = chargeToColor(charge);
+
+    // Outer glow
+    const gGrad = ctx.createRadialGradient(px, py, 0, px, py, 55);
+    gGrad.addColorStop(0, `rgba(${rgb[0]},${rgb[1]},${rgb[2]},0.2)`);
+    gGrad.addColorStop(1, 'transparent');
+    ctx.fillStyle = gGrad;
+    ctx.fillRect(px - 55, py - 55, 110, 110);
+
+    // Beat pulse ring on player
+    const pulse = Math.sin(beatPhase * Math.PI * 2) * 0.5 + 0.5;
+    ctx.beginPath();
+    ctx.arc(px, py, 20 + pulse * 8, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${0.3 + pulse * 0.3})`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Player body (diamond)
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.rotate(Math.PI / 4);
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 24;
+    ctx.fillStyle = color;
+    ctx.fillRect(-12, -12, 24, 24);
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.fillRect(-5, -5, 10, 10);
+    ctx.restore();
+  }
+
+  function drawParticles() {
+    for (const p of particles) {
+      ctx.globalAlpha = p.life;
+      ctx.fillStyle = `rgb(${p.r},${p.g},${p.b})`;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawVignette() {
+    const vGrad = ctx.createRadialGradient(W/2, H/2, H*0.3, W/2, H/2, H*0.85);
+    vGrad.addColorStop(0, 'transparent');
+    vGrad.addColorStop(1, 'rgba(0,0,0,0.65)');
+    ctx.fillStyle = vGrad;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  function drawBeatFlash() {
+    if (beatFlash > 0) {
+      const rgb = chargeToRGB(charge);
+      ctx.fillStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${beatFlash * 0.08})`;
+      ctx.fillRect(0, 0, W, H);
+    }
+  }
+
+  // Draw start/over overlays via canvas (complementing DOM)
+  function drawStartScreen() {
+    // Just animated road in background
+    draw();
+  }
+
+  function drawGameOverScreen() {
+    draw();
+  }
+
+  // ─── Main loop ───────────────────────────────────────────────────────────────
+  function loop(ts) {
+    if (!lastTs) lastTs = ts;
+    let dt = Math.min((ts - lastTs) / 1000, 0.05);
+    lastTs = ts;
+
+    if (state === STATE.PLAYING) {
+      update(dt);
+      draw();
+    } else if (state === STATE.START) {
+      // Animate background road on start screen
+      bgHue = (bgHue + dt * 3) % 360;
+      beatPhase = (beatPhase + dt * (60/60)) % 1;
+      for (let i = beatRing.length - 1; i >= 0; i--) {
+        const br = beatRing[i];
+        br.r += dt * 600; br.alpha -= dt * 1.5;
+        if (br.alpha <= 0) beatRing.splice(i, 1);
+      }
+      draw();
+    } else {
+      draw();
+    }
+
+    requestAnimationFrame(loop);
+  }
+
+  // ─── Input ───────────────────────────────────────────────────────────────────
+  function handleInput() {
+    if (state === STATE.START) {
+      startCard.style.display = 'none';
+      goCard.style.display    = 'none';
+      initGame();
+      state = STATE.PLAYING;
+      return;
+    }
+    if (state === STATE.OVER) {
+      goCard.style.display    = 'none';
+      startCard.style.display = 'none';
+      initGame();
+      state = STATE.PLAYING;
+      return;
+    }
+    if (state === STATE.PLAYING && !freeze) {
+      // Switch lane
+      playerLane = 1 - playerLane;
+      // Small tap particles
+      const px = laneX(playerLane, 1);
+      const py = depthY(1);
+      spawnParticles(px, py, chargeToColor(charge), 5, false);
+    }
+  }
+
+  canvas.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    handleInput();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.code === 'Space' || e.code === 'Enter' || e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
+      e.preventDefault();
+      handleInput();
+    }
+  });
+
+  // ─── Kick off ────────────────────────────────────────────────────────────────
+  initGame();
+  state = STATE.START;
+  startCard.style.display = '';
+  goCard.style.display    = 'none';
+  requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

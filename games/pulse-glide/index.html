@@ -1,0 +1,950 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Pulse Glide - Free HTML5 Game</title>
+  <meta name="description" content="Play Pulse Glide - Tap to keep the neon drone airborne as it glides through pulsing light rings, creating rhythmic trail waves.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0b1020">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Pulse Glide - Free HTML5 Game">
+  <meta property="og:description" content="Play Pulse Glide - Tap to keep the neon drone airborne as it glides through pulsing light rings, creating rhythmic trail waves.">
+  <meta property="og:url" content="https://balinti.github.io/pulse-glide/">
+  <meta property="og:image" content="https://balinti.github.io/pulse-glide/og.png">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Pulse Glide - Free HTML5 Game">
+  <meta name="twitter:description" content="Play Pulse Glide - Tap to keep the neon drone airborne as it glides through pulsing light rings, creating rhythmic trail waves.">
+  <meta name="twitter:image" content="https://balinti.github.io/pulse-glide/og.png">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%; height: 100%;
+      background: #0b1020;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    #ad-bar {
+      width: 100%;
+      max-width: 420px;
+      min-height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,0.3);
+      flex-shrink: 0;
+      padding: 4px 0;
+    }
+
+    #game-wrapper {
+      width: 100%;
+      max-width: 420px;
+      flex: 1 1 auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      position: relative;
+    }
+
+    #canvas-container {
+      position: relative;
+      width: 100%;
+      /* aspect ratio maintained by JS */
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+    }
+
+    #footer {
+      width: 100%;
+      max-width: 420px;
+      padding: 8px 16px;
+      background: rgba(0,0,0,0.5);
+      color: #8899cc;
+      font-size: 11px;
+      line-height: 1.6;
+      flex-shrink: 0;
+    }
+
+    #footer h2 {
+      font-size: 12px;
+      color: #aabbee;
+      margin-bottom: 4px;
+      font-weight: 600;
+    }
+
+    #footer p { color: #6677aa; }
+
+    @media (max-height: 640px) {
+      #footer { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<div id="ad-bar">
+  <!-- ad placeholder -->
+</div>
+
+<div id="game-wrapper">
+  <div id="canvas-container">
+    <canvas id="c"></canvas>
+  </div>
+</div>
+
+<div id="footer">
+  <h2>How to Play Pulse Glide</h2>
+  <p>Tap or press Space/Enter to toggle your neon drone between top (Cyan) and bottom (Magenta) lanes. Match the colored gate of each ring to survive. Hit the Perfect timing window to charge your energy dash. Build combos for high scores!</p>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+const LOGIC_W = 420, LOGIC_H = 750;
+const LS_KEY = 'pulseglide_best_v1';
+const BPM_BASE = 100;
+const LANE_TOP = LOGIC_H * 0.33;
+const LANE_BOT = LOGIC_H * 0.67;
+const PLAYER_X = LOGIC_W * 0.22;
+const RING_START_X = LOGIC_W + 60;
+const RING_GAP_H = 90;          // half-height of ring
+const GATE_H = 44;              // half-height of each gate
+const DRONE_R = 11;
+const PERFECT_SCORE = 150;
+const HIT_SCORE    = 40;
+const ENERGY_MAX   = 100;
+const DASH_DURATION = 48;       // frames
+const INVULN_DURATION = 56;
+const SHAKE_DECAY = 0.82;
+
+// Colors
+const COL_CYAN    = '#00ffe0';
+const COL_MAGENTA = '#ff00cc';
+const COL_BG      = '#0b1020';
+
+// ─── State ───────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+let DPR, scale, offsetY;
+let gameState = 'start'; // 'start' | 'playing' | 'gameover'
+let best = parseInt(localStorage.getItem(LS_KEY)) || 0;
+
+// Game variables
+let score, combo, energy, rings, particles, trailPoints;
+let playerLane, playerY, playerTargetY;
+let speed, spawnInterval, spawnTimer;
+let difficulty, diffTimer;
+let dashTimer, invulnTimer, dashMultiplier;
+let shakeX, shakeY, shakeStrength;
+let hue, hueTimer;
+let frameCount;
+let perfectWindowFraction; // fraction of beat period that's "perfect"
+let beatPeriod; // frames per beat at current BPM
+let inputConsumed;
+
+// ─── Canvas sizing ───────────────────────────────────────────────────────────
+function resize() {
+  const wrapper = document.getElementById('canvas-container');
+  const parent  = document.getElementById('game-wrapper');
+
+  const availW = parent.clientWidth;
+  const availH = parent.clientHeight;
+
+  // Fit LOGIC_W x LOGIC_H into available space
+  scale = Math.min(availW / LOGIC_W, availH / LOGIC_H);
+  const dispW = Math.floor(LOGIC_W * scale);
+  const dispH = Math.floor(LOGIC_H * scale);
+
+  wrapper.style.width  = dispW + 'px';
+  wrapper.style.height = dispH + 'px';
+
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width  = dispW * DPR;
+  canvas.height = dispH * DPR;
+  canvas.style.width  = dispW + 'px';
+  canvas.style.height = dispH + 'px';
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.scale(DPR * scale, DPR * scale);
+}
+
+window.addEventListener('resize', resize);
+resize();
+
+// ─── Input ───────────────────────────────────────────────────────────────────
+function handleInput() {
+  if (inputConsumed) return;
+  inputConsumed = true;
+
+  if (gameState === 'start') {
+    startGame();
+  } else if (gameState === 'gameover') {
+    startGame();
+  } else if (gameState === 'playing') {
+    playerAction();
+  }
+}
+
+canvas.addEventListener('pointerdown', e => { e.preventDefault(); inputConsumed = false; handleInput(); });
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'Enter') { inputConsumed = false; handleInput(); }
+});
+
+// ─── Game init ───────────────────────────────────────────────────────────────
+function startGame() {
+  gameState   = 'playing';
+  score       = 0;
+  combo       = 0;
+  energy      = 0;
+  rings       = [];
+  particles   = [];
+  trailPoints = [];
+  playerLane  = 0;          // 0 = top (cyan), 1 = bottom (magenta)
+  playerY     = LANE_TOP;
+  playerTargetY = LANE_TOP;
+  speed       = 3.2;
+  spawnInterval = 90;
+  spawnTimer  = 40;
+  difficulty  = 0;
+  diffTimer   = 0;
+  dashTimer   = 0;
+  invulnTimer = 0;
+  dashMultiplier = 1;
+  shakeX = shakeY = shakeStrength = 0;
+  hue     = 0;
+  hueTimer= 0;
+  frameCount = 0;
+  perfectWindowFraction = 0.28;
+  beatPeriod = Math.round(60 / BPM_BASE * 60); // frames at 60fps
+  inputConsumed = false;
+
+  spawnRing();
+}
+
+// ─── Player action ───────────────────────────────────────────────────────────
+function playerAction() {
+  // Dash if energy full
+  if (energy >= ENERGY_MAX && dashTimer <= 0) {
+    triggerDash();
+    return;
+  }
+  // Toggle lane
+  toggleLane();
+}
+
+function toggleLane() {
+  playerLane = playerLane === 0 ? 1 : 0;
+  playerTargetY = playerLane === 0 ? LANE_TOP : LANE_BOT;
+  spawnBurst(PLAYER_X, playerY, playerLane === 0 ? COL_CYAN : COL_MAGENTA, 12);
+}
+
+function triggerDash() {
+  dashTimer   = DASH_DURATION;
+  invulnTimer = INVULN_DURATION;
+  dashMultiplier = 2.5;
+  energy = 0;
+  // Dash trail burst
+  for (let i = 0; i < 30; i++) {
+    particles.push(makeDashParticle());
+  }
+}
+
+// ─── Ring spawning ────────────────────────────────────────────────────────────
+function spawnRing() {
+  // Decide type: 0=normal (one gate safe), 1=split (both safe, one has perfect band)
+  const isSplit = difficulty > 2 && Math.random() < 0.25 + difficulty * 0.04;
+  // Which lane is safe (for normal) or which has perfect (for split)
+  const safeLane = Math.random() < 0.5 ? 0 : 1;
+  // Color theme of ring (cyan/magenta)
+  const topColor = 0;   // 0=cyan lane
+  const botColor = 1;   // 1=magenta lane
+
+  rings.push({
+    x: RING_START_X,
+    split: isSplit,
+    safeLane,          // for normal: only this lane survives; for split: both survive, this has perfect band
+    passed: false,
+    checked: false,
+    perfectChecked: false,
+    beatPhase: (frameCount % beatPeriod) / beatPeriod, // phase when spawned, used for perfect sync
+    age: 0,
+    glowPulse: 0,
+  });
+}
+
+// ─── Perfect window ───────────────────────────────────────────────────────────
+// A ring is at "perfect" timing if it crosses player X within a window around a beat
+function isInPerfectWindow(ring) {
+  // We track a beatTimer that counts frames; every beatPeriod frames is a beat
+  // Perfect if (frameCount mod beatPeriod) / beatPeriod < perfectWindowFraction/2 or > 1-perfectWindowFraction/2
+  const phase = (frameCount % beatPeriod) / beatPeriod;
+  const half = perfectWindowFraction / 2;
+  return phase < half || phase > 1 - half;
+}
+
+// ─── Particles ───────────────────────────────────────────────────────────────
+function makePart(x, y, col, vx, vy, life, size) {
+  return { x, y, col, vx, vy, life, maxLife: life, size };
+}
+
+function spawnBurst(x, y, col, n) {
+  for (let i = 0; i < n; i++) {
+    const ang = (Math.PI * 2 * i / n) + Math.random() * 0.4;
+    const spd = 1.5 + Math.random() * 3;
+    particles.push(makePart(x, y, col, Math.cos(ang)*spd, Math.sin(ang)*spd, 28+Math.random()*18, 3+Math.random()*3));
+  }
+}
+
+function spawnPerfectBurst(x, y) {
+  const col = '#ffffff';
+  for (let i = 0; i < 20; i++) {
+    const ang = Math.random() * Math.PI * 2;
+    const spd = 2 + Math.random() * 4;
+    particles.push(makePart(x, y, col, Math.cos(ang)*spd, Math.sin(ang)*spd, 35+Math.random()*20, 2+Math.random()*4));
+  }
+  // Ripple ring
+  particles.push({ type:'ripple', x, y, r:4, maxR:70, life:30, maxLife:30, col:'#ffffff' });
+}
+
+function makeDashParticle() {
+  const y = playerY + (Math.random()-0.5)*30;
+  return makePart(PLAYER_X - 5, y,
+    `hsl(${180+Math.random()*60},100%,70%)`,
+    -(1+Math.random()*4), (Math.random()-0.5)*1.5,
+    20+Math.random()*20, 2+Math.random()*4);
+}
+
+// ─── Difficulty ramp ─────────────────────────────────────────────────────────
+function rampDifficulty() {
+  diffTimer++;
+  if (diffTimer % 300 === 0) { // every 5 seconds at 60fps
+    difficulty++;
+    speed = Math.min(speed + 0.25, 8.5);
+    spawnInterval = Math.max(spawnInterval - 6, 42);
+    perfectWindowFraction = Math.max(perfectWindowFraction - 0.012, 0.10);
+    beatPeriod = Math.max(beatPeriod - 2, 22);
+  }
+}
+
+// ─── Update ───────────────────────────────────────────────────────────────────
+function update() {
+  frameCount++;
+  hueTimer = (hueTimer + 0.3) % 360;
+
+  // Player lerp
+  playerY += (playerTargetY - playerY) * 0.22;
+
+  // Trail
+  trailPoints.unshift({ x: PLAYER_X, y: playerY, age: 0 });
+  if (trailPoints.length > 24) trailPoints.length = 24;
+  trailPoints.forEach(p => p.age++);
+
+  // Dash state
+  if (dashTimer > 0) {
+    dashTimer--;
+    if (dashTimer <= 0) dashMultiplier = 1;
+  }
+  if (invulnTimer > 0) invulnTimer--;
+
+  // Screen shake
+  if (shakeStrength > 0.3) {
+    shakeX = (Math.random()-0.5) * shakeStrength * 2;
+    shakeY = (Math.random()-0.5) * shakeStrength * 2;
+    shakeStrength *= SHAKE_DECAY;
+  } else {
+    shakeX = shakeY = shakeStrength = 0;
+  }
+
+  // Spawn rings
+  spawnTimer--;
+  if (spawnTimer <= 0) {
+    spawnRing();
+    spawnTimer = spawnInterval + Math.floor(Math.random() * 20);
+  }
+
+  rampDifficulty();
+
+  // Move rings
+  const currentSpeed = dashTimer > 0 ? speed * 1.6 : speed;
+  for (let i = rings.length - 1; i >= 0; i--) {
+    const r = rings[i];
+    r.x -= currentSpeed;
+    r.age++;
+    r.glowPulse = (r.glowPulse + 0.12) % (Math.PI * 2);
+
+    // Off-screen
+    if (r.x < -80) {
+      rings.splice(i, 1);
+      continue;
+    }
+
+    // Collision check: when ring center crosses player x
+    if (!r.checked && r.x <= PLAYER_X + DRONE_R && r.x >= PLAYER_X - currentSpeed - 2) {
+      r.checked = true;
+      checkCollision(r);
+    }
+  }
+
+  // Particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    if (p.type === 'ripple') {
+      p.r += (p.maxR - p.r) * 0.18;
+      p.life--;
+      if (p.life <= 0) particles.splice(i, 1);
+      continue;
+    }
+    p.x  += p.vx;
+    p.y  += p.vy;
+    p.vy += 0.06;
+    p.vx *= 0.96;
+    p.life--;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+// ─── Collision ────────────────────────────────────────────────────────────────
+function checkCollision(ring) {
+  const inCorrectLane = playerLane === ring.safeLane || ring.split;
+  if (!inCorrectLane && invulnTimer <= 0) {
+    triggerGameOver();
+    return;
+  }
+
+  // Perfect window check
+  const perfect = isInPerfectWindow(ring);
+  const base = perfect ? PERFECT_SCORE : HIT_SCORE;
+  const mult = Math.max(1, Math.floor(combo / 5)) * dashMultiplier;
+
+  if (inCorrectLane) {
+    combo++;
+    score += Math.floor(base * mult);
+    if (score > best) {
+      best = score;
+      localStorage.setItem(LS_KEY, best);
+    }
+
+    if (perfect) {
+      energy = Math.min(energy + 28, ENERGY_MAX);
+      spawnPerfectBurst(PLAYER_X, playerY);
+      shakeStrength = 2.5;
+    } else {
+      energy = Math.min(energy + 10, ENERGY_MAX);
+      spawnBurst(PLAYER_X, playerY, playerLane === 0 ? COL_CYAN : COL_MAGENTA, 6);
+    }
+  }
+}
+
+function triggerGameOver() {
+  gameState = 'gameover';
+  shakeStrength = 14;
+  if (score > best) {
+    best = score;
+    localStorage.setItem(LS_KEY, best);
+  }
+  spawnBurst(PLAYER_X, playerY, '#ff3333', 24);
+}
+
+// ─── Draw ─────────────────────────────────────────────────────────────────────
+function draw() {
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
+
+  // Background
+  const grad = ctx.createLinearGradient(0, 0, 0, LOGIC_H);
+  grad.addColorStop(0, '#0b1020');
+  grad.addColorStop(1, '#0d0820');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, LOGIC_W, LOGIC_H);
+
+  // Lane divider
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([8, 16]);
+  ctx.beginPath();
+  ctx.moveTo(0, LOGIC_H * 0.5);
+  ctx.lineTo(LOGIC_W, LOGIC_H * 0.5);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+
+  // Lane glow lines
+  drawLaneGlow();
+
+  // Rings
+  rings.forEach(drawRing);
+
+  // Trail
+  drawTrail();
+
+  // Particles
+  drawParticles();
+
+  // Drone
+  drawDrone();
+
+  // HUD
+  drawHUD();
+
+  ctx.restore();
+}
+
+function drawLaneGlow() {
+  // top lane edge glow
+  const cg = ctx.createLinearGradient(0, LANE_TOP - 30, 0, LANE_TOP + 30);
+  cg.addColorStop(0, 'rgba(0,255,224,0)');
+  cg.addColorStop(0.5, 'rgba(0,255,224,0.07)');
+  cg.addColorStop(1, 'rgba(0,255,224,0)');
+  ctx.fillStyle = cg;
+  ctx.fillRect(0, LANE_TOP - 30, LOGIC_W, 60);
+
+  const mg = ctx.createLinearGradient(0, LANE_BOT - 30, 0, LANE_BOT + 30);
+  mg.addColorStop(0, 'rgba(255,0,204,0)');
+  mg.addColorStop(0.5, 'rgba(255,0,204,0.07)');
+  mg.addColorStop(1, 'rgba(255,0,204,0)');
+  ctx.fillStyle = mg;
+  ctx.fillRect(0, LANE_BOT - 30, LOGIC_W, 60);
+}
+
+function drawRing(ring) {
+  const { x, split, safeLane, glowPulse } = ring;
+  const pulse = 0.7 + 0.3 * Math.sin(glowPulse);
+
+  // Ring frame (vertical bar)
+  const ringW = 18;
+  const ringTop = LOGIC_H * 0.5 - RING_GAP_H;
+  const ringBot = LOGIC_H * 0.5 + RING_GAP_H;
+
+  // Top gate (cyan)
+  const topSafe = safeLane === 0 || split;
+  const botSafe = safeLane === 1 || split;
+
+  // Top gate
+  drawGate(x, ringTop, ringW, GATE_H, topSafe ? COL_CYAN : '#440033', topSafe, pulse);
+  // Bot gate
+  drawGate(x, ringBot, ringW, GATE_H, botSafe ? COL_MAGENTA : '#003344', botSafe, pulse);
+
+  // Perfect band (bright line on the safe/perfect side for split, or safe side for normal)
+  const phase = (frameCount % beatPeriod) / beatPeriod;
+  const half = perfectWindowFraction / 2;
+  const inPerfect = phase < half || phase > 1 - half;
+  if (inPerfect && Math.abs(x - PLAYER_X) < 55) {
+    // Highlight perfect zone on ring
+    const gy = safeLane === 0 ? ringTop : ringBot;
+    ctx.save();
+    ctx.globalAlpha = 0.45 + 0.3 * Math.sin(frameCount * 0.3);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(x - ringW/2 - 2, gy - GATE_H, ringW + 4, 3);
+    ctx.restore();
+  }
+
+  // Connector
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x, ringTop - GATE_H);
+  ctx.lineTo(x, ringBot + GATE_H);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawGate(cx, cy, w, h, col, safe, pulse) {
+  ctx.save();
+  if (safe) {
+    // Glow
+    ctx.shadowColor = col;
+    ctx.shadowBlur = 14 * pulse;
+    // Filled gate
+    ctx.fillStyle = col + '55';
+    ctx.fillRect(cx - w/2, cy - h, w, h*2);
+    // Border
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 2.5;
+    ctx.strokeRect(cx - w/2, cy - h, w, h*2);
+    // Inner bright
+    ctx.fillStyle = col + '99';
+    ctx.fillRect(cx - w/2 + 3, cy - h + 4, w - 6, h*2 - 8);
+  } else {
+    // Danger / dark gate
+    ctx.fillStyle = col + '22';
+    ctx.fillRect(cx - w/2, cy - h, w, h*2);
+    ctx.strokeStyle = col + '66';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(cx - w/2, cy - h, w, h*2);
+    // X mark
+    ctx.strokeStyle = col + '88';
+    ctx.lineWidth = 2;
+    const m = 6;
+    ctx.beginPath();
+    ctx.moveTo(cx - m, cy - m); ctx.lineTo(cx + m, cy + m);
+    ctx.moveTo(cx + m, cy - m); ctx.lineTo(cx - m, cy + m);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawTrail() {
+  if (trailPoints.length < 2) return;
+  for (let i = 1; i < trailPoints.length; i++) {
+    const t = trailPoints[i];
+    const alpha = 1 - (i / trailPoints.length);
+    const col = playerLane === 0
+      ? `rgba(0,255,224,${alpha * 0.6})`
+      : `rgba(255,0,204,${alpha * 0.6})`;
+    ctx.save();
+    ctx.strokeStyle = col;
+    ctx.lineWidth = DRONE_R * 0.9 * (1 - i / trailPoints.length);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(trailPoints[i-1].x, trailPoints[i-1].y);
+    ctx.lineTo(t.x, t.y);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function drawDrone() {
+  const col = playerLane === 0 ? COL_CYAN : COL_MAGENTA;
+  const invuln = invulnTimer > 0;
+
+  // Dash glow
+  if (dashTimer > 0) {
+    ctx.save();
+    ctx.shadowColor = col;
+    ctx.shadowBlur = 30;
+    for (let r = DRONE_R + 10; r > 0; r -= 5) {
+      ctx.beginPath();
+      ctx.arc(PLAYER_X, playerY, r, 0, Math.PI*2);
+      ctx.strokeStyle = col + '44';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // Invuln flicker
+  if (invuln && (frameCount % 6 < 3)) {
+    ctx.save();
+    ctx.globalAlpha = 0.4;
+  }
+
+  ctx.save();
+  ctx.shadowColor = col;
+  ctx.shadowBlur = 20;
+
+  // Body
+  ctx.beginPath();
+  ctx.arc(PLAYER_X, playerY, DRONE_R, 0, Math.PI*2);
+  ctx.fillStyle = col;
+  ctx.fill();
+
+  // Inner
+  ctx.beginPath();
+  ctx.arc(PLAYER_X, playerY, DRONE_R * 0.55, 0, Math.PI*2);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+
+  // Wings
+  ctx.fillStyle = col + 'cc';
+  ctx.fillRect(PLAYER_X - DRONE_R * 1.8, playerY - 3, DRONE_R * 1.4, 6);
+  ctx.fillRect(PLAYER_X + DRONE_R * 0.4, playerY - 3, DRONE_R * 1.4, 6);
+
+  ctx.restore();
+
+  if (invuln && (frameCount % 6 < 3)) ctx.restore();
+}
+
+function drawParticles() {
+  particles.forEach(p => {
+    if (p.type === 'ripple') {
+      ctx.save();
+      ctx.globalAlpha = (p.life / p.maxLife) * 0.7;
+      ctx.strokeStyle = p.col;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+      ctx.stroke();
+      ctx.restore();
+      return;
+    }
+    const alpha = p.life / p.maxLife;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.shadowColor = p.col;
+    ctx.shadowBlur = 6;
+    ctx.fillStyle = p.col;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size * alpha, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  });
+}
+
+function drawHUD() {
+  // Score
+  ctx.save();
+  ctx.font = 'bold 28px "Segoe UI", system-ui';
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center';
+  ctx.shadowColor = '#00ffe0';
+  ctx.shadowBlur = 8;
+  ctx.fillText(score, LOGIC_W / 2, 44);
+  ctx.restore();
+
+  // Best
+  ctx.save();
+  ctx.font = '13px "Segoe UI", system-ui';
+  ctx.fillStyle = '#8899cc';
+  ctx.textAlign = 'center';
+  ctx.fillText('BEST ' + best, LOGIC_W / 2, 62);
+  ctx.restore();
+
+  // Combo
+  if (combo >= 2) {
+    ctx.save();
+    ctx.font = 'bold 16px "Segoe UI", system-ui';
+    ctx.fillStyle = '#ffee00';
+    ctx.textAlign = 'right';
+    ctx.shadowColor = '#ffee00';
+    ctx.shadowBlur = 8;
+    ctx.fillText('×' + combo + ' COMBO', LOGIC_W - 14, 38);
+    ctx.restore();
+  }
+
+  // Lane labels
+  ctx.save();
+  ctx.font = '11px "Segoe UI", system-ui';
+  ctx.globalAlpha = 0.5;
+  ctx.fillStyle = COL_CYAN;
+  ctx.textAlign = 'left';
+  ctx.fillText('◆ CYAN', 14, LANE_TOP + 4);
+  ctx.fillStyle = COL_MAGENTA;
+  ctx.fillText('◆ MAGENTA', 14, LANE_BOT + 4);
+  ctx.restore();
+
+  // Energy bar
+  drawEnergyBar();
+
+  // Dash ready indicator
+  if (energy >= ENERGY_MAX && dashTimer <= 0) {
+    ctx.save();
+    ctx.font = 'bold 14px "Segoe UI", system-ui';
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'left';
+    ctx.shadowColor = '#ffffaa';
+    ctx.shadowBlur = 12;
+    const t = Date.now() / 600;
+    ctx.globalAlpha = 0.75 + 0.25 * Math.sin(t);
+    ctx.fillText('⚡ DASH READY', 14, LOGIC_H - 38);
+    ctx.restore();
+  }
+}
+
+function drawEnergyBar() {
+  const barW = LOGIC_W - 28;
+  const barH = 7;
+  const barX = 14;
+  const barY = LOGIC_H - 22;
+
+  // Background
+  ctx.fillStyle = 'rgba(255,255,255,0.08)';
+  ctx.beginPath();
+  ctx.roundRect(barX, barY, barW, barH, 4);
+  ctx.fill();
+
+  // Fill
+  const fillW = (energy / ENERGY_MAX) * barW;
+  if (fillW > 0) {
+    const eg = ctx.createLinearGradient(barX, 0, barX + barW, 0);
+    eg.addColorStop(0, COL_CYAN);
+    eg.addColorStop(1, COL_MAGENTA);
+    ctx.save();
+    ctx.shadowColor = COL_CYAN;
+    ctx.shadowBlur = 8;
+    ctx.fillStyle = eg;
+    ctx.beginPath();
+    ctx.roundRect(barX, barY, fillW, barH, 4);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Label
+  ctx.font = '9px "Segoe UI", system-ui';
+  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  ctx.textAlign = 'left';
+  ctx.fillText('ENERGY', barX, barY - 3);
+}
+
+// ─── Start screen ─────────────────────────────────────────────────────────────
+function drawStart() {
+  // BG
+  ctx.fillStyle = COL_BG;
+  ctx.fillRect(0, 0, LOGIC_W, LOGIC_H);
+
+  // Animated background rings
+  const t = frameCount * 0.03;
+  for (let i = 0; i < 5; i++) {
+    const r = 60 + i * 55 + Math.sin(t + i) * 15;
+    ctx.save();
+    ctx.globalAlpha = 0.04 + 0.03 * Math.sin(t + i);
+    ctx.strokeStyle = i % 2 === 0 ? COL_CYAN : COL_MAGENTA;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(LOGIC_W/2, LOGIC_H/2, r, 0, Math.PI*2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Title
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.shadowBlur = 24;
+
+  ctx.shadowColor = COL_CYAN;
+  ctx.font = 'bold 52px "Segoe UI", system-ui';
+  ctx.fillStyle = COL_CYAN;
+  ctx.fillText('PULSE', LOGIC_W/2, LOGIC_H/2 - 40);
+
+  ctx.shadowColor = COL_MAGENTA;
+  ctx.fillStyle = COL_MAGENTA;
+  ctx.fillText('GLIDE', LOGIC_W/2, LOGIC_H/2 + 16);
+
+  ctx.shadowBlur = 0;
+  ctx.font = '13px "Segoe UI", system-ui';
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.fillText('PHASE SHIFT', LOGIC_W/2, LOGIC_H/2 + 38);
+
+  ctx.restore();
+
+  // Tap prompt
+  const alpha = 0.6 + 0.4 * Math.sin(frameCount * 0.07);
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 18px "Segoe UI", system-ui';
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText('Tap to Start', LOGIC_W/2, LOGIC_H/2 + 110);
+  ctx.restore();
+
+  // Instructions
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.font = '12px "Segoe UI", system-ui';
+  ctx.fillStyle = 'rgba(136,153,204,0.8)';
+  ctx.fillText('Tap to switch lanes · Match the gate color', LOGIC_W/2, LOGIC_H/2 + 140);
+  ctx.fillText('Perfect timing charges your DASH', LOGIC_W/2, LOGIC_H/2 + 160);
+  ctx.restore();
+
+  // Best score
+  if (best > 0) {
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.font = '13px "Segoe UI", system-ui';
+    ctx.fillStyle = '#8899cc';
+    ctx.fillText('BEST  ' + best, LOGIC_W/2, LOGIC_H/2 + 200);
+    ctx.restore();
+  }
+}
+
+function drawGameOver() {
+  // Dim overlay
+  ctx.fillStyle = 'rgba(0,0,0,0.65)';
+  ctx.fillRect(0, 0, LOGIC_W, LOGIC_H);
+
+  ctx.save();
+  ctx.textAlign = 'center';
+
+  // Game Over title
+  ctx.font = 'bold 40px "Segoe UI", system-ui';
+  ctx.fillStyle = '#ff3355';
+  ctx.shadowColor = '#ff3355';
+  ctx.shadowBlur = 20;
+  ctx.fillText('GAME OVER', LOGIC_W/2, LOGIC_H/2 - 70);
+
+  ctx.shadowBlur = 0;
+
+  // Score
+  ctx.font = 'bold 52px "Segoe UI", system-ui';
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(score, LOGIC_W/2, LOGIC_H/2);
+
+  // Best
+  ctx.font = '15px "Segoe UI", system-ui';
+  ctx.fillStyle = score >= best ? '#ffee00' : '#8899cc';
+  ctx.fillText((score >= best ? '★ NEW BEST  ' : 'BEST  ') + best, LOGIC_W/2, LOGIC_H/2 + 32);
+
+  // Retry
+  const alpha = 0.6 + 0.4 * Math.sin(frameCount * 0.07);
+  ctx.globalAlpha = alpha;
+  ctx.font = 'bold 18px "Segoe UI", system-ui';
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText('Tap to Retry', LOGIC_W/2, LOGIC_H/2 + 100);
+
+  ctx.restore();
+}
+
+// ─── Loop ─────────────────────────────────────────────────────────────────────
+function loop() {
+  requestAnimationFrame(loop);
+  frameCount = (frameCount || 0) + 1;
+
+  if (gameState === 'start') {
+    drawStart();
+    return;
+  }
+
+  if (gameState === 'playing') {
+    update();
+    draw();
+  } else if (gameState === 'gameover') {
+    // Still draw world behind
+    draw();
+    drawGameOver();
+    // Continue particles/shake
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      if (p.type === 'ripple') { p.r += 3; p.life--; if (p.life <= 0) particles.splice(i, 1); continue; }
+      p.x += p.vx; p.y += p.vy; p.vy += 0.06; p.life--;
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+    if (shakeStrength > 0.3) {
+      shakeX = (Math.random()-0.5) * shakeStrength * 2;
+      shakeY = (Math.random()-0.5) * shakeStrength * 2;
+      shakeStrength *= SHAKE_DECAY;
+    } else { shakeX = shakeY = shakeStrength = 0; }
+  }
+}
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+frameCount = 0;
+loop();
+
+})();
+</script>
+</body>
+</html>

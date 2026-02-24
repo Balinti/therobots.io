@@ -1,0 +1,966 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Orbit Flip - Free HTML5 Game</title>
+<meta name="description" content="Play Orbit Flip - Tap to move your astronaut around planetary orbits, reacting to random control reversals in rhythm.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0b0f1a">
+<link rel="canonical" href="https://balinti.github.io/orbit-flip/">
+
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="Orbit Flip - Free HTML5 Game">
+<meta property="og:description" content="Play Orbit Flip - Tap to move your astronaut around planetary orbits, reacting to random control reversals in rhythm.">
+<meta property="og:url" content="https://balinti.github.io/orbit-flip/">
+<meta property="og:image" content="https://balinti.github.io/orbit-flip/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Orbit Flip - Free HTML5 Game">
+<meta name="twitter:description" content="Play Orbit Flip - Tap to move your astronaut around planetary orbits, reacting to random control reversals in rhythm.">
+<meta name="twitter:image" content="https://balinti.github.io/orbit-flip/og-image.png">
+
+<!-- AdSense -->
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    background: #0b0f1a;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: flex-start;
+    overflow-x: hidden;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    color: #e0e8ff;
+    touch-action: none;
+  }
+  #game-wrapper {
+    position: relative;
+    width: 100%;
+    max-width: 420px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  #hud {
+    width: 100%;
+    max-width: 420px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 16px;
+    background: rgba(11,15,26,0.85);
+    backdrop-filter: blur(4px);
+    border-bottom: 1px solid rgba(100,180,255,0.15);
+    position: relative;
+    z-index: 10;
+    flex-shrink: 0;
+  }
+  .hud-item { display: flex; flex-direction: column; align-items: center; }
+  .hud-label { font-size: 9px; text-transform: uppercase; letter-spacing: 1px; color: rgba(200,220,255,0.5); }
+  .hud-value { font-size: 20px; font-weight: 700; line-height: 1.1; }
+  #score-val { color: #7df9ff; }
+  #combo-val { color: #ff7de9; }
+  #best-val  { color: #ffd97d; }
+  #canvas-container {
+    position: relative;
+    width: 100%;
+    max-width: 420px;
+  }
+  canvas {
+    display: block;
+    width: 100%;
+    touch-action: none;
+  }
+  #overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: rgba(7,10,20,0.82);
+    backdrop-filter: blur(6px);
+    z-index: 20;
+    gap: 10px;
+    padding: 24px;
+  }
+  #overlay.hidden { display: none; }
+  .overlay-title {
+    font-size: 36px;
+    font-weight: 900;
+    letter-spacing: 2px;
+    text-align: center;
+    background: linear-gradient(135deg, #7df9ff, #c87dff, #ff7de9);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    line-height: 1.1;
+    margin-bottom: 4px;
+  }
+  .overlay-sub {
+    font-size: 13px;
+    color: rgba(200,220,255,0.6);
+    text-align: center;
+    margin-bottom: 4px;
+  }
+  .stat-row {
+    display: flex; gap: 24px; margin: 4px 0;
+  }
+  .stat-box {
+    text-align: center;
+    background: rgba(100,150,255,0.08);
+    border: 1px solid rgba(100,150,255,0.2);
+    border-radius: 10px;
+    padding: 8px 18px;
+  }
+  .stat-box .lbl { font-size: 9px; text-transform: uppercase; letter-spacing: 1px; color: rgba(200,220,255,0.5); }
+  .stat-box .val { font-size: 24px; font-weight: 700; color: #7df9ff; }
+  .tap-hint {
+    margin-top: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: rgba(200,220,255,0.85);
+    letter-spacing: 1px;
+    animation: pulse-hint 1.4s ease-in-out infinite;
+  }
+  @keyframes pulse-hint {
+    0%,100%{opacity:.5;transform:scale(1)}
+    50%{opacity:1;transform:scale(1.04)}
+  }
+  .btn-row { display: flex; gap: 10px; margin-top: 6px; }
+  .btn {
+    padding: 9px 20px;
+    border-radius: 999px;
+    border: none;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: .5px;
+    transition: transform .12s, filter .12s;
+  }
+  .btn:active { transform: scale(.95); }
+  .btn-primary {
+    background: linear-gradient(135deg, #7df9ff, #c87dff);
+    color: #0b0f1a;
+  }
+  .btn-secondary {
+    background: rgba(100,150,255,0.15);
+    color: rgba(200,220,255,0.8);
+    border: 1px solid rgba(100,150,255,0.3);
+  }
+  #challenge-banner {
+    font-size: 12px;
+    background: rgba(255,200,100,0.12);
+    border: 1px solid rgba(255,200,100,0.3);
+    color: #ffd97d;
+    padding: 5px 14px;
+    border-radius: 999px;
+    display: none;
+  }
+  #challenge-banner.show { display: block; }
+  #retry-countdown {
+    font-size: 48px;
+    font-weight: 900;
+    color: #7df9ff;
+    display: none;
+    animation: popIn .2s ease-out;
+  }
+  @keyframes popIn {
+    0%{transform:scale(1.5);opacity:0}
+    100%{transform:scale(1);opacity:1}
+  }
+  #about-section {
+    width: 100%;
+    max-width: 420px;
+    padding: 14px 18px 20px;
+    font-size: 12px;
+    color: rgba(180,200,240,0.5);
+    line-height: 1.6;
+  }
+  #about-section summary {
+    cursor: pointer;
+    color: rgba(180,200,240,0.7);
+    font-weight: 600;
+    margin-bottom: 6px;
+    user-select: none;
+  }
+  #about-section p { margin-top: 6px; }
+  #about-section a { color: #7df9ff; text-decoration: none; }
+</style>
+</head>
+<body>
+<div id="game-wrapper">
+  <div id="hud">
+    <div class="hud-item">
+      <span class="hud-label">Score</span>
+      <span class="hud-value" id="score-val">0</span>
+    </div>
+    <div class="hud-item">
+      <span class="hud-label">Combo×Multi</span>
+      <span class="hud-value" id="combo-val">0×1</span>
+    </div>
+    <div class="hud-item">
+      <span class="hud-label">Best</span>
+      <span class="hud-value" id="best-val">0</span>
+    </div>
+  </div>
+  <div id="canvas-container">
+    <canvas id="canvas"></canvas>
+    <div id="overlay">
+      <div class="overlay-title" id="overlay-title">ORBIT FLIP</div>
+      <div class="overlay-sub" id="overlay-sub">Switch rings · Dodge debris · Flip gates</div>
+      <div id="challenge-banner"></div>
+      <div id="retry-countdown"></div>
+      <div class="stat-row" id="stat-row" style="display:none">
+        <div class="stat-box"><div class="lbl">Score</div><div class="val" id="end-score">0</div></div>
+        <div class="stat-box"><div class="lbl">Best</div><div class="val" id="end-best">0</div></div>
+        <div class="stat-box"><div class="lbl">Combo</div><div class="val" id="end-combo">0</div></div>
+      </div>
+      <div class="tap-hint" id="tap-hint">Tap to Start</div>
+      <div class="btn-row" id="btn-row" style="display:none">
+        <button class="btn btn-primary" id="retry-btn">Retry</button>
+        <button class="btn btn-secondary" id="share-btn">Share</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<details id="about-section">
+  <summary>About Orbit Flip</summary>
+  <p>
+    <strong>Orbit Flip</strong> is a free hyper-casual HTML5 game. Guide your astronaut around a planet's dual orbital rings, dodge debris arcs, collect star chips, and pass through flip gates that reverse your orbit direction. How long can you survive?
+  </p>
+  <p>
+    Controls: <strong>Tap / Click</strong> or press <strong>Space / Enter</strong> to switch rings.<br>
+    Built with Canvas 2D · No downloads required · <a href="https://balinti.github.io/orbit-flip/">Play online</a>
+  </p>
+</details>
+
+<script>
+(function(){
+'use strict';
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+const LS_SCORE = 'orbitFlip_highScore';
+const LS_COMBO = 'orbitFlip_bestCombo';
+const INNER = 0, OUTER = 1;
+const TWO_PI = Math.PI * 2;
+const RING_R = [90, 148]; // CSS px radii
+const PLANET_R = 38;
+const PLAYER_R = 9;
+const DEBRIS_ARC = 0.22; // radians half-width
+const CHIP_R = 7;
+const GATE_ARC = 0.18;
+
+// ─── State ────────────────────────────────────────────────────────────────────
+let state = 'start'; // start | playing | gameover | countdown
+let score = 0, combo = 0, multiplier = 1, bestCombo = 0;
+let bestScore = parseInt(localStorage.getItem(LS_SCORE) || '0');
+let bestComboStored = parseInt(localStorage.getItem(LS_COMBO) || '0');
+let baseHue = 200;
+
+let player = { ring: INNER, theta: -Math.PI/2, trail: [] };
+let dir = 1; // 1=CW, -1=CCW
+let playerOmega = 1.4; // rad/s
+let worldOmega  = 0.0; // hazards additional spin (we keep hazards stationary, player moves)
+
+let obstacles = [];
+let gates = [];
+let chips = [];
+let particles = [];
+
+let shake = { x:0, y:0, mag:0, dur:0, t:0 };
+let retryCountdown = 0;
+let retryTimer = 0;
+
+let setCount = 0;
+let spawnTimer = 0;
+let spawnInterval = 2.8;
+let gateSchedule = 6; // every N sets spawn a gate
+let difficulty = 0;
+
+let lastTime = 0;
+let animId = null;
+
+// challenge param
+let challengeScore = null;
+const urlParams = new URLSearchParams(window.location.search);
+if (urlParams.has('challenge')) {
+  const v = parseInt(urlParams.get('challenge'));
+  if (!isNaN(v) && v > 0) challengeScore = v;
+}
+
+// ─── DOM refs ─────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('canvas');
+const ctx    = canvas.getContext('2d');
+const overlay = document.getElementById('overlay');
+const overlayTitle = document.getElementById('overlay-title');
+const overlaySub   = document.getElementById('overlay-sub');
+const tapHint      = document.getElementById('tap-hint');
+const statRow      = document.getElementById('stat-row');
+const btnRow       = document.getElementById('btn-row');
+const endScore     = document.getElementById('end-score');
+const endBest      = document.getElementById('end-best');
+const endCombo     = document.getElementById('end-combo');
+const retryBtn     = document.getElementById('retry-btn');
+const shareBtn     = document.getElementById('share-btn');
+const scoreVal     = document.getElementById('score-val');
+const comboVal     = document.getElementById('combo-val');
+const bestVal      = document.getElementById('best-val');
+const challengeBanner = document.getElementById('challenge-banner');
+const retryCountdownEl = document.getElementById('retry-countdown');
+
+// ─── Canvas sizing ────────────────────────────────────────────────────────────
+let W = 420, H = 600, dpr = 1, cx = W/2, cy = H/2 + 20;
+
+function resize() {
+  const container = document.getElementById('canvas-container');
+  const cssW = Math.min(container.offsetWidth, 420);
+  const cssH = Math.round(cssW * (600/420));
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width  = Math.round(cssW * dpr);
+  canvas.height = Math.round(cssH * dpr);
+  canvas.style.width  = cssW + 'px';
+  canvas.style.height = cssH + 'px';
+  W = cssW; H = cssH;
+  cx = W/2; cy = H/2 + 20;
+}
+resize();
+window.addEventListener('resize', () => { resize(); });
+
+// ─── Input ────────────────────────────────────────────────────────────────────
+function handleInput() {
+  if (state === 'start') { startGame(); return; }
+  if (state === 'gameover') { beginRetry(); return; }
+  if (state === 'playing') { switchRing(); }
+}
+canvas.addEventListener('pointerdown', e => { e.preventDefault(); handleInput(); });
+overlay.addEventListener('pointerdown', e => { e.preventDefault(); handleInput(); });
+retryBtn.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); beginRetry(); });
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); handleInput(); }
+});
+
+// ─── Share ────────────────────────────────────────────────────────────────────
+shareBtn.addEventListener('click', e => {
+  e.stopPropagation();
+  const url = `https://balinti.github.io/orbit-flip/?challenge=${score}`;
+  const text = `I scored ${score} in Orbit Flip! Beat me: ${url}`;
+  if (navigator.share) {
+    navigator.share({ title: 'Orbit Flip', text, url }).catch(()=>{});
+  } else {
+    navigator.clipboard.writeText(text).then(() => {
+      shareBtn.textContent = 'Copied!';
+      setTimeout(()=>{ shareBtn.textContent = 'Share'; }, 2000);
+    }).catch(() => { window.prompt('Copy this:', text); });
+  }
+});
+
+// ─── Game init ────────────────────────────────────────────────────────────────
+function startGame() {
+  score = 0; combo = 0; multiplier = 1; bestCombo = 0;
+  obstacles = []; gates = []; chips = []; particles = [];
+  player = { ring: INNER, theta: -Math.PI/2, trail: [] };
+  dir = 1;
+  playerOmega = 1.4;
+  difficulty = 0; setCount = 0;
+  spawnTimer = 1.0; spawnInterval = 2.8;
+  shake = { x:0, y:0, mag:0, dur:0, t:0 };
+  baseHue = 200;
+  state = 'playing';
+  overlay.classList.add('hidden');
+  updateHUD();
+}
+
+function beginRetry() {
+  if (state !== 'gameover') return;
+  state = 'countdown';
+  retryTimer = 0.7;
+  retryCountdown = 1;
+  retryCountdownEl.style.display = 'block';
+  retryCountdownEl.textContent = '1';
+  statRow.style.display = 'none';
+  btnRow.style.display = 'none';
+  tapHint.style.display = 'none';
+  challengeBanner.classList.remove('show');
+}
+
+function showStart() {
+  state = 'start';
+  overlay.classList.remove('hidden');
+  overlayTitle.textContent = 'ORBIT FLIP';
+  overlaySub.textContent = 'Switch rings · Dodge debris · Flip gates';
+  tapHint.textContent = 'Tap to Start';
+  tapHint.style.display = '';
+  statRow.style.display = 'none';
+  btnRow.style.display = 'none';
+  retryCountdownEl.style.display = 'none';
+  if (challengeScore) {
+    challengeBanner.textContent = `Beat ${challengeScore} to win!`;
+    challengeBanner.classList.add('show');
+  }
+}
+
+function showGameover() {
+  state = 'gameover';
+  overlay.classList.remove('hidden');
+  overlayTitle.textContent = 'GAME OVER';
+  overlaySub.textContent = score > bestScore ? '🏆 New Record!' : 'So close!';
+  if (score > bestScore) {
+    bestScore = score;
+    localStorage.setItem(LS_SCORE, bestScore);
+  }
+  if (bestCombo > bestComboStored) {
+    bestComboStored = bestCombo;
+    localStorage.setItem(LS_COMBO, bestComboStored);
+  }
+  endScore.textContent = score;
+  endBest.textContent  = bestScore;
+  endCombo.textContent = bestCombo;
+  tapHint.textContent  = 'Tap to Retry';
+  tapHint.style.display = '';
+  statRow.style.display  = 'flex';
+  btnRow.style.display   = 'flex';
+  retryCountdownEl.style.display = 'none';
+  if (challengeScore) {
+    const won = score > challengeScore;
+    challengeBanner.textContent = won ? `You beat ${challengeScore}! 🎉` : `Try to beat ${challengeScore}`;
+    challengeBanner.classList.add('show');
+  }
+  updateHUD();
+}
+
+// ─── Ring switch ──────────────────────────────────────────────────────────────
+function switchRing() {
+  player.ring = player.ring === INNER ? OUTER : INNER;
+  addShake(2, 0.12);
+  spawnBurst(player.theta, player.ring, '#7df9ff', 6);
+}
+
+// ─── Scoring ──────────────────────────────────────────────────────────────────
+function addScore(pts) {
+  score += pts * multiplier;
+  updateHUD();
+}
+function addCombo(n) {
+  combo += n;
+  if (combo > bestCombo) bestCombo = combo;
+  multiplier = 1 + Math.floor(combo / 6);
+  updateHUD();
+}
+function resetCombo() { combo = 0; multiplier = 1; updateHUD(); }
+
+function updateHUD() {
+  scoreVal.textContent = score;
+  comboVal.textContent = `${combo}×${multiplier}`;
+  bestVal.textContent  = Math.max(bestScore, score);
+}
+
+// ─── Difficulty ───────────────────────────────────────────────────────────────
+function applyDifficulty() {
+  difficulty = Math.min(setCount * 0.04, 3);
+  playerOmega = 1.4 + difficulty * 0.5;
+  spawnInterval = Math.max(1.2, 2.8 - difficulty * 0.45);
+}
+
+// ─── Spawn ────────────────────────────────────────────────────────────────────
+function spawnSet() {
+  setCount++;
+  applyDifficulty();
+
+  // decide which ring(s) to put obstacles on
+  const twoRings = setCount > 8 && Math.random() < 0.3;
+  const rings = twoRings ? [INNER, OUTER] : [Math.random() < 0.5 ? INNER : OUTER];
+
+  // pick a spawn angle (ahead of player by ~pi)
+  const spawnTheta = player.theta + Math.PI * (1.1 + Math.random() * 0.5) * dir;
+
+  const arcHalf = DEBRIS_ARC + difficulty * 0.08;
+
+  rings.forEach(ring => {
+    obstacles.push({ ring, theta: spawnTheta, arcHalf, alive: true, passed: false });
+  });
+
+  // gate: every gateSchedule sets
+  if (setCount % Math.max(3, gateSchedule - Math.floor(difficulty)) === 0) {
+    const gTheta = spawnTheta + Math.PI * 0.4 * dir;
+    gates.push({ theta: gTheta, alive: true, pulsePh: 0, triggered: false, tickAlpha: 1 });
+  }
+
+  // chip: random placement on safe ring
+  if (Math.random() < 0.55) {
+    const safeRing = rings.length === 1 ? (rings[0] === INNER ? OUTER : INNER) : INNER;
+    const cTheta = spawnTheta - Math.PI * 0.3 * dir * (Math.random() * 0.5 + 0.5);
+    chips.push({ ring: safeRing, theta: cTheta, alive: true, scale: 1, ph: 0 });
+  }
+}
+
+// ─── Particles ────────────────────────────────────────────────────────────────
+function spawnBurst(theta, ring, color, count) {
+  const r = RING_R[ring] * (W/420);
+  const px = cx + Math.cos(theta)*r;
+  const py = cy + Math.sin(theta)*r;
+  for (let i=0; i<count; i++) {
+    const a = Math.random()*TWO_PI;
+    const spd = 30 + Math.random()*80;
+    particles.push({ x:px, y:py, vx:Math.cos(a)*spd, vy:Math.sin(a)*spd,
+      life:1, maxLife:1, color, r: 2+Math.random()*2 });
+  }
+}
+
+function spawnExplosion(theta, ring) {
+  const r = RING_R[ring] * (W/420);
+  const px = cx + Math.cos(theta)*r;
+  const py = cy + Math.sin(theta)*r;
+  for (let i=0; i<28; i++) {
+    const a = Math.random()*TWO_PI;
+    const spd = 20 + Math.random()*160;
+    const col = `hsl(${Math.random()*60+10},100%,60%)`;
+    particles.push({ x:px, y:py, vx:Math.cos(a)*spd, vy:Math.sin(a)*spd,
+      life:1, maxLife:0.8+Math.random()*0.5, color:col, r:2+Math.random()*4 });
+  }
+  // smoke
+  for (let i=0; i<10; i++) {
+    const a = Math.random()*TWO_PI;
+    const spd = 10 + Math.random()*40;
+    particles.push({ x:px, y:py, vx:Math.cos(a)*spd, vy:Math.sin(a)*spd,
+      life:1, maxLife:1.2+Math.random()*0.5, color:'rgba(180,180,200,0.5)', r:4+Math.random()*6 });
+  }
+}
+
+function spawnGateBurst(theta) {
+  const r1 = RING_R[INNER] * (W/420);
+  const r2 = RING_R[OUTER] * (W/420);
+  for (let r of [r1, r2]) {
+    const px = cx + Math.cos(theta)*r, py = cy + Math.sin(theta)*r;
+    for (let i=0;i<12;i++) {
+      const a=Math.random()*TWO_PI, spd=40+Math.random()*100;
+      particles.push({ x:px, y:py, vx:Math.cos(a)*spd, vy:Math.sin(a)*spd,
+        life:1, maxLife:0.7, color:`hsl(${280+Math.random()*60},100%,70%)`, r:2+Math.random()*3 });
+    }
+  }
+}
+
+// ─── Shake ────────────────────────────────────────────────────────────────────
+function addShake(mag, dur) {
+  if (mag > shake.mag) { shake.mag=mag; shake.dur=dur; shake.t=0; }
+}
+
+// ─── Collision ────────────────────────────────────────────────────────────────
+function angularDist(a, b) {
+  let d = ((b - a) % TWO_PI + TWO_PI) % TWO_PI;
+  if (d > Math.PI) d -= TWO_PI;
+  return Math.abs(d);
+}
+
+function checkCollisions() {
+  const padR = (PLAYER_R + 3) / (RING_R[player.ring] * (W/420));
+
+  for (let ob of obstacles) {
+    if (!ob.alive) continue;
+    if (ob.ring !== player.ring) continue;
+    const d = angularDist(player.theta, ob.theta);
+    if (d < ob.arcHalf + padR) return true;
+  }
+  return false;
+}
+
+function checkChips() {
+  const padR = (PLAYER_R + CHIP_R) / (RING_R[player.ring] * (W/420));
+  for (let ch of chips) {
+    if (!ch.alive) continue;
+    if (ch.ring !== player.ring) continue;
+    const d = angularDist(player.theta, ch.theta);
+    if (d < padR) {
+      ch.alive = false;
+      addScore(3);
+      addCombo(1);
+      spawnBurst(player.theta, player.ring, '#ffd97d', 8);
+    }
+  }
+}
+
+function checkGates() {
+  const pad = 0.12;
+  for (let g of gates) {
+    if (!g.alive || g.triggered) continue;
+    const d = angularDist(player.theta, g.theta);
+    if (d < GATE_ARC + pad) {
+      g.triggered = true;
+      g.alive = false;
+      dir = -dir;
+      addScore(2);
+      addCombo(2);
+      addShake(4, 0.2);
+      spawnGateBurst(g.theta);
+    }
+  }
+}
+
+function checkPassed() {
+  for (let ob of obstacles) {
+    if (!ob.alive || ob.passed) continue;
+    // obstacle is "behind" player if angular distance > pi/2 in opposite dir
+    const rel = ((ob.theta - player.theta) * dir % TWO_PI + TWO_PI) % TWO_PI;
+    if (rel > Math.PI * 1.1) {
+      ob.passed = true;
+      if (ob.ring !== player.ring) { addScore(1); addCombo(1); }
+    }
+  }
+}
+
+// ─── Main loop ────────────────────────────────────────────────────────────────
+function loop(ts) {
+  animId = requestAnimationFrame(loop);
+  const dt = Math.min((ts - lastTime) / 1000, 0.05);
+  lastTime = ts;
+
+  if (state === 'countdown') {
+    retryTimer -= dt;
+    if (retryTimer <= 0) {
+      retryCountdownEl.style.display = 'none';
+      startGame();
+    }
+    drawBackground();
+    drawWorld(dt);
+    return;
+  }
+
+  if (state === 'playing') {
+    update(dt);
+  }
+
+  baseHue += dt * 4;
+  draw(dt);
+}
+
+function update(dt) {
+  // move player
+  player.theta += dt * dir * playerOmega;
+
+  // trail
+  player.trail.push({ theta: player.theta, ring: player.ring, t: 1 });
+  if (player.trail.length > 18) player.trail.shift();
+  player.trail.forEach(t => t.t -= dt * 2.5);
+  player.trail = player.trail.filter(t => t.t > 0);
+
+  // spawn
+  spawnTimer -= dt;
+  if (spawnTimer <= 0) {
+    spawnSet();
+    spawnTimer = spawnInterval;
+  }
+
+  // check chips & gates
+  checkChips();
+  checkGates();
+
+  // check passed obstacles for score
+  checkPassed();
+
+  // collision
+  if (checkCollisions()) {
+    spawnExplosion(player.theta, player.ring);
+    addShake(10, 0.4);
+    showGameover();
+    return;
+  }
+
+  // particles
+  updateParticles(dt);
+
+  // shake
+  if (shake.t < shake.dur) {
+    shake.t += dt;
+    const f = 1 - shake.t/shake.dur;
+    shake.x = (Math.random()*2-1)*shake.mag*f;
+    shake.y = (Math.random()*2-1)*shake.mag*f;
+  } else { shake.x=0; shake.y=0; }
+}
+
+function updateParticles(dt) {
+  for (let p of particles) {
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy += 30*dt;
+    p.life -= dt / p.maxLife;
+  }
+  particles = particles.filter(p => p.life > 0);
+}
+
+// ─── Drawing ──────────────────────────────────────────────────────────────────
+function draw(dt) {
+  if (state !== 'playing' && state !== 'gameover') {
+    drawBackground();
+    drawWorld(dt);
+    return;
+  }
+  drawBackground();
+  ctx.save();
+  ctx.translate(shake.x, shake.y);
+  drawWorld(dt);
+  ctx.restore();
+}
+
+function drawBackground() {
+  ctx.save();
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  const grad = ctx.createRadialGradient(cx,cy,0,cx,cy,Math.max(W,H));
+  const h = baseHue % 360;
+  grad.addColorStop(0, `hsl(${h},30%,8%)`);
+  grad.addColorStop(1, `hsl(${(h+40)%360},20%,4%)`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0,0,W,H);
+
+  // stars
+  ctx.globalAlpha = 0.5;
+  for (let i=0; i<60; i++) {
+    // deterministic star positions
+    const sx = ((i*137.5)%W);
+    const sy = ((i*97.3+i*i*0.7)%H);
+    const sr = 0.5 + (i%3)*0.5;
+    ctx.fillStyle='#fff';
+    ctx.beginPath();
+    ctx.arc(sx,sy,sr,0,TWO_PI);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+function drawWorld(dt) {
+  ctx.save();
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.translate(shake.x, shake.y);
+
+  const scale = W/420;
+  const ringR = [RING_R[0]*scale, RING_R[1]*scale];
+
+  // rings
+  [INNER,OUTER].forEach(i => {
+    ctx.beginPath();
+    ctx.arc(cx,cy,ringR[i],0,TWO_PI);
+    ctx.strokeStyle = i===INNER ? `hsla(190,100%,55%,0.18)` : `hsla(300,100%,65%,0.18)`;
+    ctx.lineWidth = 4*scale;
+    ctx.stroke();
+  });
+
+  // planet
+  const pgr = ctx.createRadialGradient(cx-PLANET_R*0.3*scale, cy-PLANET_R*0.3*scale, 2,
+    cx, cy, PLANET_R*scale);
+  pgr.addColorStop(0, `hsl(${(baseHue+120)%360},50%,60%)`);
+  pgr.addColorStop(0.6, `hsl(${(baseHue+80)%360},60%,30%)`);
+  pgr.addColorStop(1, `hsl(${(baseHue+60)%360},40%,12%)`);
+  ctx.beginPath();
+  ctx.arc(cx,cy,PLANET_R*scale,0,TWO_PI);
+  ctx.fillStyle = pgr;
+  ctx.fill();
+
+  // planet glow
+  const glowGrad = ctx.createRadialGradient(cx,cy,PLANET_R*scale,cx,cy,(PLANET_R+20)*scale);
+  glowGrad.addColorStop(0, `hsla(${(baseHue+100)%360},80%,50%,0.15)`);
+  glowGrad.addColorStop(1, 'transparent');
+  ctx.beginPath();
+  ctx.arc(cx,cy,(PLANET_R+20)*scale,0,TWO_PI);
+  ctx.fillStyle = glowGrad;
+  ctx.fill();
+
+  // obstacles
+  for (let ob of obstacles) {
+    if (!ob.alive) continue;
+    const r = ringR[ob.ring];
+    ctx.beginPath();
+    ctx.arc(cx,cy,r, ob.theta - ob.arcHalf, ob.theta + ob.arcHalf);
+    ctx.strokeStyle = `hsl(${(baseHue+30)%360},100%,60%)`;
+    ctx.lineWidth = 8*scale;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+
+    // danger glow
+    ctx.beginPath();
+    ctx.arc(cx,cy,r, ob.theta - ob.arcHalf, ob.theta + ob.arcHalf);
+    ctx.strokeStyle = `hsla(${(baseHue+30)%360},100%,70%,0.25)`;
+    ctx.lineWidth = 14*scale;
+    ctx.stroke();
+  }
+
+  // gates
+  const now = performance.now()/1000;
+  for (let g of gates) {
+    if (!g.alive) continue;
+    const pulse = 0.7 + 0.3*Math.sin(now*5);
+    // draw gate on both rings
+    for (let ri=0; ri<2; ri++) {
+      const r = ringR[ri];
+      // two-color gate: top=cyan, bottom=magenta
+      ctx.beginPath();
+      ctx.arc(cx,cy,r, g.theta-GATE_ARC, g.theta);
+      ctx.strokeStyle = `hsla(190,100%,60%,${pulse})`;
+      ctx.lineWidth = 7*scale;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(cx,cy,r, g.theta, g.theta+GATE_ARC);
+      ctx.strokeStyle = `hsla(300,100%,65%,${pulse})`;
+      ctx.lineWidth = 7*scale;
+      ctx.stroke();
+    }
+    // telegraph tick marks
+    const mid = (g.theta - GATE_ARC);
+    const gx = cx + Math.cos(g.theta)*ringR[INNER];
+    const gy = cy + Math.sin(g.theta)*ringR[INNER];
+    ctx.fillStyle = `rgba(255,255,255,${pulse*0.9})`;
+    ctx.font = `bold ${11*scale}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('⟳', gx, gy);
+  }
+
+  // chips
+  for (let ch of chips) {
+    if (!ch.alive) continue;
+    ch.ph = (ch.ph||0) + (dt||0.016)*3;
+    const r = ringR[ch.ring];
+    const px = cx + Math.cos(ch.theta)*r;
+    const py = cy + Math.sin(ch.theta)*r;
+    const pulse2 = 0.85 + 0.15*Math.sin(ch.ph);
+
+    ctx.save();
+    ctx.translate(px,py);
+    ctx.rotate(ch.theta + now);
+
+    // star shape
+    const sr = CHIP_R*scale*pulse2;
+    ctx.beginPath();
+    for (let j=0;j<8;j++) {
+      const a = j*Math.PI/4;
+      const rr = j%2===0 ? sr : sr*0.45;
+      j===0 ? ctx.moveTo(Math.cos(a)*rr, Math.sin(a)*rr)
+             : ctx.lineTo(Math.cos(a)*rr, Math.sin(a)*rr);
+    }
+    ctx.closePath();
+    ctx.fillStyle = `hsl(50,100%,70%)`;
+    ctx.shadowColor = '#ffd97d';
+    ctx.shadowBlur = 10*scale;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+
+  // trail
+  for (let t of player.trail) {
+    const r2 = ringR[t.ring];
+    const tx = cx + Math.cos(t.theta)*r2;
+    const ty = cy + Math.sin(t.theta)*r2;
+    ctx.beginPath();
+    ctx.arc(tx,ty, PLAYER_R*scale*t.t*0.6,0,TWO_PI);
+    ctx.fillStyle = `hsla(190,100%,70%,${t.t*0.4*multiplier*0.3})`;
+    ctx.fill();
+  }
+
+  // player
+  const pr = ringR[player.ring];
+  const px = cx + Math.cos(player.theta)*pr;
+  const py = cy + Math.sin(player.theta)*pr;
+
+  // glow
+  const glowR = (PLAYER_R+6)*scale;
+  const pGlow = ctx.createRadialGradient(px,py,0,px,py,glowR);
+  pGlow.addColorStop(0, `hsla(190,100%,70%,${0.4*multiplier*0.4+0.3})`);
+  pGlow.addColorStop(1, 'transparent');
+  ctx.beginPath();
+  ctx.arc(px,py,glowR,0,TWO_PI);
+  ctx.fillStyle = pGlow;
+  ctx.fill();
+
+  // body
+  ctx.beginPath();
+  ctx.arc(px,py,PLAYER_R*scale,0,TWO_PI);
+  const bodyGrad = ctx.createRadialGradient(px-2*scale,py-2*scale,1,px,py,PLAYER_R*scale);
+  bodyGrad.addColorStop(0,'#e0f8ff');
+  bodyGrad.addColorStop(0.5,'#7df9ff');
+  bodyGrad.addColorStop(1,'#0a6080');
+  ctx.fillStyle = bodyGrad;
+  ctx.fill();
+
+  // visor
+  ctx.beginPath();
+  ctx.arc(px,py,PLAYER_R*scale*0.55,0,TWO_PI);
+  ctx.fillStyle='rgba(0,200,255,0.35)';
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(px-1.5*scale, py-1.5*scale, 2*scale, 0, TWO_PI);
+  ctx.fillStyle='rgba(255,255,255,0.8)';
+  ctx.fill();
+
+  // particles
+  for (let p of particles) {
+    ctx.beginPath();
+    ctx.arc(p.x,p.y,p.r*scale,0,TWO_PI);
+    ctx.globalAlpha = Math.max(0,p.life);
+    ctx.fillStyle = p.color;
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // dir indicator
+  if (state==='playing') {
+    const dTheta = player.theta + dir * 0.3;
+    const ax = cx + Math.cos(dTheta)*pr;
+    const ay = cy + Math.sin(dTheta)*pr;
+    ctx.beginPath();
+    ctx.moveTo(px,py);
+    ctx.lineTo(ax,ay);
+    ctx.strokeStyle='rgba(125,249,255,0.35)';
+    ctx.lineWidth=2*scale;
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+function boot() {
+  showStart();
+  bestVal.textContent = bestScore;
+
+  // initial draw loop (for background animation)
+  function bgLoop(ts) {
+    animId = requestAnimationFrame(bgLoop);
+    const dt2 = Math.min((ts - lastTime)/1000, 0.05);
+    lastTime = ts;
+    baseHue += dt2*4;
+
+    if (state==='playing' || state==='countdown') {
+      // switch to game loop
+      cancelAnimationFrame(animId);
+      lastTime = ts;
+      animId = requestAnimationFrame(loop);
+      return;
+    }
+    drawBackground();
+    // draw idle planet / rings
+    drawWorld(dt2);
+  }
+
+  lastTime = performance.now();
+  animId = requestAnimationFrame(bgLoop);
+}
+
+// Override startGame to also handle loop switching
+const _startGame = startGame;
+startGame = function() {
+  cancelAnimationFrame(animId);
+  _startGame();
+  lastTime = performance.now();
+  animId = requestAnimationFrame(loop);
+};
+
+boot();
+
+})();
+</script>
+</body>
+</html>

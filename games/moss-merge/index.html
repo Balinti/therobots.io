@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Moss Merge - Free HTML5 Game</title>
+  <meta name="description" content="Play Moss Merge - Tap to join glowing moss dots while multiplying fungi create hazards.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0d1a0f">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Moss Merge - Free HTML5 Game">
+  <meta property="og:description" content="Play Moss Merge - Tap to join glowing moss dots while multiplying fungi create hazards.">
+  <meta property="og:url" content="https://balinti.github.io/moss-merge/">
+  <meta property="og:image" content="https://balinti.github.io/moss-merge/og.png">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Moss Merge - Free HTML5 Game">
+  <meta name="twitter:description" content="Play Moss Merge - Tap to join glowing moss dots while multiplying fungi create hazards.">
+  <meta name="twitter:image" content="https://balinti.github.io/moss-merge/og.png">
+
+  <!-- Canonical -->
+  <link rel="canonical" href="https://balinti.github.io/moss-merge/">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <!-- JSON-LD Schema -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Moss Merge",
+    "url": "https://balinti.github.io/moss-merge/",
+    "description": "A hyper-casual HTML5 canvas game where you tap to join glowing moss dots while multiplying fungi create hazards.",
+    "applicationCategory": "GameApplication",
+    "genre": "Casual",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  }
+  </script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #060d07;
+      color: #c8e6c9;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      overflow-x: hidden;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    #game-wrap {
+      width: 100%;
+      max-width: 420px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 8px 0 0;
+    }
+    #canvas-container {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 0 40px rgba(60,200,80,0.18);
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+      border-radius: 16px;
+    }
+    #about {
+      width: 100%;
+      max-width: 420px;
+      padding: 18px 20px 32px;
+      color: #7aad7e;
+      font-size: 13px;
+      line-height: 1.7;
+    }
+    #about h2 { color: #a5d6a7; font-size: 15px; margin-bottom: 6px; }
+    #about h3 { color: #81c784; font-size: 13px; margin: 10px 0 4px; }
+    #about ul { padding-left: 18px; }
+    #about li { margin-bottom: 3px; }
+    #about p { margin-bottom: 6px; }
+  </style>
+</head>
+<body>
+<div id="game-wrap">
+  <div id="canvas-container">
+    <canvas id="c"></canvas>
+  </div>
+  <section id="about" aria-label="About Moss Merge">
+    <h2>Moss Merge &mdash; Pulse Bloom</h2>
+    <p>A hyper-casual one-tap strategy game. Merge glowing moss dots before fungi take over the Heart Seed!</p>
+    <h3>How to Play</h3>
+    <ul>
+      <li><strong>Tap / Click</strong> a moss dot to emit a Bloom Pulse that merges same-color dots nearby.</li>
+      <li>Time your taps near the <strong>Night Pulse beat</strong> for bonus combo points.</li>
+      <li>Merged dots level up, becoming larger and brighter.</li>
+      <li>Pulse rings <strong>push back</strong> or damage fungi. Mutant fungi (after ~25s) need 2 hits.</li>
+      <li>If fungi reach the <strong>Heart Seed</strong> in the center, the game ends.</li>
+    </ul>
+    <h3>Controls</h3>
+    <ul>
+      <li><strong>Tap / Click</strong> &mdash; emit bloom pulse from nearest moss dot</li>
+      <li><strong>Space / Enter</strong> &mdash; start or retry</li>
+    </ul>
+    <h3>Tips</h3>
+    <ul>
+      <li>Cluster same-color dots early for big chain merges.</li>
+      <li>Watch the beat bar at the top &mdash; tap during the bright flash for a <em>Perfect</em> bonus.</li>
+      <li>Combo multiplier resets if you miss consecutive beats.</li>
+    </ul>
+  </section>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+// ─── Canvas Setup ────────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const DPR = Math.min(window.devicePixelRatio || 1, 2.5);
+const W_CSS = 420, H_CSS = 750;
+canvas.width  = W_CSS * DPR;
+canvas.height = H_CSS * DPR;
+ctx.scale(DPR, DPR);
+const W = W_CSS, H = H_CSS;
+const CX = W/2, CY = H/2;
+
+// ─── Palette ─────────────────────────────────────────────────────────────────
+const MOSS_HUES = [110, 155, 75]; // green, teal-green, lime
+const FUNGI_HUE = 20; // orange-red
+const HEART_COLOR = 'hsl(340,80%,60%)';
+const BG_HUE_START = 130;
+let bgHue = BG_HUE_START;
+
+// ─── State ───────────────────────────────────────────────────────────────────
+let state = 'start'; // 'start' | 'playing' | 'gameover'
+let score = 0, bestScore = 0, combo = 0, bestCombo = 0;
+let perfectStreak = 0, bestPerfectStreak = 0;
+let elapsed = 0; // seconds since game start
+let gameoverTimer = 0;
+let shakeAmt = 0, shakeDx = 0, shakeDy = 0;
+
+// ─── Beat System ─────────────────────────────────────────────────────────────
+let beatInterval = 1.0; // seconds
+let beatPhase = 0; // 0..1
+let lastBeatTime = 0;
+let beatRings = []; // { r, alpha, maxR }
+const PERFECT_WINDOW = 0.18; // fraction of beat at end
+
+// ─── Grid / Fungi ─────────────────────────────────────────────────────────────
+const CELL = 26;
+const COLS = Math.ceil(W / CELL);
+const ROWS = Math.ceil(H / CELL);
+let fungiMap = new Map(); // key "cx,cy" -> { cx, cy, hp, mutant, x, y }
+let heartDanger = 0; // 0..1
+const HEART_R = 22;
+const DANGER_R = HEART_R + CELL * 1.5;
+
+// ─── Moss Dots ───────────────────────────────────────────────────────────────
+let mossDots = []; // { x, y, hue, level, r, vx, vy, alpha, dying, collectAnim }
+let dotIdCounter = 0;
+function mkDot(x, y, hue, level=0) {
+  return { id: dotIdCounter++, x, y, hue, level, r: 10 + level*4, vx: 0, vy: 0, alpha: 0, dying: false, collectAnim: 0, glowPhase: Math.random()*Math.PI*2 };
+}
+function dotRadius(dot) { return 10 + dot.level * 4; }
+
+// ─── Particles ───────────────────────────────────────────────────────────────
+let particles = []; // { x,y,vx,vy,life,maxLife,hue,r,type }
+const MAX_PARTICLES = 200;
+function addParticle(x, y, vx, vy, hue, r, life, type='circle') {
+  if (particles.length >= MAX_PARTICLES) return;
+  particles.push({ x, y, vx, vy, life, maxLife: life, hue, r, type });
+}
+
+// ─── Bloom Pulses ─────────────────────────────────────────────────────────────
+let pulses = []; // { x, y, hue, r, maxR, alpha, fromDot }
+
+// ─── localStorage ─────────────────────────────────────────────────────────────
+function loadBest() {
+  try { bestScore = parseInt(localStorage.getItem('mm_best') || '0'); } catch(e){}
+  try { bestCombo = parseInt(localStorage.getItem('mm_bestCombo') || '0'); } catch(e){}
+  try { bestPerfectStreak = parseInt(localStorage.getItem('mm_bestPerfect') || '0'); } catch(e){}
+}
+function saveBest() {
+  try {
+    if (score > bestScore) { bestScore = score; localStorage.setItem('mm_best', bestScore); }
+    if (combo > bestCombo) { bestCombo = combo; localStorage.setItem('mm_bestCombo', bestCombo); }
+    if (perfectStreak > bestPerfectStreak) { bestPerfectStreak = perfectStreak; localStorage.setItem('mm_bestPerfect', bestPerfectStreak); }
+  } catch(e){}
+}
+
+// Daily best (daily seed)
+function getDailyKey() {
+  const d = new Date(); return `mm_daily_${d.getFullYear()}_${d.getMonth()}_${d.getDate()}`;
+}
+let dailyBest = 0;
+function loadDaily() { try { dailyBest = parseInt(localStorage.getItem(getDailyKey()) || '0'); } catch(e){} }
+function saveDaily() { try { if (score > dailyBest) { dailyBest = score; localStorage.setItem(getDailyKey(), dailyBest); } } catch(e){} }
+
+// ─── Init Game ───────────────────────────────────────────────────────────────
+function initGame() {
+  score = 0; combo = 0; perfectStreak = 0;
+  elapsed = 0; beatPhase = 0; lastBeatTime = 0; beatInterval = 1.0;
+  bgHue = BG_HUE_START;
+  fungiMap.clear();
+  mossDots = []; particles = []; pulses = []; beatRings = [];
+  shakeAmt = 0; heartDanger = 0;
+
+  // Spawn initial cluster of moss dots biased toward center
+  for (let i = 0; i < 18; i++) spawnMossDot(true);
+}
+
+function spawnMossDot(biasCenter = false) {
+  const margin = 40;
+  let x, y;
+  if (biasCenter) {
+    const ang = Math.random() * Math.PI * 2;
+    const dist = 60 + Math.random() * 130;
+    x = CX + Math.cos(ang) * dist;
+    y = CY + Math.sin(ang) * dist;
+    x = Math.max(margin, Math.min(W - margin, x));
+    y = Math.max(margin, Math.min(H - margin, y));
+  } else {
+    // Drift in from edge
+    const edge = Math.floor(Math.random()*4);
+    if (edge===0){ x=margin+Math.random()*(W-margin*2); y=-20; }
+    else if(edge===1){ x=W+20; y=margin+Math.random()*(H-margin*2); }
+    else if(edge===2){ x=margin+Math.random()*(W-margin*2); y=H+20; }
+    else { x=-20; y=margin+Math.random()*(H-margin*2); }
+  }
+  const hue = MOSS_HUES[Math.floor(Math.random()*MOSS_HUES.length)];
+  const dot = mkDot(x, y, hue, 0);
+  dot.alpha = biasCenter ? 1 : 0;
+  if (!biasCenter) {
+    // drift toward field
+    const ang = Math.atan2(CY - y, CX - x) + (Math.random()-0.5)*0.8;
+    const spd = 20 + Math.random()*20;
+    dot.vx = Math.cos(ang)*spd; dot.vy = Math.sin(ang)*spd;
+  }
+  mossDots.push(dot);
+}
+
+function spawnFungus() {
+  // Spawn at grid cell on the edges, walk toward center
+  const edge = Math.floor(Math.random()*4);
+  let cx, cy;
+  if (edge===0){ cx=Math.floor(Math.random()*COLS); cy=0; }
+  else if(edge===1){ cx=COLS-1; cy=Math.floor(Math.random()*ROWS); }
+  else if(edge===2){ cx=Math.floor(Math.random()*COLS); cy=ROWS-1; }
+  else { cx=0; cy=Math.floor(Math.random()*ROWS); }
+  const key = `${cx},${cy}`;
+  if (fungiMap.has(key)) return;
+  const mutant = elapsed > 25;
+  fungiMap.set(key, { cx, cy, hp: mutant?2:1, mutant, x: cx*CELL+CELL/2, y: cy*CELL+CELL/2, animR: 0 });
+}
+
+// ─── Beat Logic ───────────────────────────────────────────────────────────────
+function onBeat(t) {
+  // Advance beatInterval difficulty
+  beatInterval = Math.max(0.45, 1.0 - elapsed * 0.006);
+
+  // Spawn beat ring from center
+  beatRings.push({ r: 0, maxR: Math.hypot(CX, CY) + 40, alpha: 0.7, t: 0 });
+
+  // Deterministic fungi advance: each fungi moves one cell toward center
+  const nextMap = new Map();
+  for (const [key, f] of fungiMap) {
+    let {cx, cy} = f;
+    const dx = CX - (cx*CELL+CELL/2);
+    const dy = CY - (cy*CELL+CELL/2);
+    const adx = Math.abs(dx), ady = Math.abs(dy);
+    let ncx = cx, ncy = cy;
+    if (adx > ady) ncx += Math.sign(dx);
+    else ncy += Math.sign(dy);
+    ncx = Math.max(0, Math.min(COLS-1, ncx));
+    ncy = Math.max(0, Math.min(ROWS-1, ncy));
+    const nkey = `${ncx},${ncy}`;
+    if (!nextMap.has(nkey)) {
+      nextMap.set(nkey, { ...f, cx: ncx, cy: ncy, x: ncx*CELL+CELL/2, y: ncy*CELL+CELL/2, animR: f.animR });
+    } else {
+      // Keep original
+      nextMap.set(key, f);
+    }
+  }
+  fungiMap = nextMap;
+
+  // Occasionally spawn new fungi
+  const spawnCount = 1 + Math.floor(elapsed / 15);
+  for (let i = 0; i < spawnCount; i++) {
+    if (Math.random() < 0.6) spawnFungus();
+  }
+
+  // Spawn new moss dots
+  const mossCount = Math.floor(Math.random()*3) + 1;
+  for (let i = 0; i < mossCount; i++) spawnMossDot(false);
+
+  // Check heart danger
+  heartDanger = 0;
+  for (const [, f] of fungiMap) {
+    const d = Math.hypot(f.x - CX, f.y - CY);
+    if (d < DANGER_R) {
+      heartDanger = Math.max(heartDanger, 1 - (d - HEART_R) / (DANGER_R - HEART_R));
+    }
+    if (d < HEART_R + CELL * 0.5) {
+      // Fungi touched heart seed - game over
+      triggerGameOver();
+      return;
+    }
+  }
+  combo = Math.max(0, combo - 1); // combo decays if no tap on beat
+}
+
+function triggerGameOver() {
+  state = 'gameover';
+  gameoverTimer = 0;
+  shakeAmt = 14;
+  saveBest(); saveDaily();
+  // Big particle burst
+  for (let i = 0; i < 60; i++) {
+    const ang = Math.random()*Math.PI*2;
+    const spd = 30 + Math.random()*120;
+    addParticle(CX, CY, Math.cos(ang)*spd, Math.sin(ang)*spd, FUNGI_HUE + Math.random()*40, 4+Math.random()*5, 1.2+Math.random()*0.8);
+  }
+}
+
+// ─── Tap / Input ──────────────────────────────────────────────────────────────
+function handleTap(px, py) {
+  if (state === 'start') { state = 'playing'; initGame(); return; }
+  if (state === 'gameover') {
+    if (gameoverTimer > 0.6) { state = 'start'; }
+    return;
+  }
+  // Find nearest moss dot within tap radius
+  let best = null, bestDist = 40;
+  for (const dot of mossDots) {
+    if (dot.dying || dot.alpha < 0.5) continue;
+    const d = Math.hypot(dot.x - px, dot.y - py);
+    if (d < bestDist + dotRadius(dot)) { bestDist = d; best = dot; }
+  }
+  if (!best) return;
+  emitBloom(best, px, py);
+}
+
+function emitBloom(dot, tx, ty) {
+  // Perfect timing check
+  const isPerfect = beatPhase > (1 - PERFECT_WINDOW) || beatPhase < 0.08;
+  const comboMult = 1 + combo * 0.3;
+
+  const BLOOM_R = 90 + dot.level * 18;
+  pulses.push({ x: dot.x, y: dot.y, hue: dot.hue, r: 0, maxR: BLOOM_R, alpha: 0.8, dot, isPerfect });
+
+  // Collect same-color dots
+  let collected = 0;
+  for (const d of mossDots) {
+    if (d === dot || d.dying || d.alpha < 0.3) continue;
+    if (d.hue !== dot.hue) continue;
+    const dist = Math.hypot(d.x - dot.x, d.y - dot.y);
+    if (dist < BLOOM_R) {
+      collected++;
+      d.dying = true;
+      d.targetX = dot.x; d.targetY = dot.y;
+      // Suction streak particles
+      const steps = 5;
+      for (let i = 0; i < steps; i++) {
+        const t = i/steps;
+        addParticle(d.x*(1-t)+dot.x*t, d.y*(1-t)+dot.y*t, (Math.random()-0.5)*30, (Math.random()-0.5)*30, dot.hue, 3+Math.random()*3, 0.4+Math.random()*0.3, 'streak');
+      }
+    }
+  }
+
+  if (collected > 0) {
+    dot.level = Math.min(dot.level + collected, 8);
+    dot.r = dotRadius(dot);
+    const pts = (10 + collected * 15) * Math.round(comboMult);
+    score += pts;
+    combo++;
+    if (isPerfect) {
+      perfectStreak++;
+      score += 25 * Math.round(comboMult); // perfect bonus
+      showFloatText(dot.x, dot.y - 30, `PERFECT +${25*Math.round(comboMult)}`, 'hsl(60,100%,70%)');
+    } else {
+      perfectStreak = 0;
+    }
+    showFloatText(dot.x, dot.y - 20, `+${pts}${combo>1?` x${combo}`:''}`, `hsl(${dot.hue},80%,70%)`);
+    if (combo > bestCombo) bestCombo = combo;
+    // Glow burst particles
+    for (let i = 0; i < Math.min(collected*4, 24); i++) {
+      const ang = Math.random()*Math.PI*2;
+      const spd = 30+Math.random()*60;
+      addParticle(dot.x, dot.y, Math.cos(ang)*spd, Math.sin(ang)*spd, dot.hue, 2+Math.random()*4, 0.5+Math.random()*0.4);
+    }
+    if (collected >= 3) shakeAmt = Math.max(shakeAmt, 4);
+  }
+
+  // Hit fungi in bloom range
+  const toRemove = [];
+  for (const [key, f] of fungiMap) {
+    const dist = Math.hypot(f.x - dot.x, f.y - dot.y);
+    if (dist < BLOOM_R) {
+      f.hp--;
+      if (f.hp <= 0) {
+        toRemove.push(key);
+        for (let i = 0; i < 10; i++) {
+          const ang = Math.random()*Math.PI*2;
+          addParticle(f.x, f.y, Math.cos(ang)*50, Math.sin(ang)*50, FUNGI_HUE, 3+Math.random()*3, 0.6+Math.random()*0.4);
+        }
+        score += 20 * Math.round(comboMult);
+      } else {
+        // Push back
+        const ang = Math.atan2(f.y-CY, f.x-CX);
+        const pushCells = 1;
+        const ncx = Math.max(0, Math.min(COLS-1, f.cx + Math.round(Math.cos(ang)*pushCells)));
+        const ncy = Math.max(0, Math.min(ROWS-1, f.cy + Math.round(Math.sin(ang)*pushCells)));
+        const nkey = `${ncx},${ncy}`;
+        if (!fungiMap.has(nkey)) {
+          toRemove.push(key);
+          fungiMap.set(nkey, {...f, cx:ncx, cy:ncy, x:ncx*CELL+CELL/2, y:ncy*CELL+CELL/2});
+        }
+      }
+    }
+  }
+  for (const k of toRemove) fungiMap.delete(k);
+}
+
+// ─── Float Text ───────────────────────────────────────────────────────────────
+let floatTexts = [];
+function showFloatText(x, y, txt, color) {
+  floatTexts.push({ x, y, txt, color, life: 1.2, maxLife: 1.2, vy: -40 });
+}
+
+// ─── Main Loop ────────────────────────────────────────────────────────────────
+let lastTime = 0;
+function loop(ts) {
+  requestAnimationFrame(loop);
+  const dt = Math.min((ts - lastTime) / 1000, 0.05);
+  lastTime = ts;
+
+  if (state === 'playing') update(dt);
+  if (state === 'gameover') { gameoverTimer += dt; }
+
+  render(dt);
+}
+
+function update(dt) {
+  elapsed += dt;
+  bgHue = BG_HUE_START + elapsed * 2;
+
+  // Beat
+  beatPhase += dt / beatInterval;
+  if (beatPhase >= 1) {
+    beatPhase -= 1;
+    onBeat(elapsed);
+  }
+
+  // Shake decay
+  if (shakeAmt > 0) {
+    shakeAmt *= 0.85;
+    shakeDx = (Math.random()-0.5)*shakeAmt*2;
+    shakeDy = (Math.random()-0.5)*shakeAmt*2;
+    if (shakeAmt < 0.3) { shakeAmt = 0; shakeDx = 0; shakeDy = 0; }
+  }
+
+  // Beat rings
+  for (const ring of beatRings) {
+    ring.r += (ring.maxR / 0.5) * dt;
+    ring.alpha -= dt * 1.4;
+  }
+  beatRings = beatRings.filter(r => r.alpha > 0);
+
+  // Pulses
+  for (const p of pulses) {
+    p.r += (p.maxR / 0.2) * dt;
+    p.alpha -= dt * 4;
+  }
+  pulses = pulses.filter(p => p.alpha > 0);
+
+  // Moss dots
+  for (const dot of mossDots) {
+    if (dot.alpha < 1) dot.alpha = Math.min(1, dot.alpha + dt*1.5);
+    if (dot.dying) {
+      // Fly toward target
+      const dx = dot.targetX - dot.x, dy = dot.targetY - dot.y;
+      const spd = 400;
+      dot.x += Math.sign(dx)*Math.min(Math.abs(dx), spd*dt);
+      dot.y += Math.sign(dy)*Math.min(Math.abs(dy), spd*dt);
+      dot.alpha -= dt * 3;
+    } else {
+      dot.x += dot.vx * dt;
+      dot.y += dot.vy * dt;
+      dot.vx *= 0.96; dot.vy *= 0.96;
+      // Stay in bounds
+      if (dot.x < 20) dot.vx += 80*dt;
+      if (dot.x > W-20) dot.vx -= 80*dt;
+      if (dot.y < 20) dot.vy += 80*dt;
+      if (dot.y > H-20) dot.vy -= 80*dt;
+    }
+    dot.glowPhase += dt * 2;
+  }
+  mossDots = mossDots.filter(d => d.alpha > 0);
+
+  // Particles
+  for (const p of particles) {
+    p.x += p.vx * dt; p.y += p.vy * dt;
+    p.vx *= 0.92; p.vy *= 0.92;
+    p.vy += 20 * dt;
+    p.life -= dt;
+  }
+  particles = particles.filter(p => p.life > 0);
+
+  // Float texts
+  for (const ft of floatTexts) {
+    ft.y += ft.vy * dt;
+    ft.life -= dt;
+  }
+  floatTexts = floatTexts.filter(ft => ft.life > 0);
+}
+
+// ─── Render ───────────────────────────────────────────────────────────────────
+function render(dt) {
+  ctx.save();
+  ctx.translate(shakeDx, shakeDy);
+
+  // Background
+  const bgGrad = ctx.createRadialGradient(CX, CY, 0, CX, CY, Math.max(W,H)*0.8);
+  const bh = (state==='playing') ? bgHue : BG_HUE_START;
+  bgGrad.addColorStop(0, `hsl(${bh},30%,8%)`);
+  bgGrad.addColorStop(1, `hsl(${bh+20},20%,4%)`);
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, W, H);
+
+  if (state === 'start') { renderStart(); ctx.restore(); return; }
+  if (state === 'gameover') { renderGame(); renderGameOver(); ctx.restore(); return; }
+
+  renderGame();
+  ctx.restore();
+}
+
+function renderGame() {
+  // Beat rings
+  for (const ring of beatRings) {
+    ctx.beginPath();
+    ctx.arc(CX, CY, ring.r, 0, Math.PI*2);
+    ctx.strokeStyle = `hsla(${bgHue+50},60%,70%,${ring.alpha})`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  // Fungi
+  for (const [, f] of fungiMap) {
+    const grd = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, CELL*0.7);
+    const fhue = f.mutant ? FUNGI_HUE + 30 : FUNGI_HUE;
+    grd.addColorStop(0, `hsla(${fhue},90%,55%,0.95)`);
+    grd.addColorStop(1, `hsla(${fhue},70%,30%,0)`);
+    ctx.beginPath();
+    ctx.arc(f.x, f.y, CELL*0.7, 0, Math.PI*2);
+    ctx.fillStyle = grd;
+    ctx.fill();
+    // HP indicator
+    if (f.hp > 1) {
+      ctx.beginPath();
+      ctx.arc(f.x, f.y, CELL*0.35, 0, Math.PI*2);
+      ctx.fillStyle = `hsla(${fhue+20},100%,80%,0.6)`;
+      ctx.fill();
+    }
+  }
+
+  // Particles
+  for (const p of particles) {
+    const t = p.life / p.maxLife;
+    ctx.globalAlpha = t * 0.9;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r * t, 0, Math.PI*2);
+    ctx.fillStyle = `hsl(${p.hue},80%,65%)`;
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // Bloom pulses
+  for (const p of pulses) {
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+    ctx.strokeStyle = `hsla(${p.hue},80%,70%,${p.alpha})`;
+    ctx.lineWidth = p.isPerfect ? 4 : 2.5;
+    ctx.stroke();
+    if (p.isPerfect) {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r*0.85, 0, Math.PI*2);
+      ctx.strokeStyle = `hsla(60,100%,80%,${p.alpha*0.5})`;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+  }
+
+  // Moss dots
+  for (const dot of mossDots) {
+    if (dot.alpha <= 0) continue;
+    ctx.save();
+    ctx.globalAlpha = dot.alpha;
+    const baseR = dotRadius(dot);
+    const glow = 0.15 * Math.sin(dot.glowPhase);
+    const r = baseR * (1 + glow);
+    const grad = ctx.createRadialGradient(dot.x, dot.y, 0, dot.x, dot.y, r*2.2);
+    const sat = 70 + dot.level*5;
+    const lit = 55 + dot.level*4;
+    grad.addColorStop(0, `hsl(${dot.hue},${sat}%,${lit}%)`);
+    grad.addColorStop(0.5, `hsl(${dot.hue},${sat-10}%,${lit-10}%)`);
+    grad.addColorStop(1, `hsla(${dot.hue},60%,30%,0)`);
+    ctx.beginPath();
+    ctx.arc(dot.x, dot.y, r, 0, Math.PI*2);
+    ctx.fillStyle = grad;
+    ctx.fill();
+    // Level ring
+    if (dot.level > 0) {
+      ctx.beginPath();
+      ctx.arc(dot.x, dot.y, r + 3, 0, Math.PI*2);
+      ctx.strokeStyle = `hsla(${dot.hue},90%,80%,0.5)`;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // Heart Seed
+  const hPulse = 0.12*Math.sin(Date.now()*0.004);
+  const heartR = HEART_R*(1+hPulse);
+  const hGrad = ctx.createRadialGradient(CX, CY, 0, CX, CY, heartR*2);
+  const dangerShift = heartDanger * 60;
+  hGrad.addColorStop(0, `hsl(${340-dangerShift},80%,70%)`);
+  hGrad.addColorStop(0.6, `hsl(${340-dangerShift},70%,45%)`);
+  hGrad.addColorStop(1, `hsla(${340-dangerShift},60%,30%,0)`);
+  ctx.beginPath();
+  ctx.arc(CX, CY, heartR, 0, Math.PI*2);
+  ctx.fillStyle = hGrad;
+  ctx.fill();
+  if (heartDanger > 0.3) {
+    ctx.beginPath();
+    ctx.arc(CX, CY, heartR + 6 + heartDanger*12, 0, Math.PI*2);
+    ctx.strokeStyle = `hsla(${340-dangerShift},90%,60%,${heartDanger*0.5})`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  // Float texts
+  for (const ft of floatTexts) {
+    const t = ft.life / ft.maxLife;
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, t*2);
+    ctx.fillStyle = ft.color;
+    ctx.font = `bold ${13 + (1-t)*4}px system-ui`;
+    ctx.textAlign = 'center';
+    ctx.fillText(ft.txt, ft.x, ft.y);
+    ctx.restore();
+  }
+
+  // HUD
+  renderHUD();
+}
+
+function renderHUD() {
+  // Beat bar at top
+  const barW = W - 40, barH = 8, barX = 20, barY = 14;
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  roundRect(ctx, barX, barY, barW, barH, 4);
+  ctx.fill();
+  const beatColor = beatPhase > (1-PERFECT_WINDOW) ? 'hsl(60,100%,65%)' : `hsl(${bgHue+50},70%,55%)`;
+  ctx.fillStyle = beatColor;
+  roundRect(ctx, barX, barY, barW * beatPhase, barH, 4);
+  ctx.fill();
+  // Flash at beat
+  if (beatPhase < 0.08 || beatPhase > 0.97) {
+    ctx.fillStyle = `rgba(255,255,200,0.25)`;
+    roundRect(ctx, barX, barY, barW, barH, 4);
+    ctx.fill();
+  }
+  // PERFECT label
+  if (beatPhase > (1-PERFECT_WINDOW)) {
+    ctx.fillStyle = 'rgba(255,255,150,0.85)';
+    ctx.font = 'bold 10px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('PERFECT WINDOW', CX, barY - 3);
+  }
+
+  // Score
+  ctx.fillStyle = '#c8e6c9';
+  ctx.font = 'bold 26px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText(score, CX, 50);
+
+  // Combo
+  if (combo > 1) {
+    ctx.fillStyle = `hsl(${bgHue+60},90%,70%)`;
+    ctx.font = `bold ${14 + Math.min(combo,10)}px system-ui`;
+    ctx.textAlign = 'center';
+    ctx.fillText(`COMBO x${combo}`, CX, 68);
+  }
+
+  // Best
+  ctx.fillStyle = 'rgba(200,230,200,0.5)';
+  ctx.font = '11px system-ui';
+  ctx.textAlign = 'right';
+  ctx.fillText(`Best: ${bestScore}`, W-16, 50);
+
+  // Daily best
+  ctx.fillStyle = 'rgba(200,230,200,0.4)';
+  ctx.font = '10px system-ui';
+  ctx.textAlign = 'right';
+  ctx.fillText(`Daily: ${dailyBest}`, W-16, 62);
+
+  // Danger bar bottom
+  if (heartDanger > 0.1) {
+    const dBarW = (W - 80) * heartDanger;
+    const dBarX = 40, dBarY = H - 18;
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    roundRect(ctx, dBarX, dBarY, W-80, 8, 4);
+    ctx.fill();
+    const dh = 0 + heartDanger * 30;
+    ctx.fillStyle = `hsl(${dh},80%,50%)`;
+    roundRect(ctx, dBarX, dBarY, dBarW, 8, 4);
+    ctx.fill();
+    ctx.fillStyle = `rgba(255,80,80,${heartDanger*0.7})`;
+    ctx.font = '10px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('HEART IN DANGER', CX, dBarY - 3);
+  }
+}
+
+function renderStart() {
+  // Title glow
+  const now = Date.now() * 0.001;
+  const titleY = CY - 80;
+  ctx.save();
+  ctx.shadowBlur = 30 + 10*Math.sin(now*1.5);
+  ctx.shadowColor = 'hsl(120,80%,50%)';
+  ctx.fillStyle = 'hsl(120,70%,70%)';
+  ctx.font = 'bold 46px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('MOSS MERGE', CX, titleY);
+  ctx.restore();
+
+  ctx.fillStyle = 'rgba(180,230,180,0.7)';
+  ctx.font = '18px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('Pulse Bloom', CX, titleY + 32);
+
+  // Animated dots decorative
+  for (let i = 0; i < 6; i++) {
+    const ang = now * 0.6 + i * (Math.PI*2/6);
+    const x = CX + Math.cos(ang) * 80;
+    const y = CY + Math.sin(ang) * 50;
+    const hue = MOSS_HUES[i % MOSS_HUES.length];
+    const gr = ctx.createRadialGradient(x, y, 0, x, y, 18);
+    gr.addColorStop(0, `hsl(${hue},80%,65%)`);
+    gr.addColorStop(1, `hsla(${hue},60%,30%,0)`);
+    ctx.beginPath();
+    ctx.arc(x, y, 18, 0, Math.PI*2);
+    ctx.fillStyle = gr;
+    ctx.fill();
+  }
+
+  // Tap to start
+  const flash = 0.5 + 0.5*Math.sin(now*3);
+  ctx.globalAlpha = 0.6 + 0.4*flash;
+  ctx.fillStyle = '#a5d6a7';
+  ctx.font = 'bold 20px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('TAP TO START', CX, CY + 130);
+  ctx.globalAlpha = 1;
+
+  // Instructions brief
+  ctx.fillStyle = 'rgba(150,200,150,0.6)';
+  ctx.font = '13px system-ui';
+  ctx.fillText('Tap moss dots to merge them', CX, CY + 158);
+  ctx.fillText('Protect the Heart Seed!', CX, CY + 176);
+
+  ctx.fillStyle = 'rgba(150,200,150,0.4)';
+  ctx.font = '11px system-ui';
+  ctx.fillText(`Best: ${bestScore}   Daily: ${dailyBest}`, CX, CY + 200);
+}
+
+function renderGameOver() {
+  // Overlay
+  ctx.fillStyle = 'rgba(0,0,0,0.65)';
+  ctx.fillRect(0, 0, W, H);
+
+  const now = Date.now() * 0.001;
+  const t = Math.min(1, gameoverTimer / 0.4);
+
+  ctx.save();
+  ctx.globalAlpha = t;
+  ctx.fillStyle = `hsl(${FUNGI_HUE},80%,60%)`;
+  ctx.font = 'bold 38px system-ui';
+  ctx.textAlign = 'center';
+  ctx.shadowBlur = 20;
+  ctx.shadowColor = `hsl(${FUNGI_HUE},80%,50%)`;
+  ctx.fillText('GAME OVER', CX, CY - 90);
+  ctx.restore();
+
+  ctx.save();
+  ctx.globalAlpha = t;
+  ctx.fillStyle = '#c8e6c9';
+  ctx.font = 'bold 52px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText(score, CX, CY - 30);
+  ctx.font = '16px system-ui';
+  ctx.fillStyle = '#81c784';
+  ctx.fillText('SCORE', CX, CY - 10);
+  ctx.restore();
+
+  ctx.save();
+  ctx.globalAlpha = t;
+  ctx.fillStyle = 'rgba(200,230,200,0.7)';
+  ctx.font = '14px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText(`Best: ${bestScore}`, CX, CY + 20);
+  ctx.fillText(`Best Combo: x${bestCombo}`, CX, CY + 40);
+  ctx.fillText(`Perfect Streak: ${bestPerfectStreak}`, CX, CY + 60);
+  ctx.fillText(`Daily Best: ${dailyBest}`, CX, CY + 80);
+  ctx.restore();
+
+  if (gameoverTimer > 0.6) {
+    const flash = 0.6 + 0.4*Math.sin(now*3);
+    ctx.globalAlpha = flash * t;
+    ctx.fillStyle = '#a5d6a7';
+    ctx.font = 'bold 20px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('TAP TO RETRY', CX, CY + 130);
+    ctx.globalAlpha = 1;
+  }
+}
+
+// ─── Utilities ────────────────────────────────────────────────────────────────
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.lineTo(x+w-r, y);
+  ctx.quadraticCurveTo(x+w, y, x+w, y+r);
+  ctx.lineTo(x+w, y+h-r);
+  ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+  ctx.lineTo(x+r, y+h);
+  ctx.quadraticCurveTo(x, y+h, x, y+h-r);
+  ctx.lineTo(x, y+r);
+  ctx.quadraticCurveTo(x, y, x+r, y);
+  ctx.closePath();
+}
+
+// ─── Input Handling ───────────────────────────────────────────────────────────
+function getCanvasPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = W / rect.width;
+  const scaleY = H / rect.height;
+  const src = e.changedTouches ? e.changedTouches[0] : e;
+  return {
+    x: (src.clientX - rect.left) * scaleX,
+    y: (src.clientY - rect.top) * scaleY
+  };
+}
+
+canvas.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  const pos = getCanvasPos(e);
+  handleTap(pos.x, pos.y);
+}, { passive: false });
+
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    if (state === 'start') { state = 'playing'; initGame(); }
+    else if (state === 'gameover' && gameoverTimer > 0.6) { state = 'start'; }
+  }
+});
+
+// ─── Bootstrap ───────────────────────────────────────────────────────────────
+loadBest();
+loadDaily();
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

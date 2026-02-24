@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Dune Climber - Free HTML5 Game</title>
+<meta name="description" content="Play Dune Climber - Tap to ascend shifting desert towers as the screen rotates and challenges your timing.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#1a0a2e">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Dune Climber - Free HTML5 Game">
+<meta property="og:description" content="Play Dune Climber - Tap to ascend shifting desert towers as the screen rotates and challenges your timing.">
+<meta property="og:url" content="https://balinti.github.io/dune-climber/">
+<meta property="og:image" content="https://balinti.github.io/dune-climber/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Dune Climber - Free HTML5 Game">
+<meta name="twitter:description" content="Play Dune Climber - Tap to ascend shifting desert towers as the screen rotates and challenges your timing.">
+<meta name="twitter:image" content="https://balinti.github.io/dune-climber/og-image.png">
+<link rel="canonical" href="https://balinti.github.io/dune-climber/">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#0d0520;font-family:'Segoe UI',system-ui,sans-serif}
+body{display:flex;justify-content:center;align-items:center}
+#gc{position:relative;width:100%;max-width:420px;height:100vh;max-height:750px;touch-action:manipulation;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+canvas{display:block;width:100%;height:100%;cursor:pointer}
+</style>
+</head>
+<body>
+<div id="gc"><canvas id="cv"></canvas></div>
+<script>
+'use strict';
+(()=>{
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+const gc=document.getElementById('gc');
+
+/* ── High-DPI scaling ── */
+let W,H,dpr;
+function resize(){
+  const r=gc.getBoundingClientRect();
+  W=r.width; H=r.height;
+  dpr=Math.min(window.devicePixelRatio||1,2.5);
+  cv.width=W*dpr; cv.height=H*dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+window.addEventListener('resize',resize);
+resize();
+
+/* ── Constants ── */
+const LS_KEY='dune_best_points';
+const SHARE_URL='https://balinti.github.io/dune-climber/';
+const FACES=4;
+const GRAV=600;
+
+/* ── State machine ── */
+const ST={START:0,PLAYING:1,GAMEOVER:2};
+let state=ST.START;
+
+/* ── Game vars ── */
+let score,points,combo,bestCombo,sandSave,perfectStreak,ledgesClimbed;
+let currentFace,currentLedgeId;
+let phase; // 0→1 approach; latch at 1.0
+let missed;
+let failType,failMs;
+let gameTime;
+let bestPoints=0;
+
+/* ── Rotation ── */
+let rotProgress,rotDuration,rotating;
+let rotFromFace,rotToFace;
+
+/* ── Freeze (hit-stop) ── */
+let freezeTimer;
+
+/* ── Screen shake ── */
+let shakeX=0,shakeY=0,shakeI=0,shakeD=0;
+function triggerShake(i,d){shakeI=i;shakeD=d||8;}
+
+/* ── Particle pool ── */
+const P_MAX=250;
+const parts=new Array(P_MAX);
+for(let i=0;i<P_MAX;i++) parts[i]={a:0,x:0,y:0,vx:0,vy:0,life:0,ml:0,sz:0,h:0,s:0,l:0};
+
+function emitP(x,y,vx,vy,life,sz,h,s,l){
+  for(let i=0;i<P_MAX;i++){
+    const p=parts[i];
+    if(p.a)continue;
+    p.a=1;p.x=x;p.y=y;p.vx=vx;p.vy=vy;
+    p.life=life;p.ml=life;p.sz=sz;p.h=h;p.s=s;p.l=l;
+    return;
+  }
+}
+function burst(x,y,n,spd,h,s,l){
+  for(let i=0;i<n;i++){
+    const a=Math.random()*6.283;
+    const v=spd*(0.3+Math.random()*0.7);
+    emitP(x,y,Math.cos(a)*v,Math.sin(a)*v-40,0.3+Math.random()*0.6,1.5+Math.random()*3,h,s,l);
+  }
+}
+
+/* ── Floating text pool ── */
+const FT_MAX=16;
+const fts=new Array(FT_MAX);
+for(let i=0;i<FT_MAX;i++) fts[i]={a:0,x:0,y:0,t:'',c:'',life:0,sz:16};
+function floatText(x,y,t,c,sz){
+  for(let i=0;i<FT_MAX;i++){const f=fts[i];if(!f.a){f.a=1;f.x=x;f.y=y;f.t=t;f.c=c;f.life=1.2;f.sz=sz||16;return;}}
+}
+
+/* ── Speed lines pool ── */
+const SL_MAX=30;
+const slines=new Array(SL_MAX);
+for(let i=0;i<SL_MAX;i++) slines[i]={a:0,x:0,y:0,len:0,al:0,life:0};
+let slTimer=0;
+
+/* ── Dune parallax ── */
+const dunes=[];
+function initDunes(){
+  dunes.length=0;
+  for(let i=0;i<6;i++) dunes.push({
+    x:Math.random()*W,w:60+Math.random()*140,h:15+Math.random()*25,
+    y:H*0.82+i*18,spd:0.12+i*0.07,ho:i*20
+  });
+}
+
+/* ── Difficulty formulas ── */
+function approachSpd(n){return Math.min(2.10,0.85+0.018*n)}
+function sweetR(n){return Math.max(0.022,0.055-0.00022*n)}
+function okR(n){return sweetR(n)*2}
+function slideAmp(n,lw){return Math.min(lw*0.22,Math.max(0,(n-10)*1.2))}
+function slideHz(n){return Math.min(0.95,0.55+0.0025*n)}
+function rotDurF(n){return Math.max(0.10,0.18-0.0006*n)}
+function isCrumble(id,n){return n>=25&&id%5===0}
+function isGust(id,n){return n>=50&&id%7===0}
+
+/* ── Deterministic ledge X offset ── */
+const offPat=[-0.18,0,0.18,0];
+function ledgeXOff(id,lw){return offPat[id&3]*lw}
+
+/* ── Slide X ── */
+function slideXPos(id,n,lw,t){
+  const amp=slideAmp(n,lw);
+  if(amp<=0)return 0;
+  const hz=slideHz(n);
+  const ph0=(id%2===0)?0:Math.PI;
+  return amp*Math.sin(6.283*hz*t+ph0);
+}
+
+/* ── HSL face colors ── */
+function fHue(fi,sc){return((30+sc*2)%360+[0,70,140,210][fi%4])%360}
+
+/* ── Ease in-out ── */
+function eio(t){return t<0.5?2*t*t:1-Math.pow(-2*t+2,2)/2}
+
+/* ── LocalStorage ── */
+function loadBest(){try{const v=localStorage.getItem(LS_KEY);if(v)bestPoints=parseInt(v)||0;}catch(e){}}
+function saveBest(){try{localStorage.setItem(LS_KEY,String(bestPoints));}catch(e){}}
+
+/* ── Init / Reset ── */
+function initGame(){
+  state=ST.PLAYING;
+  score=0;points=0;combo=0;bestCombo=0;
+  sandSave=0;perfectStreak=0;ledgesClimbed=0;
+  currentFace=0;currentLedgeId=0;
+  phase=0;missed=false;
+  failType='';failMs=0;
+  rotating=false;rotProgress=0;
+  freezeTimer=0;shakeI=0;gameTime=0;
+  for(let i=0;i<P_MAX;i++)parts[i].a=0;
+  for(let i=0;i<FT_MAX;i++)fts[i].a=0;
+  for(let i=0;i<SL_MAX;i++)slines[i].a=0;
+  slTimer=0;
+  initDunes();
+}
+
+/* ── Start rotation ── */
+function startRot(){
+  rotating=true;
+  rotProgress=0;
+  rotDuration=rotDurF(ledgesClimbed);
+  rotFromFace=currentFace;
+  rotToFace=(currentFace+1)%FACES;
+  currentFace=rotToFace;
+  phase=0;
+  currentLedgeId++;
+}
+
+/* ── Latch attempt ── */
+function attemptLatch(){
+  if(state!==ST.PLAYING||rotating||freezeTimer>0||missed)return;
+  const dist=Math.abs(phase-1.0);
+  const sw=sweetR(ledgesClimbed);
+  const ok=okR(ledgesClimbed);
+  const cx=W/2, ly=H*0.30;
+  const lw=W*0.55;
+
+  if(dist<=sw){
+    // ── Perfect ──
+    combo++;
+    if(combo>bestCombo)bestCombo=combo;
+    perfectStreak++;
+    const mul=Math.min(combo,4);
+    const pts=10*mul;
+    points+=pts; score++; ledgesClimbed++;
+    if(perfectStreak>=5&&sandSave===0){
+      sandSave=1;perfectStreak=0;
+      burst(cx,ly,18,140,50,95,75);
+      floatText(cx,ly-55,'SAND SAVE EARNED!','#ffdd55',14);
+    }
+    freezeTimer=0.075;
+    const h=fHue(currentFace,score);
+    burst(cx,ly,15,120,h,85,70);
+    triggerShake(4,12);
+    floatText(cx,ly-35,'PERFECT +'+pts,`hsl(${h},95%,72%)`,18);
+    startRot();
+  } else if(dist<=ok){
+    // ── OK latch ──
+    combo=0;perfectStreak=0;
+    const pts=10;
+    points+=pts;score++;ledgesClimbed++;
+    const h=fHue(currentFace,score);
+    burst(cx,ly,8,70,h,65,58);
+    triggerShake(2,10);
+    floatText(cx,ly-35,'+'+pts,`hsl(${h},70%,62%)`);
+    startRot();
+  } else {
+    // ── Miss ──
+    const early=phase<1.0;
+    failType=early?'EARLY':'LATE';
+    failMs=Math.round(dist*500);
+    if(sandSave>0){
+      sandSave=0;perfectStreak=0;combo=0;
+      triggerShake(8,6);
+      burst(cx,ly,22,160,42,80,62);
+      floatText(cx,ly-35,'SAND SAVE!','#ffcc44',20);
+      phase=0.5;
+    } else {
+      missed=true;
+      triggerShake(14,4);
+      burst(cx,ly,30,200,12,70,50);
+      if(points>bestPoints){bestPoints=points;saveBest();}
+      setTimeout(()=>{state=ST.GAMEOVER;},500);
+    }
+  }
+}
+
+/* ═══════════════ UPDATE ═══════════════ */
+function update(dt){
+  gameTime+=dt;
+
+  // Freeze (hit-stop)
+  if(freezeTimer>0){freezeTimer-=dt;if(freezeTimer>0)return;}
+
+  // Shake
+  if(shakeI>0){
+    shakeX=(Math.random()-0.5)*shakeI*2;
+    shakeY=(Math.random()-0.5)*shakeI*2;
+    shakeI=Math.max(0,shakeI-shakeD*dt*10);
+  } else {shakeX=0;shakeY=0;}
+
+  // Rotation animation
+  if(rotating){
+    rotProgress+=dt/rotDuration;
+    if(rotProgress>=1){rotProgress=1;rotating=false;}
+  }
+
+  // Approach phase
+  if(state===ST.PLAYING&&!rotating&&!missed){
+    phase+=approachSpd(ledgesClimbed)*dt;
+    if(phase>1.25){
+      // Auto-fail late
+      failType='LATE';failMs=Math.round((phase-1.0)*500);
+      const cx=W/2,ly=H*0.30;
+      if(sandSave>0){
+        sandSave=0;perfectStreak=0;combo=0;
+        triggerShake(8,6);
+        burst(cx,ly,22,160,42,80,62);
+        floatText(cx,ly-35,'SAND SAVE!','#ffcc44',20);
+        phase=0.5;
+      } else {
+        missed=true;triggerShake(14,4);
+        burst(cx,ly,30,200,12,70,50);
+        if(points>bestPoints){bestPoints=points;saveBest();}
+        setTimeout(()=>{state=ST.GAMEOVER;},500);
+      }
+    }
+  }
+
+  // Particles
+  for(let i=0;i<P_MAX;i++){
+    const p=parts[i];
+    if(!p.a)continue;
+    p.life-=dt;
+    if(p.life<=0){p.a=0;continue;}
+    p.vy+=GRAV*0.4*dt;
+    p.vx*=0.97;
+    p.x+=p.vx*dt;p.y+=p.vy*dt;
+  }
+
+  // Float texts
+  for(let i=0;i<FT_MAX;i++){
+    const f=fts[i];if(!f.a)continue;
+    f.life-=dt*1.2;f.y-=45*dt;
+    if(f.life<=0)f.a=0;
+  }
+
+  // Speed lines
+  if(state===ST.PLAYING){
+    const sp=approachSpd(ledgesClimbed);
+    if(sp>1.2){slTimer+=dt;if(slTimer>0.07){slTimer=0;
+      for(let i=0;i<SL_MAX;i++){const s=slines[i];if(!s.a){
+        s.a=1;s.x=Math.random()*W;s.y=-10;
+        s.len=15+Math.random()*45;s.al=0.12+Math.random()*0.18;s.life=0.4+Math.random()*0.5;break;
+      }}
+    }}
+  }
+  for(let i=0;i<SL_MAX;i++){
+    const s=slines[i];if(!s.a)continue;
+    s.life-=dt*2;s.y+=450*dt;
+    if(s.life<=0||s.y>H+60)s.a=0;
+  }
+
+  // Dunes
+  for(const d of dunes){d.x-=d.spd*18*dt;if(d.x+d.w<0)d.x=W+20;}
+}
+
+/* ═══════════════ DRAW ═══════════════ */
+function draw(){
+  ctx.save();
+  ctx.translate(shakeX,shakeY);
+
+  // Background
+  const bg=ctx.createLinearGradient(0,0,0,H);
+  bg.addColorStop(0,'#1a0a2e');
+  bg.addColorStop(0.45,'#2d1b4e');
+  bg.addColorStop(1,'#0d0520');
+  ctx.fillStyle=bg;
+  ctx.fillRect(-20,-20,W+40,H+40);
+
+  const bh=(30+(state===ST.PLAYING?score*2:0))%360;
+
+  // Stars
+  ctx.fillStyle=`hsla(${bh},25%,82%,0.35)`;
+  for(let i=0;i<25;i++){
+    const sx=((i*137.5+gameTime*2.5)%W);
+    const sy=((i*97.3+i*i*7.1)%(H*0.45));
+    ctx.fillRect(sx,sy,1.5,1.5);
+  }
+
+  // Speed lines
+  for(let i=0;i<SL_MAX;i++){
+    const s=slines[i];if(!s.a)continue;
+    ctx.strokeStyle=`rgba(255,220,170,${s.al*Math.max(0,s.life)})`;
+    ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(s.x,s.y);ctx.lineTo(s.x,s.y+s.len);ctx.stroke();
+  }
+
+  // Parallax dunes
+  for(const d of dunes){
+    const h=(bh+d.ho)%360;
+    ctx.fillStyle=`hsla(${h},45%,22%,0.35)`;
+    ctx.beginPath();ctx.ellipse(d.x+d.w/2,d.y,d.w/2,d.h,0,0,6.283);ctx.fill();
+  }
+
+  if(state===ST.START) drawStart();
+  else drawPlaying();
+
+  if(state===ST.GAMEOVER) drawGameOver();
+
+  // Particles
+  for(let i=0;i<P_MAX;i++){
+    const p=parts[i];if(!p.a)continue;
+    const al=p.life/p.ml;
+    ctx.fillStyle=`hsla(${p.h},${p.s}%,${p.l}%,${al})`;
+    const r=p.sz*al+0.5;
+    ctx.fillRect(p.x-r/2,p.y-r/2,r,r);
+  }
+
+  // Float texts
+  ctx.textAlign='center';ctx.textBaseline='middle';
+  for(let i=0;i<FT_MAX;i++){
+    const f=fts[i];if(!f.a)continue;
+    ctx.globalAlpha=Math.max(0,f.life/1.2);
+    ctx.font=`bold ${f.sz}px "Segoe UI",system-ui,sans-serif`;
+    ctx.fillStyle=f.c;
+    ctx.fillText(f.t,f.x,f.y);
+  }
+  ctx.globalAlpha=1;
+
+  ctx.restore();
+}
+
+/* ── Start screen ── */
+function drawStart(){
+  const cx=W/2,cy=H/2;
+
+  // Decorative spire
+  drawDecorativeSpire(cx,cy+160);
+
+  ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillStyle='#fff';
+  ctx.font='bold 46px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText('DUNE',cx,cy-65);
+  ctx.font='bold 40px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText('CLIMBER',cx,cy-15);
+
+  // Decorative line
+  ctx.strokeStyle='rgba(255,200,100,0.4)';
+  ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(cx-60,cy+15);ctx.lineTo(cx+60,cy+15);ctx.stroke();
+
+  const pulse=0.5+0.5*Math.sin(gameTime*3);
+  ctx.fillStyle=`rgba(255,200,100,${pulse})`;
+  ctx.font='20px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText('Tap to Start',cx,cy+55);
+
+  if(bestPoints>0){
+    ctx.fillStyle='rgba(255,255,255,0.45)';
+    ctx.font='15px "Segoe UI",system-ui,sans-serif';
+    ctx.fillText('Best: '+bestPoints+' pts',cx,cy+90);
+  }
+
+  ctx.fillStyle='rgba(255,255,255,0.25)';
+  ctx.font='13px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText('Space / Enter / Tap',cx,cy+120);
+}
+
+function drawDecorativeSpire(cx,cy){
+  ctx.save();ctx.translate(cx,cy);
+  ctx.rotate(Math.sin(gameTime*0.6)*0.04);
+  const w=70,h=100;
+  for(let i=0;i<4;i++){
+    const hue=(30+i*70)%360;
+    ctx.fillStyle=`hsla(${hue},55%,40%,${0.65-i*0.1})`;
+    const segH=h*0.22;
+    ctx.fillRect(-w/2+i*4,-h/2+i*segH,w-i*8,segH);
+  }
+  ctx.restore();
+}
+
+/* ── Playing screen ── */
+function drawPlaying(){
+  const cx=W/2;
+  const lw=W*0.55;
+  const laneH=H*0.62;
+  const laneTop=H*0.14;
+  const latchY=H*0.30;
+
+  // Determine face hues
+  const curH=fHue(currentFace,score);
+  const prevH=fHue((currentFace-1+FACES)%FACES,score);
+  const nextH=fHue((currentFace+1)%FACES,score);
+
+  // Rotation visual: horizontal squeeze/expand transition
+  let drawFaceH=curH;
+  let faceScaleX=1;
+  if(rotating){
+    const t=eio(rotProgress);
+    if(t<0.5){
+      // First half: squeeze old face
+      faceScaleX=1-t*2;
+      drawFaceH=fHue(rotFromFace,score);
+    } else {
+      // Second half: expand new face
+      faceScaleX=(t-0.5)*2;
+      drawFaceH=fHue(rotToFace,score);
+    }
+  }
+
+  ctx.save();
+
+  // ── Draw Spire ──
+  ctx.save();
+  ctx.translate(cx,0);
+  ctx.scale(faceScaleX||0.01,1);
+  ctx.translate(-cx,0);
+
+  // Main face gradient
+  const fg=ctx.createLinearGradient(cx-lw/2,laneTop,cx-lw/2,laneTop+laneH);
+  fg.addColorStop(0,`hsla(${drawFaceH},50%,32%,0.9)`);
+  fg.addColorStop(0.5,`hsla(${drawFaceH},45%,25%,0.92)`);
+  fg.addColorStop(1,`hsla(${drawFaceH},40%,18%,0.95)`);
+  ctx.fillStyle=fg;
+  ctx.fillRect(cx-lw/2,laneTop,lw,laneH);
+
+  // Edge highlights
+  ctx.strokeStyle=`hsla(${drawFaceH},55%,55%,0.35)`;
+  ctx.lineWidth=2;
+  ctx.beginPath();
+  ctx.moveTo(cx-lw/2,laneTop);ctx.lineTo(cx-lw/2,laneTop+laneH);
+  ctx.moveTo(cx+lw/2,laneTop);ctx.lineTo(cx+lw/2,laneTop+laneH);
+  ctx.stroke();
+
+  // Grid lines for depth
+  ctx.strokeStyle=`hsla(${drawFaceH},40%,40%,0.1)`;
+  ctx.lineWidth=1;
+  for(let gy=laneTop+30;gy<laneTop+laneH;gy+=40){
+    ctx.beginPath();ctx.moveTo(cx-lw/2,gy);ctx.lineTo(cx+lw/2,gy);ctx.stroke();
+  }
+
+  ctx.restore(); // un-scale
+
+  // ── Side faces (3D hints, not scaled with rotation) ──
+  const sideW=lw*0.10;
+  ctx.fillStyle=`hsla(${prevH},40%,20%,0.5)`;
+  ctx.fillRect(cx-lw/2-sideW,laneTop+3,sideW,laneH-6);
+  ctx.fillStyle=`hsla(${nextH},40%,20%,0.5)`;
+  ctx.fillRect(cx+lw/2,laneTop+3,sideW,laneH-6);
+
+  // ── Latched ledges (below latch line) ──
+  const visPrev=Math.min(ledgesClimbed,8);
+  for(let i=1;i<=visPrev;i++){
+    const pid=currentLedgeId-i;
+    const pf=(currentFace-i%FACES+FACES*8)%FACES;
+    const ph=fHue(pf,Math.max(0,score-i));
+    const fa=Math.max(0.08,1-i*0.12);
+    const py=latchY+i*30;
+    if(py>laneTop+laneH-10)break;
+    const pw=lw*0.48*(1-i*0.04);
+    const plx=cx+ledgeXOff(pid,lw)*(1-i*0.12);
+    ctx.fillStyle=`hsla(${ph},55%,48%,${fa*0.55})`;
+    ctx.fillRect(plx-pw/2,py-3,pw,6);
+    // Top highlight
+    ctx.fillStyle=`hsla(${ph},65%,65%,${fa*0.3})`;
+    ctx.fillRect(plx-pw/2+2,py-3,pw-4,2);
+  }
+
+  // ── Latch zone indicators ──
+  if(state===ST.PLAYING&&!missed&&!rotating){
+    const sw=sweetR(ledgesClimbed);
+    const ok=okR(ledgesClimbed);
+    const dist=Math.abs(phase-1.0);
+    const inOk=dist<=ok;
+    const inSweet=dist<=sw;
+
+    // OK zone glow
+    if(inOk){
+      ctx.fillStyle=inSweet?'rgba(255,230,80,0.18)':'rgba(180,160,255,0.10)';
+      ctx.fillRect(cx-lw/2,latchY-12,lw,24);
+    }
+
+    // Perfect line (dashed)
+    ctx.strokeStyle=inSweet?'rgba(255,230,80,0.9)':'rgba(255,230,80,0.25)';
+    ctx.lineWidth=inSweet?3:1;
+    ctx.setLineDash([5,5]);
+    ctx.beginPath();ctx.moveTo(cx-lw/2+8,latchY);ctx.lineTo(cx+lw/2-8,latchY);ctx.stroke();
+    ctx.setLineDash([]);
+
+    // OK boundary lines
+    ctx.strokeStyle=`rgba(180,160,255,${inOk?0.6:0.2})`;
+    ctx.lineWidth=1;
+    ctx.beginPath();
+    ctx.moveTo(cx-lw/2+5,latchY-8);ctx.lineTo(cx+lw/2-5,latchY-8);
+    ctx.moveTo(cx-lw/2+5,latchY+8);ctx.lineTo(cx+lw/2-5,latchY+8);
+    ctx.stroke();
+  }
+
+  // ── Approaching ledge ──
+  if(state===ST.PLAYING&&!missed&&!rotating){
+    const ledgeW=lw*0.48;
+    const ledgeH=10;
+    const startY=laneTop+laneH-15;
+    const endY=latchY;
+    const cp=Math.min(phase,1.25);
+    const ledgeY=startY+(endY-startY)*Math.min(cp,1.0);
+
+    // X offset: deterministic + slide
+    let lx=cx+ledgeXOff(currentLedgeId,lw);
+    lx+=slideXPos(currentLedgeId,ledgesClimbed,lw,gameTime);
+
+    const n=ledgesClimbed;
+    const crumble=isCrumble(currentLedgeId,n);
+    const gust=isGust(currentLedgeId,n);
+
+    // Gust telegraph
+    if(gust){
+      const gdir=(currentFace%2===0)?1:-1;
+      ctx.strokeStyle=`hsla(200,65%,72%,${0.25+0.2*Math.sin(gameTime*9)})`;
+      ctx.lineWidth=1.5;
+      for(let gi=0;gi<4;gi++){
+        const gx=cx+gdir*(lw*0.12+gi*14);
+        const gy=latchY-25+gi*10;
+        ctx.beginPath();ctx.moveTo(gx,gy);ctx.lineTo(gx+gdir*22,gy-4);ctx.stroke();
+      }
+      if(cp>0.8) lx+=gdir*lw*0.10*(cp-0.8)/0.2;
+    }
+
+    // Draw ledge
+    const lh=fHue(currentFace,score);
+    const bri=crumble?(52+12*Math.sin(gameTime*14)):62;
+
+    if(crumble&&cp>0.6){
+      const chunks=5;const cw=ledgeW/chunks;
+      ctx.fillStyle=`hsl(${lh},65%,${bri}%)`;
+      for(let ci=0;ci<chunks;ci++){
+        const wb=Math.sin(gameTime*16+ci*2.5)*2.5*(cp-0.6);
+        ctx.fillRect(lx-ledgeW/2+ci*cw+wb,ledgeY-ledgeH/2+wb*0.5,cw-2,ledgeH);
+      }
+    } else {
+      // Shadow
+      ctx.fillStyle=`hsla(${lh},40%,15%,0.4)`;
+      ctx.fillRect(lx-ledgeW/2+3,ledgeY+ledgeH/2-1,ledgeW-6,4);
+      // Main
+      ctx.fillStyle=`hsl(${lh},68%,${bri}%)`;
+      ctx.fillRect(lx-ledgeW/2,ledgeY-ledgeH/2,ledgeW,ledgeH);
+      // Highlight
+      ctx.fillStyle=`hsla(${lh},85%,78%,0.7)`;
+      ctx.fillRect(lx-ledgeW/2+2,ledgeY-ledgeH/2,ledgeW-4,3);
+    }
+
+    // Glow under ledge near latch
+    if(cp>0.7){
+      const glowAlpha=(cp-0.7)/0.3*0.4;
+      ctx.shadowColor=`hsla(${lh},90%,65%,${glowAlpha})`;
+      ctx.shadowBlur=12;
+      ctx.fillStyle=`hsla(${lh},90%,70%,${glowAlpha*0.5})`;
+      ctx.fillRect(lx-ledgeW/2+4,ledgeY-2,ledgeW-8,4);
+      ctx.shadowBlur=0;
+    }
+  }
+
+  // ── UI overlay ──
+  ctx.textAlign='center';ctx.textBaseline='top';
+
+  // Score
+  ctx.fillStyle='#fff';
+  ctx.font='bold 30px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText(score,cx,12);
+
+  // Points
+  ctx.font='13px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle='rgba(255,200,100,0.75)';
+  ctx.fillText(points+' pts',cx,46);
+
+  // Combo
+  if(combo>1){
+    ctx.textAlign='right';
+    ctx.font='bold 20px "Segoe UI",system-ui,sans-serif';
+    ctx.fillStyle='hsl(50,100%,70%)';
+    ctx.fillText('x'+combo,W-12,14);
+  }
+
+  // Sand save indicator
+  ctx.textAlign='left';
+  if(sandSave>0){
+    ctx.font='bold 15px "Segoe UI",system-ui,sans-serif';
+    ctx.fillStyle='#ffcc44';
+    ctx.fillText('\u26A1 SAVE',8,14);
+  } else if(perfectStreak>0&&state===ST.PLAYING){
+    ctx.font='12px "Segoe UI",system-ui,sans-serif';
+    ctx.fillStyle='rgba(255,200,100,0.45)';
+    ctx.fillText(perfectStreak+'/5',8,18);
+  }
+
+  ctx.restore();
+}
+
+/* ── Game over screen ── */
+function drawGameOver(){
+  const cx=W/2,cy=H/2;
+  ctx.fillStyle='rgba(8,2,18,0.78)';
+  ctx.fillRect(0,0,W,H);
+
+  ctx.textAlign='center';ctx.textBaseline='middle';
+
+  ctx.fillStyle='#ff6644';
+  ctx.font='bold 38px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText('GAME OVER',cx,cy-120);
+
+  if(failType){
+    ctx.font='bold 15px "Segoe UI",system-ui,sans-serif';
+    ctx.fillStyle=failType==='EARLY'?'#55bbff':'#ff9955';
+    ctx.fillText(failType+' by ~'+failMs+'ms',cx,cy-82);
+  }
+
+  ctx.fillStyle='#fff';
+  ctx.font='bold 26px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText(score+' ledges',cx,cy-45);
+
+  ctx.font='18px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle='rgba(255,200,100,0.9)';
+  ctx.fillText(points+' pts',cx,cy-15);
+
+  ctx.fillStyle='rgba(255,255,255,0.6)';
+  ctx.font='15px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText('Best: '+bestPoints+' pts',cx,cy+15);
+  ctx.fillText('Best Combo: x'+bestCombo,cx,cy+38);
+
+  const pulse=0.45+0.55*Math.sin(gameTime*3);
+  ctx.fillStyle=`rgba(255,200,100,${pulse})`;
+  ctx.font='19px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText('Tap to Retry',cx,cy+80);
+
+  // Share button
+  drawBtn(cx-85,cy+105,170,42,'Challenge a Friend');
+}
+
+function drawBtn(x,y,w,h,txt){
+  ctx.fillStyle='#3388ff';
+  ctx.beginPath();
+  ctx.moveTo(x+8,y);ctx.lineTo(x+w-8,y);ctx.quadraticCurveTo(x+w,y,x+w,y+8);
+  ctx.lineTo(x+w,y+h-8);ctx.quadraticCurveTo(x+w,y+h,x+w-8,y+h);
+  ctx.lineTo(x+8,y+h);ctx.quadraticCurveTo(x,y+h,x,y+h-8);
+  ctx.lineTo(x,y+8);ctx.quadraticCurveTo(x,y,x+8,y);
+  ctx.closePath();ctx.fill();
+
+  ctx.fillStyle='#fff';
+  ctx.font='bold 14px "Segoe UI",system-ui,sans-serif';
+  ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText(txt,x+w/2,y+h/2);
+}
+
+/* ── Share logic ── */
+function genShareCanvas(){
+  const c=document.createElement('canvas');c.width=600;c.height=315;
+  const x=c.getContext('2d');
+  const bg=x.createLinearGradient(0,0,600,315);
+  bg.addColorStop(0,'#1a0a2e');bg.addColorStop(1,'#2d1b4e');
+  x.fillStyle=bg;x.fillRect(0,0,600,315);
+
+  x.fillStyle='#fff';x.textAlign='center';x.textBaseline='middle';
+  x.font='bold 42px "Segoe UI",system-ui,sans-serif';
+  x.fillText('DUNE CLIMBER',300,55);
+
+  x.fillStyle='#ffcc66';
+  x.font='bold 64px "Segoe UI",system-ui,sans-serif';
+  x.fillText(score+' ledges',300,140);
+
+  x.font='bold 28px "Segoe UI",system-ui,sans-serif';
+  x.fillText(points+' pts  |  combo x'+bestCombo,300,200);
+
+  x.fillStyle='rgba(255,255,255,0.55)';
+  x.font='22px "Segoe UI",system-ui,sans-serif';
+  x.fillText('Can you beat me?',300,255);
+  x.font='16px "Segoe UI",system-ui,sans-serif';
+  x.fillText(SHARE_URL,300,290);
+  return c;
+}
+
+function doShare(){
+  const txt='I climbed '+score+' ledges in Dune Climber (combo x'+bestCombo+'). Can you beat me?';
+  if(navigator.share){
+    const sc=genShareCanvas();
+    sc.toBlob(blob=>{
+      if(blob){
+        const f=new File([blob],'dune-climber-score.png',{type:'image/png'});
+        navigator.share({title:'Dune Climber',text:txt,url:SHARE_URL,files:[f]}).catch(()=>fallbackShare(txt));
+      } else fallbackShare(txt);
+    },'image/png');
+  } else fallbackShare(txt);
+}
+
+function fallbackShare(txt){
+  if(navigator.clipboard) navigator.clipboard.writeText(txt+' '+SHARE_URL).catch(()=>{});
+  const sc=genShareCanvas();
+  const a=document.createElement('a');
+  a.download='dune-climber-score.png';a.href=sc.toDataURL('image/png');a.click();
+  floatText(W/2,H/2+70,'Link copied & image saved!','#44ff88',14);
+}
+
+/* ── Input ── */
+function handleInput(e){
+  e.preventDefault();
+  if(state===ST.START){initGame();return;}
+  if(state===ST.PLAYING){attemptLatch();return;}
+  if(state===ST.GAMEOVER){
+    // Check share button hit
+    const cx=W/2,cy=H/2;
+    const bx=cx-85,by=cy+105,bw=170,bh=42;
+    let px=-1,py=-1;
+    if(e.clientX!==undefined){
+      const rect=cv.getBoundingClientRect();
+      px=e.clientX-rect.left;py=e.clientY-rect.top;
+    }
+    if(px>=bx&&px<=bx+bw&&py>=by&&py<=by+bh){doShare();return;}
+    initGame();
+  }
+}
+
+cv.addEventListener('pointerdown',handleInput);
+document.addEventListener('keydown',e=>{
+  if(e.code==='Space'||e.code==='Enter'){e.preventDefault();handleInput(e);}
+});
+
+/* ── Main loop ── */
+let lastT=0;
+function loop(ts){
+  const dt=Math.min((ts-lastT)/1000,0.033);
+  lastT=ts;
+  update(dt);
+  ctx.clearRect(0,0,W,H);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+/* ── Boot ── */
+loadBest();
+initDunes();
+requestAnimationFrame(ts=>{lastT=ts;loop(ts);});
+
+})();
+</script>
+</body>
+</html>

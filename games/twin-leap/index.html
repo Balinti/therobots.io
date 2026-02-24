@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Twin Leap - Free HTML5 Game</title>
+<meta name="description" content="Play Twin Leap - Bounce to split into two explorers leaping across jungle platforms simultaneously.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0a0e1a">
+<meta property="og:title" content="Twin Leap - Free HTML5 Game">
+<meta property="og:description" content="Bounce to split into two explorers leaping across jungle platforms simultaneously. How far can you go?">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://balinti.github.io/twin-leap/">
+<meta property="og:image" content="https://balinti.github.io/twin-leap/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Twin Leap - Free HTML5 Game">
+<meta name="twitter:description" content="Bounce to split into two explorers leaping across jungle platforms simultaneously.">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#0a0e1a;font-family:'Segoe UI',system-ui,sans-serif;color:#ccd}
+#wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;position:relative}
+#c{display:block;max-width:420px;max-height:750px;width:100%;height:100%;touch-action:none;cursor:pointer;border-radius:8px}
+#info{max-width:420px;width:100%;padding:10px 16px;font-size:11px;color:#556;line-height:1.5;text-align:center;position:absolute;bottom:0;left:50%;transform:translateX(-50%);pointer-events:auto}
+#info a{color:#68a;text-decoration:none}
+#info a:hover{text-decoration:underline}
+#privacy{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.92);z-index:10;overflow-y:auto;padding:40px 20px;color:#aab}
+#privacy .inner{max-width:500px;margin:0 auto}
+#privacy h2{color:#8cf;margin-bottom:12px}
+#privacy p{margin-bottom:10px;font-size:13px;line-height:1.6}
+#privacy .close{position:fixed;top:12px;right:18px;color:#fff;font-size:28px;cursor:pointer;z-index:11}
+</style>
+</head>
+<body>
+<div id="wrap">
+<canvas id="c"></canvas>
+<div id="info">
+<strong>Twin Leap</strong> &mdash; Tap to jump. Your echo replays your last run's jumps. Keep it alive for bonus multiplier!<br>
+<a href="#privacy" id="privLink">Privacy Policy</a>
+</div>
+</div>
+<div id="privacy">
+<span class="close" id="privClose">&times;</span>
+<div class="inner">
+<h2>Privacy Policy</h2>
+<p>Twin Leap is a browser-based game that runs entirely on your device. We do not collect, store, or transmit any personal information.</p>
+<p><strong>Local Storage:</strong> The game stores your high score locally on your device using the browser's localStorage API. This data never leaves your device.</p>
+<p><strong>Advertising:</strong> This site uses Google AdSense, which may use cookies to serve ads based on your browsing history. You can learn more about Google's data practices at <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google Privacy Policy</a>.</p>
+<p><strong>Analytics:</strong> No analytics or tracking scripts are used beyond what AdSense may provide.</p>
+<p>Last updated: 2026-02-19</p>
+</div>
+</div>
+<script>
+'use strict';
+(()=>{
+// Privacy modal
+const privEl=document.getElementById('privacy');
+document.getElementById('privLink').addEventListener('click',e=>{e.preventDefault();privEl.style.display='block'});
+document.getElementById('privClose').addEventListener('click',()=>{privEl.style.display='none'});
+
+// Canvas setup
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+const DPR=window.devicePixelRatio||1;
+let W,H;
+
+function resize(){
+  const wrap=document.getElementById('wrap');
+  const maxW=420,maxH=750;
+  let w=Math.min(wrap.clientWidth,maxW);
+  let h=Math.min(wrap.clientHeight,maxH);
+  if(wrap.clientHeight<maxH) h=wrap.clientHeight;
+  W=w; H=h;
+  canvas.style.width=w+'px';
+  canvas.style.height=h+'px';
+  canvas.width=w*DPR;
+  canvas.height=h*DPR;
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+window.addEventListener('resize',resize);
+resize();
+
+// Constants
+const GRAVITY=0.55;
+const JUMP_VEL=-11.5;
+const PLAYER_W=22;
+const PLAYER_H=28;
+const PLAT_H=14;
+const MIN_PLAT_W=55;
+const MAX_PLAT_W=110;
+const GROUND_Y_OFFSET=80;
+const LS_KEY='twinLeap_best';
+const ORB_R=8;
+
+// State
+const STATE={START:0,PLAY:1,OVER:2};
+let state=STATE.START;
+let score=0;
+let best=parseInt(localStorage.getItem(LS_KEY))||0;
+let hue=200;
+let runTime=0;
+let dt=0;
+let lastTime=0;
+let shakeX=0,shakeY=0,shakeDur=0,shakeInt=0;
+let inputBuffer=false;
+let speedMult=1;
+let multiplier=1;
+let echoAliveTime=0;
+let resyncCount=0;
+let resyncNeeded=0;
+let echoAlive=false;
+let echoJustDied=false;
+
+// Jump recording
+let jumpLog=[];       // current run's jumps: [{t, px}]
+let prevJumpLog=[];   // previous run's jumps for echo replay
+
+// Player
+let player={x:0,y:0,vy:0,grounded:false,onPlat:null,alive:true};
+// Echo
+let echo={x:0,y:0,vy:0,grounded:false,onPlat:null,alive:false,jumpIdx:0,trail:[]};
+
+// Platforms
+let platforms=[];
+// Orbs (echo-only collectibles)
+let orbs=[];
+// Particles
+let particles=[];
+
+// Camera
+let camX=0;
+
+// Base speed
+const BASE_SPEED=3.2;
+
+function getSpeed(){
+  return BASE_SPEED*speedMult;
+}
+
+// ---- Platform generation ----
+let nextPlatX=0;
+
+function makePlatform(x,y,w,crumble){
+  return {x,y,w,h:PLAT_H,crumble:!!crumble,crumbleTimer:0,crumbling:false,fallen:false,bounce:false,vy:0};
+}
+
+function makeBounce(x,y,w){
+  const p=makePlatform(x,y,w,false);
+  p.bounce=true;
+  return p;
+}
+
+function spawnInitialPlatforms(){
+  platforms=[];
+  orbs=[];
+  const groundY=H-GROUND_Y_OFFSET;
+  // Starting platform
+  platforms.push(makePlatform(-40,groundY,160,false));
+  nextPlatX=140;
+  for(let i=0;i<12;i++) spawnNextPlatform();
+}
+
+function spawnNextPlatform(){
+  const groundY=H-GROUND_Y_OFFSET;
+  const gap=60+Math.random()*40+speedMult*8;
+  const w=MIN_PLAT_W+Math.random()*(MAX_PLAT_W-MIN_PLAT_W)-speedMult*5;
+  const pw=Math.max(MIN_PLAT_W,w);
+  const yVar=Math.random()*80-40;
+  let py=groundY+yVar;
+  py=Math.max(H*0.3,Math.min(H-50,py));
+  const useCrumble=runTime>10&&Math.random()<Math.min(0.35,((runTime-10)/60)*0.4);
+  const useBounce=runTime>15&&Math.random()<0.1;
+  let p;
+  if(useBounce) p=makeBounce(nextPlatX+gap,py,pw);
+  else p=makePlatform(nextPlatX+gap,py,pw,useCrumble);
+  platforms.push(p);
+  nextPlatX=p.x+p.w;
+
+  // Maybe spawn orb above platform
+  if(Math.random()<0.3){
+    orbs.push({x:p.x+p.w/2,y:p.y-35,r:ORB_R,collected:false,pulse:Math.random()*Math.PI*2});
+  }
+}
+
+// ---- Particles ----
+function addParticle(x,y,count,color,spread,life,sizeMin,sizeMax){
+  for(let i=0;i<count;i++){
+    const angle=Math.random()*Math.PI*2;
+    const speed=Math.random()*spread;
+    particles.push({
+      x,y,
+      vx:Math.cos(angle)*speed,
+      vy:Math.sin(angle)*speed-Math.random()*2,
+      life:life*(0.5+Math.random()*0.5),
+      maxLife:life,
+      size:sizeMin+Math.random()*(sizeMax-sizeMin),
+      color
+    });
+  }
+}
+
+function addLandingParticles(x,y){
+  addParticle(x,y,8,`hsla(${hue},70%,65%,`,3,0.5,2,5);
+}
+
+function addPerfectLanding(x,y){
+  // ring effect handled in draw
+  addParticle(x,y,14,`hsla(${hue+40},90%,75%,`,4,0.7,3,6);
+  triggerShake(2,0.1);
+}
+
+function addOrbPickup(x,y){
+  addParticle(x,y,16,'hsla(180,90%,70%,',5,0.6,2,5);
+}
+
+function addDeathParticles(x,y){
+  addParticle(x,y,30,'hsla(0,80%,60%,',7,1.0,3,8);
+  addParticle(x,y,15,'hsla(40,90%,70%,',5,0.8,2,4);
+}
+
+function addEchoDeathParticles(x,y){
+  addParticle(x,y,20,'hsla(190,80%,60%,',6,0.8,2,6);
+}
+
+function updateParticles(){
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    p.x+=p.vx;
+    p.y+=p.vy;
+    p.vy+=0.1;
+    p.life-=dt;
+    if(p.life<=0) particles.splice(i,1);
+  }
+}
+
+function drawParticles(){
+  for(const p of particles){
+    const alpha=Math.max(0,p.life/p.maxLife);
+    ctx.fillStyle=p.color+alpha+')';
+    ctx.beginPath();
+    ctx.arc(p.x-camX,p.y,p.size*alpha,0,Math.PI*2);
+    ctx.fill();
+  }
+}
+
+// ---- Shake ----
+function triggerShake(intensity,duration){
+  shakeInt=intensity;
+  shakeDur=duration;
+}
+
+function updateShake(){
+  if(shakeDur>0){
+    shakeDur-=dt;
+    shakeX=(Math.random()-0.5)*shakeInt*2;
+    shakeY=(Math.random()-0.5)*shakeInt*2;
+  } else {
+    shakeX=0;shakeY=0;
+  }
+}
+
+// ---- Collision ----
+function rectOverlap(ax,ay,aw,ah,bx,by,bw,bh){
+  return ax<bx+bw&&ax+aw>bx&&ay<by+bh&&ay+ah>by;
+}
+
+function checkPlatformLanding(entity){
+  if(entity.vy<0) return; // moving up
+  const feet=entity.y+PLAYER_H;
+  const prevFeet=feet-entity.vy;
+  for(const p of platforms){
+    if(p.fallen) continue;
+    if(entity.x+PLAYER_W>p.x&&entity.x<p.x+p.w){
+      if(prevFeet<=p.y&&feet>=p.y){
+        entity.y=p.y-PLAYER_H;
+        entity.vy=0;
+        entity.grounded=true;
+        entity.onPlat=p;
+        if(p.bounce){
+          entity.vy=JUMP_VEL*1.4;
+          entity.grounded=false;
+          entity.onPlat=null;
+          addParticle(entity.x+PLAYER_W/2,p.y,10,'hsla(50,90%,70%,',4,0.4,2,5);
+        }
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+// ---- Input ----
+function doJump(entity){
+  if(entity.grounded){
+    entity.vy=JUMP_VEL;
+    entity.grounded=false;
+    const plat=entity.onPlat;
+    entity.onPlat=null;
+    if(plat&&plat.crumble&&!plat.crumbling){
+      plat.crumbling=true;
+    }
+    return true;
+  }
+  return false;
+}
+
+function playerJump(){
+  if(doJump(player)){
+    jumpLog.push({t:runTime,px:player.x});
+    addLandingParticles(player.x+PLAYER_W/2,player.y+PLAYER_H);
+    // Check perfect landing (near center of platform)
+    // Already jumped so just add normal particles
+  }
+}
+
+// ---- Echo logic ----
+function updateEcho(){
+  if(!echo.alive) return;
+  const spd=getSpeed();
+  echo.x+=spd;
+  // Replay jumps
+  while(echo.jumpIdx<prevJumpLog.length){
+    const j=prevJumpLog[echo.jumpIdx];
+    if(echo.x>=j.px){
+      doJump(echo);
+      echo.jumpIdx++;
+    } else break;
+  }
+  // Gravity
+  if(!echo.grounded){
+    echo.vy+=GRAVITY;
+    echo.y+=echo.vy;
+  }
+  // Platform check
+  if(!echo.grounded) checkPlatformLanding(echo);
+  // Move with platform
+  if(echo.grounded&&echo.onPlat){
+    if(echo.onPlat.fallen){
+      echo.grounded=false;
+      echo.onPlat=null;
+    }
+  }
+  // Fall death
+  if(echo.y>H+50){
+    echoAlive=false;
+    echo.alive=false;
+    echoJustDied=true;
+    multiplier=1;
+    resyncCount=0;
+    resyncNeeded=3;
+    addEchoDeathParticles(echo.x,H-40);
+  }
+  // Trail
+  echo.trail.push({x:echo.x,y:echo.y,alpha:1});
+  if(echo.trail.length>12) echo.trail.shift();
+
+  // Orb collection
+  for(const orb of orbs){
+    if(orb.collected) continue;
+    const dx=(echo.x+PLAYER_W/2)-orb.x;
+    const dy=(echo.y+PLAYER_H/2)-orb.y;
+    if(dx*dx+dy*dy<(ORB_R+PLAYER_W/2)*(ORB_R+PLAYER_W/2)){
+      orb.collected=true;
+      score+=25*multiplier;
+      addOrbPickup(orb.x,orb.y);
+    }
+  }
+
+  echoAliveTime+=dt;
+  // Multiplier ramp
+  if(echo.alive){
+    multiplier=Math.min(5,1+Math.floor(echoAliveTime/4));
+  }
+}
+
+// ---- Game init ----
+function initGame(){
+  score=0;
+  runTime=0;
+  speedMult=1;
+  multiplier=1;
+  echoAliveTime=0;
+  resyncCount=0;
+  resyncNeeded=0;
+  echoJustDied=false;
+  particles=[];
+  shakeX=0;shakeY=0;shakeDur=0;
+
+  player.x=30;
+  player.y=H-GROUND_Y_OFFSET-PLAYER_H;
+  player.vy=0;
+  player.grounded=true;
+  player.onPlat=null;
+  player.alive=true;
+
+  // Echo from previous run
+  if(prevJumpLog.length>0){
+    echo.x=30;
+    echo.y=H-GROUND_Y_OFFSET-PLAYER_H;
+    echo.vy=0;
+    echo.grounded=true;
+    echo.onPlat=null;
+    echo.alive=true;
+    echo.jumpIdx=0;
+    echo.trail=[];
+    echoAlive=true;
+  } else {
+    echo.alive=false;
+    echoAlive=false;
+  }
+
+  jumpLog=[];
+  camX=0;
+  nextPlatX=0;
+  spawnInitialPlatforms();
+  inputBuffer=false;
+}
+
+// ---- Main Update ----
+function update(){
+  if(state!==STATE.PLAY) return;
+  runTime+=dt;
+  hue=(hue+dt*15)%360;
+
+  // Speed ramp
+  speedMult=1+runTime/60*0.8;
+  const spd=getSpeed();
+
+  // Input buffer
+  if(inputBuffer){
+    playerJump();
+    inputBuffer=false;
+  }
+
+  // Player movement (auto-run)
+  player.x+=spd;
+
+  // Gravity
+  if(!player.grounded){
+    player.vy+=GRAVITY;
+    player.y+=player.vy;
+  }
+
+  // Platform landing
+  if(!player.grounded){
+    const landed=checkPlatformLanding(player);
+    if(landed){
+      addLandingParticles(player.x+PLAYER_W/2,player.y+PLAYER_H);
+      // Check perfect landing (center of plat)
+      if(player.onPlat){
+        const center=player.onPlat.x+player.onPlat.w/2;
+        const px=player.x+PLAYER_W/2;
+        if(Math.abs(px-center)<15){
+          addPerfectLanding(px,player.y+PLAYER_H);
+          score+=5*multiplier;
+        }
+      }
+      // Resync tracking
+      if(resyncNeeded>0){
+        resyncCount++;
+        if(resyncCount>=resyncNeeded){
+          resyncNeeded=0;
+          resyncCount=0;
+          // Echo stays dead this run, but we're recording clean segment
+        }
+      }
+    }
+  }
+
+  // Stay on platform
+  if(player.grounded&&player.onPlat){
+    if(player.onPlat.fallen||player.x>player.onPlat.x+player.onPlat.w||player.x+PLAYER_W<player.onPlat.x){
+      player.grounded=false;
+      player.onPlat=null;
+    }
+  }
+
+  // Fall death
+  if(player.y>H+60){
+    gameOver();
+    return;
+  }
+
+  // Camera
+  camX=player.x-W*0.25;
+
+  // Update platforms
+  for(const p of platforms){
+    if(p.crumbling){
+      p.crumbleTimer+=dt;
+      if(p.crumbleTimer>0.4){
+        p.fallen=true;
+        p.vy=2;
+      }
+    }
+    if(p.fallen){
+      p.y+=p.vy;
+      p.vy+=0.3;
+    }
+  }
+  // Remove far-behind platforms
+  platforms=platforms.filter(p=>p.x+p.w>camX-200);
+  orbs=orbs.filter(o=>o.x>camX-200);
+
+  // Spawn platforms ahead
+  while(nextPlatX<camX+W+300) spawnNextPlatform();
+
+  // Score
+  score+=Math.floor(spd*multiplier*0.1);
+
+  // Echo update
+  updateEcho();
+
+  // Particles
+  updateParticles();
+  updateShake();
+}
+
+function gameOver(){
+  player.alive=false;
+  state=STATE.OVER;
+  addDeathParticles(player.x,player.y);
+  triggerShake(8,0.5);
+  if(score>best){
+    best=score;
+    localStorage.setItem(LS_KEY,best);
+  }
+  prevJumpLog=[...jumpLog];
+}
+
+// ---- Drawing ----
+function drawBackground(){
+  const grd=ctx.createLinearGradient(0,0,0,H);
+  grd.addColorStop(0,`hsl(${(hue+180)%360},30%,8%)`);
+  grd.addColorStop(0.5,`hsl(${(hue+200)%360},25%,12%)`);
+  grd.addColorStop(1,`hsl(${(hue+220)%360},20%,6%)`);
+  ctx.fillStyle=grd;
+  ctx.fillRect(0,0,W,H);
+
+  // Distant stars / dots
+  ctx.fillStyle='rgba(255,255,255,0.15)';
+  const seed=42;
+  for(let i=0;i<40;i++){
+    const sx=((seed*i*137.5+i*73)%W+((camX*0.05)%W)+W)%W;
+    const sy=((seed*i*97.3+i*31)%H);
+    const sr=0.5+((i*7)%3)*0.5;
+    ctx.beginPath();
+    ctx.arc(sx,sy,sr,0,Math.PI*2);
+    ctx.fill();
+  }
+}
+
+function drawPlatform(p){
+  const px=p.x-camX;
+  const py=p.y;
+  if(px+p.w<-10||px>W+10) return;
+
+  if(p.bounce){
+    ctx.fillStyle=`hsl(50,80%,55%)`;
+    ctx.fillRect(px,py,p.w,p.h);
+    // Spring indicator
+    ctx.fillStyle=`hsl(50,90%,70%)`;
+    ctx.fillRect(px+p.w/2-4,py-4,8,4);
+  } else if(p.crumble&&!p.fallen){
+    const shake=p.crumbling?Math.sin(p.crumbleTimer*50)*2:0;
+    ctx.fillStyle=p.crumbling?`hsl(20,60%,40%)`:`hsl(30,40%,35%)`;
+    ctx.fillRect(px+shake,py,p.w,p.h);
+    // Cracks
+    ctx.strokeStyle='rgba(0,0,0,0.3)';
+    ctx.lineWidth=1;
+    ctx.beginPath();
+    ctx.moveTo(px+p.w*0.3,py);ctx.lineTo(px+p.w*0.35,py+p.h);
+    ctx.moveTo(px+p.w*0.7,py);ctx.lineTo(px+p.w*0.65,py+p.h);
+    ctx.stroke();
+  } else if(p.fallen){
+    ctx.globalAlpha=Math.max(0,1-(p.y-H)/200);
+    ctx.fillStyle=`hsl(20,50%,30%)`;
+    ctx.fillRect(px,py,p.w,p.h);
+    ctx.globalAlpha=1;
+  } else {
+    // Normal platform
+    const g=ctx.createLinearGradient(px,py,px,py+p.h);
+    g.addColorStop(0,`hsl(${hue},50%,40%)`);
+    g.addColorStop(1,`hsl(${hue},40%,25%)`);
+    ctx.fillStyle=g;
+    ctx.fillRect(px,py,p.w,p.h);
+    // Top highlight
+    ctx.fillStyle=`hsla(${hue},60%,60%,0.4)`;
+    ctx.fillRect(px,py,p.w,2);
+  }
+}
+
+function drawPlayer(){
+  if(!player.alive) return;
+  const px=player.x-camX;
+  const py=player.y;
+  // Body
+  const g=ctx.createLinearGradient(px,py,px,py+PLAYER_H);
+  g.addColorStop(0,`hsl(${hue+60},70%,60%)`);
+  g.addColorStop(1,`hsl(${hue+60},60%,40%)`);
+  ctx.fillStyle=g;
+  roundRect(ctx,px,py,PLAYER_W,PLAYER_H,4);
+  ctx.fill();
+  // Eyes
+  ctx.fillStyle='#fff';
+  ctx.fillRect(px+5,py+6,4,5);
+  ctx.fillRect(px+13,py+6,4,5);
+  ctx.fillStyle='#111';
+  ctx.fillRect(px+7,py+8,2,3);
+  ctx.fillRect(px+15,py+8,2,3);
+  // Running legs indicator
+  if(player.grounded){
+    const legOff=Math.sin(runTime*12)*3;
+    ctx.fillStyle=`hsl(${hue+60},50%,35%)`;
+    ctx.fillRect(px+4,py+PLAYER_H,4,4+legOff);
+    ctx.fillRect(px+14,py+PLAYER_H,4,4-legOff);
+  }
+}
+
+function drawEcho(){
+  if(!echo.alive) return;
+  // Trail
+  for(let i=0;i<echo.trail.length;i++){
+    const t=echo.trail[i];
+    const a=i/echo.trail.length*0.25;
+    ctx.globalAlpha=a;
+    ctx.fillStyle='hsl(190,80%,60%)';
+    roundRect(ctx,t.x-camX,t.y,PLAYER_W,PLAYER_H,4);
+    ctx.fill();
+  }
+  ctx.globalAlpha=0.55;
+  // Body
+  ctx.fillStyle='hsl(190,80%,60%)';
+  const px=echo.x-camX;
+  const py=echo.y;
+  roundRect(ctx,px,py,PLAYER_W,PLAYER_H,4);
+  ctx.fill();
+  // Eyes
+  ctx.fillStyle='rgba(255,255,255,0.7)';
+  ctx.fillRect(px+5,py+6,4,5);
+  ctx.fillRect(px+13,py+6,4,5);
+  ctx.globalAlpha=1;
+}
+
+function drawOrbs(){
+  for(const o of orbs){
+    if(o.collected) continue;
+    const ox=o.x-camX;
+    if(ox<-20||ox>W+20) continue;
+    o.pulse+=dt*3;
+    const s=1+Math.sin(o.pulse)*0.15;
+    ctx.globalAlpha=0.8;
+    ctx.fillStyle='hsl(180,90%,65%)';
+    ctx.beginPath();
+    ctx.arc(ox,o.y,o.r*s,0,Math.PI*2);
+    ctx.fill();
+    // Glow
+    ctx.globalAlpha=0.2;
+    ctx.beginPath();
+    ctx.arc(ox,o.y,o.r*s*1.8,0,Math.PI*2);
+    ctx.fill();
+    ctx.globalAlpha=1;
+  }
+}
+
+function drawHUD(){
+  // Score
+  ctx.textAlign='left';
+  ctx.font='bold 20px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle='rgba(255,255,255,0.9)';
+  ctx.fillText(score,15,32);
+
+  // Multiplier
+  if(multiplier>1){
+    ctx.font='bold 16px "Segoe UI",system-ui,sans-serif';
+    ctx.fillStyle=`hsl(${50+multiplier*30},90%,65%)`;
+    ctx.fillText(`x${multiplier}`,15,54);
+  }
+
+  // Echo status
+  if(echoAlive){
+    ctx.textAlign='right';
+    ctx.font='12px "Segoe UI",system-ui,sans-serif';
+    ctx.fillStyle='hsla(190,80%,65%,0.8)';
+    ctx.fillText('ECHO ACTIVE',W-12,28);
+  } else if(resyncNeeded>0){
+    ctx.textAlign='right';
+    ctx.font='12px "Segoe UI",system-ui,sans-serif';
+    ctx.fillStyle='hsla(40,80%,65%,0.7)';
+    ctx.fillText(`Resync: ${resyncCount}/${resyncNeeded} landings`,W-12,28);
+  }
+
+  // Distance indicator
+  ctx.textAlign='right';
+  ctx.font='11px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle='rgba(255,255,255,0.35)';
+  ctx.fillText(`${Math.floor(player.x/50)}m`,W-12,H-10);
+}
+
+function drawStartScreen(){
+  drawBackground();
+  ctx.textAlign='center';
+
+  // Title
+  ctx.font='bold 42px "Segoe UI",system-ui,sans-serif';
+  const titleGrad=ctx.createLinearGradient(W/2-100,H*0.28,W/2+100,H*0.28);
+  titleGrad.addColorStop(0,`hsl(${hue},70%,65%)`);
+  titleGrad.addColorStop(0.5,`hsl(${(hue+40)%360},80%,70%)`);
+  titleGrad.addColorStop(1,`hsl(${(hue+80)%360},70%,65%)`);
+  ctx.fillStyle=titleGrad;
+  ctx.fillText('Twin Leap',W/2,H*0.32);
+
+  // Subtitle
+  ctx.font='14px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle='rgba(255,255,255,0.5)';
+  ctx.fillText('Your echo follows your last run',W/2,H*0.38);
+
+  // Animated explorer preview
+  const py=H*0.5;
+  const bobble=Math.sin(Date.now()/400)*6;
+  // Player
+  ctx.fillStyle=`hsl(${hue+60},70%,55%)`;
+  roundRect(ctx,W/2-35,py+bobble,PLAYER_W,PLAYER_H,4);
+  ctx.fill();
+  ctx.fillStyle='#fff';
+  ctx.fillRect(W/2-30,py+bobble+6,4,5);
+  ctx.fillRect(W/2-22,py+bobble+6,4,5);
+  // Echo
+  ctx.globalAlpha=0.5;
+  ctx.fillStyle='hsl(190,80%,60%)';
+  roundRect(ctx,W/2+15,py+bobble*0.7+3,PLAYER_W,PLAYER_H,4);
+  ctx.fill();
+  ctx.globalAlpha=1;
+
+  // Instructions
+  ctx.font='13px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle='rgba(255,255,255,0.4)';
+  ctx.fillText('Tap / Space / Enter = Jump',W/2,H*0.65);
+
+  // Tap to start (pulsing)
+  const pulse=0.6+Math.sin(Date.now()/500)*0.3;
+  ctx.font='bold 18px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle=`rgba(255,255,255,${pulse})`;
+  ctx.fillText('Tap to Start',W/2,H*0.78);
+
+  // Best score
+  if(best>0){
+    ctx.font='13px "Segoe UI",system-ui,sans-serif';
+    ctx.fillStyle='rgba(255,255,255,0.3)';
+    ctx.fillText(`Best: ${best}`,W/2,H*0.85);
+  }
+}
+
+function drawGameOverScreen(){
+  // Dim overlay
+  ctx.fillStyle='rgba(0,0,0,0.6)';
+  ctx.fillRect(0,0,W,H);
+
+  ctx.textAlign='center';
+
+  ctx.font='bold 34px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle='hsl(0,70%,65%)';
+  ctx.fillText('Game Over',W/2,H*0.3);
+
+  ctx.font='bold 28px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle='rgba(255,255,255,0.9)';
+  ctx.fillText(score,W/2,H*0.42);
+  ctx.font='13px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle='rgba(255,255,255,0.4)';
+  ctx.fillText('SCORE',W/2,H*0.46);
+
+  ctx.font='bold 20px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle=score>=best?'hsl(50,90%,65%)':'rgba(255,255,255,0.7)';
+  ctx.fillText(best,W/2,H*0.56);
+  ctx.font='13px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle='rgba(255,255,255,0.4)';
+  ctx.fillText(score>=best?'NEW BEST!':'BEST',W/2,H*0.60);
+
+  // Echo info
+  if(prevJumpLog.length>0){
+    ctx.font='12px "Segoe UI",system-ui,sans-serif';
+    ctx.fillStyle='hsla(190,70%,65%,0.6)';
+    ctx.fillText(`Echo will replay ${prevJumpLog.length} jumps next run`,W/2,H*0.68);
+  }
+
+  const pulse=0.5+Math.sin(Date.now()/500)*0.3;
+  ctx.font='bold 16px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle=`rgba(255,255,255,${pulse})`;
+  ctx.fillText('Tap to Retry',W/2,H*0.8);
+}
+
+function roundRect(c,x,y,w,h,r){
+  c.beginPath();
+  c.moveTo(x+r,y);
+  c.lineTo(x+w-r,y);
+  c.quadraticCurveTo(x+w,y,x+w,y+r);
+  c.lineTo(x+w,y+h-r);
+  c.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  c.lineTo(x+r,y+h);
+  c.quadraticCurveTo(x,y+h,x,y+h-r);
+  c.lineTo(x,y+r);
+  c.quadraticCurveTo(x,y,x+r,y);
+  c.closePath();
+}
+
+function draw(){
+  ctx.save();
+  ctx.translate(shakeX,shakeY);
+
+  if(state===STATE.START){
+    drawStartScreen();
+  } else {
+    drawBackground();
+    // Platforms
+    for(const p of platforms) drawPlatform(p);
+    // Orbs
+    drawOrbs();
+    // Echo
+    drawEcho();
+    // Player
+    drawPlayer();
+    // Particles
+    drawParticles();
+    // HUD
+    drawHUD();
+    if(state===STATE.OVER) drawGameOverScreen();
+  }
+
+  ctx.restore();
+}
+
+// ---- Input handling ----
+function handleInput(){
+  if(state===STATE.START){
+    state=STATE.PLAY;
+    initGame();
+  } else if(state===STATE.PLAY){
+    inputBuffer=true;
+  } else if(state===STATE.OVER){
+    state=STATE.PLAY;
+    initGame();
+  }
+}
+
+canvas.addEventListener('pointerdown',e=>{
+  e.preventDefault();
+  handleInput();
+});
+document.addEventListener('keydown',e=>{
+  if(e.code==='Space'||e.code==='Enter'){
+    e.preventDefault();
+    handleInput();
+  }
+});
+
+// ---- Main loop ----
+function loop(ts){
+  requestAnimationFrame(loop);
+  if(!lastTime) lastTime=ts;
+  dt=Math.min((ts-lastTime)/1000,0.05); // clamp dt
+  lastTime=ts;
+
+  if(state===STATE.START) hue=(hue+dt*10)%360;
+  update();
+  draw();
+}
+
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

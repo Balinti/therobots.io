@@ -1,0 +1,1025 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Dusk Defense - Free HTML5 Game</title>
+  <meta name="description" content="Play Dusk Defense - Tap to shoot targets as obstacles multiply and multiply against a fiery sunset backdrop.">
+  <meta name="theme-color" content="#1a0a2e">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Dusk Defense - Free HTML5 Game">
+  <meta property="og:description" content="Play Dusk Defense - Tap to shoot targets as obstacles multiply and multiply against a fiery sunset backdrop.">
+  <meta property="og:url" content="https://balinti.github.io/dusk-defense/">
+  <meta property="og:image" content="https://balinti.github.io/dusk-defense/og.png">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Dusk Defense - Free HTML5 Game">
+  <meta name="twitter:description" content="Play Dusk Defense - Tap to shoot targets as obstacles multiply against a fiery sunset backdrop.">
+  <meta name="twitter:image" content="https://balinti.github.io/dusk-defense/og.png">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      height: 100%;
+      background: #0d0515;
+      color: #e0c8ff;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      overflow-x: hidden;
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+    #ad-top {
+      width: 100%;
+      max-width: 420px;
+      min-height: 50px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 4px 0;
+    }
+    #game-wrapper {
+      width: 100%;
+      max-width: 420px;
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+    #gameCanvas {
+      display: block;
+      width: 100%;
+      max-width: 420px;
+      max-height: 750px;
+      aspect-ratio: 420 / 750;
+      cursor: pointer;
+      touch-action: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    #ad-bottom {
+      width: 100%;
+      max-width: 420px;
+      min-height: 50px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 4px 0;
+    }
+    #seo-text {
+      width: 100%;
+      max-width: 420px;
+      padding: 16px 20px 24px;
+      font-size: 12px;
+      line-height: 1.6;
+      color: #6a4a7a;
+      text-align: center;
+    }
+    #seo-text h2 { font-size: 13px; color: #7a5a8a; margin-bottom: 6px; }
+    #seo-text p { margin-bottom: 4px; }
+  </style>
+</head>
+<body>
+
+<!-- AdSense anchor slot top -->
+<div id="ad-top" aria-hidden="true">
+  <ins class="adsbygoogle"
+    style="display:block;width:320px;height:50px"
+    data-ad-client="ca-pub-4099346100621490"
+    data-ad-slot="auto"
+    data-ad-format="banner"></ins>
+  <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
+</div>
+
+<div id="game-wrapper">
+  <canvas id="gameCanvas"></canvas>
+</div>
+
+<!-- AdSense anchor slot bottom -->
+<div id="ad-bottom" aria-hidden="true">
+  <ins class="adsbygoogle"
+    style="display:block;width:320px;height:50px"
+    data-ad-client="ca-pub-4099346100621490"
+    data-ad-slot="auto"
+    data-ad-format="banner"></ins>
+  <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
+</div>
+
+<section id="seo-text">
+  <h2>About Dusk Defense: Ricochet Pulse</h2>
+  <p>Dusk Defense is a free browser-based hyper-casual arcade game. A rotating cannon sits at the bottom of a fiery sunset skyline. Tap once to fire a glowing Pulse in whatever direction the cannon is pointing — no aiming required, just perfect timing.</p>
+  <p>Your Pulse bounces off neon wall segments scattered across the screen. Every bounce makes it faster and its hitbox slightly wider. The goal is to destroy Sun Orbs before they drift past the horizon line near the bottom of the screen. Let three orbs escape and the defense falls.</p>
+  <p>Chain consecutive orb hits in a single shot to build up a combo multiplier — your Pulse trail blazes brighter with every kill streak. Armored Orbs need two hits, and rare Split Orbs shatter into two smaller fragments when struck, each worth bonus points.</p>
+  <p>Difficulty ramps naturally: the sky grows darker and more chaotic as time passes, with orbs drifting sideways and spawning faster. Challenge yourself to protect the dusk horizon and post a new high score. Works on desktop and mobile — no download needed.</p>
+</section>
+
+<script>
+(function() {
+'use strict';
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+const W = 420, H = 750;
+const HORIZON_Y = H * 0.78;
+const CANNON_X = W / 2, CANNON_Y = H - 60;
+const CANNON_LENGTH = 38;
+const PULSE_SPEED = 480;          // px/s logical
+const PULSE_RADIUS = 9;
+const MAX_BOUNCES = 12;
+const MAX_WALLS = 6;
+const WALL_SPAWN_INTERVAL = 4.0;  // seconds
+const MAX_LIVES = 3;
+const LS_KEY = 'dusk_defense_best';
+const HIT_STOP_MS = 50;
+
+// ─── State ─────────────────────────────────────────────────────────────────
+let state = 'start'; // 'start' | 'playing' | 'gameover'
+let score = 0;
+let best = parseInt(localStorage.getItem(LS_KEY) || '0', 10);
+let lives = MAX_LIVES;
+let elapsed = 0;
+let hue = 20; // for HSL cycling
+let combo = 0;
+let maxCombo = 0;
+let shakeTimer = 0;
+let hitStopTimer = 0;
+let wallSpawnTimer = 0;
+let orbSpawnTimer = 0;
+let cannonAngle = -Math.PI / 2; // starts pointing up
+let cannonSpin = 1.2; // rad/s
+
+// Entity pools
+let orbs = [];
+let walls = [];
+let pulses = [];
+let particles = [];
+
+// ─── Canvas setup ─────────────────────────────────────────────────────────
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+function resizeCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = Math.round(rect.width * dpr);
+  canvas.height = Math.round(rect.height * dpr);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+// logical → canvas pixel
+function scaleX() { return canvas.width / W; }
+function scaleY() { return canvas.height / H; }
+
+// ─── Helpers ──────────────────────────────────────────────────────────────
+function rng(a, b) { return a + Math.random() * (b - a); }
+function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+function dist2(ax, ay, bx, by) {
+  const dx = ax - bx, dy = ay - by;
+  return dx * dx + dy * dy;
+}
+
+// Closest point on segment [ax,ay]-[bx,by] to [px,py]
+function closestPointOnSegment(px, py, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return { x: ax, y: ay, t: 0 };
+  const t = clamp(((px - ax) * dx + (py - ay) * dy) / lenSq, 0, 1);
+  return { x: ax + t * dx, y: ay + t * dy, t };
+}
+
+function reflect(vx, vy, nx, ny) {
+  const dot = vx * nx + vy * ny;
+  return { vx: vx - 2 * dot * nx, vy: vy - 2 * dot * ny };
+}
+
+function normalize(nx, ny) {
+  const len = Math.sqrt(nx * nx + ny * ny) || 1;
+  return { nx: nx / len, ny: ny / len };
+}
+
+// ─── Particle System ──────────────────────────────────────────────────────
+function spawnParticles(x, y, count, hue, bright) {
+  for (let i = 0; i < count; i++) {
+    const angle = rng(0, Math.PI * 2);
+    const speed = rng(60, 220);
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 1,
+      decay: rng(1.4, 2.8),
+      r: rng(2, 5),
+      hue: hue + rng(-20, 20),
+      bright: bright || 70
+    });
+  }
+}
+
+function spawnBounceParticles(x, y) {
+  for (let i = 0; i < 5; i++) {
+    const angle = rng(0, Math.PI * 2);
+    const speed = rng(30, 90);
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 1,
+      decay: rng(2.5, 4.0),
+      r: rng(1.5, 3),
+      hue: 50 + rng(-15, 15),
+      bright: 80
+    });
+  }
+}
+
+// ─── Wall Management ──────────────────────────────────────────────────────
+function makeWall() {
+  // Walls live in upper 65% of screen, not too close to cannon area
+  const margin = 40;
+  const y1 = rng(H * 0.08, H * 0.60);
+  const angle = rng(-Math.PI * 0.4, Math.PI * 0.4); // mostly horizontal-ish
+  const len = rng(50, 110);
+  const cx = rng(margin, W - margin);
+  return {
+    x1: cx - Math.cos(angle) * len / 2,
+    y1: y1 - Math.sin(angle) * len / 2,
+    x2: cx + Math.cos(angle) * len / 2,
+    y2: y1 + Math.sin(angle) * len / 2,
+    hue: rng(180, 300),
+    alpha: 0,
+    alphaTarget: 1,
+    age: 0
+  };
+}
+
+function updateWalls(dt) {
+  wallSpawnTimer += dt;
+  const maxW = elapsed < 10 ? 2 : elapsed < 25 ? 4 : MAX_WALLS;
+  const interval = elapsed < 10 ? 5 : elapsed < 25 ? 4 : WALL_SPAWN_INTERVAL;
+
+  if (wallSpawnTimer >= interval) {
+    wallSpawnTimer = 0;
+    if (walls.length >= maxW) {
+      // fade out oldest
+      walls[0].alphaTarget = 0;
+      walls[0].dying = true;
+    }
+    walls.push(makeWall());
+  }
+
+  for (let i = walls.length - 1; i >= 0; i--) {
+    const w = walls[i];
+    w.age += dt;
+    w.alpha = lerp(w.alpha, w.alphaTarget, dt * 4);
+    if (w.dying && w.alpha < 0.05) {
+      walls.splice(i, 1);
+    }
+  }
+}
+
+// ─── Orb Spawning ─────────────────────────────────────────────────────────
+function spawnOrb() {
+  const t = elapsed;
+  let speed = lerp(55, 130, clamp(t / 60, 0, 1));
+  const margin = 30;
+  const x = rng(margin, W - margin);
+  const y = rng(H * 0.03, H * 0.2);
+
+  // Drift sideways 25s+
+  const driftX = t > 25 ? rng(-25, 25) : 0;
+
+  // Type: normal / armored / split
+  let type = 'normal';
+  if (t > 45 && Math.random() < 0.25) type = 'split';
+  else if (t > 10 && Math.random() < 0.3) type = 'armored';
+
+  const r = type === 'split' ? 20 : type === 'armored' ? 19 : 16;
+
+  return {
+    x, y,
+    vx: driftX,
+    vy: speed,
+    r,
+    type,
+    hp: type === 'armored' ? 2 : 1,
+    hue: type === 'split' ? 45 : type === 'armored' ? 200 : 30 + rng(0, 40),
+    pulse: Math.random() * Math.PI * 2, // for pulsing glow
+    hitFlash: 0,
+    small: false // true for split children
+  };
+}
+
+function spawnSplitChildren(orb) {
+  for (let i = 0; i < 2; i++) {
+    const angle = -Math.PI / 2 + (i === 0 ? -0.4 : 0.4);
+    const speed = Math.sqrt(orb.vx * orb.vx + orb.vy * orb.vy) * 0.85;
+    orbs.push({
+      x: orb.x + (i === 0 ? -12 : 12),
+      y: orb.y,
+      vx: Math.cos(angle) * speed * 0.5 + orb.vx * 0.3,
+      vy: Math.sin(angle) * speed + orb.vy * 0.3,
+      r: 11,
+      type: 'split_child',
+      hp: 1,
+      hue: 55,
+      pulse: Math.random() * Math.PI * 2,
+      hitFlash: 0,
+      small: true
+    });
+  }
+}
+
+function updateOrbs(dt) {
+  // Spawn logic
+  const t = elapsed;
+  let spawnInterval = t < 10 ? 2.8 : t < 25 ? 2.0 : t < 45 ? 1.4 : 1.0;
+  orbSpawnTimer += dt;
+  // Initial orbs
+  if (orbs.length === 0 && t < 1) {
+    orbs.push(spawnOrb());
+    orbs.push(spawnOrb());
+    orbSpawnTimer = 0;
+  }
+  if (orbSpawnTimer >= spawnInterval) {
+    orbSpawnTimer = 0;
+    const maxOrbs = t < 10 ? 3 : t < 25 ? 5 : 8;
+    if (orbs.length < maxOrbs) orbs.push(spawnOrb());
+  }
+
+  for (let i = orbs.length - 1; i >= 0; i--) {
+    const o = orbs[i];
+    o.x += o.vx * dt;
+    o.y += o.vy * dt;
+    o.pulse += dt * 3;
+    if (o.hitFlash > 0) o.hitFlash -= dt * 4;
+
+    // Bounce off side walls
+    if (o.x - o.r < 0) { o.x = o.r; o.vx = Math.abs(o.vx); }
+    if (o.x + o.r > W) { o.x = W - o.r; o.vx = -Math.abs(o.vx); }
+
+    // Crossed horizon?
+    if (o.y - o.r > HORIZON_Y) {
+      spawnParticles(o.x, HORIZON_Y, 8, o.hue, 60);
+      orbs.splice(i, 1);
+      lives--;
+      combo = 0;
+      shakeTimer = 0.18;
+      if (lives <= 0) triggerGameOver();
+    }
+  }
+}
+
+// ─── Pulse (bullet) ───────────────────────────────────────────────────────
+function firePulse() {
+  const vx = Math.cos(cannonAngle) * PULSE_SPEED;
+  const vy = Math.sin(cannonAngle) * PULSE_SPEED;
+  pulses.push({
+    x: CANNON_X + Math.cos(cannonAngle) * CANNON_LENGTH,
+    y: CANNON_Y + Math.sin(cannonAngle) * CANNON_LENGTH,
+    vx, vy,
+    speed: PULSE_SPEED,
+    bounces: 0,
+    r: PULSE_RADIUS,
+    trail: [],
+    hue: hue,
+    comboMult: 1
+  });
+  combo = 0; // reset combo per shot
+}
+
+function updatePulses(dt) {
+  for (let pi = pulses.length - 1; pi >= 0; pi--) {
+    const p = pulses[pi];
+
+    // Store trail
+    p.trail.push({ x: p.x, y: p.y });
+    if (p.trail.length > 18) p.trail.shift();
+
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+
+    // Bounds reflect
+    if (p.x - p.r < 0) {
+      p.x = p.r;
+      p.vx = Math.abs(p.vx);
+      p.bounces++;
+      onPulseBounce(p);
+    }
+    if (p.x + p.r > W) {
+      p.x = W - p.r;
+      p.vx = -Math.abs(p.vx);
+      p.bounces++;
+      onPulseBounce(p);
+    }
+    if (p.y - p.r < 0) {
+      p.y = p.r;
+      p.vy = Math.abs(p.vy);
+      p.bounces++;
+      onPulseBounce(p);
+    }
+    // Below horizon => destroy
+    if (p.y - p.r > HORIZON_Y) {
+      pulses.splice(pi, 1);
+      continue;
+    }
+
+    // Wall collisions
+    for (const w of walls) {
+      const cp = closestPointOnSegment(p.x, p.y, w.x1, w.y1, w.x2, w.y2);
+      const d2 = dist2(p.x, p.y, cp.x, cp.y);
+      if (d2 < (p.r + 4) * (p.r + 4)) {
+        // reflect
+        let nx = p.x - cp.x, ny = p.y - cp.y;
+        const n = normalize(nx, ny);
+        const rv = reflect(p.vx, p.vy, n.nx, n.ny);
+        p.vx = rv.vx; p.vy = rv.vy;
+        // push out
+        const overlap = (p.r + 4) - Math.sqrt(d2);
+        p.x += n.nx * overlap;
+        p.y += n.ny * overlap;
+        p.bounces++;
+        onPulseBounce(p);
+        spawnBounceParticles(cp.x, cp.y);
+        break;
+      }
+    }
+
+    // Orb collisions
+    for (let oi = orbs.length - 1; oi >= 0; oi--) {
+      const o = orbs[oi];
+      const d2 = dist2(p.x, p.y, o.x, o.y);
+      if (d2 < (p.r + o.r) * (p.r + o.r)) {
+        o.hp--;
+        o.hitFlash = 1;
+        if (o.hp <= 0) {
+          // Kill orb
+          const pts = o.small ? 15 : o.type === 'split' ? 30 : o.type === 'armored' ? 20 : 10;
+          combo++;
+          maxCombo = Math.max(maxCombo, combo);
+          const mult = Math.min(combo, 8);
+          score += pts * mult;
+          spawnParticles(o.x, o.y, o.small ? 10 : 18, o.hue, 80);
+          if (o.type === 'split' && !o.small) spawnSplitChildren(o);
+          orbs.splice(oi, 1);
+          hitStopTimer = HIT_STOP_MS / 1000;
+          p.comboMult = mult;
+          p.hue = (p.hue + 30) % 360;
+        }
+        // Pulse continues (no destroy on hit)
+      }
+    }
+
+    // Max bounces => destroy
+    if (p.bounces >= MAX_BOUNCES) {
+      pulses.splice(pi, 1);
+    }
+  }
+}
+
+function onPulseBounce(p) {
+  // Speed up slightly
+  p.speed = Math.min(p.speed * 1.06, 900);
+  const spd = p.speed;
+  const len = Math.sqrt(p.vx * p.vx + p.vy * p.vy) || 1;
+  p.vx = (p.vx / len) * spd;
+  p.vy = (p.vy / len) * spd;
+  // Grow hitbox slightly
+  p.r = Math.min(p.r + 0.8, 18);
+}
+
+// ─── Game flow ────────────────────────────────────────────────────────────
+function startGame() {
+  state = 'playing';
+  score = 0;
+  lives = MAX_LIVES;
+  elapsed = 0;
+  combo = 0;
+  maxCombo = 0;
+  shakeTimer = 0;
+  hitStopTimer = 0;
+  wallSpawnTimer = 0;
+  orbSpawnTimer = 0;
+  cannonAngle = -Math.PI / 2;
+  cannonSpin = 1.2;
+  orbs = [];
+  walls = [];
+  pulses = [];
+  particles = [];
+}
+
+function triggerGameOver() {
+  state = 'gameover';
+  if (score > best) {
+    best = score;
+    localStorage.setItem(LS_KEY, best);
+  }
+  shakeTimer = 0.5;
+  spawnParticles(W / 2, H / 2, 60, 30, 70);
+}
+
+// ─── Input ────────────────────────────────────────────────────────────────
+function handleInput() {
+  if (state === 'start') { startGame(); return; }
+  if (state === 'gameover') { startGame(); return; }
+  if (state === 'playing') { firePulse(); }
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  handleInput();
+});
+
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    handleInput();
+  }
+});
+
+// ─── Drawing helpers ───────────────────────────────────────────────────────
+function withTransform(fn) {
+  const sx = scaleX(), sy = scaleY();
+  ctx.save();
+  ctx.scale(sx, sy);
+  fn();
+  ctx.restore();
+}
+
+function drawBackground(t) {
+  // Dusk gradient
+  const grd = ctx.createLinearGradient(0, 0, 0, H);
+  const skyHue = (20 + t * 0.3) % 360;
+  grd.addColorStop(0, `hsl(${(skyHue + 240) % 360},60%,8%)`);
+  grd.addColorStop(0.4, `hsl(${skyHue},70%,15%)`);
+  grd.addColorStop(0.72, `hsl(${(skyHue + 15) % 360},85%,22%)`);
+  grd.addColorStop(1, `hsl(${(skyHue + 30) % 360},40%,10%)`);
+  ctx.fillStyle = grd;
+  ctx.fillRect(0, 0, W, H);
+
+  // Stars (upper portion)
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  const starSeed = 42;
+  for (let i = 0; i < 40; i++) {
+    const sx2 = ((starSeed * (i * 7 + 3)) % 1000) / 1000 * W;
+    const sy2 = ((starSeed * (i * 13 + 7)) % 1000) / 1000 * (H * 0.45);
+    const twinkle = 0.3 + 0.7 * Math.abs(Math.sin(t * 1.5 + i));
+    ctx.globalAlpha = twinkle * 0.7;
+    ctx.beginPath();
+    ctx.arc(sx2, sy2, 0.8, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // Horizon glow
+  const hGrd = ctx.createLinearGradient(0, HORIZON_Y - 30, 0, HORIZON_Y + 40);
+  hGrd.addColorStop(0, 'rgba(255,120,30,0)');
+  hGrd.addColorStop(0.5, `rgba(255,80,10,${0.2 + (lives <= 1 ? 0.3 : 0)})`);
+  hGrd.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = hGrd;
+  ctx.fillRect(0, HORIZON_Y - 30, W, 70);
+
+  // Horizon line
+  ctx.strokeStyle = `hsla(20,100%,60%,0.5)`;
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([6, 8]);
+  ctx.beginPath();
+  ctx.moveTo(0, HORIZON_Y);
+  ctx.lineTo(W, HORIZON_Y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function drawVignette(dangerLevel) {
+  const alpha = 0.35 + dangerLevel * 0.3;
+  const grd = ctx.createRadialGradient(W / 2, H / 2, H * 0.25, W / 2, H / 2, H * 0.85);
+  grd.addColorStop(0, 'rgba(0,0,0,0)');
+  grd.addColorStop(1, `rgba(${dangerLevel > 0.5 ? 80 : 0},0,0,${alpha})`);
+  ctx.fillStyle = grd;
+  ctx.fillRect(0, 0, W, H);
+}
+
+function drawWalls() {
+  for (const w of walls) {
+    if (w.alpha < 0.01) continue;
+    ctx.save();
+    ctx.globalAlpha = w.alpha;
+    // Glow
+    ctx.shadowBlur = 12;
+    ctx.shadowColor = `hsl(${w.hue},100%,65%)`;
+    ctx.strokeStyle = `hsl(${w.hue},90%,70%)`;
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(w.x1, w.y1);
+    ctx.lineTo(w.x2, w.y2);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+}
+
+function drawOrbs(t) {
+  for (const o of orbs) {
+    const glow = 0.7 + 0.3 * Math.sin(o.pulse);
+    ctx.save();
+    ctx.shadowBlur = 18 * glow;
+    ctx.shadowColor = `hsl(${o.hue},100%,65%)`;
+
+    // Outer glow ring
+    ctx.globalAlpha = 0.25 * glow;
+    ctx.fillStyle = `hsl(${o.hue},100%,70%)`;
+    ctx.beginPath();
+    ctx.arc(o.x, o.y, o.r + 7 * glow, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Main circle
+    ctx.globalAlpha = o.hitFlash > 0 ? 1 : 0.92;
+    const orbGrd = ctx.createRadialGradient(o.x - o.r * 0.3, o.y - o.r * 0.3, o.r * 0.1, o.x, o.y, o.r);
+    const flash = o.hitFlash > 0 ? 100 : 0;
+    orbGrd.addColorStop(0, `hsl(${o.hue + flash},100%,85%)`);
+    orbGrd.addColorStop(1, `hsl(${o.hue},90%,45%)`);
+    ctx.fillStyle = orbGrd;
+    ctx.beginPath();
+    ctx.arc(o.x, o.y, o.r, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Armored ring
+    if (o.type === 'armored' && o.hp === 2) {
+      ctx.globalAlpha = 0.8;
+      ctx.strokeStyle = `hsl(200,80%,80%)`;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(o.x, o.y, o.r + 4, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // Split icon (small lines)
+    if (o.type === 'split' && !o.small) {
+      ctx.globalAlpha = 0.9;
+      ctx.strokeStyle = `hsl(55,100%,85%)`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(o.x - 5, o.y);
+      ctx.lineTo(o.x + 5, o.y);
+      ctx.moveTo(o.x, o.y - 5);
+      ctx.lineTo(o.x, o.y + 5);
+      ctx.stroke();
+    }
+
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+}
+
+function drawPulses(t) {
+  for (const p of pulses) {
+    const brightness = Math.min(50 + p.comboMult * 8, 90);
+
+    // Trail
+    for (let i = 0; i < p.trail.length; i++) {
+      const tf = i / p.trail.length;
+      const tp = p.trail[i];
+      ctx.globalAlpha = tf * 0.55;
+      ctx.fillStyle = `hsl(${(p.hue + i * 3) % 360},100%,${brightness}%)`;
+      ctx.beginPath();
+      ctx.arc(tp.x, tp.y, p.r * tf * 0.85, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // Pulse glow
+    ctx.save();
+    ctx.shadowBlur = 22;
+    ctx.shadowColor = `hsl(${p.hue},100%,70%)`;
+    const pg = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r);
+    pg.addColorStop(0, `hsl(${p.hue},100%,95%)`);
+    pg.addColorStop(1, `hsl(${p.hue},100%,55%)`);
+    ctx.fillStyle = pg;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+}
+
+function drawCannon(t) {
+  const barrelX = CANNON_X + Math.cos(cannonAngle) * CANNON_LENGTH;
+  const barrelY = CANNON_Y + Math.sin(cannonAngle) * CANNON_LENGTH;
+
+  ctx.save();
+  ctx.shadowBlur = 14;
+  ctx.shadowColor = `hsl(${hue},100%,65%)`;
+
+  // Barrel
+  ctx.strokeStyle = `hsl(${hue},80%,70%)`;
+  ctx.lineWidth = 7;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(CANNON_X, CANNON_Y);
+  ctx.lineTo(barrelX, barrelY);
+  ctx.stroke();
+
+  // Base circle
+  ctx.fillStyle = `hsl(${hue},60%,35%)`;
+  ctx.beginPath();
+  ctx.arc(CANNON_X, CANNON_Y, 14, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = `hsl(${hue},90%,65%)`;
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+
+  ctx.shadowBlur = 0;
+  ctx.restore();
+}
+
+function drawParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.life -= p.decay * dt;
+    if (p.life <= 0) { particles.splice(i, 1); continue; }
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy += 60 * dt; // gravity
+    ctx.globalAlpha = p.life * 0.9;
+    ctx.fillStyle = `hsl(${p.hue},100%,${p.bright}%)`;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r * p.life, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawHUD() {
+  // Score
+  ctx.font = 'bold 28px "Segoe UI",system-ui,sans-serif';
+  ctx.textAlign = 'center';
+  ctx.shadowBlur = 8;
+  ctx.shadowColor = `hsl(${hue},100%,50%)`;
+  ctx.fillStyle = '#fff';
+  ctx.fillText(score.toString(), W / 2, 44);
+  ctx.shadowBlur = 0;
+
+  // Best
+  ctx.font = '13px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle = 'rgba(255,220,180,0.7)';
+  ctx.fillText(`BEST ${best}`, W / 2, 62);
+
+  // Lives (hearts)
+  const heartX = 22;
+  for (let i = 0; i < MAX_LIVES; i++) {
+    ctx.fillStyle = i < lives ? '#ff4466' : 'rgba(255,50,80,0.2)';
+    ctx.font = '18px serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('♥', heartX + i * 24, 44);
+  }
+
+  // Combo
+  if (combo > 1) {
+    ctx.textAlign = 'right';
+    ctx.font = `bold ${14 + Math.min(combo, 6)}px "Segoe UI",system-ui,sans-serif`;
+    ctx.shadowBlur = 6;
+    ctx.shadowColor = `hsl(${hue + 60},100%,60%)`;
+    ctx.fillStyle = `hsl(${hue + 60},100%,75%)`;
+    ctx.fillText(`x${combo} COMBO`, W - 14, 44);
+    ctx.shadowBlur = 0;
+  }
+
+  ctx.textAlign = 'center';
+}
+
+function drawLivesWarning() {
+  if (lives === 1) {
+    // Danger pulse at horizon
+    const alpha = 0.3 + 0.2 * Math.sin(Date.now() / 150);
+    ctx.fillStyle = `rgba(255,30,30,${alpha})`;
+    ctx.fillRect(0, HORIZON_Y - 4, W, 8);
+
+    ctx.font = 'bold 13px "Segoe UI",system-ui,sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = `rgba(255,100,100,${0.7 + 0.3 * Math.sin(Date.now() / 200)})`;
+    ctx.fillText('LAST LIFE!', W / 2, HORIZON_Y + 20);
+    ctx.textAlign = 'center';
+  }
+}
+
+function drawStartScreen(t) {
+  withTransform(() => {
+    drawBackground(t);
+    drawVignette(0);
+
+    ctx.textAlign = 'center';
+
+    // Title
+    ctx.save();
+    ctx.shadowBlur = 24;
+    ctx.shadowColor = `hsl(${hue},100%,60%)`;
+    ctx.fillStyle = `hsl(${hue},90%,75%)`;
+    ctx.font = 'bold 54px "Segoe UI",system-ui,sans-serif';
+    ctx.fillText('DUSK', W / 2, H * 0.36);
+    ctx.fillStyle = `hsl(${(hue+40)%360},95%,70%)`;
+    ctx.font = 'bold 38px "Segoe UI",system-ui,sans-serif';
+    ctx.fillText('DEFENSE', W / 2, H * 0.36 + 48);
+    ctx.shadowBlur = 0;
+    ctx.restore();
+
+    // Subtitle
+    ctx.font = '16px "Segoe UI",system-ui,sans-serif';
+    ctx.fillStyle = 'rgba(255,210,170,0.8)';
+    ctx.fillText('Ricochet Pulse', W / 2, H * 0.36 + 80);
+
+    // Tap to start
+    const pulse = 0.7 + 0.3 * Math.sin(t * 3);
+    ctx.globalAlpha = pulse;
+    ctx.font = 'bold 20px "Segoe UI",system-ui,sans-serif';
+    ctx.fillStyle = '#fff';
+    ctx.fillText('Tap to Start', W / 2, H * 0.62);
+    ctx.globalAlpha = 1;
+
+    // How to play
+    ctx.font = '13px "Segoe UI",system-ui,sans-serif';
+    ctx.fillStyle = 'rgba(200,180,230,0.65)';
+    ctx.fillText('Tap to fire • Bounce off walls • Hit Sun Orbs', W / 2, H * 0.70);
+    ctx.fillText('Don\'t let 3 orbs cross the horizon!', W / 2, H * 0.73);
+
+    // Decorative orb
+    ctx.save();
+    ctx.shadowBlur = 30;
+    ctx.shadowColor = 'hsl(30,100%,60%)';
+    const gr = ctx.createRadialGradient(W/2, H*0.50, 2, W/2, H*0.50, 26);
+    gr.addColorStop(0, 'hsl(50,100%,90%)');
+    gr.addColorStop(1, 'hsl(20,100%,55%)');
+    ctx.fillStyle = gr;
+    ctx.beginPath();
+    ctx.arc(W/2, H*0.50, 26 + 3*Math.sin(t*2), 0, Math.PI*2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.restore();
+
+    // Best score
+    if (best > 0) {
+      ctx.font = '14px "Segoe UI",system-ui,sans-serif';
+      ctx.fillStyle = 'rgba(255,220,150,0.75)';
+      ctx.fillText(`Best: ${best}`, W / 2, H * 0.82);
+    }
+  });
+}
+
+function drawGameOverScreen(t) {
+  withTransform(() => {
+    drawBackground(t);
+    drawVignette(0.8);
+    drawParticles(0); // just draw, don't update
+
+    ctx.textAlign = 'center';
+
+    // Overlay
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(30, H * 0.28, W - 60, H * 0.44);
+
+    ctx.save();
+    ctx.shadowBlur = 18;
+    ctx.shadowColor = 'rgba(255,50,50,0.8)';
+    ctx.fillStyle = '#ff6688';
+    ctx.font = 'bold 42px "Segoe UI",system-ui,sans-serif';
+    ctx.fillText('GAME OVER', W / 2, H * 0.40);
+    ctx.shadowBlur = 0;
+    ctx.restore();
+
+    ctx.font = '22px "Segoe UI",system-ui,sans-serif';
+    ctx.fillStyle = '#fff';
+    ctx.fillText(`Score: ${score}`, W / 2, H * 0.48);
+
+    ctx.font = '16px "Segoe UI",system-ui,sans-serif';
+    ctx.fillStyle = 'rgba(255,220,150,0.85)';
+    ctx.fillText(`Best: ${best}`, W / 2, H * 0.54);
+
+    if (maxCombo > 1) {
+      ctx.font = '14px "Segoe UI",system-ui,sans-serif';
+      ctx.fillStyle = 'rgba(180,255,180,0.75)';
+      ctx.fillText(`Max Combo: x${maxCombo}`, W / 2, H * 0.59);
+    }
+
+    // Tap to retry
+    const pulse = 0.65 + 0.35 * Math.sin(t * 3.5);
+    ctx.globalAlpha = pulse;
+    ctx.font = 'bold 20px "Segoe UI",system-ui,sans-serif';
+    ctx.fillStyle = '#fff';
+    ctx.fillText('Tap to Retry', W / 2, H * 0.68);
+    ctx.globalAlpha = 1;
+  });
+}
+
+// ─── Main loop ────────────────────────────────────────────────────────────
+let lastTime = null;
+let totalTime = 0;
+
+function gameLoop(ts) {
+  requestAnimationFrame(gameLoop);
+
+  if (lastTime === null) { lastTime = ts; return; }
+  let dt = (ts - lastTime) / 1000;
+  lastTime = ts;
+  dt = Math.min(dt, 0.1); // cap delta
+  totalTime += dt;
+
+  hue = (20 + totalTime * 8) % 360;
+
+  if (hitStopTimer > 0) {
+    hitStopTimer -= dt;
+    if (hitStopTimer < 0) hitStopTimer = 0;
+    // during hit-stop: only draw, no physics
+    if (state === 'playing') {
+      renderPlaying(totalTime, false);
+      return;
+    }
+  }
+
+  if (state === 'start') {
+    drawStartScreen(totalTime);
+  } else if (state === 'playing') {
+    elapsed += dt;
+    cannonSpin = 1.2 + Math.min(elapsed * 0.02, 1.2);
+    cannonAngle += cannonSpin * dt;
+
+    updateWalls(dt);
+    updateOrbs(dt);
+    updatePulses(dt);
+
+    if (shakeTimer > 0) shakeTimer -= dt;
+    renderPlaying(totalTime, true);
+  } else if (state === 'gameover') {
+    // still update particles
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.life -= p.decay * dt;
+      if (p.life <= 0) { particles.splice(i, 1); continue; }
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy += 60 * dt;
+    }
+    drawGameOverScreen(totalTime);
+  }
+}
+
+function renderPlaying(t, updateParticles) {
+  const sx = scaleX(), sy = scaleY();
+  ctx.save();
+
+  // Screen shake
+  let shakeX = 0, shakeY = 0;
+  if (shakeTimer > 0) {
+    const intensity = shakeTimer * 12;
+    shakeX = (Math.random() - 0.5) * intensity;
+    shakeY = (Math.random() - 0.5) * intensity;
+  }
+  ctx.translate(shakeX * sx, shakeY * sy);
+  ctx.scale(sx, sy);
+
+  drawBackground(t);
+  drawVignette(lives <= 1 ? 0.6 : lives <= 2 ? 0.2 : 0);
+  drawWalls();
+  drawOrbs(t);
+  drawPulses(t);
+  drawCannon(t);
+
+  if (updateParticles) {
+    drawParticles(1/60); // approximate dt for particles
+  } else {
+    // just draw
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      ctx.globalAlpha = p.life * 0.9;
+      ctx.fillStyle = `hsl(${p.hue},100%,${p.bright}%)`;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r * p.life, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  drawHUD();
+  drawLivesWarning();
+
+  ctx.restore();
+}
+
+// Kick off
+requestAnimationFrame(gameLoop);
+
+})();
+</script>
+</body>
+</html>

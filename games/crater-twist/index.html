@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Crater Twist - Free HTML5 Game</title>
+<meta name="description" content="Play Crater Twist - Bounce to switch colors and escape magnetic forces in a volatile volcanic crater.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0b0b12">
+
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="Crater Twist - Free HTML5 Game">
+<meta property="og:description" content="Play Crater Twist - Bounce to switch colors and escape magnetic forces in a volatile volcanic crater.">
+<meta property="og:url" content="https://balinti.github.io/crater-twist/">
+<meta property="og:image" content="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='630' viewBox='0 0 1200 630'%3E%3Crect width='1200' height='630' fill='%230b0b12'/%3E%3Ccircle cx='600' cy='315' r='80' fill='%23ff4433'/%3E%3Ctext x='600' y='470' font-family='Arial' font-size='72' font-weight='bold' fill='white' text-anchor='middle'%3ECrater Twist%3C/text%3E%3C/svg%3E">
+
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Crater Twist - Free HTML5 Game">
+<meta name="twitter:description" content="Play Crater Twist - Bounce to switch colors and escape magnetic forces in a volatile volcanic crater.">
+
+<!-- AdSense -->
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{
+    width:100%;height:100%;
+    background:#0b0b12;
+    display:flex;align-items:center;justify-content:center;
+    overflow:hidden;
+    font-family:Arial,sans-serif;
+  }
+  #gc{
+    position:relative;
+    width:100%;max-width:420px;
+    height:100vh;max-height:750px;
+  }
+  canvas{
+    display:block;
+    width:100%;height:100%;
+    touch-action:none;
+  }
+  #seo{
+    position:absolute;left:-9999px;top:0;
+    font-size:1px;color:transparent;pointer-events:none;
+  }
+</style>
+</head>
+<body>
+<div id="gc">
+  <canvas id="c"></canvas>
+  <div id="seo">
+    <h1>Crater Twist - Polarity Pop</h1>
+    <p>A hyper-casual HTML5 game where you flip polarity to snap onto magnetic rails and climb as high as possible before the lava catches you.</p>
+    <p>Free to play in your browser. No download required.</p>
+  </div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+// ─── Canvas Setup ───────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+const DPR    = Math.min(window.devicePixelRatio || 1, 3);
+
+let W, H;
+function resize(){
+  const gc = document.getElementById('gc');
+  const r  = gc.getBoundingClientRect();
+  W = r.width;  H = r.height;
+  canvas.width  = W * DPR;
+  canvas.height = H * DPR;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+resize();
+window.addEventListener('resize', ()=>{ resize(); });
+
+// ─── Constants ──────────────────────────────────────────────────────────────
+const WALL_W      = 38;   // width of each side wall
+const SHAFT_LEFT  = WALL_W;
+const SHAFT_RIGHT = ()=> W - WALL_W;
+const SHAFT_W     = ()=> W - WALL_W * 2;
+
+const GRAVITY     = 900;   // px/s²
+const PLAYER_R    = 14;
+const SNAP_DIST   = 28;    // px from rail centre to snap
+const RAIL_W      = WALL_W - 6;
+const RAIL_H      = 60;
+const LAVA_RISE   = 18;    // px/s base rise speed (increases with score)
+
+// Polarity colours
+const COL_RED  = { h:0,   s:100, l:55 };
+const COL_BLUE = { h:220, s:100, l:60 };
+
+// ─── State ──────────────────────────────────────────────────────────────────
+let state       = 'start';
+let score       = 0;
+let bestScore   = parseInt(localStorage.getItem('craterTwistBest') || '0', 10);
+let hue         = 220;     // background hue cycling
+let shakeAmt    = 0;
+let shakeDur    = 0;
+let combo       = 0;
+let comboTimer  = 0;
+let particles   = [];
+let rails       = [];
+let scrollY     = 0;       // world y offset (how far we've scrolled up)
+let worldHeight = 0;       // total metres climbed
+let lastTime    = 0;
+
+// Player
+let player = { x:0, y:0, vy:0, polarity:'red', lockedRail:null, tether:false };
+
+// Lava
+let lavaY = 0;   // world y of lava surface (rises over time)
+
+// ─── Rail generation ────────────────────────────────────────────────────────
+let nextRailY = 0;  // next rail world-y to spawn (in screen coords relative to scrollY)
+
+function spawnRail(worldY){
+  const side      = Math.random() < 0.5 ? 'left' : 'right';
+  const polarity  = Math.random() < 0.5 ? 'red'  : 'blue';
+  const speed     = getDifficulty().speed;
+  rails.push({
+    side, polarity,
+    worldY,       // Y in world space (increases upward → negative screen direction)
+    length: RAIL_H + Math.random() * 40,
+    locked: false
+  });
+}
+
+function seedRails(){
+  rails = [];
+  nextRailY = H * 0.55;  // first rail a bit below centre
+  for(let y = nextRailY; y > -H; y -= getRailGap()){
+    spawnRail(y);
+    nextRailY = y - getRailGap();
+  }
+}
+
+function getRailGap(){
+  const d = getDifficulty();
+  return 90 + Math.random() * 60 - d.railDensity * 20;
+}
+
+function getDifficulty(){
+  const t = Math.min(score / 200, 1);
+  return {
+    speed:       80 + t * 200,   // scroll px/s
+    railDensity: t,
+    lavaRise:    LAVA_RISE + t * 30
+  };
+}
+
+// ─── Reset ──────────────────────────────────────────────────────────────────
+function resetGame(){
+  score      = 0;
+  hue        = 220;
+  shakeAmt   = 0;
+  shakeDur   = 0;
+  combo      = 0;
+  comboTimer = 0;
+  particles  = [];
+  scrollY    = 0;
+  worldHeight= 0;
+  lavaY      = H + 60;  // lava starts below screen
+  player     = {
+    x: W / 2,
+    y: H * 0.65,
+    vy: 0,
+    polarity: 'red',
+    lockedRail: null,
+    tether: false
+  };
+  seedRails();
+  state = 'playing';
+}
+
+// ─── Particles ──────────────────────────────────────────────────────────────
+function spawnParticles(x, y, col, count, fast){
+  for(let i = 0; i < count; i++){
+    const ang = Math.random() * Math.PI * 2;
+    const spd = fast ? (80 + Math.random() * 160) : (30 + Math.random() * 80);
+    particles.push({
+      x, y,
+      vx: Math.cos(ang) * spd,
+      vy: Math.sin(ang) * spd - (fast ? 60 : 20),
+      r:  2 + Math.random() * 3,
+      life: 1,
+      decay: 0.6 + Math.random() * 0.8,
+      col
+    });
+  }
+}
+
+function updateParticles(dt){
+  for(let i = particles.length - 1; i >= 0; i--){
+    const p = particles[i];
+    p.x    += p.vx * dt;
+    p.y    += p.vy * dt;
+    p.vy   += 200 * dt;
+    p.life -= p.decay * dt;
+    if(p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+function drawParticles(){
+  for(const p of particles){
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, p.life);
+    ctx.fillStyle   = p.col;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+// ─── Input ──────────────────────────────────────────────────────────────────
+function onInput(){
+  if(state === 'start')    { resetGame(); return; }
+  if(state === 'gameover') { resetGame(); return; }
+  if(state === 'playing')  { flipPolarity(); }
+}
+
+document.addEventListener('pointerdown', e=>{ e.preventDefault(); onInput(); });
+document.addEventListener('keydown', e=>{
+  if(e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); onInput(); }
+});
+
+// ─── Polarity Flip ──────────────────────────────────────────────────────────
+function flipPolarity(){
+  if(player.lockedRail){
+    // Unlock, give upward kick
+    player.vy      = -380;
+    player.lockedRail = null;
+    player.tether  = false;
+  }
+  player.polarity = player.polarity === 'red' ? 'blue' : 'red';
+}
+
+// ─── Rail Screen Coords ──────────────────────────────────────────────────────
+function railScreenY(rail){
+  return rail.worldY + scrollY;
+}
+function railScreenX(rail){
+  return rail.side === 'left' ? SHAFT_LEFT : W - WALL_W;
+}
+
+// ─── Snap Logic ─────────────────────────────────────────────────────────────
+function trySnap(){
+  if(player.lockedRail) return;
+  let best = null, bestDist = SNAP_DIST;
+  for(const rail of rails){
+    if(rail.polarity !== player.polarity) continue;
+    const sy = railScreenY(rail);
+    if(sy < -RAIL_H - 20 || sy > H + 20) continue;
+    const sx = railScreenX(rail);
+    // Centre snap point is midpoint of rail
+    const cx = rail.side === 'left'  ? SHAFT_LEFT  + RAIL_W / 2
+                                     : W - WALL_W  - RAIL_W / 2;
+    const cy = sy + rail.length / 2;
+    const dx = player.x - cx;
+    const dy = player.y - cy;
+    const dist = Math.hypot(dx, dy);
+    if(dist < bestDist && Math.abs(dy) < rail.length / 2 + SNAP_DIST){
+      bestDist = dist;
+      best     = rail;
+    }
+  }
+  if(best){
+    player.lockedRail = best;
+    player.tether     = true;
+    player.vy         = 0;
+    // Perfect snap?
+    const sy  = railScreenY(best);
+    const cy  = sy + best.length / 2;
+    const perfect = Math.abs(player.y - cy) < best.length * 0.25;
+    if(perfect){
+      combo++;
+      comboTimer = 2;
+      score     += combo * 5;
+      spawnParticles(player.x, player.y, polCol(player.polarity), 14, true);
+      shakeAmt = 2; shakeDur = 0.1;
+    } else {
+      combo = 1;
+      spawnParticles(player.x, player.y, polCol(player.polarity), 6, false);
+    }
+  }
+}
+
+function polCol(pol){
+  return pol === 'red' ? `hsl(0,100%,60%)` : `hsl(220,100%,65%)`;
+}
+
+// ─── Update ─────────────────────────────────────────────────────────────────
+function update(dt){
+  if(state !== 'playing') return;
+
+  hue = (hue + 4 * dt) % 360;
+  if(comboTimer > 0) comboTimer -= dt;
+  else if(comboTimer <= 0 && combo > 0) combo = 0;
+
+  const diff = getDifficulty();
+
+  // Locked to rail: ride it upward (rail scrolls up)
+  if(player.lockedRail){
+    // Player rides the rail — position clamps to centre-x of rail
+    const cx = player.lockedRail.side === 'left'
+      ? SHAFT_LEFT + RAIL_W / 2
+      : W - WALL_W - RAIL_W / 2;
+    // Smoothly pull player to cx
+    player.x += (cx - player.x) * Math.min(1, dt * 12);
+    // Player Y slowly rises because scroll moves up
+    // We keep player at rail mid; if rail leaves screen → unlock
+    const sy = railScreenY(player.lockedRail);
+    if(sy < -RAIL_H - 40){
+      player.lockedRail = null; player.tether = false;
+    }
+  } else {
+    // Gravity
+    player.vy += GRAVITY * dt;
+    player.y  += player.vy * dt;
+    // Repulsion from opposite-polarity rails
+    for(const rail of rails){
+      if(rail.polarity === player.polarity) continue;
+      const sy = railScreenY(rail);
+      const cy = sy + rail.length / 2;
+      const cx = rail.side === 'left' ? SHAFT_LEFT + RAIL_W / 2 : W - WALL_W - RAIL_W / 2;
+      const dx = player.x - cx;
+      const dy = player.y - cy;
+      const dist = Math.hypot(dx, dy);
+      if(dist < SNAP_DIST * 1.8 && dist > 1){
+        const force = 1200 / (dist * dist + 1);
+        player.vy += (dy / dist) * force * dt;
+        player.x  += (dx / dist) * force * dt;
+      }
+    }
+    // Wall bounce
+    if(player.x - PLAYER_R < SHAFT_LEFT){
+      player.x = SHAFT_LEFT + PLAYER_R;
+    }
+    if(player.x + PLAYER_R > W - WALL_W){
+      player.x = W - WALL_W - PLAYER_R;
+    }
+    // Try snap
+    trySnap();
+  }
+
+  // Scroll world upward when player is in upper half
+  const targetScrollRate = diff.speed;
+  let scrollRate = 0;
+  if(player.y < H * 0.45 || player.lockedRail){
+    scrollRate = targetScrollRate;
+  } else {
+    // Slow scroll to maintain tension
+    scrollRate = targetScrollRate * 0.3;
+  }
+  scrollY       -= scrollRate * dt;
+  worldHeight   += scrollRate * dt;
+  score          = Math.floor(worldHeight / 4);
+
+  // Move lava (rises in screen space → lavaY decreases)
+  lavaY -= diff.lavaRise * dt;
+
+  // Spawn new rails ahead
+  while(nextRailY > -H * 0.5){
+    nextRailY -= getRailGap();
+    spawnRail(nextRailY - scrollY);
+  }
+
+  // Cull old rails
+  for(let i = rails.length - 1; i >= 0; i--){
+    if(railScreenY(rails[i]) > H + RAIL_H * 2) rails.splice(i, 1);
+  }
+
+  updateParticles(dt);
+
+  // Shake decay
+  if(shakeDur > 0){ shakeDur -= dt; if(shakeDur <= 0){ shakeAmt = 0; } }
+
+  // Death: player falls below lava or out of screen
+  const lavaScreenY = lavaY;
+  if(player.y + PLAYER_R > lavaScreenY || player.y > H + 80){
+    triggerDeath();
+  }
+  // Death: player hits ceiling
+  if(player.y - PLAYER_R < 0){
+    player.y  = PLAYER_R;
+    player.vy = Math.abs(player.vy) * 0.4;
+  }
+}
+
+function triggerDeath(){
+  state = 'gameover';
+  spawnParticles(player.x, player.y, polCol(player.polarity), 30, true);
+  shakeAmt = 10; shakeDur = 0.4;
+  if(score > bestScore){
+    bestScore = score;
+    localStorage.setItem('craterTwistBest', bestScore);
+  }
+}
+
+// ─── Draw ────────────────────────────────────────────────────────────────────
+function draw(){
+  ctx.save();
+
+  // Screen shake
+  if(shakeAmt > 0 && shakeDur > 0){
+    const sx = (Math.random() - 0.5) * shakeAmt * 2;
+    const sy = (Math.random() - 0.5) * shakeAmt * 2;
+    ctx.translate(sx, sy);
+  }
+
+  // Background gradient
+  const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+  bgGrad.addColorStop(0, `hsl(${(hue+30)%360},40%,6%)`);
+  bgGrad.addColorStop(1, `hsl(${hue},50%,10%)`);
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Shaft inner glow
+  const shaftGrad = ctx.createLinearGradient(SHAFT_LEFT, 0, W - WALL_W, 0);
+  shaftGrad.addColorStop(0,   `hsla(${hue},60%,15%,0.3)`);
+  shaftGrad.addColorStop(0.5, `hsla(${hue},40%,8%,0.1)`);
+  shaftGrad.addColorStop(1,   `hsla(${hue},60%,15%,0.3)`);
+  ctx.fillStyle = shaftGrad;
+  ctx.fillRect(SHAFT_LEFT, 0, SHAFT_W(), H);
+
+  // Walls
+  drawWall('left');
+  drawWall('right');
+
+  // Rails
+  for(const rail of rails){
+    drawRail(rail);
+  }
+
+  // Tether line
+  if(player.tether && player.lockedRail){
+    const rail = player.lockedRail;
+    const cx = rail.side === 'left' ? SHAFT_LEFT + RAIL_W / 2 : W - WALL_W - RAIL_W / 2;
+    const cy = railScreenY(rail) + rail.length / 2;
+    ctx.save();
+    ctx.setLineDash([4, 5]);
+    ctx.strokeStyle = polCol(player.polarity);
+    ctx.lineWidth   = 2;
+    ctx.globalAlpha = 0.7;
+    ctx.beginPath();
+    ctx.moveTo(player.x, player.y);
+    ctx.lineTo(cx, cy);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Particles
+  drawParticles();
+
+  // Player
+  drawPlayer();
+
+  // Lava
+  drawLava();
+
+  // HUD
+  if(state === 'playing') drawHUD();
+  if(state === 'start')   drawStart();
+  if(state === 'gameover') drawGameOver();
+
+  ctx.restore();
+}
+
+function drawWall(side){
+  const x = side === 'left' ? 0 : W - WALL_W;
+  const grad = ctx.createLinearGradient(x, 0, x + WALL_W, 0);
+  if(side === 'left'){
+    grad.addColorStop(0, `hsl(${hue},30%,8%)`);
+    grad.addColorStop(1, `hsl(${hue},50%,18%)`);
+  } else {
+    grad.addColorStop(0, `hsl(${hue},50%,18%)`);
+    grad.addColorStop(1, `hsl(${hue},30%,8%)`);
+  }
+  ctx.fillStyle = grad;
+  ctx.fillRect(x, 0, WALL_W, H);
+
+  // Rune texture lines
+  ctx.save();
+  ctx.strokeStyle = `hsla(${hue},60%,35%,0.3)`;
+  ctx.lineWidth   = 1;
+  for(let y = (scrollY * 0.3 % 24); y < H; y += 24){
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + WALL_W, y);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawRail(rail){
+  const sx = rail.side === 'left' ? SHAFT_LEFT : W - WALL_W;
+  const sy = railScreenY(rail);
+  if(sy > H + RAIL_H || sy + rail.length < -RAIL_H) return;
+
+  const isRed = rail.polarity === 'red';
+  const hR    = isRed ? 0 : 220;
+  const isLocked = player.lockedRail === rail;
+
+  // Rail body
+  const rw = RAIL_W;
+  const rgrad = ctx.createLinearGradient(sx, 0, sx + (rail.side==='left'? -rw : rw), 0);
+  if(rail.side === 'left'){
+    rgrad.addColorStop(0, `hsla(${hR},90%,25%,0.9)`);
+    rgrad.addColorStop(1, `hsla(${hR},100%,50%,1)`);
+  } else {
+    rgrad.addColorStop(0, `hsla(${hR},100%,50%,1)`);
+    rgrad.addColorStop(1, `hsla(${hR},90%,25%,0.9)`);
+  }
+  ctx.fillStyle = rgrad;
+  const rx = rail.side === 'left' ? sx - rw : sx;
+  ctx.fillRect(rx, sy, rw, rail.length);
+
+  // Glow when locked
+  if(isLocked){
+    ctx.save();
+    ctx.shadowColor  = polCol(rail.polarity);
+    ctx.shadowBlur   = 18;
+    ctx.fillStyle    = polCol(rail.polarity);
+    ctx.fillRect(rx, sy, rw, rail.length);
+    ctx.restore();
+  }
+
+  // Polarity symbol (⊕ or ⊖)
+  ctx.save();
+  ctx.fillStyle   = 'rgba(255,255,255,0.85)';
+  ctx.font        = 'bold 14px Arial';
+  ctx.textAlign   = 'center';
+  ctx.textBaseline= 'middle';
+  const tx = rail.side === 'left' ? rx + rw / 2 : rx + rw / 2;
+  ctx.fillText(isRed ? '⊕' : '⊖', tx, sy + rail.length / 2);
+  ctx.restore();
+}
+
+function drawPlayer(){
+  const { x, y, polarity } = player;
+  const col  = polarity === 'red' ? COL_RED : COL_BLUE;
+  const hC   = col.h;
+
+  // Outer glow
+  ctx.save();
+  ctx.shadowColor  = `hsl(${hC},100%,60%)`;
+  ctx.shadowBlur   = 22;
+  const grad = ctx.createRadialGradient(x - 4, y - 4, 2, x, y, PLAYER_R);
+  grad.addColorStop(0, `hsl(${hC},100%,85%)`);
+  grad.addColorStop(0.5,`hsl(${hC},100%,55%)`);
+  grad.addColorStop(1,  `hsl(${hC},90%,30%)`);
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(x, y, PLAYER_R, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // Core shimmer
+  ctx.save();
+  ctx.fillStyle = `rgba(255,255,255,0.6)`;
+  ctx.beginPath();
+  ctx.arc(x - 4, y - 4, 4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawLava(){
+  const ly = lavaY;
+  // Lava gradient from bottom
+  const lgrad = ctx.createLinearGradient(0, ly, 0, H);
+  lgrad.addColorStop(0, 'hsla(20,100%,55%,0.85)');
+  lgrad.addColorStop(0.15, 'hsla(0,100%,40%,0.9)');
+  lgrad.addColorStop(1,   'hsla(0,90%,20%,1)');
+  ctx.fillStyle = lgrad;
+  ctx.fillRect(0, Math.max(0, ly), W, H - Math.max(0, ly));
+
+  // Lava surface wave
+  ctx.save();
+  ctx.beginPath();
+  const waveAmp  = 5;
+  const waveFreq = 0.04;
+  const t        = Date.now() * 0.002;
+  ctx.moveTo(0, ly);
+  for(let wx = 0; wx <= W; wx += 4){
+    const wy = ly + Math.sin(wx * waveFreq + t) * waveAmp
+                  + Math.sin(wx * waveFreq * 1.7 + t * 1.3) * waveAmp * 0.5;
+    ctx.lineTo(wx, wy);
+  }
+  ctx.lineTo(W, H); ctx.lineTo(0, H);
+  ctx.closePath();
+  ctx.fillStyle = 'hsla(18,100%,52%,0.95)';
+  ctx.fill();
+
+  // Glow above lava
+  ctx.shadowColor = 'hsl(20,100%,60%)';
+  ctx.shadowBlur  = 24;
+  ctx.strokeStyle = 'hsla(30,100%,65%,0.8)';
+  ctx.lineWidth   = 3;
+  ctx.beginPath();
+  ctx.moveTo(0, ly);
+  for(let wx = 0; wx <= W; wx += 4){
+    const wy = ly + Math.sin(wx * waveFreq + t) * waveAmp
+                  + Math.sin(wx * waveFreq * 1.7 + t * 1.3) * waveAmp * 0.5;
+    ctx.lineTo(wx, wy);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawHUD(){
+  // Score
+  ctx.save();
+  ctx.fillStyle    = 'rgba(255,255,255,0.9)';
+  ctx.font         = 'bold 28px Arial';
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'top';
+  ctx.shadowColor  = 'rgba(0,0,0,0.5)';
+  ctx.shadowBlur   = 6;
+  ctx.fillText(score, W / 2, 16);
+
+  // Best
+  ctx.font      = '13px Arial';
+  ctx.fillStyle = 'rgba(200,200,220,0.7)';
+  ctx.fillText('BEST ' + bestScore, W / 2, 50);
+
+  // Combo
+  if(combo > 1 && comboTimer > 0){
+    const alpha = Math.min(1, comboTimer);
+    ctx.globalAlpha = alpha;
+    ctx.font        = `bold ${18 + combo * 2}px Arial`;
+    ctx.fillStyle   = `hsl(50,100%,65%)`;
+    ctx.shadowColor = 'hsl(40,100%,50%)';
+    ctx.shadowBlur  = 10;
+    ctx.fillText(`x${combo} COMBO!`, W / 2, 70);
+  }
+
+  // Polarity indicator
+  ctx.globalAlpha = 1;
+  const pCol = player.polarity === 'red' ? 'hsl(0,100%,60%)' : 'hsl(220,100%,65%)';
+  ctx.fillStyle   = pCol;
+  ctx.shadowColor = pCol;
+  ctx.shadowBlur  = 8;
+  ctx.font        = 'bold 13px Arial';
+  ctx.textAlign   = 'left';
+  ctx.fillText(player.polarity === 'red' ? '⊕ RED' : '⊖ BLUE', SHAFT_LEFT + 6, 16);
+
+  ctx.restore();
+}
+
+function drawStart(){
+  // Dark overlay
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(0, 0, W, H);
+
+  // Title
+  ctx.textAlign = 'center';
+  ctx.shadowBlur  = 30;
+  ctx.shadowColor = `hsl(${hue},100%,60%)`;
+
+  ctx.font      = 'bold 42px Arial';
+  ctx.fillStyle = `hsl(${hue},100%,75%)`;
+  ctx.fillText('CRATER', W/2, H*0.32);
+  ctx.font      = 'bold 42px Arial';
+  ctx.fillStyle = `hsl(${(hue+180)%360},100%,75%)`;
+  ctx.fillText('TWIST', W/2, H*0.32 + 50);
+
+  ctx.shadowBlur  = 0;
+  ctx.font        = '15px Arial';
+  ctx.fillStyle   = 'rgba(200,210,255,0.8)';
+  ctx.fillText('Polarity Pop', W/2, H*0.32 + 86);
+
+  ctx.font        = '13px Arial';
+  ctx.fillStyle   = 'rgba(180,190,220,0.65)';
+  ctx.fillText('Snap to rails of matching polarity.', W/2, H*0.55);
+  ctx.fillText('Tap to flip polarity & unlock.', W/2, H*0.55 + 22);
+  ctx.fillText('Don\'t get caught by the lava!', W/2, H*0.55 + 44);
+
+  // Tap to Start
+  const pulse = 0.7 + 0.3 * Math.sin(Date.now() * 0.003);
+  ctx.globalAlpha = pulse;
+  ctx.font        = 'bold 20px Arial';
+  ctx.fillStyle   = 'white';
+  ctx.shadowBlur  = 12;
+  ctx.shadowColor = 'white';
+  ctx.fillText('TAP TO START', W/2, H*0.73);
+
+  ctx.restore();
+}
+
+function drawGameOver(){
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.65)';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.textAlign   = 'center';
+  ctx.shadowBlur  = 20;
+  ctx.shadowColor = 'hsl(0,100%,50%)';
+
+  ctx.font      = 'bold 36px Arial';
+  ctx.fillStyle = 'hsl(0,100%,65%)';
+  ctx.fillText('GAME OVER', W/2, H*0.3);
+
+  ctx.shadowBlur  = 0;
+  ctx.font        = 'bold 52px Arial';
+  ctx.fillStyle   = 'white';
+  ctx.fillText(score, W/2, H*0.43);
+
+  ctx.font        = '16px Arial';
+  ctx.fillStyle   = 'rgba(180,200,255,0.75)';
+  ctx.fillText('BEST  ' + bestScore, W/2, H*0.51);
+
+  if(score >= bestScore && score > 0){
+    ctx.font        = 'bold 14px Arial';
+    ctx.fillStyle   = 'hsl(50,100%,65%)';
+    ctx.shadowColor = 'hsl(50,100%,50%)';
+    ctx.shadowBlur  = 10;
+    ctx.fillText('NEW RECORD!', W/2, H*0.57);
+  }
+
+  const pulse = 0.7 + 0.3 * Math.sin(Date.now() * 0.003);
+  ctx.globalAlpha = pulse;
+  ctx.shadowBlur  = 0;
+  ctx.font        = 'bold 20px Arial';
+  ctx.fillStyle   = 'white';
+  ctx.fillText('TAP TO RETRY', W/2, H*0.7);
+
+  ctx.restore();
+}
+
+// ─── Loop ────────────────────────────────────────────────────────────────────
+function loop(ts){
+  if(!lastTime) lastTime = ts;
+  const dt = Math.min((ts - lastTime) / 1000, 0.05);
+  lastTime = ts;
+
+  update(dt);
+  draw();
+
+  requestAnimationFrame(loop);
+}
+
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

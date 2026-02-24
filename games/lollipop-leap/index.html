@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Lollipop Leap - Free HTML5 Game</title>
+<meta name="description" content="Play Lollipop Leap - Bounce a lollipop ball from platform to platform as the candy color scheme morphs.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#ff6eb4">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Lollipop Leap - Free HTML5 Game">
+<meta property="og:description" content="Play Lollipop Leap - Bounce a lollipop ball from platform to platform as the candy color scheme morphs.">
+<meta property="og:url" content="https://balinti.github.io/lollipop-leap/">
+<meta property="og:image" content="https://balinti.github.io/lollipop-leap/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Lollipop Leap - Free HTML5 Game">
+<meta name="twitter:description" content="Play Lollipop Leap - Bounce a lollipop ball from platform to platform as the candy color scheme morphs.">
+<meta name="twitter:image" content="https://balinti.github.io/lollipop-leap/og-image.png">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Lollipop Leap",
+  "url": "https://balinti.github.io/lollipop-leap/",
+  "description": "Play Lollipop Leap - Bounce a lollipop ball from platform to platform as the candy color scheme morphs.",
+  "applicationCategory": "GameApplication",
+  "genre": "Casual",
+  "operatingSystem": "Any",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d0010;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    min-height: 100vh;
+    font-family: 'Segoe UI', sans-serif;
+    overflow: hidden;
+    touch-action: none;
+  }
+  #game-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    flex: 1;
+    justify-content: center;
+  }
+  #canvas {
+    display: block;
+    cursor: pointer;
+    touch-action: none;
+  }
+  #below {
+    width: 100%;
+    max-width: 420px;
+    padding: 10px 14px 6px;
+    color: #ccc;
+    font-size: 12px;
+    line-height: 1.5;
+    text-align: center;
+  }
+  #below h2 { font-size: 13px; color: #ff6eb4; margin-bottom: 4px; }
+  #below p { margin-bottom: 4px; }
+  #share-btn {
+    margin-top: 6px;
+    padding: 7px 18px;
+    border: none;
+    border-radius: 20px;
+    background: linear-gradient(135deg, #ff6eb4, #6eb4ff);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    display: none;
+  }
+  #share-btn:active { opacity: 0.8; }
+</style>
+</head>
+<body>
+<div id="game-wrap">
+  <canvas id="canvas"></canvas>
+</div>
+<div id="below">
+  <h2>Lollipop Leap</h2>
+  <p>Tap or press Space to flip between Pink and Blue phases. Land only on platforms matching your color — time your flips perfectly for bonus points, combos, and multipliers!</p>
+  <p>How high can you bounce? Beat your best score and challenge your friends!</p>
+  <button id="share-btn">&#127881; Challenge a Friend</button>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+const GAME_W = 420, GAME_H = 750;
+const DT = 1/60;
+const MAX_P = 240;
+const BALL_R = 16;
+const GRAVITY = 2200;
+const BOUNCE_VY = -980;
+const HS_KEY = 'llpf_highscore_v1';
+
+// Phase colors
+const PHASE = {
+  PINK: 0,
+  BLUE: 1
+};
+const PHASE_HUE = [330, 210]; // pink, blue
+const PHASE_COLOR = ['#ff6eb4','#6eb4ff'];
+const PHASE_GLOW  = ['#ff3399','#3399ff'];
+const PHASE_DARK  = ['#7a1448','#144a7a'];
+
+// ─── State ────────────────────────────────────────────────────────────────────
+let state = 'start'; // start | playing | gameover
+let score = 0, best = 0, combo = 0, mult = 1;
+let phase = PHASE.PINK;
+let ball = {};
+let platforms = [];
+let particles = [];
+let camY = 0, camYTarget = 0;
+let shakeTime = 0, shakeMag = 0;
+let timeSinceFlip = 999;
+let lastDeathReason = '';
+let hueShift = 0;
+let frenzyActive = false, frenzyCount = 0;
+let totalPlatformsLanded = 0;
+let lastCombo = 0;
+let lastPerfectTime = -999;
+
+// ─── Canvas setup ────────────────────────────────────────────────────────────
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let DPR = Math.min(window.devicePixelRatio || 1, 2);
+let cssW, cssH, offX = 0, offY = 0;
+
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const aspect = GAME_W / GAME_H;
+  let w = Math.min(vw, 420);
+  let h = w / aspect;
+  if (h > vh) { h = vh; w = h * aspect; }
+  w = Math.floor(w); h = Math.floor(h);
+  cssW = w; cssH = h;
+  canvas.style.width  = w + 'px';
+  canvas.style.height = h + 'px';
+  canvas.width  = w * DPR;
+  canvas.height = h * DPR;
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.scale(DPR * w / GAME_W, DPR * h / GAME_H);
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ─── localStorage ─────────────────────────────────────────────────────────────
+function loadBest() {
+  try { best = parseInt(localStorage.getItem(HS_KEY)) || 0; } catch(e){ best=0; }
+}
+function saveBest() {
+  try { localStorage.setItem(HS_KEY, best); } catch(e){}
+}
+loadBest();
+
+// ─── Particle pool ───────────────────────────────────────────────────────────
+function mkParticle() {
+  return { alive:false, x:0,y:0,vx:0,vy:0,life:0,maxLife:1,r:4,color:'#fff',gravity:0,drag:0.97,type:'circle' };
+}
+for(let i=0;i<MAX_P;i++) particles.push(mkParticle());
+
+function spawnParticle(x,y,vx,vy,life,r,color,gravity,drag,type){
+  for(let i=0;i<MAX_P;i++){
+    const p=particles[i];
+    if(!p.alive){
+      p.alive=true; p.x=x; p.y=y; p.vx=vx; p.vy=vy;
+      p.life=life; p.maxLife=life; p.r=r; p.color=color;
+      p.gravity=gravity??400; p.drag=drag??0.97; p.type=type??'circle';
+      return;
+    }
+  }
+}
+
+function spawnFlipBurst(x,y,ph){
+  const col = PHASE_COLOR[ph];
+  const n = 18;
+  for(let i=0;i<n;i++){
+    const a = (i/n)*Math.PI*2;
+    const sp = 180+Math.random()*140;
+    spawnParticle(x,y,Math.cos(a)*sp,Math.sin(a)*sp,0.55+Math.random()*0.3,3+Math.random()*3,col,0,0.93,'circle');
+  }
+  // ring lines
+  for(let i=0;i<8;i++){
+    const a = (i/8)*Math.PI*2;
+    const sp = 260+Math.random()*80;
+    spawnParticle(x,y,Math.cos(a)*sp,Math.sin(a)*sp,0.3+Math.random()*0.2,2,col,0,0.9,'line');
+  }
+}
+
+function spawnConfetti(x,y,count){
+  const cols=['#ff6eb4','#6eb4ff','#ffe066','#b4ff6e','#ff9966'];
+  for(let i=0;i<count;i++){
+    const col=cols[Math.floor(Math.random()*cols.length)];
+    spawnParticle(x,y,
+      (Math.random()-0.5)*500,
+      -(200+Math.random()*400),
+      0.8+Math.random()*0.6,
+      3+Math.random()*4,
+      col, 600, 0.95, 'circle');
+  }
+}
+
+function spawnPerfectFlash(x,y){
+  const n=24;
+  for(let i=0;i<n;i++){
+    const a=(i/n)*Math.PI*2;
+    const sp=120+Math.random()*200;
+    spawnParticle(x,y,Math.cos(a)*sp,Math.sin(a)*sp,0.4+Math.random()*0.4,2+Math.random()*5,'#fff8aa',100,0.91,'circle');
+  }
+  spawnConfetti(x,y,14);
+}
+
+function spawnCrumble(x,y,w){
+  for(let i=0;i<20;i++){
+    const col = Math.random()<0.5?'#888':'#aaa';
+    spawnParticle(x+(Math.random()-0.5)*w,y,
+      (Math.random()-0.5)*300, -(100+Math.random()*300),
+      0.5+Math.random()*0.5, 2+Math.random()*4, col, 800, 0.94,'circle');
+  }
+}
+
+function spawnGhostShatter(x,y,ph){
+  const col = PHASE_COLOR[ph];
+  for(let i=0;i<16;i++){
+    spawnParticle(x+(Math.random()-0.5)*40, y,
+      (Math.random()-0.5)*400, -(50+Math.random()*250),
+      0.4+Math.random()*0.4, 2+Math.random()*5, col, 700, 0.93,'circle');
+  }
+}
+
+function updateParticles(dt){
+  for(let i=0;i<MAX_P;i++){
+    const p=particles[i];
+    if(!p.alive) continue;
+    p.life -= dt;
+    if(p.life<=0){ p.alive=false; continue; }
+    p.vx *= p.drag;
+    p.vy *= p.drag;
+    p.vy += p.gravity * dt;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+  }
+}
+
+function drawParticles(){
+  for(let i=0;i<MAX_P;i++){
+    const p=particles[i];
+    if(!p.alive) continue;
+    const alpha = Math.max(0, p.life/p.maxLife);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = p.color;
+    ctx.strokeStyle = p.color;
+    if(p.type==='circle'){
+      ctx.beginPath();
+      ctx.arc(p.x, p.y - camY, p.r, 0, Math.PI*2);
+      ctx.fill();
+    } else {
+      ctx.lineWidth = p.r*0.5;
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y - camY);
+      ctx.lineTo(p.x - p.vx*0.04, p.y - p.vy*0.04 - camY);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+}
+
+// ─── Platform generation ─────────────────────────────────────────────────────
+let nextPlatY = 0;
+let lastPlatPhase = -1;
+let samePhaseCnt = 0;
+let nextFrenzyAt = 40;
+
+function platformWidth(sc){
+  return Math.max(140, Math.min(220, 220 - 0.6*sc));
+}
+function gapY(sc){
+  return Math.max(150, Math.min(210, 150 + 0.35*sc)) + (Math.random()-0.5)*40;
+}
+function isCracked(sc){
+  if(sc<25) return false;
+  const prob = Math.min(0.35, (sc-25)*0.008);
+  return Math.random()<prob;
+}
+
+function pickPhase(sc, forcedPhase){
+  if(forcedPhase !== undefined) return forcedPhase;
+  // avoid 3 same in a row
+  if(samePhaseCnt >= 2) {
+    return lastPlatPhase === PHASE.PINK ? PHASE.BLUE : PHASE.PINK;
+  }
+  return Math.random()<0.5 ? PHASE.PINK : PHASE.BLUE;
+}
+
+function genPlatform(y, forcedPhase, forcedW, isFrenzy){
+  const sc = score;
+  const w = forcedW ?? platformWidth(sc);
+  const ph = pickPhase(sc, forcedPhase);
+  const x = GAME_W/2 + (Math.random()-0.5)*(GAME_W - w - 40);
+  const cracked = !isFrenzy && isCracked(sc);
+
+  if(ph === lastPlatPhase) samePhaseCnt++;
+  else samePhaseCnt = 0;
+  lastPlatPhase = ph;
+
+  return { x, y, w, h:14, phase:ph, cracked, landed:false, crumbling:false, crumbleTime:0, alpha:1 };
+}
+
+function initPlatforms(){
+  platforms = [];
+  nextPlatY = GAME_H * 0.6;
+  lastPlatPhase = -1;
+  samePhaseCnt = 0;
+  nextFrenzyAt = 40;
+  frenzyActive = false; frenzyCount = 0;
+
+  // First platform: same phase as ball, wide, safe
+  platforms.push({ x: GAME_W/2 - 80, y: GAME_H*0.65, w:160, h:14, phase:PHASE.PINK, cracked:false, landed:false, crumbling:false, crumbleTime:0, alpha:1 });
+  nextPlatY = GAME_H*0.65;
+
+  for(let i=0;i<12;i++) addPlatform();
+}
+
+function addPlatform(){
+  const gap = gapY(score);
+  nextPlatY -= gap;
+
+  if(score >= 40 && totalPlatformsLanded >= nextFrenzyAt && !frenzyActive){
+    frenzyActive = true;
+    frenzyCount = 3 + Math.floor(Math.random()*3);
+    nextFrenzyAt += 20;
+  }
+
+  let pl;
+  if(frenzyActive && frenzyCount > 0){
+    const ph = (platforms.length % 2 === 0) ? PHASE.PINK : PHASE.BLUE;
+    pl = genPlatform(nextPlatY - 120 + (Math.random()-0.5)*20, ph, platformWidth(score)*0.9, true);
+    pl.y = (platforms.length>0 ? platforms[platforms.length-1].y : nextPlatY) - 120 - Math.random()*20;
+    frenzyCount--;
+    if(frenzyCount<=0) frenzyActive=false;
+  } else {
+    pl = genPlatform(nextPlatY);
+  }
+  platforms.push(pl);
+}
+
+// ─── Ball ─────────────────────────────────────────────────────────────────────
+function initBall(){
+  const startPlat = platforms[0];
+  ball = {
+    x: GAME_W/2,
+    y: startPlat.y - BALL_R,
+    vy: BOUNCE_VY * 0.7,
+    r: BALL_R,
+    onGround: false,
+    trail: []
+  };
+  startPlat.landed = true;
+}
+
+// ─── Game init ────────────────────────────────────────────────────────────────
+function initGame(){
+  score = 0; combo = 0; mult = 1;
+  phase = PHASE.PINK;
+  timeSinceFlip = 999;
+  hueShift = 0;
+  lastDeathReason = '';
+  totalPlatformsLanded = 0;
+  frenzyActive = false; frenzyCount = 0;
+  particles.forEach(p=>p.alive=false);
+  initPlatforms();
+  initBall();
+  camY = ball.y - GAME_H * 0.45;
+  camYTarget = camY;
+  shakeTime = 0; shakeMag = 0;
+  lastCombo = 0;
+}
+
+// ─── Flip ─────────────────────────────────────────────────────────────────────
+function doFlip(){
+  if(state !== 'playing') return;
+  phase = phase === PHASE.PINK ? PHASE.BLUE : PHASE.PINK;
+  timeSinceFlip = 0;
+  spawnFlipBurst(ball.x, ball.y, phase);
+  addShake(3, 0.15);
+}
+
+// ─── Physics / update ─────────────────────────────────────────────────────────
+function perfectWindow(){
+  return Math.max(0.10, Math.min(0.22, 0.22 - score*0.0012));
+}
+
+function update(dt){
+  timeSinceFlip += dt;
+  hueShift += dt * 20;
+  if(hueShift > 360) hueShift -= 360;
+
+  // Ball physics
+  ball.vy += GRAVITY * dt;
+  const prevY = ball.y;
+  ball.y += ball.vy * dt;
+
+  // Trail
+  ball.trail.push({x:ball.x, y:ball.y});
+  if(ball.trail.length > 8) ball.trail.shift();
+
+  // Collision (only falling)
+  if(ball.vy > 0){
+    for(let i=0;i<platforms.length;i++){
+      const pl = platforms[i];
+      if(pl.crumbling) continue;
+      // horizontal bounds with forgiveness
+      const hw = pl.w/2 + 6;
+      const cx = pl.x + pl.w/2;
+      if(Math.abs(ball.x - cx) > hw) continue;
+      // vertical crossing
+      if(prevY - BALL_R <= pl.y && ball.y + BALL_R >= pl.y){
+        // Check phase
+        if(pl.phase !== phase){
+          // Ghost miss - wrong phase
+          spawnGhostShatter(ball.x, pl.y, pl.phase);
+          continue; // pass through
+        }
+        // Cracked platform
+        if(pl.cracked){
+          const isPerfect = timeSinceFlip <= perfectWindow();
+          if(!isPerfect){
+            // crumble and fall through
+            pl.crumbling = true; pl.crumbleTime = 0.4;
+            spawnCrumble(cx, pl.y, pl.w);
+            addShake(5, 0.25);
+            lastDeathReason = 'Cracked!';
+            // ball falls through - don't bounce
+            continue;
+          }
+        }
+        // Land!
+        ball.y = pl.y - BALL_R;
+        ball.vy = BOUNCE_VY;
+        pl.landed = true;
+
+        // Magnetism toward center
+        const pull = (cx - ball.x) * 0.3;
+        ball.x += pull;
+
+        // Scoring
+        const isPerfect = timeSinceFlip <= perfectWindow();
+        score++;
+        totalPlatformsLanded++;
+        if(isPerfect){
+          combo++;
+          mult = Math.min(6, 1 + Math.floor(combo/5));
+          score += mult-1;
+          lastCombo = combo;
+          lastPerfectTime = performance.now();
+          spawnPerfectFlash(ball.x, ball.y);
+          addShake(4, 0.2);
+        } else {
+          combo = 0;
+          mult = 1;
+          addShake(2, 0.1);
+        }
+        if(score > best){ best = score; saveBest(); }
+
+        // Frenzy trigger check
+        if(score >= 40 && totalPlatformsLanded >= nextFrenzyAt){
+          frenzyActive = true;
+          frenzyCount = 3 + Math.floor(Math.random()*3);
+          nextFrenzyAt += 20;
+        }
+
+        break;
+      }
+    }
+  }
+
+  // Fell off bottom (death)
+  if(ball.y - camY > GAME_H + 100){
+    if(!lastDeathReason) lastDeathReason = 'Missed Flip!';
+    endGame();
+    return;
+  }
+
+  // Camera follow
+  camYTarget = ball.y - GAME_H * 0.45;
+  camY += (camYTarget - camY) * Math.min(1, dt*6);
+
+  // Remove old platforms + add new ones
+  platforms = platforms.filter(pl=>{
+    if(pl.crumbling){
+      pl.crumbleTime -= dt;
+      if(pl.crumbleTime <= 0) return false;
+    }
+    return pl.y - camY < GAME_H + 200;
+  });
+  while(platforms.length < 16) addPlatform();
+
+  // Shake
+  if(shakeTime > 0) shakeTime -= dt;
+  else shakeTime = 0;
+}
+
+function addShake(mag, time){
+  if(mag > shakeMag){ shakeMag = mag; }
+  shakeTime = Math.max(shakeTime, time);
+}
+
+function endGame(){
+  state = 'gameover';
+  addShake(12, 0.5);
+  spawnCrumble(ball.x, ball.y, 80);
+  showShareButton();
+}
+
+// ─── Input ────────────────────────────────────────────────────────────────────
+function handleInput(){
+  if(state === 'start'){
+    state = 'playing';
+    initGame();
+  } else if(state === 'playing'){
+    doFlip();
+  } else if(state === 'gameover'){
+    state = 'playing';
+    initGame();
+  }
+}
+
+canvas.addEventListener('pointerdown', e=>{ e.preventDefault(); handleInput(); });
+window.addEventListener('keydown', e=>{
+  if(e.code==='Space'||e.code==='Enter'){ e.preventDefault(); handleInput(); }
+});
+
+// ─── Draw helpers ────────────────────────────────────────────────────────────
+function roundRect(x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.lineTo(x+w-r,y);
+  ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+  ctx.lineTo(x+w,y+h-r);
+  ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  ctx.lineTo(x+r,y+h);
+  ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+  ctx.lineTo(x,y+r);
+  ctx.quadraticCurveTo(x,y,x+r,y);
+  ctx.closePath();
+}
+
+function drawBackground(){
+  const grad = ctx.createLinearGradient(0,0,0,GAME_H);
+  const h1 = (hueShift) % 360;
+  const h2 = (hueShift+40) % 360;
+  grad.addColorStop(0,`hsl(${h1},30%,8%)`);
+  grad.addColorStop(1,`hsl(${h2},25%,12%)`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0,0,GAME_W,GAME_H);
+}
+
+function drawPlatform(pl){
+  const screenY = pl.y - camY;
+  if(screenY < -50 || screenY > GAME_H+50) return;
+  const isCurrentPhase = pl.phase === phase;
+  const col = PHASE_COLOR[pl.phase];
+  const darkCol = PHASE_DARK[pl.phase];
+  const alpha = pl.crumbling ? pl.crumbleTime / 0.4 : 1;
+
+  ctx.globalAlpha = isCurrentPhase ? alpha : alpha * 0.28;
+
+  // Shadow/glow
+  if(isCurrentPhase){
+    ctx.shadowColor = PHASE_GLOW[pl.phase];
+    ctx.shadowBlur = 12;
+  }
+
+  // Body
+  roundRect(pl.x, screenY, pl.w, pl.h, 6);
+  if(pl.cracked){
+    // Striped cracked appearance
+    const grad = ctx.createLinearGradient(pl.x, screenY, pl.x+pl.w, screenY);
+    grad.addColorStop(0, col);
+    grad.addColorStop(0.45, darkCol);
+    grad.addColorStop(0.5, col);
+    grad.addColorStop(1, darkCol);
+    ctx.fillStyle = grad;
+  } else {
+    ctx.fillStyle = col;
+  }
+  ctx.fill();
+
+  // Crack lines
+  if(pl.cracked){
+    ctx.strokeStyle = darkCol;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    const cx = pl.x + pl.w*0.35;
+    ctx.moveTo(cx, screenY); ctx.lineTo(cx+6, screenY+pl.h);
+    ctx.stroke();
+    ctx.beginPath();
+    const cx2 = pl.x + pl.w*0.65;
+    ctx.moveTo(cx2, screenY); ctx.lineTo(cx2-4, screenY+pl.h);
+    ctx.stroke();
+  }
+
+  // Shine strip
+  ctx.fillStyle = 'rgba(255,255,255,0.18)';
+  roundRect(pl.x+6, screenY+2, pl.w-12, 4, 2);
+  ctx.fill();
+
+  ctx.shadowBlur = 0;
+  ctx.globalAlpha = 1;
+}
+
+function drawBall(){
+  const bx = ball.x, by = ball.y - camY;
+
+  // Trail
+  for(let i=0;i<ball.trail.length;i++){
+    const t = ball.trail[i];
+    const alpha = (i+1)/ball.trail.length * 0.25;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = PHASE_COLOR[phase];
+    ctx.beginPath();
+    ctx.arc(t.x, t.y - camY, BALL_R*(0.5+0.5*(i/ball.trail.length)), 0, Math.PI*2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // Glow
+  ctx.shadowColor = PHASE_GLOW[phase];
+  ctx.shadowBlur = 20;
+
+  // Ball body - lollipop style
+  const grad = ctx.createRadialGradient(bx-4, by-4, 2, bx, by, BALL_R);
+  grad.addColorStop(0, '#fff');
+  grad.addColorStop(0.3, PHASE_COLOR[phase]);
+  grad.addColorStop(1, PHASE_GLOW[phase]);
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(bx, by, BALL_R, 0, Math.PI*2);
+  ctx.fill();
+
+  // Swirl
+  ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(bx, by, BALL_R*0.55, -0.5, Math.PI*0.8);
+  ctx.stroke();
+
+  ctx.shadowBlur = 0;
+}
+
+function drawHUD(){
+  // Score
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 32px Segoe UI, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(score, GAME_W/2, 48);
+
+  // Best
+  ctx.font = '13px Segoe UI, sans-serif';
+  ctx.fillStyle = '#ccc';
+  ctx.fillText('BEST ' + best, GAME_W/2, 68);
+
+  // Multiplier
+  if(mult > 1){
+    ctx.font = 'bold 16px Segoe UI, sans-serif';
+    ctx.fillStyle = '#ffe066';
+    ctx.textAlign = 'left';
+    ctx.fillText('×' + mult, 14, 48);
+  }
+
+  // Combo
+  if(combo > 0){
+    ctx.font = 'bold 13px Segoe UI, sans-serif';
+    ctx.fillStyle = PHASE_COLOR[phase];
+    ctx.textAlign = 'left';
+    ctx.fillText('COMBO ' + combo, 14, 66);
+  }
+
+  // Perfect flash
+  const now = performance.now();
+  const sincePerfect = (now - lastPerfectTime)/1000;
+  if(sincePerfect < 0.6){
+    const alpha = 1 - sincePerfect/0.6;
+    const scale = 1 + sincePerfect*1.5;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.font = `bold ${Math.round(22*scale)}px Segoe UI, sans-serif`;
+    ctx.fillStyle = '#ffe066';
+    ctx.textAlign = 'center';
+    ctx.fillText('PERFECT!', GAME_W/2, GAME_H*0.35);
+    ctx.restore();
+  }
+
+  // Phase indicator
+  const phaseLabel = phase === PHASE.PINK ? 'PINK' : 'BLUE';
+  ctx.font = 'bold 11px Segoe UI, sans-serif';
+  ctx.fillStyle = PHASE_COLOR[phase];
+  ctx.textAlign = 'right';
+  ctx.fillText(phaseLabel, GAME_W-14, 48);
+
+  ctx.textAlign = 'left';
+}
+
+function drawStartScreen(){
+  // Overlay
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(0,0,GAME_W,GAME_H);
+
+  // Title
+  ctx.textAlign = 'center';
+  ctx.shadowColor = '#ff3399';
+  ctx.shadowBlur = 30;
+  ctx.font = 'bold 52px Segoe UI, sans-serif';
+  ctx.fillStyle = '#ff6eb4';
+  ctx.fillText('Lollipop', GAME_W/2, GAME_H*0.38);
+  ctx.fillStyle = '#6eb4ff';
+  ctx.fillText('Leap', GAME_W/2, GAME_H*0.38+58);
+  ctx.shadowBlur = 0;
+
+  // Subtitle
+  ctx.font = '16px Segoe UI, sans-serif';
+  ctx.fillStyle = '#ddd';
+  ctx.fillText('Flip phases. Land in sync.', GAME_W/2, GAME_H*0.38+100);
+
+  // Tap prompt blink
+  const blink = Math.sin(performance.now()/400) > 0;
+  if(blink){
+    ctx.font = 'bold 20px Segoe UI, sans-serif';
+    ctx.fillStyle = '#fff';
+    ctx.fillText('TAP TO START', GAME_W/2, GAME_H*0.75);
+  }
+
+  // Instructions
+  ctx.font = '13px Segoe UI, sans-serif';
+  ctx.fillStyle = '#aaa';
+  ctx.fillText('Pink platforms ↔ Blue platforms', GAME_W/2, GAME_H*0.83);
+  ctx.fillText('Tap/Space to flip your phase', GAME_W/2, GAME_H*0.83+20);
+
+  ctx.textAlign = 'left';
+}
+
+function drawGameOver(){
+  ctx.fillStyle = 'rgba(0,0,0,0.65)';
+  ctx.fillRect(0,0,GAME_W,GAME_H);
+
+  ctx.textAlign = 'center';
+
+  // Death reason
+  ctx.font = 'bold 22px Segoe UI, sans-serif';
+  ctx.fillStyle = '#ff6666';
+  ctx.shadowColor = '#ff0000';
+  ctx.shadowBlur = 10;
+  ctx.fillText(lastDeathReason || 'Game Over', GAME_W/2, GAME_H*0.32);
+  ctx.shadowBlur = 0;
+
+  ctx.font = 'bold 18px Segoe UI, sans-serif';
+  ctx.fillStyle = '#ccc';
+  ctx.fillText('GAME OVER', GAME_W/2, GAME_H*0.32+30);
+
+  // Score
+  ctx.font = 'bold 64px Segoe UI, sans-serif';
+  ctx.fillStyle = '#fff';
+  ctx.fillText(score, GAME_W/2, GAME_H*0.50);
+
+  ctx.font = '16px Segoe UI, sans-serif';
+  ctx.fillStyle = '#aaa';
+  ctx.fillText('SCORE', GAME_W/2, GAME_H*0.50+22);
+
+  // Best
+  ctx.font = 'bold 28px Segoe UI, sans-serif';
+  ctx.fillStyle = '#ffe066';
+  ctx.fillText('BEST  ' + best, GAME_W/2, GAME_H*0.62);
+
+  // Combo
+  if(lastCombo > 1){
+    ctx.font = '15px Segoe UI, sans-serif';
+    ctx.fillStyle = PHASE_COLOR[PHASE.PINK];
+    ctx.fillText('Best Combo: ' + lastCombo, GAME_W/2, GAME_H*0.62+28);
+  }
+
+  // Retry
+  const blink = Math.sin(performance.now()/400) > 0;
+  if(blink){
+    ctx.font = 'bold 20px Segoe UI, sans-serif';
+    ctx.fillStyle = '#fff';
+    ctx.fillText('TAP TO RETRY', GAME_W/2, GAME_H*0.78);
+  }
+
+  ctx.textAlign = 'left';
+}
+
+// ─── Render ───────────────────────────────────────────────────────────────────
+function render(){
+  // Shake offset
+  let sx=0, sy=0;
+  if(shakeTime > 0){
+    const mag = shakeMag * (shakeTime / 0.5);
+    sx = (Math.random()-0.5)*mag*2;
+    sy = (Math.random()-0.5)*mag*2;
+  }
+
+  ctx.save();
+  ctx.translate(sx, sy);
+
+  drawBackground();
+
+  if(state === 'start'){
+    // Draw some platforms for aesthetics
+    for(let i=0;i<platforms.length;i++) drawPlatform(platforms[i]);
+    drawStartScreen();
+  } else {
+    for(let i=0;i<platforms.length;i++) drawPlatform(platforms[i]);
+    drawParticles();
+    drawBall();
+    drawHUD();
+    if(state==='gameover') drawGameOver();
+  }
+
+  ctx.restore();
+}
+
+// ─── Loop ─────────────────────────────────────────────────────────────────────
+let lastTime = 0;
+let accumulator = 0;
+
+function loop(ts){
+  requestAnimationFrame(loop);
+  const raw = (ts - lastTime) / 1000;
+  lastTime = ts;
+  const dt = Math.min(raw, 0.05); // clamp to avoid spiral
+
+  if(state === 'playing'){
+    accumulator += dt;
+    while(accumulator >= DT){
+      update(DT);
+      accumulator -= DT;
+    }
+  }
+
+  render();
+}
+
+// ─── Start loop ───────────────────────────────────────────────────────────────
+// Init platforms for start screen visuals
+initGame();
+state = 'start';
+requestAnimationFrame(ts=>{ lastTime=ts; requestAnimationFrame(loop); });
+
+// ─── Share button ─────────────────────────────────────────────────────────────
+const shareBtn = document.getElementById('share-btn');
+
+function showShareButton(){
+  shareBtn.style.display = 'inline-block';
+}
+
+shareBtn.addEventListener('click', ()=>{
+  const url = `https://balinti.github.io/lollipop-leap/?score=${score}&best=${best}&combo=${lastCombo}`;
+  const text = `I scored ${score} in Lollipop Leap! Beat me: ${url}`;
+  if(navigator.share){
+    navigator.share({ title:'Lollipop Leap', text, url }).catch(()=>{});
+  } else {
+    navigator.clipboard.writeText(text).then(()=>{
+      shareBtn.textContent = 'Link Copied!';
+      setTimeout(()=>{ shareBtn.textContent = '🎉 Challenge a Friend'; }, 2000);
+    }).catch(()=>{
+      prompt('Copy this link:', url);
+    });
+  }
+});
+
+})();
+</script>
+</body>
+</html>

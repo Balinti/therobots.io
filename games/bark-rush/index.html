@@ -1,0 +1,969 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Bark Rush - Free HTML5 Game</title>
+  <meta name="description" content="Play Bark Rush - Swipe up to scale towering tree trunks as your climbing speed accelerates over time.">
+  <meta name="theme-color" content="#1a0f05">
+  <link rel="canonical" href="https://balinti.github.io/bark-rush/">
+  <meta property="og:title" content="Bark Rush - Free HTML5 Game">
+  <meta property="og:description" content="Play Bark Rush - Swipe up to scale towering tree trunks as your climbing speed accelerates over time.">
+  <meta property="og:url" content="https://balinti.github.io/bark-rush/">
+  <meta property="og:image" content="https://balinti.github.io/bark-rush/og-image.png">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Bark Rush - Free HTML5 Game">
+  <meta name="twitter:description" content="Play Bark Rush - Swipe up to scale towering tree trunks as your climbing speed accelerates over time.">
+  <meta name="twitter:image" content="https://balinti.github.io/bark-rush/og-image.png">
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: linear-gradient(160deg, #0d0803 0%, #1a1005 40%, #0a0f06 100%);
+      display: flex; flex-direction: column; align-items: center;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      overflow-x: hidden; overflow-y: auto;
+      color: #c8b89a;
+    }
+    #wrap {
+      position: relative;
+      width: min(420px, 100vw);
+      height: min(750px, 100dvh);
+      flex-shrink: 0;
+      border: 1px solid rgba(180,130,60,0.18);
+      box-shadow: 0 0 40px rgba(120,80,20,0.22), inset 0 0 20px rgba(0,0,0,0.5);
+      border-radius: 4px;
+      overflow: hidden;
+      background: #0d0803;
+    }
+    canvas { display: block; width: 100%; height: 100%; }
+    #challenge-banner {
+      position: absolute; top: 0; left: 0; right: 0;
+      background: rgba(200,140,20,0.88);
+      color: #fff; font-size: 13px; font-weight: 700;
+      text-align: center; padding: 6px 8px;
+      letter-spacing: 0.04em; z-index: 20;
+      pointer-events: none;
+      display: none;
+    }
+    #seo-section {
+      width: min(420px, 100vw);
+      padding: 24px 20px 40px;
+      color: #7a6a52;
+      font-size: 13px;
+      line-height: 1.7;
+    }
+    #seo-section h2 { color: #a08050; font-size: 15px; margin-bottom: 8px; margin-top: 18px; }
+    #seo-section h2:first-child { margin-top: 0; }
+    #seo-section p { margin-bottom: 6px; }
+    #seo-section ul { padding-left: 18px; }
+    #seo-section li { margin-bottom: 4px; }
+  </style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <div id="challenge-banner"></div>
+</div>
+<section id="seo-section">
+  <h2>How to Play Bark Rush</h2>
+  <p>You're a squirrel clinging to a towering tree trunk. The forest rushes past as you climb faster and faster — tap or press Space to swap sides of the trunk and dodge obstacles.</p>
+  <h2>Controls</h2>
+  <ul>
+    <li><strong>Tap / Click</strong> — swap left/right side of the trunk</li>
+    <li><strong>Space or Enter</strong> — swap side (keyboard)</li>
+  </ul>
+  <h2>Obstacles &amp; Pickups</h2>
+  <ul>
+    <li><strong>Branch</strong> — static hazard. Be on the opposite side to dodge.</li>
+    <li><strong>Woodpecker</strong> — moving hazard with a "peek" warning before it strikes.</li>
+    <li><strong>Sap</strong> — slows you down and accumulates. Stay too long and it's game over.</li>
+    <li><strong>Bark Chip (gold)</strong> — collect for bonus score and a temporary multiplier boost.</li>
+    <li><strong>Bone</strong> — grants a one-hit shield. Absorbs one collision but breaks your streak.</li>
+  </ul>
+  <h2>Scoring Tips</h2>
+  <ul>
+    <li>Build a streak of clean passes to unlock x2, x3, x4 multipliers.</li>
+    <li>Near-misses reward bonus points and a "CLOSE!" popup.</li>
+    <li>The game speeds up over time — stay focused and react fast!</li>
+    <li>Collect bark chips to temporarily add +1 multiplier tier.</li>
+  </ul>
+</section>
+<script>
+'use strict';
+// ── Helpers ──────────────────────────────────────────────────────────────────
+const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+const lerp  = (a,b,t)=>a+(b-a)*t;
+const rand  = (a,b)=>a+Math.random()*(b-a);
+const randInt=(a,b)=>Math.floor(rand(a,b+1));
+const ease  = t=>t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;
+const PI2   = Math.PI*2;
+
+// ── Canvas setup ─────────────────────────────────────────────────────────────
+const wrap   = document.getElementById('wrap');
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+let W=0, H=0, DPR=1;
+
+function resizeCanvas(){
+  DPR = Math.min(window.devicePixelRatio||1, 2.5);
+  W   = wrap.clientWidth;
+  H   = wrap.clientHeight;
+  canvas.width  = W * DPR;
+  canvas.height = H * DPR;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+// ── Challenge banner ──────────────────────────────────────────────────────────
+const banner = document.getElementById('challenge-banner');
+let challengeScore = 0;
+(function(){
+  const p = new URLSearchParams(location.search);
+  const c = parseInt(p.get('challenge'));
+  if(c && c>0){ challengeScore=c; banner.textContent=`Can you beat ${c.toLocaleString()}? Challenge accepted!`; banner.style.display='block'; }
+})();
+
+// ── High score ────────────────────────────────────────────────────────────────
+const HS_KEY = 'barkRushHighScore';
+let highScore = parseInt(localStorage.getItem(HS_KEY)||'0')||0;
+function saveHS(v){ if(v>highScore){ highScore=v; localStorage.setItem(HS_KEY,String(v)); } }
+
+// ── State machine ─────────────────────────────────────────────────────────────
+let STATE = 'start'; // start | playing | gameover
+let retryLock = false;
+
+// ── Particles ─────────────────────────────────────────────────────────────────
+const particles = [];
+function spawnParticles(x,y,count,opts={}){
+  for(let i=0;i<count;i++){
+    const angle = rand(0,PI2);
+    const spd   = rand(opts.spdMin||60, opts.spdMax||220);
+    particles.push({
+      x,y,
+      vx: Math.cos(angle)*spd,
+      vy: Math.sin(angle)*spd,
+      life: 1, decay: rand(opts.decayMin||1.2, opts.decayMax||2.8),
+      r: rand(opts.rMin||2, opts.rMax||6),
+      color: opts.color || `hsl(${rand(25,50)},70%,60%)`,
+      gravity: opts.gravity!==undefined?opts.gravity:180,
+      trail: !!opts.trail,
+    });
+  }
+}
+
+// ── Shake system ─────────────────────────────────────────────────────────────
+let trauma = 0;
+function addTrauma(t){ trauma = clamp(trauma+t,0,1); }
+function shakeOffset(){
+  const s = trauma*trauma;
+  return { x: rand(-1,1)*s*14, y: rand(-1,1)*s*6 };
+}
+
+// ── Freeze system ─────────────────────────────────────────────────────────────
+let freezeTimer = 0;
+function addFreeze(ms){ freezeTimer = Math.max(freezeTimer, ms/1000); }
+
+// ── Popup texts ──────────────────────────────────────────────────────────────
+const popups = [];
+function spawnPopup(text,x,y,opts={}){
+  popups.push({ text, x, y, life:1, decay: opts.decay||1.8, color: opts.color||'#ffe87a', size: opts.size||18 });
+}
+
+// ── Theme hue ─────────────────────────────────────────────────────────────────
+let themeHue = 28;
+
+// ── Game state ────────────────────────────────────────────────────────────────
+let player, objects, score, multiplier, streak, boostTimer, shield;
+let scrollSpeed, spawnTimer, spawnInterval, diffTime;
+let deathReason = '';
+let sapHold = 0;    // seconds stuck in sap
+const SAP_DEATH = 1.35;
+
+// Lane layout constants (computed relative to W/H at init)
+function TRUNK_X()  { return W*0.5; }
+function TRUNK_W()  { return W*0.22; }
+function LANE_L()   { return TRUNK_X()-TRUNK_W()*0.5-W*0.08; }
+function LANE_R()   { return TRUNK_X()+TRUNK_W()*0.5+W*0.08; }
+function PLAYER_Y() { return H*0.72; }
+
+function initGame(){
+  player = {
+    lane: 0,       // -1=left, 1=right
+    x: LANE_L(),
+    y: PLAYER_Y(),
+    r: 14,
+    swapping: false,
+    swapT: 0,
+    swapFrom: 0,
+    swapTo: 0,
+    squash: 1,
+    stretch: 1,
+    bobPhase: 0,
+  };
+  player.lane = -1;
+  player.x = LANE_L();
+  player.swapFrom = LANE_L();
+  player.swapTo   = LANE_L();
+
+  objects      = [];
+  score        = 0;
+  multiplier   = 1;
+  streak       = 0;
+  boostTimer   = 0;
+  shield       = 0;
+  scrollSpeed  = 160;
+  spawnTimer   = 0;
+  spawnInterval= 1.6;
+  diffTime     = 0;
+  sapHold      = 0;
+  deathReason  = '';
+  particles.length = 0;
+  popups.length    = 0;
+  trauma           = 0;
+  freezeTimer      = 0;
+}
+
+// ── Multiplier helpers ────────────────────────────────────────────────────────
+function getMultiplier(){
+  const base = clamp(Math.floor(streak/5)+1, 1, 4);
+  return clamp(base+(boostTimer>0?1:0), 1, 4);
+}
+const multColors = ['#fff','#ffe066','#ff9933','#ff3366'];
+
+// ── Pattern / spawner ─────────────────────────────────────────────────────────
+let lastLane = -1;  // track last obstacle lane for variety
+
+function spawnObject(){
+  const t  = diffTime;
+  const rng= Math.random();
+  const y  = -60;
+
+  // Increase complexity with time
+  const branchW   = clamp(0.55 - t*0.004, 0.28, 0.55);
+  const peckerP   = clamp(0.10 + t*0.006, 0.10, 0.32);
+  const sapP      = clamp(0.08 + t*0.004, 0.08, 0.22);
+  const chipP     = clamp(0.20 - t*0.002, 0.10, 0.20);
+  // bone: fixed 0.06
+  const boneP     = 0.06;
+
+  // choose type
+  let type;
+  if(rng < branchW)          type='branch';
+  else if(rng < branchW+peckerP) type='woodpecker';
+  else if(rng < branchW+peckerP+sapP) type='sap';
+  else if(rng < branchW+peckerP+sapP+chipP) type='chip';
+  else if(rng < branchW+peckerP+sapP+chipP+boneP) type='bone';
+  else type='branch';
+
+  // pick lane (try to alternate for fairness)
+  let lane;
+  if(type==='chip'||type==='bone'){
+    lane = Math.random()<0.5?-1:1;
+  } else {
+    // avoid same lane twice in a row for branches
+    lane = (lastLane===1)?-1:(lastLane===-1?1:(Math.random()<0.5?-1:1));
+    if(type!=='sap') lastLane=lane;
+  }
+
+  const cx = lane===-1?LANE_L():LANE_R();
+  const obj = { type, lane, x: cx, y, vy: 0, life:1, lane0:lane };
+
+  if(type==='woodpecker'){
+    obj.phase    = 'peek'; // peek → strike
+    obj.peekTimer= rand(0.55,1.0);
+    obj.peekSide = lane;       // the side it commits to
+    obj.strikeX  = cx;
+    // pecker starts on opposite side then peeks in
+    obj.x        = lane===-1?LANE_R():LANE_L();
+    obj.dx       = 0;
+    obj.speed    = 0;
+  }
+  if(type==='sap'){
+    obj.w = W*0.06;
+    obj.h = 28;
+    obj.sapAlpha = 0.72;
+  }
+  if(type==='branch'){
+    obj.w = TRUNK_W()*1.6 + W*0.18;
+    obj.h = 18;
+  }
+
+  objects.push(obj);
+}
+
+// ── Collision helper ──────────────────────────────────────────────────────────
+function circleRect(cx,cy,cr, rx,ry,rw,rh){
+  const nx = clamp(cx, rx, rx+rw);
+  const ny = clamp(cy, ry, ry+rh);
+  return (cx-nx)**2+(cy-ny)**2 < cr*cr;
+}
+function circleDist(ax,ay,bx,by){ return Math.hypot(ax-bx,ay-by); }
+
+// ── Input ─────────────────────────────────────────────────────────────────────
+function doAction(){
+  if(STATE==='start'){
+    STATE='playing';
+    initGame();
+    banner.style.display='none';
+    return;
+  }
+  if(STATE==='gameover'){
+    if(!retryLock){ STATE='playing'; initGame(); }
+    return;
+  }
+  if(STATE==='playing'){ swapLane(); }
+}
+
+function swapLane(){
+  if(player.swapping) return;
+  player.swapping = true;
+  player.swapT    = 0;
+  player.swapFrom = player.x;
+  player.swapTo   = player.lane===-1?LANE_R():LANE_L();
+  player.lane     = player.lane===-1?1:-1;
+  player.squash   = 0.7;
+  player.stretch  = 1.35;
+}
+
+// pointer
+wrap.addEventListener('pointerdown', e=>{
+  e.preventDefault();
+  doAction();
+}, {passive:false});
+
+// keyboard
+document.addEventListener('keydown', e=>{
+  if(e.code==='Space'||e.code==='Enter'){ e.preventDefault(); doAction(); }
+});
+
+// ── Share / Challenge ─────────────────────────────────────────────────────────
+function buildShareURL(sc){
+  const base = 'https://balinti.github.io/bark-rush/';
+  return `${base}?challenge=${sc}`;
+}
+function doShare(sc){
+  const url  = buildShareURL(sc);
+  const text = `I scored ${sc.toLocaleString()} in Bark Rush! Can you beat me?`;
+  if(navigator.share){
+    navigator.share({title:'Bark Rush',text,url}).catch(()=>{});
+  } else {
+    navigator.clipboard.writeText(url+'\n'+text).catch(()=>{
+      prompt('Copy this challenge link:',url);
+    });
+    spawnPopup('Link copied!', W*0.5, H*0.5, {color:'#7ff',decay:1.4,size:16});
+  }
+}
+
+// ── Update ────────────────────────────────────────────────────────────────────
+let lastTime = 0;
+
+function update(ts){
+  const rawDt = Math.min((ts-lastTime)/1000, 0.05);
+  lastTime = ts;
+  if(STATE!=='playing'){ themeHue=(themeHue+8*rawDt)%360; return; }
+
+  if(freezeTimer>0){ freezeTimer=Math.max(0,freezeTimer-rawDt); return; }
+  const dt = rawDt;
+
+  themeHue = (themeHue+6*dt)%360;
+  trauma   = Math.max(0, trauma-dt*1.6);
+  diffTime+= dt;
+
+  // Difficulty ramp
+  scrollSpeed = clamp(160 + diffTime*14, 160, 520);
+  spawnInterval = clamp(1.6 - diffTime*0.022, 0.55, 1.6);
+
+  // Boost timer
+  boostTimer = Math.max(0, boostTimer-dt);
+  multiplier = getMultiplier();
+
+  // Score by distance
+  score += scrollSpeed*dt*multiplier*0.02;
+
+  // ── Player swap animation ──────────────────────────────────────────────────
+  player.bobPhase += dt*4.5;
+  if(player.swapping){
+    player.swapT += dt*7.5;
+    const t2 = clamp(player.swapT,0,1);
+    player.x = lerp(player.swapFrom, player.swapTo, ease(t2));
+    if(t2>=1){ player.swapping=false; player.squash=1.2; player.stretch=0.85; }
+  }
+  player.squash  = lerp(player.squash,  1, dt*12);
+  player.stretch = lerp(player.stretch, 1, dt*12);
+  player.y = PLAYER_Y() + Math.sin(player.bobPhase)*2.5;
+
+  // ── Spawn ──────────────────────────────────────────────────────────────────
+  spawnTimer-=dt;
+  if(spawnTimer<=0){ spawnObject(); spawnTimer=spawnInterval*(0.75+Math.random()*0.5); }
+
+  // ── Update objects ─────────────────────────────────────────────────────────
+  let inSap = false;
+  for(let i=objects.length-1;i>=0;i--){
+    const o = objects[i];
+
+    if(o.type==='woodpecker'){
+      if(o.phase==='peek'){
+        o.y+=scrollSpeed*dt;
+        o.peekTimer-=dt;
+        // lerp to target side with offset
+        const peekX = o.strikeX + (o.lane===-1?-22:22);
+        o.x = lerp(o.x, peekX, dt*5);
+        if(o.peekTimer<=0){ o.phase='strike'; o.speed=scrollSpeed*0.55+220; }
+      } else {
+        o.y+=scrollSpeed*dt;
+        o.x = lerp(o.x, o.strikeX, dt*9);
+      }
+    } else if(o.type==='sap'){
+      o.y+=scrollSpeed*dt*0.55; // sap is sluggish
+    } else {
+      o.y+=scrollSpeed*dt;
+    }
+
+    if(o.y>H+80){ objects.splice(i,1); continue; }
+
+    const px=player.x, py=player.y, pr=player.r;
+
+    // ── Collision ────────────────────────────────────────────────────────────
+    if(o.type==='branch'){
+      const bx=o.x-o.w*0.5, by=o.y-o.h*0.5;
+      if(circleRect(px,py,pr, bx,by,o.w,o.h)){
+        if(player.lane===o.lane || true){ // branch occupies the lane it's on
+          // Check if player is actually on same side
+          const playerOnSide = player.lane===o.lane;
+          if(playerOnSide){
+            if(shield>0){
+              shield--;
+              streak=0;
+              addTrauma(0.45);
+              addFreeze(90);
+              spawnParticles(px,py,10,{color:'#a0d0ff',spdMin:80,spdMax:240});
+              spawnPopup('SHIELD!',px,py-30,{color:'#a0d0ff',decay:1.4});
+              objects.splice(i,1);
+            } else {
+              killPlayer('Hit a branch!');
+            }
+            continue;
+          }
+        }
+      }
+    }
+
+    if(o.type==='woodpecker' && o.phase==='strike'){
+      const d = circleDist(px,py,o.x,o.y);
+      if(d < pr+12){
+        if(shield>0){
+          shield--;
+          streak=0;
+          addTrauma(0.5);
+          addFreeze(100);
+          spawnParticles(px,py,12,{color:'#ffe',spdMin:100,spdMax:280,rMin:2,rMax:5});
+          spawnPopup('SHIELD!',px,py-30,{color:'#a0d0ff',decay:1.4});
+          objects.splice(i,1);
+        } else {
+          killPlayer('Got pecked!');
+        }
+        continue;
+      }
+      // near-miss
+      if(d < pr+32 && d >= pr+12){
+        const nm = Math.max(0,1-(d-pr-12)/20);
+        if(nm>0.3){
+          score += 40*multiplier*nm;
+          addTrauma(0.22);
+          addFreeze(65);
+          streak++;
+          spawnPopup('CLOSE!',px,py-40,{color:'#ff9',decay:1.6,size:15});
+        }
+      }
+    }
+
+    if(o.type==='sap'){
+      const sx=o.x-o.w*0.5, sy=o.y-o.h*0.5;
+      if(circleRect(px,py,pr,sx,sy,o.w,o.h)){
+        inSap=true;
+      }
+    }
+
+    if(o.type==='chip'){
+      const d = circleDist(px,py,o.x,o.y);
+      if(d < pr+13){
+        score += 80*multiplier;
+        boostTimer = 4.5;
+        streak++;
+        addTrauma(0.18);
+        addFreeze(55);
+        spawnParticles(o.x,o.y,14,{color:`hsl(45,95%,65%)`,spdMin:60,spdMax:210,rMin:2,rMax:5});
+        spawnPopup(`+${(80*multiplier).toFixed(0)}`,o.x,o.y-20,{color:'#ffe066',decay:1.5,size:15});
+        spawnPopup('BARK!',px,py-50,{color:`hsl(${themeHue},90%,65%)`,decay:2.0,size:20});
+        objects.splice(i,1);
+        continue;
+      }
+    }
+
+    if(o.type==='bone'){
+      const d = circleDist(px,py,o.x,o.y);
+      if(d < pr+13){
+        shield=1;
+        streak=0;
+        addTrauma(0.15);
+        addFreeze(55);
+        spawnParticles(o.x,o.y,10,{color:'#a0d0ff',spdMin:60,spdMax:160});
+        spawnPopup('SHIELDED!',px,py-45,{color:'#a0d0ff',decay:1.8,size:16});
+        objects.splice(i,1);
+        continue;
+      }
+    }
+
+    // near-miss for branches
+    if(o.type==='branch' && player.lane!==o.lane){
+      const bx=o.x-o.w*0.5, by=o.y-o.h*0.5;
+      // check narrow near-miss range
+      const nearCX=clamp(px,bx,bx+o.w), nearCY=clamp(py,by,by+o.h);
+      const nearD = Math.hypot(px-nearCX,py-nearCY);
+      if(nearD < pr+28 && nearD >= pr){
+        const nm = Math.max(0,1-(nearD-pr)/28);
+        if(nm>0.35 && !o._nearmissed){
+          o._nearmissed=true;
+          score += 30*multiplier;
+          streak++;
+          addTrauma(0.16);
+          addFreeze(55);
+          spawnPopup('CLOSE!',px,py-38,{color:'#ff9',decay:1.5,size:14});
+        }
+      }
+    }
+
+    // Streak clean pass for branches (passed completely)
+    if(o.type==='branch' && o.y > py+50 && !o._passed && player.lane!==o.lane){
+      o._passed=true;
+      streak++;
+    }
+  }
+
+  // Sap mechanics
+  if(inSap){
+    sapHold+=dt*(1.8 - scrollSpeed*0.0007);
+    scrollSpeed*=Math.pow(0.22,dt); // slow effect
+    if(sapHold>=SAP_DEATH){ killPlayer('Stuck in sap!'); return; }
+  } else {
+    sapHold=Math.max(0,sapHold-dt*0.8);
+  }
+
+  // ── Particles ────────────────────────────────────────────────────────────
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    p.x+=p.vx*dt; p.y+=p.vy*dt;
+    p.vy+=p.gravity*dt;
+    p.vx*=Math.pow(0.12,dt);
+    p.life-=p.decay*dt;
+    if(p.life<=0) particles.splice(i,1);
+  }
+
+  // ── Popups ───────────────────────────────────────────────────────────────
+  for(let i=popups.length-1;i>=0;i--){
+    const p=popups[i];
+    p.y-=55*dt;
+    p.life-=p.decay*dt;
+    if(p.life<=0) popups.splice(i,1);
+  }
+}
+
+function killPlayer(reason){
+  deathReason = reason;
+  saveHS(Math.floor(score));
+  addTrauma(1.0);
+  addFreeze(120);
+  const px=player.x, py=player.y;
+  spawnParticles(px,py,30,{spdMin:80,spdMax:360,rMin:3,rMax:9,gravity:220,decayMin:0.8,decayMax:2.0});
+  spawnParticles(px,py,20,{color:'#7bf',spdMin:40,spdMax:180,rMin:2,rMax:5,gravity:90,decayMin:0.6,decayMax:1.6});
+  STATE='gameover';
+  retryLock=true;
+  setTimeout(()=>retryLock=false, 900);
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function drawRoundRect(x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y);
+  ctx.arcTo(x+w,y,x+w,y+r,r); ctx.lineTo(x+w,y+h-r);
+  ctx.arcTo(x+w,y+h,x+w-r,y+h,r); ctx.lineTo(x+r,y+h);
+  ctx.arcTo(x,y+h,x,y+h-r,r); ctx.lineTo(x,y+r);
+  ctx.arcTo(x,y,x+r,y,r); ctx.closePath();
+}
+
+function render(){
+  ctx.clearRect(0,0,W,H);
+
+  const sh = shakeOffset();
+
+  // ── Background ─────────────────────────────────────────────────────────
+  const bg = ctx.createLinearGradient(0,0,0,H);
+  bg.addColorStop(0, `hsl(${themeHue+10},18%,6%)`);
+  bg.addColorStop(1, `hsl(${themeHue-10},12%,9%)`);
+  ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
+
+  // parallax bg lines (fake forest depth)
+  for(let i=0;i<5;i++){
+    const x2 = (W*0.15 + i*(W*0.18)) % W;
+    const alpha = 0.03+i*0.01;
+    ctx.strokeStyle=`rgba(120,80,20,${alpha})`;
+    ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.moveTo(x2,0); ctx.lineTo(x2+W*0.04,H); ctx.stroke();
+  }
+
+  ctx.save();
+  ctx.translate(sh.x, sh.y);
+
+  // ── Trunk ───────────────────────────────────────────────────────────────
+  const tx  = TRUNK_X()-TRUNK_W()*0.5;
+  const tw  = TRUNK_W();
+  // sway
+  const sway = Math.sin(Date.now()*0.0012)*2.5;
+  ctx.save(); ctx.translate(sway,0);
+  // bark texture gradient
+  const trunkGrad = ctx.createLinearGradient(tx,0,tx+tw,0);
+  trunkGrad.addColorStop(0,   `hsl(${themeHue-5},35%,11%)`);
+  trunkGrad.addColorStop(0.35,`hsl(${themeHue},  38%,19%)`);
+  trunkGrad.addColorStop(0.65,`hsl(${themeHue+5},35%,22%)`);
+  trunkGrad.addColorStop(1,   `hsl(${themeHue-5},30%,12%)`);
+  ctx.fillStyle=trunkGrad;
+  ctx.fillRect(tx,0,tw,H);
+  // bark lines
+  for(let j=0;j<7;j++){
+    const ly = (Date.now()*0.04 + j*H/7) % H;
+    ctx.strokeStyle=`rgba(0,0,0,0.22)`;
+    ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(tx,ly); ctx.lineTo(tx+tw,ly+rand(-6,6)); ctx.stroke();
+  }
+  ctx.restore();
+
+  // ── Objects ─────────────────────────────────────────────────────────────
+  for(const o of objects){
+    ctx.save();
+    if(o.type==='branch'){
+      const bx=o.x-o.w*0.5, by=o.y-o.h*0.5;
+      // shadow
+      ctx.fillStyle=`rgba(0,0,0,0.25)`;
+      ctx.fillRect(bx+4,by+4,o.w,o.h);
+      const bGrad=ctx.createLinearGradient(bx,by,bx,by+o.h);
+      bGrad.addColorStop(0,`hsl(${themeHue-8},40%,28%)`);
+      bGrad.addColorStop(1,`hsl(${themeHue-8},38%,18%)`);
+      ctx.fillStyle=bGrad;
+      drawRoundRect(bx,by,o.w,o.h,5); ctx.fill();
+      // bark detail
+      ctx.strokeStyle=`rgba(0,0,0,0.3)`; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(bx+10,by+o.h*0.45); ctx.lineTo(bx+o.w-10,by+o.h*0.55); ctx.stroke();
+      // danger flash
+      const flashA = (Math.sin(Date.now()*0.01)*0.5+0.5)*0.18;
+      ctx.fillStyle=`rgba(255,60,20,${flashA})`;
+      drawRoundRect(bx,by,o.w,o.h,5); ctx.fill();
+    }
+    if(o.type==='woodpecker'){
+      const phase = o.phase;
+      // body
+      const wCol = phase==='peek'?`hsl(${themeHue+30},60%,45%)`:`hsl(0,85%,50%)`;
+      ctx.fillStyle=wCol;
+      ctx.beginPath(); ctx.ellipse(o.x,o.y,9,13,0,0,PI2); ctx.fill();
+      // head
+      ctx.fillStyle=`hsl(0,80%,42%)`;
+      ctx.beginPath(); ctx.ellipse(o.x,o.y-14,7,7,0,0,PI2); ctx.fill();
+      // beak
+      const beakDir = o.lane===-1?-1:1;
+      ctx.fillStyle='#e8c060';
+      ctx.beginPath();
+      ctx.moveTo(o.x,o.y-16);
+      ctx.lineTo(o.x+beakDir*18,o.y-13);
+      ctx.lineTo(o.x,o.y-10);
+      ctx.closePath(); ctx.fill();
+      // peek glow
+      if(phase==='peek'){
+        ctx.strokeStyle=`rgba(255,220,0,0.5)`;
+        ctx.lineWidth=2;
+        ctx.beginPath(); ctx.arc(o.x,o.y,18,0,PI2); ctx.stroke();
+      }
+    }
+    if(o.type==='sap'){
+      const sx=o.x-o.w*0.5, sy=o.y-o.h*0.5;
+      const sapGrad=ctx.createRadialGradient(o.x,o.y,2,o.x,o.y,o.w);
+      sapGrad.addColorStop(0,`rgba(180,130,20,${o.sapAlpha})`);
+      sapGrad.addColorStop(1,`rgba(100,70,5,0)`);
+      ctx.fillStyle=sapGrad;
+      drawRoundRect(sx,sy,o.w,o.h,8); ctx.fill();
+      // drip
+      ctx.fillStyle=`rgba(160,110,10,0.55)`;
+      ctx.beginPath(); ctx.ellipse(o.x,o.y+o.h*0.5+5,4,7,0,0,PI2); ctx.fill();
+    }
+    if(o.type==='chip'){
+      ctx.shadowColor='#ffe066'; ctx.shadowBlur=14;
+      ctx.fillStyle=`hsl(45,95%,62%)`;
+      ctx.beginPath(); ctx.arc(o.x,o.y,10,0,PI2); ctx.fill();
+      ctx.shadowBlur=0;
+      // star hint
+      ctx.fillStyle='rgba(255,255,200,0.8)';
+      ctx.font='bold 10px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText('★',o.x,o.y);
+    }
+    if(o.type==='bone'){
+      ctx.shadowColor='#a0d0ff'; ctx.shadowBlur=12;
+      ctx.strokeStyle='#c8e8ff'; ctx.lineWidth=3;
+      ctx.beginPath();
+      ctx.moveTo(o.x-8,o.y); ctx.lineTo(o.x+8,o.y);
+      ctx.stroke();
+      [[o.x-8,o.y],[o.x+8,o.y]].forEach(([bx2,by2])=>{
+        ctx.fillStyle='#c8e8ff';
+        ctx.beginPath(); ctx.arc(bx2,by2-4,4,0,PI2); ctx.fill();
+        ctx.beginPath(); ctx.arc(bx2,by2+4,4,0,PI2); ctx.fill();
+      });
+      ctx.shadowBlur=0;
+    }
+    ctx.restore();
+  }
+
+  // ── Sap hold indicator ──────────────────────────────────────────────────
+  if(sapHold>0){
+    const ratio=sapHold/SAP_DEATH;
+    const barW=80, barH=6;
+    const bx=player.x-barW*0.5, by=player.y-38;
+    ctx.fillStyle='rgba(0,0,0,0.5)';
+    drawRoundRect(bx,by,barW,barH,3); ctx.fill();
+    const barColor=`hsl(${lerp(40,-10,ratio)},85%,${lerp(55,35,ratio)}%)`;
+    ctx.fillStyle=barColor;
+    drawRoundRect(bx,by,barW*ratio,barH,3); ctx.fill();
+  }
+
+  // ── Player ──────────────────────────────────────────────────────────────
+  if(STATE!=='gameover' || particles.length>0){
+    ctx.save();
+    ctx.translate(player.x, player.y);
+    ctx.scale(player.squash, player.stretch);
+    // body
+    const pCol = shield>0?`hsl(200,80%,65%)`:`hsl(${themeHue+20},65%,55%)`;
+    ctx.shadowColor=pCol; ctx.shadowBlur=18;
+    ctx.fillStyle=pCol;
+    ctx.beginPath(); ctx.arc(0,0,player.r,0,PI2); ctx.fill();
+    // eyes
+    ctx.shadowBlur=0;
+    ctx.fillStyle='#fff';
+    const eyeDir = player.lane===-1?-1:1;
+    ctx.beginPath(); ctx.arc(eyeDir*4,-3,3.5,0,PI2); ctx.fill();
+    ctx.fillStyle='#111';
+    ctx.beginPath(); ctx.arc(eyeDir*4.5,-3,1.8,0,PI2); ctx.fill();
+    // tail
+    ctx.strokeStyle=pCol; ctx.lineWidth=4;
+    const tailX = -eyeDir*9;
+    ctx.beginPath();
+    ctx.moveTo(tailX,0);
+    ctx.quadraticCurveTo(tailX-eyeDir*8,-10+Math.sin(player.bobPhase)*5,tailX-eyeDir*3,-16);
+    ctx.stroke();
+    // shield glow
+    if(shield>0){
+      ctx.strokeStyle='rgba(160,220,255,0.55)'; ctx.lineWidth=2.5;
+      ctx.beginPath(); ctx.arc(0,0,player.r+5,0,PI2); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // ── Particles ────────────────────────────────────────────────────────────
+  for(const p of particles){
+    ctx.globalAlpha=Math.max(0,p.life);
+    ctx.fillStyle=p.color;
+    ctx.beginPath(); ctx.arc(p.x,p.y,p.r*p.life,0,PI2); ctx.fill();
+  }
+  ctx.globalAlpha=1;
+
+  // ── Popups ────────────────────────────────────────────────────────────────
+  for(const p of popups){
+    ctx.globalAlpha=clamp(p.life,0,1);
+    ctx.fillStyle=p.color;
+    ctx.font=`bold ${p.size}px sans-serif`;
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.shadowColor=p.color; ctx.shadowBlur=8;
+    ctx.fillText(p.text, p.x, p.y);
+    ctx.shadowBlur=0;
+  }
+  ctx.globalAlpha=1;
+
+  ctx.restore(); // shake restore
+
+  // ── HUD ──────────────────────────────────────────────────────────────────
+  if(STATE==='playing'){
+    // Score
+    ctx.fillStyle='rgba(0,0,0,0.35)';
+    drawRoundRect(8,8,100,38,8); ctx.fill();
+    ctx.fillStyle='#e8d4a0'; ctx.font='bold 20px sans-serif';
+    ctx.textAlign='left'; ctx.textBaseline='top';
+    ctx.fillText(Math.floor(score).toLocaleString(), 16, 14);
+
+    // Best
+    ctx.fillStyle='rgba(0,0,0,0.35)';
+    drawRoundRect(W-108,8,100,38,8); ctx.fill();
+    ctx.fillStyle='#a0b8a0'; ctx.font='13px sans-serif';
+    ctx.textAlign='right'; ctx.textBaseline='top';
+    ctx.fillText('BEST', W-16, 12);
+    ctx.fillStyle='#a0c8a0'; ctx.font='bold 16px sans-serif';
+    ctx.fillText(highScore.toLocaleString(), W-16, 25);
+
+    // Streak / multiplier
+    const mStr = multiplier > 1 ? `x${multiplier} ` : '';
+    const strkStr = `${mStr}${streak} streak`;
+    ctx.fillStyle=`rgba(0,0,0,0.32)`;
+    const sw = ctx.measureText(strkStr).width+24;
+    drawRoundRect(W*0.5-sw*0.5, 8, sw, 34, 8); ctx.fill();
+    ctx.fillStyle= multiplier>1 ? multColors[multiplier-1] : '#a0b8c0';
+    ctx.font= multiplier>1?`bold 15px sans-serif`:`14px sans-serif`;
+    ctx.textAlign='center'; ctx.textBaseline='top';
+    ctx.fillText(strkStr, W*0.5, 16);
+
+    // Boost timer bar
+    if(boostTimer>0){
+      const bw=W*0.5, bh=4, bx2=W*0.25, by2=48;
+      ctx.fillStyle='rgba(0,0,0,0.4)';
+      drawRoundRect(bx2,by2,bw,bh,2); ctx.fill();
+      ctx.fillStyle=`hsl(45,95%,62%)`;
+      drawRoundRect(bx2,by2,bw*(boostTimer/4.5),bh,2); ctx.fill();
+    }
+
+    // Shield icon
+    if(shield>0){
+      ctx.fillStyle='rgba(0,0,0,0.35)';
+      drawRoundRect(W*0.5-18,H-50,36,36,8); ctx.fill();
+      ctx.font='22px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText('🛡️',W*0.5,H-32);
+    }
+  }
+
+  // ── Overlays ─────────────────────────────────────────────────────────────
+  if(STATE==='start'){
+    ctx.fillStyle='rgba(5,3,1,0.72)';
+    ctx.fillRect(0,0,W,H);
+
+    if(challengeScore>0){
+      ctx.fillStyle='rgba(200,140,20,0.9)';
+      ctx.font='bold 14px sans-serif';
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(`Beat ${challengeScore.toLocaleString()}!`,W*0.5,H*0.28);
+    }
+
+    // Title
+    ctx.save();
+    const titleY = H*0.36;
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.shadowColor=`hsl(${themeHue},90%,60%)`; ctx.shadowBlur=30;
+    ctx.fillStyle=`hsl(${themeHue},80%,70%)`;
+    ctx.font='bold 46px sans-serif';
+    ctx.fillText('BARK',W*0.5,titleY-18);
+    ctx.fillStyle='#e8d4a0';
+    ctx.font='bold 32px sans-serif';
+    ctx.fillText('RUSH',W*0.5,titleY+22);
+    ctx.shadowBlur=0;
+    ctx.restore();
+
+    // Instructions
+    ctx.fillStyle='rgba(200,180,140,0.65)';
+    ctx.font='15px sans-serif';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('Tap to swap sides of the trunk',W*0.5,H*0.55);
+    ctx.fillText('Dodge branches & woodpeckers',W*0.5,H*0.60);
+
+    // CTA pulse
+    const pulse = (Math.sin(Date.now()*0.003)*0.25+0.75);
+    ctx.globalAlpha=pulse;
+    ctx.fillStyle=`hsl(${themeHue},85%,68%)`;
+    ctx.font='bold 20px sans-serif';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('▶  TAP TO START',W*0.5,H*0.70);
+    ctx.globalAlpha=1;
+
+    if(highScore>0){
+      ctx.fillStyle='rgba(160,200,140,0.7)';
+      ctx.font='13px sans-serif';
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(`Best: ${highScore.toLocaleString()}`,W*0.5,H*0.80);
+    }
+  }
+
+  if(STATE==='gameover'){
+    ctx.fillStyle='rgba(3,1,0,0.78)';
+    ctx.fillRect(0,0,W,H);
+
+    const fy = H*0.3;
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+
+    // Death reason
+    ctx.fillStyle='rgba(255,80,40,0.9)';
+    ctx.font='bold 22px sans-serif';
+    ctx.fillText(deathReason, W*0.5, fy);
+
+    // Scores
+    ctx.fillStyle='#e8d4a0';
+    ctx.font='bold 36px sans-serif';
+    ctx.shadowColor=`hsl(${themeHue},80%,60%)`; ctx.shadowBlur=16;
+    ctx.fillText(Math.floor(score).toLocaleString(), W*0.5, fy+52);
+    ctx.shadowBlur=0;
+
+    if(Math.floor(score)>=highScore && highScore>0){
+      ctx.fillStyle=`hsl(45,95%,65%)`;
+      ctx.font='bold 16px sans-serif';
+      ctx.fillText('NEW BEST!', W*0.5, fy+84);
+    }
+
+    ctx.fillStyle='#a0c8a0';
+    ctx.font='14px sans-serif';
+    ctx.fillText(`Best: ${highScore.toLocaleString()}`, W*0.5, fy+106);
+
+    if(challengeScore>0){
+      const beat=Math.floor(score)>challengeScore;
+      ctx.fillStyle=beat?'#7fe87a':'#e87a7a';
+      ctx.font='bold 14px sans-serif';
+      ctx.fillText(beat?`You beat the challenge! (${challengeScore.toLocaleString()})`:`Challenge: ${challengeScore.toLocaleString()} — Try again!`, W*0.5, fy+128);
+    }
+
+    // Retry CTA
+    const pulse2=(Math.sin(Date.now()*0.003)*0.2+0.8);
+    ctx.globalAlpha=retryLock?0.3:pulse2;
+    ctx.fillStyle=`hsl(${themeHue},80%,68%)`;
+    ctx.font='bold 19px sans-serif';
+    ctx.fillText(retryLock?'Wait...':'▶  TAP TO RETRY', W*0.5, H*0.70);
+    ctx.globalAlpha=1;
+
+    // Share button (drawn as a styled box)
+    const shareY = H*0.78;
+    ctx.fillStyle='rgba(60,40,10,0.7)';
+    drawRoundRect(W*0.5-90,shareY-18,180,36,10); ctx.fill();
+    ctx.strokeStyle=`rgba(200,160,60,0.5)`; ctx.lineWidth=1.5;
+    drawRoundRect(W*0.5-90,shareY-18,180,36,10); ctx.stroke();
+    ctx.fillStyle='#ffe87a';
+    ctx.font='bold 15px sans-serif';
+    ctx.fillText('🎯 Challenge a Friend', W*0.5, shareY);
+
+    // capture share click — done via pointer listener below
+  }
+}
+
+// Share click detection on gameover
+wrap.addEventListener('pointerdown', e=>{
+  if(STATE!=='gameover') return;
+  const rect=wrap.getBoundingClientRect();
+  const sx=(e.clientX-rect.left)*(W/rect.width);
+  const sy=(e.clientY-rect.top)*(H/rect.height);
+  const shareY=H*0.78;
+  if(sx>=W*0.5-90&&sx<=W*0.5+90&&sy>=shareY-18&&sy<=shareY+18){
+    e.stopImmediatePropagation();
+    doShare(Math.floor(score));
+  }
+},{passive:false,capture:true});
+
+// ── RAF loop ──────────────────────────────────────────────────────────────────
+function loop(ts){
+  update(ts);
+  render();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(ts=>{ lastTime=ts; requestAnimationFrame(loop); });
+</script>
+</body>
+</html>

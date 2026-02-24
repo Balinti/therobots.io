@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Geo Flux: Dual Orbit – Hyper-Casual Arcade Game</title>
+<meta name="description" content="Orbit, dodge, and survive in Geo Flux: Dual Orbit. Switch between inner and outer lanes to avoid sliding gates in this addictive hyper-casual HTML5 arcade game.">
+<meta name="theme-color" content="#0a0a1a">
+<link rel="canonical" href="https://balinti.github.io/geo-flux/">
+<meta property="og:title" content="Geo Flux: Dual Orbit">
+<meta property="og:description" content="Orbit, dodge, and survive. Switch lanes, dodge gates, build combos. How far can you go?">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://balinti.github.io/geo-flux/">
+<meta property="og:image" content="https://balinti.github.io/geo-flux/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Geo Flux: Dual Orbit">
+<meta name="twitter:description" content="Orbit, dodge, and survive in this hyper-casual arcade game.">
+<meta name="twitter:image" content="https://balinti.github.io/geo-flux/og-image.png">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXXXXXXXXXX" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#08081a;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;color:#e0e0f0;touch-action:none;user-select:none;-webkit-user-select:none}
+#wrap{position:relative;margin:0 auto;max-width:420px;height:100vh;max-height:750px;overflow:hidden;display:flex;align-items:center;justify-content:center}
+canvas{display:block;width:100%;height:100%}
+#ui{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;transition:opacity .25s}
+#ui.hidden{opacity:0;pointer-events:none!important}
+#ui>*{pointer-events:auto}
+.title{font-size:2rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;background:linear-gradient(135deg,#0ff,#f0f,#ff0);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:.2em;text-align:center;line-height:1.1}
+.sub{font-size:.85rem;color:#8888bb;margin-bottom:1.4em;text-align:center}
+.btn{background:linear-gradient(135deg,#1a1a3a,#2a1a3a);border:1px solid rgba(120,80,255,.4);color:#d0d0ff;padding:.65em 2em;border-radius:2em;font-size:1rem;cursor:pointer;margin:.3em;transition:border-color .2s,transform .1s}
+.btn:hover{border-color:rgba(120,80,255,.8);transform:scale(1.04)}
+.score-big{font-size:3.5rem;font-weight:900;background:linear-gradient(135deg,#0ff,#f0f);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.high{font-size:.85rem;color:#8888bb;margin-bottom:.8em}
+.challenge-note{font-size:.75rem;color:#ff8;margin-top:.8em;opacity:.85;text-align:center}
+.row{display:flex;gap:.5em;align-items:center;margin-top:.3em}
+#mute-btn{position:absolute;top:10px;right:10px;background:none;border:1px solid rgba(255,255,255,.15);color:#999;font-size:.75rem;padding:4px 10px;border-radius:1em;cursor:pointer;z-index:10;pointer-events:auto}
+#seo-text{position:absolute;bottom:4px;left:50%;transform:translateX(-50%);font-size:.55rem;color:rgba(255,255,255,.12);text-align:center;max-width:90%;line-height:1.3;pointer-events:none}
+</style>
+</head>
+<body>
+<div id="wrap">
+<canvas id="c"></canvas>
+<button id="mute-btn">🔊</button>
+<div id="ui">
+<div class="title">Geo Flux</div>
+<div class="sub">Dual Orbit</div>
+<button class="btn" id="play-btn">▶ Play</button>
+<div class="challenge-note" id="challenge-note" style="display:none"></div>
+</div>
+<p id="seo-text">Geo Flux: Dual Orbit is a free hyper-casual HTML5 arcade game. Switch between inner and outer orbit lanes to dodge incoming gates. Build combos, earn shields, and challenge friends to beat your score.</p>
+</div>
+<script>
+'use strict';
+(()=>{
+// --- Constants ---
+const INNER_R_RATIO = 0.22, OUTER_R_RATIO = 0.34, CORE_R_RATIO = 0.09;
+const SHIP_SIZE = 7, SHIP_TRAIL_LEN = 12;
+const GATE_ARC = 0.95; // radians wide
+const GATE_THICK = 14;
+const MAX_PARTICLES = 200;
+const CALM_TIME = 0.55;
+const SHIELD_CHARGE_NEED = 5;
+const SLOWMO_DUR = 0.35;
+const SHAKE_DECAY = 0.88;
+const PI2 = Math.PI * 2;
+
+// --- State ---
+let state = 'start'; // start | playing | gameover
+let W, H, cx, cy, innerR, outerR, coreR;
+let dpr = Math.min(window.devicePixelRatio || 1, 2);
+let score = 0, highScore = parseInt(localStorage.getItem('gf_hi')) || 0;
+let combo = 0, calmPasses = 0, shieldPips = 0, hasShield = false;
+let shipAngle = 0, shipLane = 0; // 0=inner,1=outer
+let shipSpeed = 2.2; // rad/s
+let lastTapTime = -9;
+let gates = [], particles = [];
+let gameTime = 0, dt = 0, lastFrame = 0;
+let slowMoTimer = 0, slowMoScale = 1;
+let shakeX = 0, shakeY = 0, shakeMag = 0;
+let freezeTimer = 0;
+let muted = localStorage.getItem('gf_mute') === '1';
+let challengeScore = 0;
+let spawnTimer = 0, gateIdCounter = 0;
+let passedGateIds = new Set();
+let shipTrail = [];
+let nearMissTimer = 0;
+let baseHue = 0;
+
+// --- DOM ---
+const wrap = document.getElementById('wrap');
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const ui = document.getElementById('ui');
+const playBtn = document.getElementById('play-btn');
+const muteBtn = document.getElementById('mute-btn');
+const challengeNote = document.getElementById('challenge-note');
+
+// --- Audio (simple oscillator) ---
+let audioCtx = null;
+function ensureAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+}
+function playTone(freq, dur, vol, type) {
+  if (muted) return;
+  try {
+    ensureAudio();
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = type || 'sine';
+    o.frequency.value = freq;
+    g.gain.value = vol || 0.08;
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(); o.stop(audioCtx.currentTime + dur);
+  } catch(e) {}
+}
+function sfxTap() { playTone(520, 0.08, 0.06, 'square'); }
+function sfxPass() { playTone(660 + combo * 30, 0.12, 0.07, 'sine'); }
+function sfxPerfect() { playTone(880, 0.15, 0.09, 'sine'); playTone(1100, 0.2, 0.06, 'triangle'); }
+function sfxShieldBreak() { playTone(200, 0.4, 0.12, 'sawtooth'); playTone(120, 0.5, 0.1, 'square'); }
+function sfxDeath() { playTone(150, 0.5, 0.15, 'sawtooth'); playTone(80, 0.6, 0.12, 'square'); }
+function sfxShieldReady() { playTone(700, 0.1, 0.06, 'sine'); playTone(900, 0.15, 0.06, 'sine'); }
+
+// --- Resize ---
+function resize() {
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = Math.min(420, window.innerWidth);
+  H = Math.min(750, window.innerHeight);
+  wrap.style.width = W + 'px';
+  wrap.style.height = H + 'px';
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  cx = W / 2;
+  cy = H / 2;
+  const minDim = Math.min(W, H);
+  innerR = minDim * INNER_R_RATIO;
+  outerR = minDim * OUTER_R_RATIO;
+  coreR = minDim * CORE_R_RATIO;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// --- Challenge query ---
+(function checkChallenge() {
+  const p = new URLSearchParams(window.location.search);
+  const cs = parseInt(p.get('s'));
+  if (cs > 0) {
+    challengeScore = cs;
+    challengeNote.textContent = `🏆 Friend scored ${cs}. Can you beat it?`;
+    challengeNote.style.display = 'block';
+  }
+})();
+
+// --- Mute ---
+muteBtn.textContent = muted ? '🔇' : '🔊';
+muteBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  muted = !muted;
+  localStorage.setItem('gf_mute', muted ? '1' : '0');
+  muteBtn.textContent = muted ? '🔇' : '🔊';
+});
+
+// --- Pattern spawner ---
+// Each pattern is an array of gate descriptors: { lane, angleOffset, arc, delay }
+// lane: 0=inner, 1=outer, 2=both
+const PATTERNS_EASY = [
+  [{ lane: 0, angleOffset: 0, arc: GATE_ARC }],
+  [{ lane: 1, angleOffset: 0, arc: GATE_ARC }],
+  [{ lane: 0, angleOffset: 0, arc: GATE_ARC * 0.8 }],
+  [{ lane: 1, angleOffset: 0, arc: GATE_ARC * 0.8 }],
+];
+const PATTERNS_MED = [
+  [{ lane: 0, angleOffset: 0, arc: GATE_ARC }, { lane: 1, angleOffset: Math.PI, arc: GATE_ARC }],
+  [{ lane: 0, angleOffset: 0, arc: GATE_ARC * 1.1 }],
+  [{ lane: 1, angleOffset: 0, arc: GATE_ARC * 1.1 }],
+  [{ lane: 0, angleOffset: 0, arc: GATE_ARC * 0.7 }, { lane: 0, angleOffset: Math.PI, arc: GATE_ARC * 0.7 }],
+];
+const PATTERNS_HARD = [
+  [{ lane: 0, angleOffset: 0, arc: GATE_ARC }, { lane: 1, angleOffset: 0.5, arc: GATE_ARC }],
+  [{ lane: 2, angleOffset: 0, arc: GATE_ARC * 0.6 }],
+  [{ lane: 0, angleOffset: 0, arc: GATE_ARC * 1.2 }, { lane: 1, angleOffset: Math.PI * 0.5, arc: GATE_ARC * 1.2 }],
+  [{ lane: 1, angleOffset: 0, arc: GATE_ARC }, { lane: 0, angleOffset: Math.PI * 0.8, arc: GATE_ARC }],
+];
+const PATTERNS_EXPERT = [
+  [{ lane: 2, angleOffset: 0, arc: GATE_ARC * 0.5 }, { lane: 2, angleOffset: Math.PI, arc: GATE_ARC * 0.5 }],
+  [{ lane: 0, angleOffset: 0, arc: GATE_ARC * 1.3 }, { lane: 1, angleOffset: 0.3, arc: GATE_ARC * 1.3 }],
+  [{ lane: 0, angleOffset: 0, arc: GATE_ARC * 0.9 }, { lane: 1, angleOffset: Math.PI * 0.6, arc: GATE_ARC * 0.9 }, { lane: 0, angleOffset: Math.PI, arc: GATE_ARC * 0.5 }],
+];
+const PATTERNS_INSANE = [
+  [{ lane: 2, angleOffset: 0, arc: GATE_ARC * 0.45 }, { lane: 0, angleOffset: Math.PI * 0.7, arc: GATE_ARC }, { lane: 1, angleOffset: Math.PI * 1.3, arc: GATE_ARC * 0.7 }],
+  [{ lane: 0, angleOffset: 0, arc: GATE_ARC * 1.4 }, { lane: 1, angleOffset: 0.2, arc: GATE_ARC * 1.4 }],
+  [{ lane: 2, angleOffset: 0, arc: GATE_ARC * 0.4 }, { lane: 2, angleOffset: PI2 / 3, arc: GATE_ARC * 0.4 }, { lane: 2, angleOffset: PI2 * 2 / 3, arc: GATE_ARC * 0.4 }],
+];
+
+function getPatternPool() {
+  if (score <= 5) return PATTERNS_EASY;
+  if (score <= 15) return PATTERNS_MED;
+  if (score <= 30) return PATTERNS_HARD;
+  if (score <= 50) return PATTERNS_EXPERT;
+  return PATTERNS_INSANE;
+}
+
+function seededRand(seed) {
+  let s = seed;
+  return function() {
+    s = (s * 1103515245 + 12345) & 0x7fffffff;
+    return s / 0x7fffffff;
+  };
+}
+
+let patternRng = seededRand(42);
+
+function spawnPattern() {
+  const pool = getPatternPool();
+  const idx = Math.floor(patternRng() * pool.length) % pool.length;
+  const pattern = pool[idx];
+  const baseAngle = shipAngle + Math.PI + (patternRng() - 0.5) * 1.5;
+
+  for (const desc of pattern) {
+    const lanes = desc.lane === 2 ? [0, 1] : [desc.lane];
+    for (const ln of lanes) {
+      const r = ln === 0 ? innerR : outerR;
+      const spawnR = r + 120 + outerR * 0.3;
+      gates.push({
+        id: gateIdCounter++,
+        lane: ln,
+        angle: normalizeAngle(baseAngle + desc.angleOffset),
+        arc: desc.arc,
+        r: spawnR,
+        targetR: r,
+        speed: 0.6 + score * 0.012,
+        alive: true,
+        cracked: false,
+        telegraph: 0,
+        passed: false
+      });
+    }
+  }
+}
+
+function getSpawnInterval() {
+  return Math.max(0.7, 2.0 - score * 0.025);
+}
+
+// --- Particles ---
+function spawnParticle(x, y, vx, vy, life, hue, size) {
+  if (particles.length >= MAX_PARTICLES) {
+    // recycle oldest
+    const p = particles.shift();
+    p.x = x; p.y = y; p.vx = vx; p.vy = vy; p.life = life; p.maxLife = life; p.hue = hue; p.size = size;
+    particles.push(p);
+  } else {
+    particles.push({ x, y, vx, vy, life, maxLife: life, hue, size });
+  }
+}
+
+function burstParticles(x, y, count, hue, speed, life) {
+  for (let i = 0; i < count; i++) {
+    const a = patternRng() * PI2;
+    const s = (0.3 + patternRng() * 0.7) * speed;
+    spawnParticle(x, y, Math.cos(a) * s, Math.sin(a) * s, life || 0.6, hue + patternRng() * 40 - 20, 2 + patternRng() * 3);
+  }
+}
+
+// --- Angle helpers ---
+function normalizeAngle(a) {
+  a = a % PI2;
+  if (a < 0) a += PI2;
+  return a;
+}
+
+function angleInArc(angle, center, halfArc) {
+  let diff = normalizeAngle(angle - center + Math.PI) - Math.PI;
+  if (diff < -Math.PI) diff += PI2;
+  if (diff > Math.PI) diff -= PI2;
+  return Math.abs(diff) < halfArc;
+}
+
+// --- Game Logic ---
+function startGame() {
+  state = 'playing';
+  score = 0; combo = 0; calmPasses = 0; shieldPips = 0; hasShield = false;
+  shipAngle = 0; shipLane = 0; shipSpeed = 2.2;
+  gates = []; particles = []; passedGateIds.clear();
+  gameTime = 0; spawnTimer = 0.8; // first spawn delay
+  slowMoTimer = 0; slowMoScale = 1;
+  shakeMag = 0; freezeTimer = 0;
+  lastTapTime = -9; nearMissTimer = 0;
+  shipTrail = [];
+  gateIdCounter = 0;
+  patternRng = seededRand(42 + Date.now() % 10000);
+  ui.classList.add('hidden');
+}
+
+function endGame() {
+  state = 'gameover';
+  if (score > highScore) {
+    highScore = score;
+    localStorage.setItem('gf_hi', highScore);
+  }
+  shakeMag = 18;
+  freezeTimer = 0.4;
+  sfxDeath();
+  // burst at ship
+  const r = shipLane === 0 ? innerR : outerR;
+  const sx = cx + Math.cos(shipAngle) * r;
+  const sy = cy + Math.sin(shipAngle) * r;
+  burstParticles(sx, sy, 50, 0, 5, 0.8);
+  showGameOver();
+}
+
+function showGameOver() {
+  ui.classList.remove('hidden');
+  ui.innerHTML = `
+    <div class="score-big">${score}</div>
+    <div class="high">Best: ${highScore}</div>
+    <button class="btn" id="retry-btn">↻ Retry</button>
+    <div class="row">
+      <button class="btn" id="share-btn">📤 Challenge a Friend</button>
+    </div>
+  `;
+  document.getElementById('retry-btn').addEventListener('click', (e) => { e.stopPropagation(); startGame(); });
+  document.getElementById('share-btn').addEventListener('click', (e) => { e.stopPropagation(); shareScore(); });
+}
+
+function showStart() {
+  ui.classList.remove('hidden');
+  ui.innerHTML = `
+    <div class="title">Geo Flux</div>
+    <div class="sub">Dual Orbit</div>
+    <button class="btn" id="play-btn">▶ Play</button>
+    ${highScore > 0 ? `<div class="high">Best: ${highScore}</div>` : ''}
+    ${challengeScore > 0 ? `<div class="challenge-note">🏆 Friend scored ${challengeScore}. Beat it!</div>` : ''}
+  `;
+  document.getElementById('play-btn').addEventListener('click', (e) => { e.stopPropagation(); startGame(); });
+}
+
+function shareScore() {
+  const url = `https://balinti.github.io/geo-flux/?s=${score}`;
+  const text = `I scored ${score} in Geo Flux: Dual Orbit! Can you beat me?`;
+  if (navigator.share) {
+    navigator.share({ title: 'Geo Flux', text, url }).catch(() => {});
+  } else if (navigator.clipboard) {
+    navigator.clipboard.writeText(`${text} ${url}`).then(() => {
+      const btn = document.getElementById('share-btn');
+      if (btn) { btn.textContent = '✓ Copied!'; setTimeout(() => { btn.textContent = '📤 Challenge a Friend'; }, 1500); }
+    }).catch(() => {});
+  }
+}
+
+// --- Input ---
+function handleTap() {
+  if (state === 'start') { startGame(); return; }
+  if (state === 'gameover') return;
+  if (state === 'playing') {
+    shipLane = shipLane === 0 ? 1 : 0;
+    lastTapTime = gameTime;
+    sfxTap();
+    // small trail burst
+    const r = shipLane === 0 ? innerR : outerR;
+    const sx = cx + Math.cos(shipAngle) * r;
+    const sy = cy + Math.sin(shipAngle) * r;
+    burstParticles(sx, sy, 4, baseHue + 120, 2, 0.3);
+  }
+}
+
+canvas.addEventListener('pointerdown', (e) => { e.preventDefault(); handleTap(); });
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); handleTap(); }
+});
+
+// --- Update ---
+function update(rawDt) {
+  if (freezeTimer > 0) { freezeTimer -= rawDt; return; }
+
+  // slow-mo
+  if (slowMoTimer > 0) {
+    slowMoTimer -= rawDt;
+    slowMoScale = 0.2 + 0.8 * Math.max(0, 1 - slowMoTimer / SLOWMO_DUR);
+  } else {
+    slowMoScale = 1;
+  }
+  dt = rawDt * slowMoScale;
+  gameTime += dt;
+
+  // ship
+  shipSpeed = 2.2 + score * 0.015;
+  shipAngle = normalizeAngle(shipAngle + shipSpeed * dt);
+
+  // trail
+  const sr = shipLane === 0 ? innerR : outerR;
+  shipTrail.unshift({ x: cx + Math.cos(shipAngle) * sr, y: cy + Math.sin(shipAngle) * sr, hue: baseHue });
+  if (shipTrail.length > SHIP_TRAIL_LEN) shipTrail.pop();
+
+  // hue
+  baseHue = (gameTime * 18 + score * 12) % 360;
+
+  // spawn
+  spawnTimer -= dt;
+  if (spawnTimer <= 0) {
+    spawnPattern();
+    spawnTimer = getSpawnInterval();
+  }
+
+  // gates
+  for (let i = gates.length - 1; i >= 0; i--) {
+    const g = gates[i];
+    g.r -= g.speed * dt * 60;
+    // telegraph (starts glowing when close)
+    g.telegraph = Math.max(0, 1 - Math.abs(g.r - g.targetR) / 80);
+
+    // check if gate reached target
+    if (g.r <= g.targetR + GATE_THICK / 2 + SHIP_SIZE && !g.passed) {
+      // check collision
+      const gLane = g.lane;
+      if (gLane === shipLane) {
+        // angle check
+        if (angleInArc(shipAngle, g.angle, g.arc / 2)) {
+          // COLLISION
+          if (hasShield) {
+            // Shield break
+            hasShield = false;
+            shieldPips = 0;
+            slowMoTimer = SLOWMO_DUR;
+            shakeMag = 12;
+            sfxShieldBreak();
+            const gx = cx + Math.cos(g.angle) * g.targetR;
+            const gy = cy + Math.sin(g.angle) * g.targetR;
+            burstParticles(gx, gy, 35, 50, 4, 0.7);
+            // radial flash handled in draw
+            g.alive = false;
+            g.passed = true;
+            // nudge remaining gates slightly
+            for (const gg of gates) {
+              if (gg.alive && gg.r < gg.targetR + 40) gg.r += 30;
+            }
+          } else {
+            endGame();
+            return;
+          }
+        }
+      }
+    }
+
+    // gate passed (went past center)
+    if (g.r <= g.targetR - GATE_THICK && g.alive && !g.passed) {
+      g.passed = true;
+      if (!passedGateIds.has(g.id)) {
+        passedGateIds.add(g.id);
+        score++;
+        // calm pass check
+        const wasCalmPass = (gameTime - lastTapTime) > CALM_TIME;
+        if (wasCalmPass) {
+          combo++;
+          calmPasses++;
+          if (combo > 0 && combo % 5 === 0) {
+            score += 2; // bonus
+            sfxPerfect();
+            burstParticles(cx, cy, 15, 60, 3, 0.5);
+          }
+        } else {
+          combo = 0;
+        }
+        // shield charge
+        if (calmPasses >= SHIELD_CHARGE_NEED && !hasShield) {
+          hasShield = true;
+          calmPasses = 0;
+          sfxShieldReady();
+          burstParticles(cx + Math.cos(shipAngle) * sr, cy + Math.sin(shipAngle) * sr, 20, 180, 3, 0.5);
+        }
+        sfxPass();
+        // near miss particles
+        const gx = cx + Math.cos(g.angle) * g.targetR;
+        const gy = cy + Math.sin(g.angle) * g.targetR;
+        burstParticles(gx, gy, 6, baseHue + 60, 2, 0.4);
+      }
+    }
+
+    // remove off-screen gates
+    if (g.r < coreR - 20) {
+      gates.splice(i, 1);
+    }
+  }
+
+  // near miss detection
+  nearMissTimer -= dt;
+  for (const g of gates) {
+    if (!g.alive || g.passed) continue;
+    if (g.lane !== shipLane) continue;
+    const rDist = Math.abs(g.r - g.targetR);
+    if (rDist < GATE_THICK + SHIP_SIZE + 5) {
+      // check angle near-miss
+      const halfArc = g.arc / 2;
+      let diff = normalizeAngle(shipAngle - g.angle + Math.PI) - Math.PI;
+      if (diff < -Math.PI) diff += PI2;
+      if (diff > Math.PI) diff -= PI2;
+      const margin = Math.abs(diff) - halfArc;
+      if (margin > 0 && margin < 0.25) {
+        if (nearMissTimer <= 0) {
+          shakeMag = Math.max(shakeMag, 2);
+          nearMissTimer = 0.3;
+        }
+      }
+    }
+  }
+
+  // particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx * dt * 60;
+    p.y += p.vy * dt * 60;
+    p.vx *= 0.96;
+    p.vy *= 0.96;
+    p.life -= dt;
+    if (p.life <= 0) { particles.splice(i, 1); }
+  }
+
+  // shake
+  if (shakeMag > 0.1) {
+    shakeX = (Math.random() - 0.5) * shakeMag * 2;
+    shakeY = (Math.random() - 0.5) * shakeMag * 2;
+    shakeMag *= SHAKE_DECAY;
+  } else {
+    shakeX = 0; shakeY = 0; shakeMag = 0;
+  }
+}
+
+// --- Draw ---
+function drawRing(r, hue, alpha) {
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, PI2);
+  ctx.strokeStyle = `hsla(${hue},70%,55%,${alpha})`;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  // fake glow
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, PI2);
+  ctx.strokeStyle = `hsla(${hue},80%,60%,${alpha * 0.25})`;
+  ctx.lineWidth = 6;
+  ctx.stroke();
+}
+
+function drawCore() {
+  const pulse = 1 + Math.sin(gameTime * 3) * 0.08;
+  const r = coreR * pulse;
+  // glow layers
+  for (let i = 3; i >= 0; i--) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, r + i * 4, 0, PI2);
+    ctx.fillStyle = `hsla(${baseHue + 200},60%,60%,${0.03 * (4 - i)})`;
+    ctx.fill();
+  }
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, PI2);
+  const coreGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+  coreGrad.addColorStop(0, `hsla(${baseHue + 200},80%,75%,0.9)`);
+  coreGrad.addColorStop(1, `hsla(${baseHue + 220},60%,40%,0.5)`);
+  ctx.fillStyle = coreGrad;
+  ctx.fill();
+}
+
+function drawGate(g) {
+  const hue = (baseHue + 30) % 360;
+  const r = g.r;
+  const halfArc = g.arc / 2;
+  const startA = g.angle - halfArc;
+  const endA = g.angle + halfArc;
+
+  // telegraph line on target ring
+  if (g.telegraph > 0.1 && g.alive) {
+    const tR = g.targetR;
+    ctx.beginPath();
+    ctx.arc(cx, cy, tR, startA, endA);
+    ctx.strokeStyle = `hsla(0,80%,60%,${g.telegraph * 0.3})`;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+  }
+
+  if (!g.alive) return;
+
+  // gate body
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, startA, endA);
+  ctx.strokeStyle = `hsla(${hue},75%,55%,0.9)`;
+  ctx.lineWidth = GATE_THICK;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+
+  // gate glow
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, startA, endA);
+  ctx.strokeStyle = `hsla(${hue},80%,65%,0.2)`;
+  ctx.lineWidth = GATE_THICK + 6;
+  ctx.stroke();
+
+  // end caps glow
+  for (const a of [startA, endA]) {
+    const ex = cx + Math.cos(a) * r;
+    const ey = cy + Math.sin(a) * r;
+    ctx.beginPath();
+    ctx.arc(ex, ey, 4, 0, PI2);
+    ctx.fillStyle = `hsla(${hue},90%,75%,0.8)`;
+    ctx.fill();
+  }
+}
+
+function drawShip() {
+  const r = shipLane === 0 ? innerR : outerR;
+  const sx = cx + Math.cos(shipAngle) * r;
+  const sy = cy + Math.sin(shipAngle) * r;
+
+  // trail
+  ctx.lineCap = 'round';
+  for (let i = 1; i < shipTrail.length; i++) {
+    const t = shipTrail[i];
+    const alpha = 1 - i / shipTrail.length;
+    ctx.beginPath();
+    ctx.moveTo(shipTrail[i - 1].x, shipTrail[i - 1].y);
+    ctx.lineTo(t.x, t.y);
+    ctx.strokeStyle = `hsla(${t.hue + 120},80%,65%,${alpha * 0.5})`;
+    ctx.lineWidth = (1 - i / shipTrail.length) * 4 + 1;
+    ctx.stroke();
+  }
+
+  // ship body
+  ctx.save();
+  ctx.translate(sx, sy);
+  ctx.rotate(shipAngle + Math.PI / 2);
+  ctx.beginPath();
+  ctx.moveTo(0, -SHIP_SIZE);
+  ctx.lineTo(-SHIP_SIZE * 0.7, SHIP_SIZE * 0.6);
+  ctx.lineTo(SHIP_SIZE * 0.7, SHIP_SIZE * 0.6);
+  ctx.closePath();
+  const shipHue = (baseHue + 120) % 360;
+  ctx.fillStyle = `hsl(${shipHue},90%,70%)`;
+  ctx.fill();
+
+  // ship glow
+  ctx.beginPath();
+  ctx.arc(0, 0, SHIP_SIZE + 3, 0, PI2);
+  ctx.fillStyle = `hsla(${shipHue},80%,70%,0.15)`;
+  ctx.fill();
+
+  // shield indicator on ship
+  if (hasShield) {
+    ctx.beginPath();
+    ctx.arc(0, 0, SHIP_SIZE + 6, 0, PI2);
+    ctx.strokeStyle = `hsla(180,90%,70%,${0.5 + Math.sin(gameTime * 8) * 0.3})`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    const alpha = p.life / p.maxLife;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size * alpha, 0, PI2);
+    ctx.fillStyle = `hsla(${p.hue},80%,65%,${alpha * 0.7})`;
+    ctx.fill();
+  }
+}
+
+function drawHUD() {
+  // score
+  ctx.fillStyle = '#e0e0f0';
+  ctx.font = 'bold 28px "Segoe UI",system-ui,sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(score, cx, 44);
+
+  // combo
+  if (combo > 1) {
+    ctx.font = '14px "Segoe UI",system-ui,sans-serif';
+    ctx.fillStyle = `hsla(60,80%,70%,0.8)`;
+    ctx.fillText(`×${combo} combo`, cx, 64);
+  }
+
+  // shield pips
+  const pipY = H - 28;
+  const pipStartX = cx - 30;
+  const need = SHIELD_CHARGE_NEED;
+  for (let i = 0; i < need; i++) {
+    const px = pipStartX + i * 14;
+    ctx.beginPath();
+    ctx.arc(px, pipY, 4, 0, PI2);
+    if (hasShield) {
+      ctx.fillStyle = `hsla(180,90%,70%,0.9)`;
+    } else if (i < calmPasses) {
+      ctx.fillStyle = `hsla(180,70%,55%,0.7)`;
+    } else {
+      ctx.fillStyle = `hsla(0,0%,40%,0.3)`;
+    }
+    ctx.fill();
+  }
+  if (hasShield) {
+    ctx.font = '11px "Segoe UI",system-ui,sans-serif';
+    ctx.fillStyle = `hsla(180,80%,70%,0.8)`;
+    ctx.fillText('SHIELD', cx, pipY + 16);
+  }
+}
+
+function draw() {
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+
+  // background gradient
+  const bgGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(W, H) * 0.7);
+  bgGrad.addColorStop(0, `hsla(${(baseHue + 240) % 360},30%,8%,1)`);
+  bgGrad.addColorStop(1, '#08081a');
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, W, H);
+
+  // apply shake
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
+
+  // rings
+  const innerHue = (baseHue + 180) % 360; // cyan-ish
+  const outerHue = (baseHue + 300) % 360; // magenta-ish
+  drawRing(innerR, innerHue, 0.4 + (shipLane === 0 ? 0.3 : 0));
+  drawRing(outerR, outerHue, 0.4 + (shipLane === 1 ? 0.3 : 0));
+
+  // core
+  drawCore();
+
+  // gates
+  for (const g of gates) drawGate(g);
+
+  // particles
+  drawParticles();
+
+  // ship
+  if (state === 'playing') {
+    drawShip();
+    drawHUD();
+  } else if (state === 'start') {
+    // draw decorative orbiting dot
+    const demoAngle = (performance.now() / 1000) * 1.5;
+    const dr = innerR;
+    const dx = cx + Math.cos(demoAngle) * dr;
+    const dy = cy + Math.sin(demoAngle) * dr;
+    ctx.beginPath();
+    ctx.arc(dx, dy, 5, 0, PI2);
+    ctx.fillStyle = `hsla(${(baseHue + 120) % 360},90%,70%,0.7)`;
+    ctx.fill();
+  }
+
+  // slow-mo radial flash
+  if (slowMoTimer > 0) {
+    const flashAlpha = slowMoTimer / SLOWMO_DUR * 0.25;
+    const fg = ctx.createRadialGradient(cx, cy, 0, cx, cy, outerR + 50);
+    fg.addColorStop(0, `hsla(180,80%,80%,${flashAlpha})`);
+    fg.addColorStop(1, `hsla(180,80%,80%,0)`);
+    ctx.fillStyle = fg;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  ctx.restore();
+}
+
+// --- Main Loop ---
+function loop(ts) {
+  requestAnimationFrame(loop);
+  if (!lastFrame) lastFrame = ts;
+  let rawDt = (ts - lastFrame) / 1000;
+  lastFrame = ts;
+  if (rawDt > 0.1) rawDt = 0.016;
+
+  // always update hue for start screen
+  if (state !== 'playing') {
+    baseHue = (ts / 1000 * 18) % 360;
+    // keep particles alive on gameover
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx * rawDt * 60;
+      p.y += p.vy * rawDt * 60;
+      p.vx *= 0.96;
+      p.vy *= 0.96;
+      p.life -= rawDt;
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+    if (shakeMag > 0.1) {
+      shakeX = (Math.random() - 0.5) * shakeMag * 2;
+      shakeY = (Math.random() - 0.5) * shakeMag * 2;
+      shakeMag *= SHAKE_DECAY;
+    } else { shakeX = 0; shakeY = 0; }
+  }
+
+  if (state === 'playing') {
+    update(rawDt);
+  }
+
+  draw();
+}
+
+showStart();
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

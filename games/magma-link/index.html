@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Magma Link - Free HTML5 Game</title>
+  <meta name="description" content="Play Magma Link - Swipe to connect glowing lava dots before they shrink away.">
+  <meta name="theme-color" content="#1a0a00">
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="Magma Link - Free HTML5 Game">
+  <meta property="og:description" content="Play Magma Link - Tap to erupt and chain magma nodes before the volcano cools!">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://balinti.github.io/magma-link/">
+  <meta property="og:image" content="https://balinti.github.io/magma-link/preview.png">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Magma Link - Free HTML5 Game">
+  <meta name="twitter:description" content="Tap to erupt and chain magma nodes! How long can you keep the eruption going?">
+  <meta name="twitter:image" content="https://balinti.github.io/magma-link/preview.png">
+
+  <!-- JSON-LD Schema -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "VideoGame",
+    "name": "Magma Link",
+    "description": "Hyper-casual HTML5 game where you tap to erupt and chain magma nodes.",
+    "genre": "Hyper-casual",
+    "gamePlatform": "Web Browser",
+    "url": "https://balinti.github.io/magma-link/",
+    "author": {
+      "@type": "Person",
+      "name": "Balinti"
+    }
+  }
+  </script>
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #0d0500;
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      touch-action: none;
+      user-select: none;
+    }
+    #wrap {
+      position: relative;
+      width: min(420px, 100vw);
+      height: min(750px, 100vh);
+      background: radial-gradient(ellipse at 50% 110%, #3d1500 0%, #1a0700 40%, #0d0300 100%);
+      overflow: hidden;
+    }
+    canvas {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      display: block;
+    }
+    #ui {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      pointer-events: none;
+    }
+    #score-display {
+      position: absolute;
+      top: 18px; left: 0; right: 0;
+      text-align: center;
+      font-size: 22px;
+      font-weight: 700;
+      color: #ff9933;
+      text-shadow: 0 0 12px #ff6600, 0 0 24px #ff330088;
+      letter-spacing: 2px;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    #score-display.visible { opacity: 1; }
+    #best-display {
+      position: absolute;
+      top: 46px; left: 0; right: 0;
+      text-align: center;
+      font-size: 13px;
+      font-weight: 500;
+      color: #cc6622;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    #best-display.visible { opacity: 1; }
+    #target-banner {
+      position: absolute;
+      top: 74px; left: 0; right: 0;
+      text-align: center;
+      font-size: 12px;
+      color: #ffcc44;
+      background: rgba(255,100,0,0.15);
+      padding: 3px 0;
+      display: none;
+    }
+    #target-banner.visible { display: block; }
+  </style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <div id="ui">
+    <div id="score-display"></div>
+    <div id="best-display"></div>
+    <div id="target-banner"></div>
+  </div>
+</div>
+
+<script>
+(function() {
+'use strict';
+
+// DOM & CANVAS SETUP
+const wrap       = document.getElementById('wrap');
+const canvas     = document.getElementById('c');
+const ctx        = canvas.getContext('2d');
+const scoreEl    = document.getElementById('score-display');
+const bestEl     = document.getElementById('best-display');
+const targetBanner = document.getElementById('target-banner');
+
+const DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+let W, H;
+function resize() {
+  const r = wrap.getBoundingClientRect();
+  W = r.width;
+  H = r.height;
+  canvas.width  = W * DPR;
+  canvas.height = H * DPR;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  updateGeometry();
+}
+resize();
+window.addEventListener('resize', resize);
+
+// CONSTANTS
+const NODE_COUNT   = 12;
+const RING_R_RATIO = 0.32;
+const NODE_R       = 18;
+const SPARK_R      = 10;
+const CORE_R_RATIO = 0.10;
+
+// STATE
+let state = 'start';
+let score = 0;
+let combo = 1;
+let comboTimer = 0;
+let COMBO_WINDOW = 1.8;
+let highScore = parseInt(localStorage.getItem('magmalink_hs') || '0', 10);
+
+// Target from URL
+const urlParams = new URLSearchParams(location.search);
+const targetScore = parseInt(urlParams.get('target') || '0', 10);
+if (targetScore > 0) {
+  targetBanner.textContent = 'Target to beat: ' + targetScore;
+  targetBanner.classList.add('visible');
+}
+
+// DIFFICULTY RAMP
+let elapsed = 0;
+function difficulty() {
+  const t = elapsed;
+  return {
+    sparkSpeed:      0.9 + t * 0.012,
+    crackSpawnRate:  0.4 + Math.min(t * 0.03, 1.2),
+    crackGrowRate:   0.025 + t * 0.0008,
+    waterFreq:       0.12 + Math.min(t * 0.006, 0.35),
+    ventFreq:        0.04,
+    comboWindow:     Math.max(0.7, 1.8 - t * 0.015),
+  };
+}
+
+// RING GEOMETRY
+let ringR, coreR, cx, cy;
+function updateGeometry() {
+  const m = Math.min(W, H);
+  ringR = m * RING_R_RATIO;
+  coreR = m * CORE_R_RATIO;
+  cx = W / 2;
+  cy = H * 0.48;
+}
+
+function nodeAngle(i) {
+  return (i / NODE_COUNT) * Math.PI * 2 - Math.PI / 2;
+}
+function nodePos(i) {
+  const a = nodeAngle(i);
+  return { x: cx + Math.cos(a) * ringR, y: cy + Math.sin(a) * ringR };
+}
+
+// NODES
+let nodes = [];
+let sparkAngle = 0;
+let sparkDir   = 1;
+let sparkNodeIdx = 0;
+
+function initNodes() {
+  nodes = [];
+  for (let i = 0; i < NODE_COUNT; i++) {
+    nodes.push({
+      type:        'normal',
+      crackWidth:  0,
+      waterTimer:  0,
+      isLethal:    false,
+      hue:         20 + (i / NODE_COUNT) * 40,
+      pulse:       Math.random() * Math.PI * 2,
+      linked:      false,
+      linkAge:     0,
+      ventUsed:    false,
+      justLinked:  false,
+    });
+  }
+}
+
+// PARTICLES
+let particles = [];
+
+function spawnBurst(x, y, color, count, speed) {
+  for (let i = 0; i < count; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const s = speed * (0.4 + Math.random() * 0.8);
+    particles.push({
+      x, y,
+      vx: Math.cos(a) * s,
+      vy: Math.sin(a) * s,
+      r:  2 + Math.random() * 3,
+      life: 1, decay: 0.03 + Math.random() * 0.04,
+      color,
+      type: 'ember',
+    });
+  }
+}
+
+function spawnSteam(x, y) {
+  for (let i = 0; i < 18; i++) {
+    const a = -Math.PI/2 + (Math.random()-0.5) * Math.PI * 0.8;
+    particles.push({
+      x, y,
+      vx: Math.cos(a) * (1 + Math.random() * 2),
+      vy: Math.sin(a) * (1 + Math.random() * 2) - 1,
+      r:  4 + Math.random() * 6,
+      life: 1, decay: 0.018 + Math.random() * 0.02,
+      color: 'white',
+      type: 'steam',
+    });
+  }
+}
+
+function spawnComboText(x, y, c) {
+  particles.push({
+    x, y: y - 20,
+    vx: 0, vy: -1.5,
+    life: 1, decay: 0.025,
+    text: 'x' + c,
+    type: 'text',
+  });
+}
+
+function spawnScoreText(x, y, pts) {
+  particles.push({
+    x, y: y - 10,
+    vx: (Math.random()-0.5) * 1.5,
+    vy: -2,
+    life: 1, decay: 0.022,
+    text: '+' + pts,
+    type: 'scoretext',
+  });
+}
+
+// SCREEN SHAKE
+let shakeAmt = 0;
+let shakeDur = 0;
+function triggerShake(amt, dur) {
+  shakeAmt = Math.max(shakeAmt, amt);
+  shakeDur = Math.max(shakeDur, dur);
+}
+
+// CHAIN STATE
+let chainActive = false;
+let chainIdx    = -1;
+let chainLen    = 0;
+let chainTimer  = 0;
+const CHAIN_STEP_TIME = 0.09;
+
+// GAME LOGIC
+function startGame() {
+  score      = 0;
+  combo      = 1;
+  comboTimer = 0;
+  elapsed    = 0;
+  chainActive= false;
+  chainLen   = 0;
+  particles  = [];
+  shakeAmt   = 0;
+  sparkAngle = -Math.PI / 2;
+  sparkDir   = 1;
+  sparkNodeIdx = 0;
+  hazardTimers.crack = 2;
+  hazardTimers.water = 3;
+  hazardTimers.vent  = 5;
+  initNodes();
+  updateScoreUI();
+  scoreEl.classList.add('visible');
+  bestEl.classList.add('visible');
+}
+
+let deathCause = '';
+
+function erupt() {
+  if (state !== 'playing') return;
+  if (chainActive) {
+    chainTimer = Math.max(chainTimer - CHAIN_STEP_TIME * 0.5, 0);
+    return;
+  }
+  chainActive = true;
+  chainIdx    = sparkNodeIdx;
+  chainLen    = 0;
+  chainTimer  = 0;
+  spawnBurst(cx, cy, 'hsl(30,100%,60%)', 10, 4);
+}
+
+function stepChain(dt) {
+  if (!chainActive) return;
+  chainTimer -= dt;
+  if (chainTimer > 0) return;
+  chainTimer = CHAIN_STEP_TIME;
+
+  const nextIdx = (chainIdx + sparkDir + NODE_COUNT) % NODE_COUNT;
+  const n = nodes[nextIdx];
+  const current = nodes[chainIdx];
+
+  const avgCrack = (current.crackWidth + n.crackWidth) / 2;
+  if (avgCrack >= 0.85 && current.type !== 'vent') {
+    endChain(false);
+    return;
+  }
+
+  if (n.isLethal) {
+    deathCause = 'Quenched by water!';
+    const pos = nodePos(nextIdx);
+    spawnSteam(pos.x, pos.y);
+    triggerShake(10, 0.5);
+    endRun();
+    return;
+  }
+
+  let pts = 10 * combo;
+  if (n.type === 'vent' && !n.ventUsed) {
+    n.ventUsed = true;
+    pts = 50 * combo;
+    const pos = nodePos(nextIdx);
+    spawnBurst(pos.x, pos.y, 'hsl(60,100%,70%)', 20, 6);
+    triggerShake(4, 0.2);
+  }
+
+  n.linked = true;
+  n.linkAge = 0;
+  n.justLinked = true;
+
+  const pos = nodePos(nextIdx);
+  spawnBurst(pos.x, pos.y, 'hsl(' + n.hue + ',100%,65%)', 12, 3);
+  spawnScoreText(pos.x, pos.y, pts);
+
+  score += pts;
+  chainLen++;
+  chainIdx = nextIdx;
+
+  comboTimer = COMBO_WINDOW;
+  combo = Math.min(combo + 1, 8);
+  if (combo >= 3) spawnComboText(pos.x, pos.y - 20, combo);
+
+  sparkNodeIdx = nextIdx;
+  sparkAngle = nodeAngle(nextIdx);
+
+  updateScoreUI();
+
+  if (chainLen >= NODE_COUNT) {
+    endChain(true);
+  }
+}
+
+function endChain(full) {
+  chainActive = false;
+  if (full) {
+    spawnBurst(cx, cy, 'hsl(50,100%,70%)', 25, 5);
+    triggerShake(6, 0.3);
+  }
+}
+
+function endRun() {
+  state = 'gameover';
+  chainActive = false;
+  if (score > highScore) {
+    highScore = score;
+    localStorage.setItem('magmalink_hs', highScore);
+  }
+  scoreEl.classList.remove('visible');
+  bestEl.classList.remove('visible');
+}
+
+function updateScoreUI() {
+  scoreEl.textContent = score;
+  bestEl.textContent  = 'BEST: ' + highScore;
+}
+
+// HAZARD TIMERS
+let hazardTimers = { crack: 2, water: 3, vent: 5 };
+
+function spawnHazards(dt) {
+  const d = difficulty();
+
+  hazardTimers.crack -= dt;
+  if (hazardTimers.crack <= 0) {
+    hazardTimers.crack = 1 / d.crackSpawnRate;
+    const candidates = nodes.map(function(n,i){ return i; }).filter(function(i){ return !nodes[i].linked && nodes[i].type !== 'vent'; });
+    if (candidates.length > 0) {
+      const i = candidates[Math.floor(Math.random() * candidates.length)];
+      nodes[i].type = 'crack';
+      nodes[i].crackWidth = 0;
+    }
+  }
+
+  hazardTimers.water -= dt;
+  if (hazardTimers.water <= 0) {
+    hazardTimers.water = 1 / d.waterFreq;
+    const candidates = nodes.map(function(n,i){ return i; }).filter(function(i){ return !nodes[i].linked && nodes[i].type === 'normal'; });
+    if (candidates.length > 0) {
+      const i = candidates[Math.floor(Math.random() * candidates.length)];
+      nodes[i].type = 'waterWarning';
+      nodes[i].waterTimer = 0.7;
+      nodes[i].isLethal = false;
+    }
+  }
+
+  hazardTimers.vent -= dt;
+  if (hazardTimers.vent <= 0) {
+    hazardTimers.vent = 1 / d.ventFreq;
+    const candidates = nodes.map(function(n,i){ return i; }).filter(function(i){ return !nodes[i].linked && nodes[i].type === 'normal'; });
+    if (candidates.length > 0) {
+      const i = candidates[Math.floor(Math.random() * candidates.length)];
+      nodes[i].type = 'vent';
+      nodes[i].ventUsed = false;
+    }
+  }
+}
+
+function updateNodes(dt) {
+  const d = difficulty();
+  nodes.forEach(function(n, i) {
+    n.pulse += dt * 3;
+    n.linkAge += dt;
+    n.justLinked = false;
+
+    if (n.type === 'crack') {
+      n.crackWidth = Math.min(n.crackWidth + d.crackGrowRate * dt * 60, 1);
+      if (n.crackWidth >= 1) {
+        n.type = 'normal';
+        n.crackWidth = 0;
+      }
+    }
+
+    if (n.type === 'waterWarning') {
+      n.waterTimer -= dt;
+      if (n.waterTimer <= 0) {
+        n.type = 'water';
+        n.isLethal = true;
+      }
+    }
+
+    if (n.linked && n.linkAge > 2.5) {
+      n.linked = false;
+      n.type = 'normal';
+      n.crackWidth = 0;
+      n.isLethal = false;
+    }
+  });
+}
+
+// DRAW
+let hueShift = 0;
+
+function drawBackground() {
+  const grd = ctx.createRadialGradient(cx, H * 0.85, 0, cx, H * 0.85, H * 0.6);
+  grd.addColorStop(0, 'hsla(' + (20 + hueShift) + ',90%,25%,0.4)');
+  grd.addColorStop(1, 'transparent');
+  ctx.fillStyle = grd;
+  ctx.fillRect(0, 0, W, H);
+}
+
+function drawCore() {
+  const grd = ctx.createRadialGradient(cx, cy, coreR * 0.2, cx, cy, coreR * 1.5);
+  grd.addColorStop(0, 'hsl(' + (40 + hueShift) + ',100%,80%)');
+  grd.addColorStop(0.4, 'hsl(' + (20 + hueShift) + ',100%,50%)');
+  grd.addColorStop(1, 'transparent');
+  ctx.beginPath();
+  ctx.arc(cx, cy, coreR * 1.4, 0, Math.PI * 2);
+  ctx.fillStyle = grd;
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, coreR, 0, Math.PI * 2);
+  ctx.fillStyle = 'hsl(' + (30 + hueShift) + ',100%,60%)';
+  ctx.fill();
+}
+
+function drawRing() {
+  ctx.save();
+  ctx.setLineDash([8, 10]);
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = 'hsla(' + (25 + hueShift) + ',80%,40%,0.35)';
+  ctx.beginPath();
+  ctx.arc(cx, cy, ringR, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+function getNodeColor(n) {
+  if (n.linked) return 'hsl(' + (n.hue + hueShift) + ',100%,70%)';
+  if (n.type === 'water' || n.isLethal) return '#44aaff';
+  if (n.type === 'waterWarning') {
+    const flash = Math.sin(Date.now() / 80) > 0;
+    return flash ? '#88ccff' : '#ff9900';
+  }
+  if (n.type === 'vent') return 'hsl(' + (60 + hueShift) + ',100%,70%)';
+  if (n.type === 'crack') {
+    const g = Math.floor((1 - n.crackWidth) * 100);
+    return 'hsl(' + (n.hue + hueShift) + ',' + g + '%,40%)';
+  }
+  const p = 0.5 + 0.5 * Math.sin(n.pulse);
+  return 'hsl(' + (n.hue + hueShift) + ',100%,' + (50 + p * 20) + '%)';
+}
+
+function drawNodes() {
+  nodes.forEach(function(n, i) {
+    const pos = nodePos(i);
+    const col = getNodeColor(n);
+
+    if (n.type === 'crack') {
+      ctx.save();
+      const gap = n.crackWidth * (ringR * 0.25);
+      for (let s = -1; s <= 1; s += 2) {
+        ctx.beginPath();
+        ctx.moveTo(pos.x, pos.y);
+        ctx.lineTo(pos.x + s * gap, pos.y - 14);
+        ctx.strokeStyle = 'hsla(0,0%,30%,' + n.crackWidth + ')';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    const glowR = NODE_R * (n.linked ? 1.6 : 1.2);
+    const grd = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, glowR * 2);
+    grd.addColorStop(0, col);
+    grd.addColorStop(1, 'transparent');
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, glowR * 2, 0, Math.PI * 2);
+    ctx.fillStyle = grd;
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, NODE_R, 0, Math.PI * 2);
+    ctx.fillStyle = col;
+    ctx.fill();
+
+    if (n.type === 'waterWarning') {
+      const progress = 1 - (n.waterTimer / 0.7);
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, NODE_R, -Math.PI/2, -Math.PI/2 + progress * Math.PI * 2);
+      ctx.lineTo(pos.x, pos.y);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(68,170,255,0.5)';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, NODE_R * (1 + progress * 0.5), 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(68,170,255,0.4)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    if (n.type === 'vent') {
+      ctx.save();
+      ctx.font = 'bold ' + Math.floor(NODE_R * 0.9) + 'px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#1a0500';
+      ctx.fillText('V', pos.x, pos.y);
+      ctx.restore();
+    }
+
+    if (n.linked) {
+      const a = 1 - Math.min(n.linkAge / 2.5, 1);
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, NODE_R * (1 + n.linkAge * 0.3), 0, Math.PI * 2);
+      ctx.strokeStyle = 'hsla(' + (n.hue + hueShift) + ',100%,70%,' + (a * 0.5) + ')';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+  });
+}
+
+function drawSpark() {
+  const x = cx + Math.cos(sparkAngle) * ringR;
+  const y = cy + Math.sin(sparkAngle) * ringR;
+
+  const trailLen = 8;
+  const stepAngle = sparkDir * 0.04;
+  for (let j = trailLen; j > 0; j--) {
+    const ta = sparkAngle - stepAngle * j;
+    const tx = cx + Math.cos(ta) * ringR;
+    const ty = cy + Math.sin(ta) * ringR;
+    const a = (1 - j / trailLen) * 0.5;
+    ctx.beginPath();
+    ctx.arc(tx, ty, SPARK_R * (1 - j / trailLen) * 0.8, 0, Math.PI * 2);
+    ctx.fillStyle = 'hsla(' + (50 + hueShift) + ',100%,70%,' + a + ')';
+    ctx.fill();
+  }
+
+  const grd = ctx.createRadialGradient(x, y, 0, x, y, SPARK_R * 3);
+  grd.addColorStop(0, 'hsl(' + (50 + hueShift) + ',100%,90%)');
+  grd.addColorStop(0.5, 'hsl(' + (30 + hueShift) + ',100%,60%)');
+  grd.addColorStop(1, 'transparent');
+  ctx.beginPath();
+  ctx.arc(x, y, SPARK_R * 3, 0, Math.PI * 2);
+  ctx.fillStyle = grd;
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.arc(x, y, SPARK_R, 0, Math.PI * 2);
+  ctx.fillStyle = '#fff';
+  ctx.fill();
+}
+
+function drawParticles() {
+  particles = particles.filter(function(p){ return p.life > 0; });
+  particles.forEach(function(p) {
+    if (p.type === 'ember') {
+      ctx.save();
+      ctx.globalAlpha = p.life;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r * p.life, 0, Math.PI * 2);
+      ctx.fillStyle = p.color;
+      ctx.fill();
+      ctx.restore();
+    } else if (p.type === 'steam') {
+      ctx.save();
+      ctx.globalAlpha = p.life * 0.5;
+      const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r * (2 - p.life));
+      g.addColorStop(0, 'rgba(200,220,255,0.8)');
+      g.addColorStop(1, 'transparent');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r * (2 - p.life + 0.1), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    } else if (p.type === 'text' || p.type === 'scoretext') {
+      ctx.save();
+      ctx.globalAlpha = p.life;
+      ctx.font = p.type === 'text' ? 'bold 22px system-ui' : 'bold 14px system-ui';
+      ctx.fillStyle = p.type === 'text' ? '#ffee00' : '#ffaa44';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.shadowColor = p.type === 'text' ? '#ff8800' : '#ff6600';
+      ctx.shadowBlur = 8;
+      ctx.fillText(p.text, p.x, p.y);
+      ctx.restore();
+    }
+    p.x += p.vx || 0;
+    p.y += p.vy || 0;
+    p.life -= p.decay || 0.02;
+  });
+}
+
+function drawStartScreen() {
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  ctx.font = 'bold 52px system-ui';
+  ctx.fillStyle = 'hsl(' + (40 + hueShift) + ',100%,75%)';
+  ctx.shadowColor = '#ff6600';
+  ctx.shadowBlur = 30;
+  ctx.fillText('MAGMA', cx, H * 0.36);
+
+  ctx.font = 'bold 38px system-ui';
+  ctx.fillStyle = 'hsl(' + (20 + hueShift) + ',100%,60%)';
+  ctx.fillText('LINK', cx, H * 0.45);
+
+  ctx.shadowBlur = 0;
+  ctx.font = '15px system-ui';
+  ctx.fillStyle = 'rgba(255,180,80,0.7)';
+  ctx.fillText('Eruption Chain', cx, H * 0.53);
+
+  const flash = 0.5 + 0.5 * Math.sin(Date.now() / 400);
+  ctx.font = 'bold 20px system-ui';
+  ctx.fillStyle = 'rgba(255,220,100,' + flash + ')';
+  ctx.fillText('TAP TO START', cx, H * 0.63);
+
+  ctx.font = '12px system-ui';
+  ctx.fillStyle = 'rgba(200,140,60,0.6)';
+  ctx.fillText('Tap at the right moment to chain magma nodes!', cx, H * 0.70);
+  ctx.restore();
+}
+
+function drawGameOverScreen() {
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.65)';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  ctx.font = 'bold 58px system-ui';
+  ctx.fillStyle = 'hsl(' + (40 + hueShift) + ',100%,75%)';
+  ctx.shadowColor = '#ff6600';
+  ctx.shadowBlur = 20;
+  ctx.fillText(score, cx, H * 0.37);
+
+  ctx.shadowBlur = 0;
+  ctx.font = '16px system-ui';
+  ctx.fillStyle = 'rgba(255,180,80,0.9)';
+  ctx.fillText('SCORE', cx, H * 0.44);
+
+  ctx.font = '15px system-ui';
+  ctx.fillStyle = 'rgba(200,120,50,0.9)';
+  ctx.fillText('BEST: ' + highScore, cx, H * 0.50);
+
+  if (deathCause) {
+    ctx.font = 'italic 14px system-ui';
+    ctx.fillStyle = '#88ccff';
+    ctx.fillText(deathCause, cx, H * 0.57);
+  }
+
+  if (targetScore > 0) {
+    const beatMsg = score > targetScore ? 'Target beaten!' : 'Target: ' + targetScore;
+    ctx.font = '13px system-ui';
+    ctx.fillStyle = score > targetScore ? '#ffee44' : '#cc8844';
+    ctx.fillText(beatMsg, cx, H * 0.62);
+  }
+
+  const flash = 0.5 + 0.5 * Math.sin(Date.now() / 500);
+  ctx.font = 'bold 18px system-ui';
+  ctx.fillStyle = 'rgba(255,200,80,' + flash + ')';
+  ctx.fillText('TAP TO RETRY', cx, H * 0.69);
+
+  // Share button
+  const bx = cx - 80, by = H * 0.77, bw = 160, bh = 38;
+  ctx.beginPath();
+  if (ctx.roundRect) {
+    ctx.roundRect(bx, by, bw, bh, 8);
+  } else {
+    ctx.rect(bx, by, bw, bh);
+  }
+  ctx.fillStyle = 'rgba(255,140,20,0.25)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,140,20,0.6)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.font = '14px system-ui';
+  ctx.fillStyle = 'rgba(255,200,100,0.9)';
+  ctx.fillText('SHARE SCORE', cx, by + bh / 2);
+
+  ctx.restore();
+}
+
+// SHARE
+let shareHitBox = null;
+let retryLock   = 0;
+
+function tryShare() {
+  const url = location.origin + location.pathname + '?target=' + score;
+  const text = 'I scored ' + score + ' in Magma Link! Can you beat it?';
+  if (navigator.share) {
+    navigator.share({ title: 'Magma Link', text: text, url: url }).catch(function(){});
+  } else {
+    navigator.clipboard.writeText(url).then(function() {
+      particles.push({ x: cx, y: H * 0.8, vx:0, vy:-1.5, life:1, decay:0.018, text:'Link copied!', type:'text' });
+    });
+  }
+}
+
+// MAIN LOOP
+let last = 0;
+
+function loop(ts) {
+  const dt = Math.min((ts - last) / 1000, 0.05);
+  last = ts;
+
+  hueShift = (hueShift + dt * 15) % 360;
+
+  let sx = 0, sy = 0;
+  if (shakeAmt > 0) {
+    sx = (Math.random() - 0.5) * shakeAmt * 2;
+    sy = (Math.random() - 0.5) * shakeAmt * 2;
+    shakeAmt *= 0.85;
+    shakeDur -= dt;
+    if (shakeDur <= 0 || shakeAmt < 0.3) { shakeAmt = 0; sx = 0; sy = 0; }
+  }
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.save();
+  ctx.translate(sx, sy);
+
+  drawBackground();
+
+  if (state === 'start') {
+    updateGeometry();
+    drawCore();
+    drawRing();
+    nodes.forEach(function(n, i) {
+      n.pulse += dt * 3;
+      const pos = nodePos(i);
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, NODE_R * (0.7 + 0.15 * Math.sin(n.pulse)), 0, Math.PI * 2);
+      ctx.fillStyle = 'hsl(' + (n.hue + hueShift) + ',80%,45%)';
+      ctx.fill();
+    });
+    drawStartScreen();
+
+  } else if (state === 'playing') {
+    elapsed += dt;
+    COMBO_WINDOW = difficulty().comboWindow;
+
+    if (comboTimer > 0) {
+      comboTimer -= dt;
+      if (comboTimer <= 0) {
+        combo = 1;
+        comboTimer = 0;
+      }
+    }
+
+    const d = difficulty();
+    if (!chainActive) {
+      sparkAngle += sparkDir * d.sparkSpeed * dt;
+      const normalizedAngle = ((sparkAngle + Math.PI/2) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+      const frac = normalizedAngle / (Math.PI * 2);
+      sparkNodeIdx = Math.round(frac * NODE_COUNT) % NODE_COUNT;
+    }
+
+    spawnHazards(dt);
+    updateNodes(dt);
+    stepChain(dt);
+
+    drawCore();
+    drawRing();
+    drawNodes();
+    drawSpark();
+    drawParticles();
+
+  } else if (state === 'gameover') {
+    drawCore();
+    drawRing();
+    drawNodes();
+    drawParticles();
+    drawGameOverScreen();
+    shareHitBox = { x: cx - 80, y: H * 0.77, w: 160, h: 38 };
+  }
+
+  ctx.restore();
+  requestAnimationFrame(loop);
+}
+
+// INPUT
+function handleInput(px, py) {
+  const now = performance.now();
+
+  if (state === 'start') {
+    state = 'playing';
+    startGame();
+    return;
+  }
+
+  if (state === 'gameover') {
+    if (shareHitBox && px >= shareHitBox.x && px <= shareHitBox.x + shareHitBox.w &&
+        py >= shareHitBox.y && py <= shareHitBox.y + shareHitBox.h) {
+      tryShare();
+      return;
+    }
+    if (now - retryLock > 300) {
+      retryLock = now;
+      state = 'playing';
+      startGame();
+    }
+    return;
+  }
+
+  if (state === 'playing') {
+    erupt();
+  }
+}
+
+function getCanvasPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = W / rect.width;
+  const scaleY = H / rect.height;
+  const src = e.touches ? e.touches[0] : e;
+  return {
+    x: (src.clientX - rect.left) * scaleX,
+    y: (src.clientY - rect.top) * scaleY,
+  };
+}
+
+canvas.addEventListener('pointerdown', function(e) {
+  e.preventDefault();
+  const p = getCanvasPos(e);
+  handleInput(p.x, p.y);
+});
+
+document.addEventListener('keydown', function(e) {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    handleInput(cx, cy);
+  }
+});
+
+// INIT
+initNodes();
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

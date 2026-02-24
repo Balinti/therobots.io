@@ -1,0 +1,1123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Beat Chase - Free HTML5 Game</title>
+  <meta name="description" content="Play Beat Chase - Tap quickly in sync while racing against a shrinking timer in a neon metropolis.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#070A12">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Beat Chase - Free HTML5 Game">
+  <meta property="og:description" content="Tap in sync with the sweeping pulse, stay ahead of the drone, and survive as long as you can in this neon rhythm game.">
+  <meta property="og:url" content="https://balinti.github.io/beat-chase/">
+  <meta property="og:image" content="https://balinti.github.io/beat-chase/preview.png">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Beat Chase - Free HTML5 Game">
+  <meta name="twitter:description" content="Tap in sync with the sweeping pulse, stay ahead of the drone, and survive as long as you can.">
+  <meta name="twitter:image" content="https://balinti.github.io/beat-chase/preview.png">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #070A12;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      min-height: 100svh;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      color: #e0e8ff;
+      overflow-x: hidden;
+    }
+
+    #game-wrap {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      /* Use svh for mobile */
+      height: min(750px, 100svh);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      touch-action: none;
+      user-select: none;
+    }
+
+    #score-bar {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 16px 4px;
+      font-size: 13px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: #7a9bc2;
+      position: relative;
+      z-index: 10;
+    }
+
+    #score-display { font-size: 22px; font-weight: 700; color: #e0f0ff; }
+    #combo-display { font-size: 13px; color: #ffd740; font-weight: 600; }
+    #best-display { font-size: 12px; color: #4a6a9a; }
+
+    canvas {
+      display: block;
+      width: 100%;
+      flex: 1;
+      min-height: 0;
+      cursor: pointer;
+    }
+
+    /* SEO crawlable section below canvas */
+    #seo-section {
+      width: 100%;
+      max-width: 420px;
+      padding: 16px;
+      font-size: 13px;
+      color: #3a5070;
+      line-height: 1.6;
+    }
+
+    #seo-section h2 { font-size: 15px; color: #4a6a8a; margin-bottom: 6px; }
+    #seo-section ul { padding-left: 16px; }
+    #seo-section li { margin-bottom: 3px; }
+  </style>
+</head>
+<body>
+
+<div id="game-wrap">
+  <div id="score-bar">
+    <div>
+      <div style="font-size:10px;color:#4a6a9a;letter-spacing:1px">SCORE</div>
+      <div id="score-display">0</div>
+    </div>
+    <div style="text-align:center">
+      <div id="combo-display"></div>
+    </div>
+    <div style="text-align:right">
+      <div style="font-size:10px;color:#4a6a9a;letter-spacing:1px">BEST</div>
+      <div id="best-display">0</div>
+    </div>
+  </div>
+  <canvas id="gc"></canvas>
+</div>
+
+<section id="seo-section">
+  <h2>How to Play Beat Chase</h2>
+  <ul>
+    <li><strong>Tap or press Space/Enter</strong> when the glowing wedge overlaps the target arc.</li>
+    <li><strong>Perfect</strong> hits score the most and push the chasing drone back.</li>
+    <li><strong>Good</strong> hits still score, but the drone creeps closer on a <strong>Miss</strong>.</li>
+    <li>Speed builds over time — stay in the zone to trigger <strong>Overdrive</strong>!</li>
+    <li>Survive as long as possible before the drone catches you.</li>
+  </ul>
+  <p style="margin-top:8px">Beat Chase is a free browser rhythm game — no download needed. Works on mobile and desktop.</p>
+</section>
+
+<script>
+(function() {
+'use strict';
+
+// ─── DOM ─────────────────────────────────────────────────────────────────────
+const canvas  = document.getElementById('gc');
+const ctx     = canvas.getContext('2d');
+const scoreEl = document.getElementById('score-display');
+const comboEl = document.getElementById('combo-display');
+const bestEl  = document.getElementById('best-display');
+
+// ─── HIGH-DPI ────────────────────────────────────────────────────────────────
+const DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+function resizeCanvas() {
+  const rect = canvas.getBoundingClientRect();
+  canvas.width  = rect.width  * DPR;
+  canvas.height = rect.height * DPR;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  W = rect.width;
+  H = rect.height;
+}
+
+let W = 0, H = 0;
+
+// ─── AUDIO ───────────────────────────────────────────────────────────────────
+let audioCtx = null;
+function ensureAudio() {
+  if (!audioCtx) {
+    try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {}
+  }
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+function playTone(freq, type, duration, vol, detune) {
+  if (!audioCtx) return;
+  try {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.type = type || 'sine';
+    osc.frequency.value = freq;
+    if (detune) osc.detune.value = detune;
+    gain.gain.setValueAtTime(vol || 0.15, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+    osc.start();
+    osc.stop(audioCtx.currentTime + duration);
+  } catch(e) {}
+}
+
+function sfxPerfect() { playTone(880, 'sine', 0.18, 0.18); playTone(1320, 'sine', 0.14, 0.10); }
+function sfxGood()    { playTone(660, 'sine', 0.15, 0.14); }
+function sfxMiss()    { playTone(180, 'sawtooth', 0.25, 0.12); }
+function sfxOverdrive(){ playTone(440, 'square', 0.08, 0.08); playTone(880,'sine',0.1,0.08); }
+
+// ─── STORAGE ─────────────────────────────────────────────────────────────────
+let bestScore = parseInt(localStorage.getItem('beatChaseBest') || '0', 10);
+bestEl.textContent = bestScore;
+
+function saveBest(s) {
+  if (s > bestScore) {
+    bestScore = s;
+    localStorage.setItem('beatChaseBest', s);
+    bestEl.textContent = s;
+  }
+}
+
+// ─── CONSTANTS ───────────────────────────────────────────────────────────────
+const TWO_PI = Math.PI * 2;
+const HALF_PI = Math.PI / 2;
+
+// ─── GAME STATE ──────────────────────────────────────────────────────────────
+// States: 'start', 'playing', 'gameover'
+let state = 'start';
+
+// ─── GAME VARIABLES ──────────────────────────────────────────────────────────
+let score = 0;
+let combo = 0;
+let multiplier = 1;
+
+// Drone progress: 0 = safe, 1 = caught
+let droneProgress = 0.0;
+// Speed: normalized 0..1 (affects sweep rate, scroll)
+let speed = 0.3;
+
+// Pulse wedge angle (radians, 0 = right, CCW positive? We go CW)
+let wedgeAngle = 0;
+// Sweep rate (radians per second)
+let sweepRate = 1.8;
+
+// Target zone
+let targetAngle  = -HALF_PI;  // center of target
+let targetSize   = 0.45;      // half-arc in radians
+
+// Overdrive
+let overdriveStreak = 0;
+let overdrive = false;
+let overdriveTimer = 0;
+const OVERDRIVE_DURATION = 4.0;
+const OVERDRIVE_THRESH = 6; // perfects needed
+
+// Elapsed time (for difficulty ramp)
+let elapsed = 0;
+
+// Screen shake
+let shakeX = 0, shakeY = 0, shakeMag = 0, shakeDecay = 0;
+
+// HSL hue cycle
+let hue = 200;
+
+// Particles array
+let particles = [];
+
+// Scroll layers for parallax (tunnel lines)
+let scrollLayers = [];
+
+// Decoy arcs
+let decoyArcs = [];
+
+// Reverse sweep state
+let reverseSweep = false;
+let reverseTelegraph = 0; // countdown before reverse
+let reverseFlash = false;
+
+// Split target state
+let splitTarget = false;
+let splitOffset = 0;
+
+// Active judgement popup
+let judgement = { text: '', timer: 0, x: 0, y: 0, color: '#fff' };
+
+// Combo popup flash
+let comboFlash = 0;
+
+// Last tap time (for double-tap prevention)
+let lastTapTime = -999;
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+function initScrollLayers() {
+  scrollLayers = [];
+  for (let i = 0; i < 40; i++) {
+    scrollLayers.push({
+      x: Math.random(),         // 0..1 of width
+      y: Math.random(),         // 0..1 of height
+      speed: 0.1 + Math.random() * 0.9,
+      len: 20 + Math.random() * 80,
+      alpha: 0.05 + Math.random() * 0.15,
+      hue: 180 + Math.random() * 80,
+    });
+  }
+}
+
+function resetGame() {
+  score = 0;
+  combo = 0;
+  multiplier = 1;
+  droneProgress = 0;
+  speed = 0.3;
+  sweepRate = 1.8;
+  elapsed = 0;
+  hue = 200;
+  wedgeAngle = -HALF_PI;
+  particles = [];
+  decoyArcs = [];
+  reverseSweep = false;
+  reverseTelegraph = 0;
+  reverseFlash = false;
+  splitTarget = false;
+  splitOffset = 0.4;
+  overdrive = false;
+  overdriveTimer = 0;
+  overdriveStreak = 0;
+  shakeX = 0; shakeY = 0; shakeMag = 0;
+  judgement = { text: '', timer: 0, x: 0, y: 0, color: '#fff' };
+  comboFlash = 0;
+  lastTapTime = -999;
+  scoreEl.textContent = '0';
+  comboEl.textContent = '';
+  pickNewTarget();
+  initScrollLayers();
+}
+
+function pickNewTarget() {
+  // Keep target away from current wedge (don't overlap immediately after scoring)
+  let attempts = 0;
+  do {
+    targetAngle = Math.random() * TWO_PI - Math.PI;
+    attempts++;
+  } while (attempts < 20 && Math.abs(angleDiff(targetAngle, wedgeAngle)) < 0.6);
+
+  // Size: 0.25..0.55 rad
+  targetSize = 0.28 + Math.random() * 0.27;
+  // Difficulty: shrink target slightly over time
+  const shrink = Math.min(elapsed / 60, 0.12);
+  targetSize = Math.max(0.20, targetSize - shrink);
+}
+
+// ─── ANGLE UTILITIES ─────────────────────────────────────────────────────────
+function angleDiff(a, b) {
+  let d = ((a - b) % TWO_PI + TWO_PI) % TWO_PI;
+  if (d > Math.PI) d -= TWO_PI;
+  return d;
+}
+
+function normalizeAngle(a) {
+  return ((a % TWO_PI) + TWO_PI) % TWO_PI;
+}
+
+// ─── PARTICLES ────────────────────────────────────────────────────────────────
+function spawnParticles(cx, cy, color, count, label) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * TWO_PI;
+    const spd = 40 + Math.random() * 120;
+    particles.push({
+      x: cx, y: cy,
+      vx: Math.cos(angle) * spd,
+      vy: Math.sin(angle) * spd,
+      alpha: 1,
+      size: 2 + Math.random() * 3,
+      color,
+      life: 0.5 + Math.random() * 0.5,
+      maxLife: 0.5 + Math.random() * 0.5,
+    });
+  }
+}
+
+// ─── JUDGEMENT DISPLAY ────────────────────────────────────────────────────────
+function showJudgement(text, color, cx, cy) {
+  judgement = { text, color, timer: 0.7, x: cx, y: cy };
+}
+
+// ─── SHAKE ────────────────────────────────────────────────────────────────────
+function addShake(mag, decay) {
+  shakeMag = Math.max(shakeMag, mag);
+  shakeDecay = decay || 8;
+}
+
+// ─── TAP HANDLER ─────────────────────────────────────────────────────────────
+function onTap() {
+  ensureAudio();
+  if (state === 'start') { state = 'playing'; resetGame(); return; }
+  if (state === 'gameover') { state = 'playing'; resetGame(); return; }
+  if (state !== 'playing') return;
+
+  // Prevent double-tap artifacts
+  const now = performance.now() / 1000;
+  if (now - lastTapTime < 0.08) return;
+  lastTapTime = now;
+
+  // Evaluate angular difference from wedge to target center(s)
+  let diff = Infinity;
+  const cx = W / 2, cy = H * 0.44;
+  const gaugeR = Math.min(W, H) * 0.30;
+
+  if (splitTarget) {
+    const a1 = normalizeAngle(targetAngle + splitOffset);
+    const a2 = normalizeAngle(targetAngle - splitOffset);
+    const d1 = Math.abs(angleDiff(normalizeAngle(wedgeAngle), a1));
+    const d2 = Math.abs(angleDiff(normalizeAngle(wedgeAngle), a2));
+    diff = Math.min(d1, d2);
+  } else {
+    diff = Math.abs(angleDiff(normalizeAngle(wedgeAngle), normalizeAngle(targetAngle)));
+  }
+
+  const halfTarget = splitTarget ? targetSize * 0.7 : targetSize;
+  const perfZone = halfTarget * 0.35;
+  const goodZone = halfTarget;
+
+  let judgeTxt, judgeColor, scoreAdd, droneChange, overdriveChange;
+
+  if (diff < perfZone) {
+    judgeTxt = overdrive ? 'PERFECT!' : 'PERFECT';
+    judgeColor = '#00ffe0';
+    scoreAdd = (overdrive ? 150 : 100) * multiplier;
+    droneChange = -0.12;
+    overdriveChange = 1;
+    combo++;
+    sfxPerfect();
+    addShake(3, 10);
+    spawnParticles(cx, cy, '#00ffe0', 16, 'P');
+  } else if (diff < goodZone) {
+    judgeTxt = 'GOOD';
+    judgeColor = '#aaff44';
+    scoreAdd = (overdrive ? 60 : 40) * multiplier;
+    droneChange = -0.04;
+    overdriveChange = 0;
+    combo++;
+    sfxGood();
+    spawnParticles(cx, cy, '#aaff44', 8, 'G');
+  } else {
+    judgeTxt = 'MISS';
+    judgeColor = '#ff4060';
+    scoreAdd = 0;
+    droneChange = 0.08;
+    overdriveChange = -overdriveStreak;
+    combo = 0;
+    overdrive = false;
+    overdriveTimer = 0;
+    sfxMiss();
+    addShake(6, 12);
+    spawnParticles(cx, cy, '#ff4060', 6, 'M');
+  }
+
+  score += scoreAdd;
+  droneProgress = Math.max(0, Math.min(1, droneProgress + droneChange));
+
+  // Speed adjustment
+  if (judgeTxt !== 'MISS') {
+    speed = Math.min(1.0, speed + 0.04);
+  } else {
+    speed = Math.max(0.1, speed - 0.06);
+  }
+
+  // Multiplier
+  multiplier = 1 + Math.floor(combo / 5);
+  if (multiplier > 6) multiplier = 6;
+
+  // Overdrive logic
+  overdriveStreak = Math.max(0, overdriveStreak + overdriveChange);
+  if (!overdrive && overdriveStreak >= OVERDRIVE_THRESH) {
+    overdrive = true;
+    overdriveTimer = OVERDRIVE_DURATION;
+    overdriveStreak = 0;
+    sfxOverdrive();
+    addShake(4, 8);
+    spawnParticles(cx, cy, '#ff9f00', 30, 'OD');
+  }
+
+  // Update UI
+  scoreEl.textContent = score;
+  if (combo >= 2) {
+    comboEl.textContent = `×${multiplier} COMBO ${combo}`;
+    comboFlash = 0.3;
+  } else {
+    comboEl.textContent = '';
+  }
+
+  // Place judgement popup along gauge perimeter
+  const jAngle = normalizeAngle(wedgeAngle);
+  const jx = cx + Math.cos(jAngle) * (gaugeR + 28);
+  const jy = cy + Math.sin(jAngle) * (gaugeR + 28);
+  showJudgement(judgeTxt, judgeColor, jx, jy);
+
+  // Pick new target after hit (even miss resets)
+  pickNewTarget();
+
+  // Possibly introduce split/decoy/reverse after time
+  rollSpecialModes();
+}
+
+function rollSpecialModes() {
+  splitTarget = elapsed > 15 && Math.random() < 0.30;
+  splitOffset = 0.3 + Math.random() * 0.3;
+
+  if (elapsed > 20 && Math.random() < 0.25) {
+    spawnDecoys();
+  }
+
+  if (elapsed > 25 && !reverseSweep && Math.random() < 0.15) {
+    reverseTelegraph = 1.2; // seconds before switch
+    reverseFlash = true;
+  }
+}
+
+function spawnDecoys() {
+  decoyArcs = [];
+  const count = 1 + Math.floor(Math.random() * 2);
+  for (let i = 0; i < count; i++) {
+    decoyArcs.push({
+      angle: Math.random() * TWO_PI - Math.PI,
+      size: 0.15 + Math.random() * 0.12,
+    });
+  }
+}
+
+// ─── DRAW HELPERS ─────────────────────────────────────────────────────────────
+function drawArc(cx, cy, r, startA, endA, color, lineW, alpha) {
+  ctx.save();
+  ctx.globalAlpha = alpha !== undefined ? alpha : 1;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = lineW || 4;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, startA, endA);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function lerpColor(h1, h2, t) {
+  return `hsl(${h1 + (h2 - h1) * t},90%,60%)`;
+}
+
+// ─── DRAW BACKGROUND (parallax speed lines + tunnel) ─────────────────────────
+function drawBackground() {
+  ctx.fillStyle = '#070A12';
+  ctx.fillRect(0, 0, W, H);
+
+  // Radial gradient vignette
+  const grad = ctx.createRadialGradient(W/2, H/2, H * 0.1, W/2, H/2, H * 0.7);
+  grad.addColorStop(0, 'rgba(0,20,60,0.0)');
+  grad.addColorStop(1, 'rgba(0,0,10,0.7)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Scrolling speed lines
+  const scrollSpd = speed * 220;
+  for (const ln of scrollLayers) {
+    ln.y += ln.speed * scrollSpd * 0.016; // approximate dt usage
+    if (ln.y > 1) ln.y -= 1;
+    const x = ln.x * W;
+    const y = ln.y * H;
+    ctx.save();
+    ctx.globalAlpha = ln.alpha * (0.4 + speed * 0.6);
+    ctx.strokeStyle = `hsl(${ln.hue},70%,55%)`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x, y + ln.len * speed);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+// ─── DRAW DRONE METER ────────────────────────────────────────────────────────
+function drawDroneMeter() {
+  const mx = W / 2;
+  const my = H - 28;
+  const mw = W * 0.7;
+  const mh = 8;
+
+  // Track
+  ctx.fillStyle = 'rgba(255,255,255,0.08)';
+  ctx.beginPath();
+  ctx.roundRect(mx - mw/2, my - mh/2, mw, mh, 4);
+  ctx.fill();
+
+  // Fill
+  const t = droneProgress;
+  const dangerHue = 200 - t * 200; // cyan to red
+  const grad = ctx.createLinearGradient(mx - mw/2, 0, mx + mw/2, 0);
+  grad.addColorStop(0, `hsla(${dangerHue},100%,55%,0.9)`);
+  grad.addColorStop(1, `hsla(${dangerHue - 40},100%,65%,0.9)`);
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.roundRect(mx - mw/2, my - mh/2, mw * t, mh, 4);
+  ctx.fill();
+
+  // Drone icon (triangle at progress point)
+  const dx = mx - mw/2 + mw * t;
+  ctx.save();
+  ctx.fillStyle = `hsl(${dangerHue},100%,65%)`;
+  ctx.shadowColor = `hsl(${dangerHue},100%,70%)`;
+  ctx.shadowBlur = 10;
+  ctx.beginPath();
+  ctx.moveTo(dx, my - 14);
+  ctx.lineTo(dx - 7, my - 6);
+  ctx.lineTo(dx + 7, my - 6);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+
+  // Label
+  ctx.fillStyle = 'rgba(120,160,200,0.5)';
+  ctx.font = '9px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('SAFE', mx - mw/2, my + 17);
+  ctx.textAlign = 'right';
+  ctx.fillText('CAUGHT', mx + mw/2, my + 17);
+  ctx.textAlign = 'center';
+}
+
+// ─── DRAW GAUGE ──────────────────────────────────────────────────────────────
+function drawGauge(cx, cy, r) {
+  // Outer ring
+  ctx.save();
+  ctx.strokeStyle = 'rgba(100,140,200,0.15)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r + 14, 0, TWO_PI);
+  ctx.stroke();
+  ctx.restore();
+
+  // Gauge track
+  ctx.save();
+  ctx.strokeStyle = 'rgba(80,120,180,0.18)';
+  ctx.lineWidth = 18;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, TWO_PI);
+  ctx.stroke();
+  ctx.restore();
+
+  // Tick marks
+  for (let i = 0; i < 36; i++) {
+    const a = (i / 36) * TWO_PI;
+    const inner = r - 10;
+    const outer = r + (i % 9 === 0 ? 8 : 4);
+    ctx.save();
+    ctx.strokeStyle = `rgba(100,150,220,${i % 9 === 0 ? 0.5 : 0.2})`;
+    ctx.lineWidth = i % 9 === 0 ? 2 : 1;
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(a) * inner, cy + Math.sin(a) * inner);
+    ctx.lineTo(cx + Math.cos(a) * outer, cy + Math.sin(a) * outer);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+// ─── DRAW TARGET ZONES ───────────────────────────────────────────────────────
+function drawTargets(cx, cy, r, dt) {
+  // Draw decoy arcs first (slightly dimmer, different color)
+  for (const d of decoyArcs) {
+    const pulse = 0.6 + 0.2 * Math.sin(elapsed * 4);
+    drawArc(cx, cy, r, d.angle - d.size, d.angle + d.size, `hsla(280,60%,55%,${pulse * 0.55})`, 16, 1);
+    // Warning label
+    ctx.save();
+    ctx.globalAlpha = pulse * 0.55;
+    ctx.fillStyle = 'hsl(280,60%,60%)';
+    ctx.font = 'bold 9px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('?', cx + Math.cos(d.angle) * (r + 22), cy + Math.sin(d.angle) * (r + 22) + 3);
+    ctx.restore();
+  }
+
+  // Draw main target(s)
+  const tPulse = 0.75 + 0.25 * Math.sin(elapsed * 6);
+  const tColor = overdrive ? '#ff9f00' : `hsl(${hue},90%,58%)`;
+
+  if (splitTarget) {
+    const a1 = targetAngle + splitOffset;
+    const a2 = targetAngle - splitOffset;
+    drawArc(cx, cy, r, a1 - targetSize * 0.7, a1 + targetSize * 0.7, `hsla(${hue},100%,65%,${tPulse * 0.85})`, 18, 1);
+    drawArc(cx, cy, r, a2 - targetSize * 0.7, a2 + targetSize * 0.7, `hsla(${hue},100%,65%,${tPulse * 0.85})`, 18, 1);
+    // Center markers
+    for (const a of [a1, a2]) {
+      ctx.save();
+      ctx.fillStyle = `hsl(${hue},100%,80%)`;
+      ctx.globalAlpha = tPulse * 0.9;
+      ctx.shadowColor = tColor;
+      ctx.shadowBlur = 12;
+      ctx.beginPath();
+      ctx.arc(cx + Math.cos(a) * r, cy + Math.sin(a) * r, 5, 0, TWO_PI);
+      ctx.fill();
+      ctx.restore();
+    }
+  } else {
+    drawArc(cx, cy, r, targetAngle - targetSize, targetAngle + targetSize, `hsla(${hue},100%,60%,${tPulse * 0.85})`, 18, 1);
+    // Center marker dot
+    ctx.save();
+    ctx.fillStyle = `hsl(${hue},100%,80%)`;
+    ctx.globalAlpha = tPulse * 0.9;
+    ctx.shadowColor = tColor;
+    ctx.shadowBlur = 14;
+    ctx.beginPath();
+    ctx.arc(cx + Math.cos(targetAngle) * r, cy + Math.sin(targetAngle) * r, 5, 0, TWO_PI);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+// ─── DRAW WEDGE ──────────────────────────────────────────────────────────────
+function drawWedge(cx, cy, r) {
+  const wA = normalizeAngle(wedgeAngle);
+  const wedgeSpan = 0.14 + (overdrive ? 0.05 : 0);
+
+  // Glow behind
+  ctx.save();
+  ctx.strokeStyle = overdrive ? 'rgba(255,150,0,0.3)' : 'rgba(0,240,220,0.2)';
+  ctx.lineWidth = 28;
+  ctx.shadowColor = overdrive ? '#ff9f00' : '#00ffe0';
+  ctx.shadowBlur = 30;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, wA - wedgeSpan, wA + wedgeSpan);
+  ctx.stroke();
+  ctx.restore();
+
+  // Main wedge stroke
+  ctx.save();
+  ctx.strokeStyle = overdrive ? '#ffd080' : '#00ffe0';
+  ctx.lineWidth = 14;
+  ctx.shadowColor = overdrive ? '#ff9f00' : '#00ffe0';
+  ctx.shadowBlur = 20;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, wA - wedgeSpan, wA + wedgeSpan);
+  ctx.stroke();
+  ctx.restore();
+
+  // Bright center dot on wedge
+  ctx.save();
+  ctx.fillStyle = overdrive ? '#fff8e0' : '#e0fffc';
+  ctx.shadowColor = overdrive ? '#ff9f00' : '#00ffe0';
+  ctx.shadowBlur = 20;
+  ctx.beginPath();
+  ctx.arc(cx + Math.cos(wA) * r, cy + Math.sin(wA) * r, 6, 0, TWO_PI);
+  ctx.fill();
+  ctx.restore();
+
+  // Trailing glow (speed lines behind wedge)
+  for (let i = 1; i <= 4; i++) {
+    const trailA = wA - (reverseSweep ? -1 : 1) * i * 0.08;
+    ctx.save();
+    ctx.globalAlpha = 0.1 / i;
+    ctx.strokeStyle = overdrive ? '#ff9f00' : '#00ffe0';
+    ctx.lineWidth = 10 - i * 1.5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, trailA - 0.06, trailA + 0.06);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+// ─── DRAW SPEED DIAL (center) ─────────────────────────────────────────────────
+function drawSpeedDial(cx, cy) {
+  const innerR = Math.min(W, H) * 0.10;
+  const frac = speed;
+
+  // Background circle
+  ctx.save();
+  ctx.fillStyle = 'rgba(10,20,45,0.8)';
+  ctx.shadowColor = '#001030';
+  ctx.shadowBlur = 20;
+  ctx.beginPath();
+  ctx.arc(cx, cy, innerR, 0, TWO_PI);
+  ctx.fill();
+  ctx.restore();
+
+  // Speed arc
+  const startAng = -HALF_PI;
+  const endAng = startAng + frac * TWO_PI;
+  const speedHue = 200 - frac * 160;
+  ctx.save();
+  ctx.strokeStyle = `hsl(${speedHue},90%,55%)`;
+  ctx.lineWidth = 5;
+  ctx.shadowColor = `hsl(${speedHue},90%,65%)`;
+  ctx.shadowBlur = 14;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.arc(cx, cy, innerR - 4, startAng, endAng);
+  ctx.stroke();
+  ctx.restore();
+
+  // Speed text
+  ctx.save();
+  ctx.fillStyle = '#c0d8f0';
+  ctx.font = `bold ${Math.round(innerR * 0.38)}px monospace`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(Math.round(frac * 100), cx, cy - 3);
+  ctx.font = `${Math.round(innerR * 0.22)}px monospace`;
+  ctx.fillStyle = '#5080a0';
+  ctx.fillText('SPD', cx, cy + innerR * 0.38);
+  ctx.restore();
+
+  // Overdrive ring
+  if (overdrive) {
+    const pct = overdriveTimer / OVERDRIVE_DURATION;
+    ctx.save();
+    ctx.strokeStyle = `rgba(255,160,0,${0.5 + 0.3 * Math.sin(elapsed * 10)})`;
+    ctx.lineWidth = 3;
+    ctx.shadowColor = '#ff9f00';
+    ctx.shadowBlur = 16;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.arc(cx, cy, innerR + 8, -HALF_PI, -HALF_PI + pct * TWO_PI);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+// ─── DRAW PARTICLES ──────────────────────────────────────────────────────────
+function updateAndDrawParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy += 60 * dt; // gravity
+    p.life -= dt;
+    if (p.life <= 0) { particles.splice(i, 1); continue; }
+    const frac = p.life / p.maxLife;
+    ctx.save();
+    ctx.globalAlpha = frac * 0.9;
+    ctx.fillStyle = p.color;
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size * frac, 0, TWO_PI);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+// ─── DRAW JUDGEMENT POPUP ────────────────────────────────────────────────────
+function drawJudgement(dt) {
+  if (judgement.timer <= 0) return;
+  judgement.timer -= dt;
+  const frac = judgement.timer / 0.7;
+  const scale = 1 + (1 - frac) * 0.3;
+  ctx.save();
+  ctx.globalAlpha = Math.min(frac * 2, 1);
+  ctx.fillStyle = judgement.color;
+  ctx.shadowColor = judgement.color;
+  ctx.shadowBlur = 16;
+  ctx.font = `bold ${Math.round(16 * scale)}px 'Segoe UI', sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(judgement.text, judgement.x, judgement.y - (1 - frac) * 20);
+  ctx.restore();
+}
+
+// ─── DRAW OVERDRIVE BANNER ────────────────────────────────────────────────────
+function drawOverdriveBanner() {
+  if (!overdrive) return;
+  const alpha = 0.7 + 0.3 * Math.sin(elapsed * 8);
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = '#ff9f00';
+  ctx.shadowColor = '#ff9f00';
+  ctx.shadowBlur = 20;
+  ctx.font = 'bold 18px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('⚡ OVERDRIVE ⚡', W / 2, 52);
+  ctx.restore();
+}
+
+// ─── DRAW REVERSE TELEGRAPH ──────────────────────────────────────────────────
+function drawReverseTelegraph() {
+  if (!reverseFlash) return;
+  const alpha = 0.5 + 0.5 * Math.sin(elapsed * 20);
+  ctx.save();
+  ctx.globalAlpha = alpha * (reverseTelegraph / 1.2);
+  ctx.fillStyle = '#ff4040';
+  ctx.font = 'bold 14px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('◀ REVERSE ▶', W / 2, H * 0.44 - Math.min(W, H) * 0.30 - 40);
+  ctx.restore();
+}
+
+// ─── DRAW START SCREEN ────────────────────────────────────────────────────────
+function drawStart() {
+  drawBackground();
+  const cx = W / 2, cy = H / 2;
+
+  // Animated gauge hint
+  const demoR = Math.min(W, H) * 0.30;
+  const demoA = (elapsed * 1.5) % TWO_PI - Math.PI;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(80,120,180,0.18)';
+  ctx.lineWidth = 18;
+  ctx.beginPath();
+  ctx.arc(cx, cy - 40, demoR, 0, TWO_PI);
+  ctx.stroke();
+  ctx.restore();
+
+  drawArc(cx, cy - 40, demoR, 0.5, 1.2, 'rgba(0,220,200,0.35)', 18, 1);
+  ctx.save();
+  ctx.strokeStyle = '#00ffe0';
+  ctx.lineWidth = 12;
+  ctx.shadowColor = '#00ffe0';
+  ctx.shadowBlur = 20;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.arc(cx, cy - 40, demoR, demoA - 0.12, demoA + 0.12);
+  ctx.stroke();
+  ctx.restore();
+
+  // Title
+  ctx.save();
+  const titleGrad = ctx.createLinearGradient(cx - 100, 0, cx + 100, 0);
+  titleGrad.addColorStop(0, '#00d4ff');
+  titleGrad.addColorStop(1, '#a040ff');
+  ctx.fillStyle = titleGrad;
+  ctx.shadowColor = '#00d4ff';
+  ctx.shadowBlur = 25;
+  ctx.font = 'bold 38px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('BEAT CHASE', cx, cy + demoR - 30);
+  ctx.restore();
+
+  ctx.fillStyle = 'rgba(160,200,240,0.7)';
+  ctx.font = '13px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Tap when the pulse hits the target', cx, cy + demoR - 2);
+
+  // Tap to start pulse
+  const tapAlpha = 0.5 + 0.5 * Math.sin(elapsed * 3);
+  ctx.save();
+  ctx.globalAlpha = tapAlpha;
+  ctx.fillStyle = '#e0f0ff';
+  ctx.shadowColor = '#00d4ff';
+  ctx.shadowBlur = 14;
+  ctx.font = 'bold 18px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('TAP TO START', cx, cy + demoR + 40);
+  ctx.restore();
+}
+
+// ─── DRAW GAMEOVER SCREEN ─────────────────────────────────────────────────────
+function drawGameOver() {
+  drawBackground();
+  const cx = W / 2, cy = H / 2;
+
+  ctx.save();
+  ctx.fillStyle = 'rgba(255,60,90,0.85)';
+  ctx.shadowColor = '#ff4060';
+  ctx.shadowBlur = 30;
+  ctx.font = 'bold 32px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('DRONE CAUGHT YOU', cx, cy - 70);
+  ctx.restore();
+
+  ctx.fillStyle = '#e0f0ff';
+  ctx.font = '14px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('SCORE', cx, cy - 20);
+
+  ctx.save();
+  ctx.fillStyle = '#00ffe0';
+  ctx.shadowColor = '#00ffe0';
+  ctx.shadowBlur = 16;
+  ctx.font = 'bold 44px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(score, cx, cy + 25);
+  ctx.restore();
+
+  if (score >= bestScore) {
+    const nb = 0.6 + 0.4 * Math.sin(elapsed * 5);
+    ctx.save();
+    ctx.globalAlpha = nb;
+    ctx.fillStyle = '#ffd740';
+    ctx.shadowColor = '#ffd740';
+    ctx.shadowBlur = 14;
+    ctx.font = 'bold 14px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('NEW BEST!', cx, cy + 52);
+    ctx.restore();
+  }
+
+  ctx.fillStyle = '#4a6a9a';
+  ctx.font = '12px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(`BEST: ${bestScore}`, cx, cy + 72);
+
+  const tapAlpha = 0.5 + 0.5 * Math.sin(elapsed * 3);
+  ctx.save();
+  ctx.globalAlpha = tapAlpha;
+  ctx.fillStyle = '#e0f0ff';
+  ctx.shadowColor = '#00d4ff';
+  ctx.shadowBlur = 12;
+  ctx.font = 'bold 16px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('TAP TO RETRY', cx, cy + 110);
+  ctx.restore();
+}
+
+// ─── DRAW PLAYING ─────────────────────────────────────────────────────────────
+function drawPlaying(dt) {
+  const cx = W / 2, cy = H * 0.44;
+  const gaugeR = Math.min(W, H) * 0.30;
+
+  drawBackground();
+  drawTargets(cx, cy, gaugeR, dt);
+  drawGauge(cx, cy, gaugeR);
+  drawWedge(cx, cy, gaugeR);
+  drawSpeedDial(cx, cy);
+  updateAndDrawParticles(dt);
+  drawDroneMeter();
+  drawJudgement(dt);
+  drawOverdriveBanner();
+  drawReverseTelegraph();
+
+  // Combo flash
+  if (comboFlash > 0) {
+    comboFlash -= dt;
+    ctx.save();
+    ctx.globalAlpha = comboFlash / 0.3 * 0.15;
+    ctx.fillStyle = '#00ffe0';
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+  }
+}
+
+// ─── MAIN UPDATE LOOP ─────────────────────────────────────────────────────────
+let lastTime = 0;
+
+function update(ts) {
+  const dt = Math.min((ts - lastTime) / 1000, 0.05); // clamp dt max 50ms
+  lastTime = ts;
+  elapsed += dt;
+
+  // Screen shake
+  if (shakeMag > 0.1) {
+    shakeX = (Math.random() * 2 - 1) * shakeMag;
+    shakeY = (Math.random() * 2 - 1) * shakeMag;
+    shakeMag *= Math.pow(0.001, dt * shakeDecay);
+  } else {
+    shakeX = 0; shakeY = 0; shakeMag = 0;
+  }
+
+  // Apply shake transform
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
+
+  if (state === 'start') {
+    drawStart();
+  } else if (state === 'gameover') {
+    drawGameOver();
+  } else if (state === 'playing') {
+    // ── Difficulty ramp ──
+    // Sweep rate grows with time
+    const baseRate = 1.8 + elapsed * 0.025;
+    const speedBoost = speed * 1.5;
+    const overdriveBoost = overdrive ? 0.6 : 0;
+    sweepRate = baseRate + speedBoost + overdriveBoost;
+
+    // Drone creep (passive; slowly gains on you)
+    const passiveDrone = 0.004 + elapsed * 0.00008;
+    droneProgress = Math.min(1, droneProgress + passiveDrone * dt);
+
+    // Hue shift
+    hue = (hue + 12 * dt) % 360;
+
+    // Overdrive countdown
+    if (overdrive) {
+      overdriveTimer -= dt;
+      if (overdriveTimer <= 0) {
+        overdrive = false;
+        overdriveTimer = 0;
+      }
+    }
+
+    // Reverse telegraph countdown
+    if (reverseFlash && reverseTelegraph > 0) {
+      reverseTelegraph -= dt;
+      if (reverseTelegraph <= 0) {
+        reverseSweep = !reverseSweep;
+        reverseFlash = false;
+        reverseTelegraph = 0;
+      }
+    }
+
+    // Advance wedge angle
+    const dir = reverseSweep ? -1 : 1;
+    wedgeAngle += dir * sweepRate * dt;
+
+    // Update scroll layers with proper dt
+    const scrollSpd = speed * 220;
+    for (const ln of scrollLayers) {
+      ln.y += ln.speed * scrollSpd * dt / H * H * 0.001;
+      if (ln.y > 1) ln.y -= 1;
+    }
+
+    drawPlaying(dt);
+
+    // Game over check
+    if (droneProgress >= 1) {
+      state = 'gameover';
+      saveBest(score);
+      addShake(14, 6);
+      sfxMiss();
+    }
+  }
+
+  ctx.restore();
+  requestAnimationFrame(update);
+}
+
+// ─── INPUT ────────────────────────────────────────────────────────────────────
+const wrap = document.getElementById('game-wrap');
+wrap.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  onTap();
+}, { passive: false });
+
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    onTap();
+  }
+});
+
+// ─── RESIZE ───────────────────────────────────────────────────────────────────
+window.addEventListener('resize', () => {
+  resizeCanvas();
+});
+
+// ─── BOOT ─────────────────────────────────────────────────────────────────────
+resizeCanvas();
+bestEl.textContent = bestScore;
+initScrollLayers();
+requestAnimationFrame((ts) => { lastTime = ts; requestAnimationFrame(update); });
+
+})();
+</script>
+</body>
+</html>

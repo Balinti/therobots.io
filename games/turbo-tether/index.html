@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Turbo Tether - Free HTML5 Game</title>
+<meta name="description" content="Play Turbo Tether - Tap to hook onto swinging tethers, racing faster and faster through cyberpunk skyscrapers.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0a0a1a">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Turbo Tether - Free HTML5 Game">
+<meta property="og:description" content="Play Turbo Tether - Tap to hook onto swinging tethers, racing faster and faster through cyberpunk skyscrapers.">
+<meta property="og:url" content="https://balinti.github.io/turbo-tether/">
+<meta property="og:image" content="https://balinti.github.io/turbo-tether/og-image.png">
+<link rel="canonical" href="https://balinti.github.io/turbo-tether/">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#050510;font-family:'Segoe UI',system-ui,sans-serif;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center}
+#wrap{display:flex;flex-direction:column;align-items:center;width:100%;max-width:420px;height:100%;max-height:750px;position:relative}
+#header{width:100%;height:40px;display:flex;align-items:center;justify-content:center;color:#888;font-size:11px;letter-spacing:1px;flex-shrink:0}
+#stage{position:relative;flex:1;width:100%;overflow:hidden;border-radius:8px}
+canvas{display:block;width:100%;height:100%;border-radius:8px}
+#footer{width:100%;height:36px;display:flex;align-items:center;justify-content:center;gap:20px;flex-shrink:0}
+#footer a{color:#555;font-size:11px;text-decoration:none;letter-spacing:.5px}
+#footer a:hover{color:#aaa}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="header">TURBO TETHER</div>
+  <div id="stage"><canvas id="c"></canvas></div>
+  <div id="footer">
+    <a href="#" id="howLink">How to Play</a>
+    <a href="#" id="privLink">Privacy</a>
+  </div>
+</div>
+<script>
+(function(){
+'use strict';
+
+// ─── Canvas Setup ───────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W = 0, H = 0, dpr = 1;
+
+function resize(){
+  const stage = document.getElementById('stage');
+  const rect = stage.getBoundingClientRect();
+  dpr = window.devicePixelRatio || 1;
+  W = rect.width;
+  H = rect.height;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ─── Constants ──────────────────────────────────────────────────────────────
+const LS_KEY = 'TT_HIGH_SCORE';
+const HIGH_Y_FRAC = 0.28;
+const LOW_Y_FRAC  = 0.72;
+const BEAT_DIST_BASE = 320;
+const SNAP_RADIUS_BASE = 54;
+const ARC_AMP = 60;
+const PARTICLE_POOL_SIZE = 400;
+const MAX_HEAT = 100;
+const MAX_TURBO = 100;
+const RISKY_CYCLE = 8; // beats per risky-lane flip
+
+// ─── State ──────────────────────────────────────────────────────────────────
+let state = 'start'; // 'start' | 'playing' | 'gameover'
+let score = 0, best = parseInt(localStorage.getItem(LS_KEY)||'0');
+let isPB = false;
+
+// player
+let plX, plY, plVY;
+let arcT, arcSrc, arcDst, arcAmp, arcSign;
+let onArc = false;
+let targetLine = 0; // 0=HIGH, 1=LOW
+let hp = 3;
+let heat = 0, turbo = 0;
+let mult = 1, streak = 0;
+let turboActive = false, turboTimer = 0;
+let overheated = false, overheatTimer = 0;
+let hitCooldown = 0;
+let emergencyGrapple = false;
+let emergencyTimer = 0;
+
+// world
+let worldX = 0; // how far world has scrolled
+let speed = 3.5; // px/frame base
+let beatX = 0; // x position of next beat spawn relative to world
+let beatCount = 0;
+let riskyLine = 0; // 0=HIGH risky, 1=LOW risky
+let riskyBeatCounter = 0;
+let time = 0; // seconds elapsed
+let hue = 180;
+
+// tethers
+let tethers = [];
+// hazards
+let hazards = [];
+// particles
+let particles = [];
+// buildings
+let buildings = [];
+
+// shake
+let shakeX = 0, shakeY = 0, shakeMag = 0, shakeDecay = 0.85;
+
+// score popups
+let popups = [];
+
+// ─── Particle Pool ──────────────────────────────────────────────────────────
+let pPool = [];
+for(let i=0;i<PARTICLE_POOL_SIZE;i++) pPool.push({active:false});
+
+function spawnParticles(x,y,n,opts){
+  let spawned=0;
+  for(let i=0;i<pPool.length&&spawned<n;i++){
+    let p=pPool[i];
+    if(!p.active){
+      p.active=true;
+      p.x=x; p.y=y;
+      let a=opts.angle!=null?opts.angle:(Math.random()*Math.PI*2);
+      let spd=opts.speed!=null?opts.speed:(2+Math.random()*4);
+      if(opts.spread) a+=( Math.random()-0.5)*opts.spread;
+      p.vx=Math.cos(a)*spd;
+      p.vy=Math.sin(a)*spd;
+      p.life=opts.life||40;
+      p.maxLife=p.life;
+      p.size=opts.size||(2+Math.random()*3);
+      p.color=opts.color||`hsl(${hue},100%,60%)`;
+      p.gravity=opts.gravity||0.15;
+      p.trail=opts.trail||false;
+      spawned++;
+    }
+  }
+}
+
+// ─── Buildings ──────────────────────────────────────────────────────────────
+function initBuildings(){
+  buildings=[];
+  let bx=0;
+  while(bx<W+400){
+    spawnBuilding(bx);
+    bx+=buildings[buildings.length-1].w+4+Math.random()*30;
+  }
+}
+
+function spawnBuilding(bx){
+  let w=40+Math.random()*80;
+  let h=50+Math.random()*H*0.55;
+  let col=`hsl(${220+Math.random()*40},${20+Math.random()*20}%,${8+Math.random()*8}%)`;
+  buildings.push({x:bx,w,h,col});
+}
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+function lerp(a,b,t){return a+(b-a)*t;}
+function clamp(v,mn,mx){return Math.max(mn,Math.min(mx,v));}
+function lineY(line){return line===0?H*HIGH_Y_FRAC:H*LOW_Y_FRAC;}
+
+function addPopup(x,y,text,color){
+  popups.push({x,y,text,color:color||'#fff',life:60,vy:-1.2});
+}
+
+function triggerShake(mag){
+  shakeMag=Math.max(shakeMag,mag);
+}
+
+// ─── Init Game ──────────────────────────────────────────────────────────────
+function initGame(){
+  score=0; isPB=false;
+  hp=3; heat=0; turbo=0; mult=1; streak=0;
+  turboActive=false; turboTimer=0;
+  overheated=false; overheatTimer=0;
+  hitCooldown=0;
+  emergencyGrapple=false; emergencyTimer=0;
+  worldX=0; speed=3.5; beatCount=0; time=0; hue=180;
+  riskyLine=0; riskyBeatCounter=0;
+  tethers=[]; hazards=[]; popups=[];
+  for(let p of pPool) p.active=false;
+  shakeX=0; shakeY=0; shakeMag=0;
+
+  // player starts on HIGH line, left side
+  plX = W*0.22;
+  plY = lineY(0);
+  plVY = 0;
+  targetLine = 0;
+  onArc = false;
+
+  initBuildings();
+
+  // pre-spawn first beat immediately
+  beatX = plX + 200;
+  spawnBeat();
+  state='playing';
+}
+
+// ─── Beat Spawner ────────────────────────────────────────────────────────────
+function spawnBeat(){
+  beatCount++;
+  riskyBeatCounter++;
+  if(riskyBeatCounter>=RISKY_CYCLE){riskyLine=1-riskyLine;riskyBeatCounter=0;}
+
+  let bx = beatX;
+  let snapR = Math.max(26, SNAP_RADIUS_BASE - beatCount*0.5);
+
+  // Two tethers: HIGH and LOW
+  for(let line=0;line<2;line++){
+    let ty = lineY(line);
+    tethers.push({
+      x: bx,
+      y: ty,
+      line,
+      snapR,
+      grabbed: false,
+      warned: false,
+      nearMissed: false,
+      worldX: worldX, // worldX at spawn time
+    });
+  }
+
+  // hazard spawning
+  if(beatCount>2){
+    let canSpawnHigh = true, canSpawnLow = true;
+    if(time<30){ // never both lanes
+      let roll = Math.random();
+      if(roll<0.3){ canSpawnLow=false; }
+      else if(roll<0.6){ canSpawnHigh=false; }
+      else { canSpawnHigh=false; canSpawnLow=false; }
+    }
+    if(hitCooldown>0){ canSpawnHigh=false; canSpawnLow=false; }
+
+    let hDensity = Math.min(0.6, 0.08 + time*0.008);
+
+    for(let line=0;line<2;line++){
+      let can = line===0?canSpawnHigh:canSpawnLow;
+      if(!can) continue;
+      if(Math.random()>hDensity) continue;
+      let hType = ['laser','billboard','drone'][Math.floor(Math.random()*3)];
+      let hy = lineY(line);
+      let warnTimer = 30; // frames
+      hazards.push({
+        x: bx + 60 + Math.random()*80,
+        y: hy,
+        line,
+        type: hType,
+        warn: warnTimer,
+        active: false,
+        hit: false,
+        nearMissed: false,
+      });
+    }
+  }
+
+  beatX += BEAT_DIST_BASE - Math.min(140, beatCount*2);
+}
+
+// ─── Arc Motion ─────────────────────────────────────────────────────────────
+function startArc(tether){
+  let fromY = plY;
+  let toY = tether.y;
+  arcSrc = {x: plX, y: fromY};
+  arcDst = {x: tether.x, y: toY};
+  arcAmp = ARC_AMP;
+  arcSign = (toY < fromY) ? -1 : 1;
+  arcT = 0;
+  onArc = true;
+  tether.grabbed = true;
+
+  // check apex bonus
+  let apexWindow = Math.max(0.08, 0.18 - beatCount*0.001);
+  if(Math.abs(arcT-0.5)<apexWindow){
+    turbo = Math.min(MAX_TURBO, turbo+20);
+    streak++;
+    mult = Math.min(8, 1+Math.floor(streak/3));
+    addPopup(plX, plY-30, 'PERFECT!', '#0ff');
+    spawnParticles(plX,plY,15,{speed:4,color:'#0ff',life:35});
+  } else {
+    streak=0;
+    mult=Math.max(1,mult-1);
+  }
+
+  // heat: penalize same-line repeated grabs handled in update
+  triggerShake(2);
+  spawnParticles(plX,plY,10,{speed:3,color:`hsl(${hue},100%,65%)`,life:25});
+}
+
+function startEmergencyArc(){
+  emergencyGrapple=true;
+  emergencyTimer=0;
+  let centerY = H*0.5;
+  arcSrc = {x: plX, y: plY};
+  arcDst = {x: plX+120, y: centerY};
+  arcAmp = 30; arcSign = (centerY<plY)?-1:1;
+  arcT=0; onArc=true;
+  heat=Math.min(MAX_HEAT,heat+30);
+  mult=Math.max(1,mult-1);
+  streak=0;
+  addPopup(plX,plY-40,'EMERGENCY!','#f80');
+  triggerShake(4);
+}
+
+// ─── Input ───────────────────────────────────────────────────────────────────
+function handleInput(){
+  if(state==='start'){initGame();return;}
+  if(state==='gameover'){initGame();return;}
+  // switch target line
+  targetLine = 1-targetLine;
+}
+
+document.addEventListener('pointerdown',handleInput);
+document.addEventListener('keydown',e=>{
+  if(e.code==='Space'||e.code==='Enter') handleInput();
+});
+
+document.getElementById('howLink').addEventListener('click',e=>{
+  e.stopPropagation();
+  alert('TAP to switch between HIGH (cyan) and LOW (magenta) tether.\nAuto-hooks when you enter snap zone.\nSurvive hazards — 3 hits and you\'re done!\nFill the TURBO meter with perfect apex grabs!');
+});
+document.getElementById('privLink').addEventListener('click',e=>{
+  e.stopPropagation();
+  alert('No personal data is collected. High score stored locally only.');
+});
+
+// ─── Update ──────────────────────────────────────────────────────────────────
+let lastTime = 0;
+function update(ts){
+  let dt = Math.min((ts - lastTime)/16.67, 3);
+  lastTime = ts;
+
+  if(state!=='playing'){return;}
+
+  time += dt/60;
+  hue = (hue + 0.3*dt) % 360;
+  score += Math.floor(speed * mult * dt * 0.8);
+
+  // speed ramp
+  let spd = 3.5 + time*0.18 + (turboActive?2:0) + (overheated?-1.5:0);
+  speed = clamp(spd, 2, 12);
+
+  // timers
+  if(hitCooldown>0) hitCooldown-=dt;
+  if(turboActive){ turboTimer-=dt; if(turboTimer<=0){turboActive=false;turbo=0;} }
+  if(overheated){ overheatTimer-=dt; if(overheatTimer<=0){overheated=false;heat=Math.max(0,heat-40);}}
+  if(emergencyGrapple){ emergencyTimer+=dt; if(emergencyTimer>60){emergencyGrapple=false;}}
+
+  // heat decay
+  if(!overheated) heat=Math.max(0,heat-0.15*dt);
+
+  // shake
+  if(shakeMag>0.1){
+    shakeX=(Math.random()-0.5)*shakeMag*2;
+    shakeY=(Math.random()-0.5)*shakeMag*2;
+    shakeMag*=shakeDecay;
+  } else {shakeX=0;shakeY=0;shakeMag=0;}
+
+  // scroll world
+  worldX += speed * dt;
+
+  // buildings scroll & recycle
+  for(let b of buildings){
+    b.x -= speed*dt;
+    if(b.x+b.w < 0){
+      // find rightmost
+      let maxX = 0;
+      for(let bb of buildings) if(bb.x>maxX) maxX=bb.x+bb.w;
+      b.x = maxX + 4 + Math.random()*30;
+      b.w = 40+Math.random()*80;
+      b.h = 50+Math.random()*H*0.55;
+    }
+  }
+
+  // spawn next beat
+  let nearestTX = Infinity;
+  for(let t of tethers) if(!t.grabbed) nearestTX=Math.min(nearestTX,t.x);
+  // If no upcoming tether in view, spawn
+  let rightmostTX = -Infinity;
+  for(let t of tethers) rightmostTX=Math.max(rightmostTX,t.x);
+  if(rightmostTX < plX + W*0.7){
+    beatX = rightmostTX + BEAT_DIST_BASE - Math.min(140, beatCount*2);
+    spawnBeat();
+  }
+
+  // tethers scroll
+  for(let i=tethers.length-1;i>=0;i--){
+    let t=tethers[i];
+    t.x -= speed*dt;
+    if(t.x < -60){ tethers.splice(i,1); }
+  }
+
+  // hazards scroll & warn
+  for(let i=hazards.length-1;i>=0;i--){
+    let h=hazards[i];
+    h.x -= speed*dt;
+    if(h.warn>0){ h.warn-=dt; if(h.warn<=0) h.active=true; }
+    if(h.x < -80){ hazards.splice(i,1); continue; }
+
+    // collision check
+    if(h.active && !h.hit){
+      let dx=plX-h.x, dy=plY-h.y;
+      let dist=Math.sqrt(dx*dx+dy*dy);
+      let hitR = 18;
+      let nearR = 32;
+      if(dist<hitR && hitCooldown<=0){
+        h.hit=true;
+        hp--;
+        hitCooldown=72;
+        heat=Math.min(MAX_HEAT,heat+20);
+        mult=Math.max(1,mult-1); streak=0;
+        triggerShake(hp<=0?12:7);
+        spawnParticles(plX,plY,20,{speed:5,color:'#f44',life:40,gravity:0.2});
+        addPopup(plX,plY-40,'HIT!','#f44');
+        if(hp<=0){ endGame(); return; }
+      } else if(!h.nearMissed && dist<nearR && dist>=hitR){
+        h.nearMissed=true;
+        let bonus=Math.floor(200*mult);
+        score+=bonus;
+        addPopup(h.x,h.y-30,'NEAR MISS! +'+bonus,'#ff0');
+        spawnParticles(h.x,h.y,12,{speed:3,color:'#ff0',life:25,spread:Math.PI*0.5});
+      }
+    }
+  }
+
+  // player arc motion
+  if(onArc){
+    let arcSpeed = 0.028*dt + speed*0.004*dt;
+    arcT = Math.min(1, arcT + arcSpeed);
+    let t2 = arcT;
+    plX = lerp(arcSrc.x, arcDst.x, t2);
+    let baseY = lerp(arcSrc.y, arcDst.y, t2);
+    plY = baseY + arcSign * arcAmp * Math.sin(Math.PI*t2);
+
+    if(arcT>=1){
+      onArc=false;
+      plX=arcDst.x; plY=arcDst.y;
+      emergencyGrapple=false;
+      // turbo boost
+      if(turbo>=MAX_TURBO && !turboActive){
+        turboActive=true; turboTimer=180;
+        addPopup(plX,plY-50,'TURBO!','#f0f');
+        triggerShake(6);
+        spawnParticles(plX,plY,30,{speed:6,color:'#f0f',life:50});
+      }
+    }
+  } else {
+    // not on arc — check snap to tether
+    let snapped=false;
+    for(let t of tethers){
+      if(t.grabbed) continue;
+      if(t.line!==targetLine) continue;
+      let dx=plX-t.x, dy=plY-t.y;
+      let dist=Math.sqrt(dx*dx+dy*dy);
+      if(dist<t.snapR){
+        startArc(t);
+        snapped=true;
+        break;
+      }
+    }
+    if(!snapped){
+      // check if we missed all tethers (passed them)
+      let allPast=true;
+      for(let t of tethers){
+        if(!t.grabbed && t.x>plX-20){allPast=false;break;}
+      }
+      // if nearest ungrabbed tether is behind and too far
+      let nearBehindDist=Infinity;
+      for(let t of tethers){
+        if(!t.grabbed && t.x<plX-30) nearBehindDist=Math.min(nearBehindDist,plX-t.x);
+      }
+      if(nearBehindDist<Infinity && nearBehindDist>80 && !onArc){
+        startEmergencyArc();
+      }
+      // gravity pull to target line
+      let ty=lineY(targetLine);
+      plVY += (ty-plY)*0.06*dt;
+      plVY*=0.88;
+      plY+=plVY*dt;
+      plY=clamp(plY,H*0.05,H*0.95);
+    }
+  }
+
+  // heat check
+  if(heat>=MAX_HEAT && !overheated){
+    overheated=true; overheatTimer=120;
+    mult=Math.max(1,mult-2);
+    addPopup(plX,plY-60,'OVERHEAT!','#f80');
+    triggerShake(8);
+  }
+
+  // turbo trail particles
+  if(turboActive && Math.random()<0.4){
+    spawnParticles(plX,plY,1,{speed:2,color:`hsl(${(hue+180)%360},100%,65%)`,life:20,angle:Math.PI,spread:0.5});
+  }
+
+  // update particles
+  for(let p of pPool){
+    if(!p.active) continue;
+    p.x+=p.vx; p.y+=p.vy;
+    p.vy+=p.gravity;
+    p.life--;
+    if(p.life<=0) p.active=false;
+  }
+
+  // update popups
+  for(let i=popups.length-1;i>=0;i--){
+    let pp=popups[i];
+    pp.y+=pp.vy; pp.life--;
+    if(pp.life<=0) popups.splice(i,1);
+  }
+}
+
+// ─── End Game ────────────────────────────────────────────────────────────────
+function endGame(){
+  state='gameover';
+  if(score>best){best=score;isPB=true;localStorage.setItem(LS_KEY,best);}
+  triggerShake(14);
+  spawnParticles(plX,plY,40,{speed:6,color:'#f44',life:60,gravity:0.1});
+}
+
+// ─── Draw ─────────────────────────────────────────────────────────────────
+function draw(){
+  ctx.save();
+  ctx.translate(shakeX,shakeY);
+
+  // background gradient
+  let grad=ctx.createLinearGradient(0,0,0,H);
+  grad.addColorStop(0,`hsl(${hue},30%,4%)`);
+  grad.addColorStop(1,`hsl(${(hue+40)%360},25%,8%)`);
+  ctx.fillStyle=grad;
+  ctx.fillRect(0,0,W,H);
+
+  // buildings
+  for(let b of buildings){
+    ctx.fillStyle=b.col;
+    ctx.fillRect(b.x,H-b.h,b.w,b.h);
+    // neon windows
+    ctx.fillStyle=`hsla(${hue},80%,60%,0.15)`;
+    for(let wy=H-b.h+8;wy<H-12;wy+=14){
+      for(let wx=b.x+5;wx<b.x+b.w-10;wx+=12){
+        if(Math.random()<0.5) ctx.fillRect(wx,wy,7,8);
+      }
+    }
+  }
+
+  // lane guides
+  for(let line=0;line<2;line++){
+    let ly=lineY(line);
+    let isRisky=(line===riskyLine);
+    ctx.strokeStyle=isRisky?`hsla(${hue},100%,60%,0.12)`:`rgba(255,255,255,0.06)`;
+    ctx.lineWidth=isRisky?3:1;
+    ctx.setLineDash([10,14]);
+    ctx.beginPath();ctx.moveTo(0,ly);ctx.lineTo(W,ly);ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // hazards
+  for(let h of hazards){
+    if(h.x<-80||h.x>W+80) continue;
+    ctx.save();
+    if(!h.active){
+      // warning stripes
+      let prog=1-(h.warn/30);
+      ctx.globalAlpha=0.5+0.5*Math.sin(Date.now()*0.02);
+      ctx.fillStyle=`rgba(255,200,0,0.6)`;
+      ctx.fillRect(h.x-20,h.y-8,40,16);
+      ctx.globalAlpha=1;
+    } else {
+      if(h.type==='laser'){
+        ctx.strokeStyle='#f00';
+        ctx.lineWidth=3;
+        ctx.shadowColor='#f00'; ctx.shadowBlur=12;
+        ctx.beginPath();ctx.moveTo(h.x-30,h.y);ctx.lineTo(h.x+30,h.y);ctx.stroke();
+        ctx.shadowBlur=0;
+      } else if(h.type==='billboard'){
+        ctx.fillStyle='#c20';
+        ctx.fillRect(h.x-18,h.y-24,36,28);
+        ctx.fillStyle='#fff';
+        ctx.font='bold 9px monospace';
+        ctx.textAlign='center';
+        ctx.fillText('ADV',h.x,h.y-6);
+      } else {
+        // drone
+        ctx.strokeStyle='#f80';
+        ctx.lineWidth=2;
+        ctx.shadowColor='#f80'; ctx.shadowBlur=8;
+        ctx.beginPath();ctx.arc(h.x,h.y,12,0,Math.PI*2);ctx.stroke();
+        // blades
+        for(let a=0;a<4;a++){
+          let ang=a*Math.PI/2+(Date.now()*0.01);
+          ctx.beginPath();ctx.moveTo(h.x,h.y);
+          ctx.lineTo(h.x+Math.cos(ang)*18,h.y+Math.sin(ang)*18);ctx.stroke();
+        }
+        ctx.shadowBlur=0;
+      }
+    }
+    ctx.restore();
+  }
+
+  // tethers
+  for(let t of tethers){
+    if(t.x<-80||t.x>W+80) continue;
+    let isTarget=(t.line===targetLine);
+    let col=t.line===0?'#0ff':'#f0f';
+    ctx.save();
+    ctx.shadowColor=col; ctx.shadowBlur=isTarget?18:6;
+    // snap ring
+    ctx.strokeStyle=col;
+    ctx.lineWidth=isTarget?2.5:1;
+    ctx.globalAlpha=isTarget?0.8:0.35;
+    ctx.beginPath();ctx.arc(t.x,t.y,t.snapR,0,Math.PI*2);ctx.stroke();
+    // dot
+    ctx.globalAlpha=1;
+    ctx.fillStyle=col;
+    ctx.beginPath();ctx.arc(t.x,t.y,isTarget?9:6,0,Math.PI*2);ctx.fill();
+    ctx.shadowBlur=0;
+    ctx.restore();
+  }
+
+  // arc preview (if on arc, draw trajectory)
+  if(onArc){
+    ctx.save();
+    ctx.strokeStyle=`hsla(${hue},100%,70%,0.3)`;
+    ctx.lineWidth=1.5;
+    ctx.setLineDash([4,6]);
+    ctx.beginPath();
+    for(let tt=arcT;tt<=1;tt+=0.05){
+      let px2=lerp(arcSrc.x,arcDst.x,tt);
+      let py2=lerp(arcSrc.y,arcDst.y,tt)+arcSign*arcAmp*Math.sin(Math.PI*tt);
+      if(tt===arcT) ctx.moveTo(px2,py2); else ctx.lineTo(px2,py2);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
+  // particles
+  for(let p of pPool){
+    if(!p.active) continue;
+    let a=p.life/p.maxLife;
+    ctx.globalAlpha=a;
+    ctx.fillStyle=p.color;
+    ctx.beginPath();ctx.arc(p.x,p.y,p.size*a,0,Math.PI*2);ctx.fill();
+  }
+  ctx.globalAlpha=1;
+
+  // player
+  ctx.save();
+  let pCol=turboActive?`hsl(${Date.now()*0.5%360},100%,65%)`:`hsl(${hue},90%,65%)`;
+  ctx.shadowColor=pCol; ctx.shadowBlur=20;
+  ctx.fillStyle=pCol;
+  // body
+  ctx.beginPath();ctx.arc(plX,plY,10,0,Math.PI*2);ctx.fill();
+  // tether line to current tether destination
+  if(onArc){
+    ctx.strokeStyle=pCol; ctx.lineWidth=2; ctx.globalAlpha=0.6;
+    ctx.beginPath();ctx.moveTo(plX,plY);ctx.lineTo(arcDst.x,arcDst.y);ctx.stroke();
+  }
+  ctx.shadowBlur=0;
+  ctx.restore();
+
+  // score popups
+  for(let pp of popups){
+    let a=pp.life/60;
+    ctx.globalAlpha=a;
+    ctx.fillStyle=pp.color;
+    ctx.font=`bold 15px monospace`;
+    ctx.textAlign='center';
+    ctx.fillText(pp.text,pp.x,pp.y);
+  }
+  ctx.globalAlpha=1;
+
+  // HUD
+  drawHUD();
+
+  ctx.restore(); // shake restore
+}
+
+function drawHUD(){
+  // score
+  ctx.fillStyle='#fff';
+  ctx.font='bold 22px monospace';
+  ctx.textAlign='left';
+  ctx.fillText(score,10,30);
+  ctx.font='12px monospace';
+  ctx.fillStyle='#aaa';
+  ctx.fillText('BEST:'+best,10,46);
+
+  // multiplier
+  if(mult>1){
+    ctx.fillStyle=`hsl(${hue},100%,65%)`;
+    ctx.font='bold 16px monospace';
+    ctx.textAlign='right';
+    ctx.fillText('x'+mult,W-10,30);
+  }
+
+  // HP pips
+  for(let i=0;i<3;i++){
+    ctx.fillStyle= i<hp ? '#f44' : '#333';
+    ctx.beginPath();ctx.arc(W/2-24+i*24,18,8,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='#fff';ctx.lineWidth=1;ctx.stroke();
+  }
+
+  // Heat bar
+  let barW=100, barH=8;
+  let bx=10, by=H-54;
+  ctx.fillStyle='#222';
+  ctx.fillRect(bx,by,barW,barH);
+  let heatCol=heat>70?'#f80':heat>40?'#fa0':'#0f8';
+  ctx.fillStyle=heatCol;
+  ctx.fillRect(bx,by,barW*(heat/MAX_HEAT),barH);
+  ctx.strokeStyle='#555';ctx.lineWidth=1;
+  ctx.strokeRect(bx,by,barW,barH);
+  ctx.fillStyle='#aaa';ctx.font='9px monospace';ctx.textAlign='left';
+  ctx.fillText('HEAT',bx,by-3);
+
+  // Turbo bar
+  let tx2=10, ty=H-36;
+  ctx.fillStyle='#222';
+  ctx.fillRect(tx2,ty,barW,barH);
+  ctx.fillStyle=turboActive?`hsl(${Date.now()*0.5%360},100%,65%)`:'#f0f';
+  ctx.fillRect(tx2,ty,barW*(turbo/MAX_TURBO),barH);
+  ctx.strokeStyle='#555';ctx.lineWidth=1;
+  ctx.strokeRect(tx2,ty,barW,barH);
+  ctx.fillStyle='#aaa';ctx.font='9px monospace';ctx.textAlign='left';
+  ctx.fillText(turboActive?'TURBO ACTIVE':'TURBO',tx2,ty-3);
+
+  // target line indicator
+  let armedCol=targetLine===0?'#0ff':'#f0f';
+  ctx.fillStyle=armedCol;
+  ctx.font='bold 11px monospace';
+  ctx.textAlign='right';
+  ctx.fillText(targetLine===0?'▲ HIGH':'▼ LOW',W-10,H-38);
+  ctx.fillStyle='#555';
+  ctx.font='10px monospace';
+  ctx.fillText('tap to switch',W-10,H-24);
+
+  if(overheated){
+    ctx.fillStyle='rgba(255,120,0,0.15)';
+    ctx.fillRect(0,0,W,H);
+    ctx.fillStyle='#f80';
+    ctx.font='bold 18px monospace';
+    ctx.textAlign='center';
+    ctx.fillText('OVERHEATING!',W/2,H/2-10);
+  }
+
+  if(emergencyGrapple){
+    ctx.fillStyle='#f80';
+    ctx.font='bold 13px monospace';
+    ctx.textAlign='center';
+    ctx.fillText('EMERGENCY GRAPPLE',W/2,H*0.5+40);
+  }
+}
+
+function drawStart(){
+  let grad=ctx.createLinearGradient(0,0,0,H);
+  grad.addColorStop(0,`hsl(${hue},30%,5%)`);
+  grad.addColorStop(1,`hsl(${(hue+60)%360},25%,10%)`);
+  ctx.fillStyle=grad;
+  ctx.fillRect(0,0,W,H);
+
+  // title
+  ctx.save();
+  ctx.shadowColor='#0ff'; ctx.shadowBlur=30;
+  ctx.fillStyle='#0ff';
+  ctx.font='bold 42px monospace';
+  ctx.textAlign='center';
+  ctx.fillText('TURBO',W/2,H*0.32);
+  ctx.fillStyle='#f0f';
+  ctx.shadowColor='#f0f';
+  ctx.fillText('TETHER',W/2,H*0.32+46);
+  ctx.shadowBlur=0;
+  ctx.restore();
+
+  ctx.fillStyle='#aaa';
+  ctx.font='14px monospace';
+  ctx.textAlign='center';
+  ctx.fillText('Split-Grab Sprint',W/2,H*0.32+76);
+
+  // instructions
+  ctx.fillStyle='rgba(255,255,255,0.7)';
+  ctx.font='13px monospace';
+  ctx.fillText('Tap to switch HIGH / LOW tether',W/2,H*0.58);
+  ctx.fillText('Auto-hook in snap zone',W/2,H*0.58+20);
+  ctx.fillText('Avoid hazards - 3 hits = game over',W/2,H*0.58+40);
+
+  let pulse=0.7+0.3*Math.sin(Date.now()*0.004);
+  ctx.globalAlpha=pulse;
+  ctx.fillStyle='#fff';
+  ctx.font='bold 16px monospace';
+  ctx.fillText('TAP TO START',W/2,H*0.78);
+  ctx.globalAlpha=1;
+
+  if(best>0){
+    ctx.fillStyle='#888';
+    ctx.font='12px monospace';
+    ctx.fillText('BEST: '+best,W/2,H*0.88);
+  }
+}
+
+function drawGameOver(){
+  ctx.fillStyle='rgba(0,0,0,0.7)';
+  ctx.fillRect(0,0,W,H);
+
+  ctx.fillStyle='#f44';
+  ctx.font='bold 36px monospace';
+  ctx.textAlign='center';
+  ctx.fillText('GAME OVER',W/2,H*0.32);
+
+  ctx.fillStyle='#fff';
+  ctx.font='20px monospace';
+  ctx.fillText('SCORE: '+score,W/2,H*0.45);
+
+  ctx.fillStyle='#aaa';
+  ctx.font='15px monospace';
+  ctx.fillText('BEST: '+best,W/2,H*0.52);
+
+  if(isPB){
+    ctx.save();
+    ctx.fillStyle=`hsl(${Date.now()*0.3%360},100%,65%)`;
+    ctx.font='bold 22px monospace';
+    ctx.shadowColor='#ff0'; ctx.shadowBlur=20;
+    ctx.fillText('NEW BEST! 🎉',W/2,H*0.60);
+    ctx.shadowBlur=0;
+    ctx.restore();
+  }
+
+  let pulse=0.7+0.3*Math.sin(Date.now()*0.004);
+  ctx.globalAlpha=pulse;
+  ctx.fillStyle='#fff';
+  ctx.font='bold 15px monospace';
+  ctx.fillText('TAP TO RETRY',W/2,H*0.75);
+  ctx.globalAlpha=1;
+}
+
+// ─── Main Loop ───────────────────────────────────────────────────────────────
+function loop(ts){
+  if(!lastTime) lastTime=ts;
+  update(ts);
+  hue=(hue+0.1)%360;
+
+  ctx.clearRect(0,0,W,H);
+  if(state==='start') drawStart();
+  else if(state==='gameover') drawGameOver();
+  else draw();
+
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1078 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Spin Warp - Free HTML5 Game</title>
+  <meta name="description" content="Play Spin Warp - Swipe to avoid space debris while the view spins unpredictably in all directions.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a0010">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Spin Warp - Free HTML5 Game">
+  <meta property="og:description" content="Play Spin Warp - Swipe to avoid space debris while the view spins unpredictably in all directions.">
+  <meta property="og:url" content="https://balinti.github.io/spin-warp/">
+  <meta property="og:image" content="https://balinti.github.io/spin-warp/og-image.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Spin Warp - Free HTML5 Game">
+  <meta name="twitter:description" content="Play Spin Warp - Swipe to avoid space debris while the view spins unpredictably in all directions.">
+  <meta name="twitter:image" content="https://balinti.github.io/spin-warp/og-image.jpg">
+
+  <link rel="canonical" href="https://balinti.github.io/spin-warp/">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%; height: 100%;
+      background: #0a0010;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      overflow: hidden;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      touch-action: none;
+      user-select: none;
+    }
+
+    #game-container {
+      position: relative;
+      max-width: 420px;
+      max-height: 750px;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #gameCanvas {
+      display: block;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+
+    #mute-btn {
+      position: absolute;
+      top: 10px; right: 10px;
+      width: 36px; height: 36px;
+      background: rgba(255,255,255,0.12);
+      border: 1px solid rgba(255,255,255,0.25);
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px;
+      color: #fff;
+      z-index: 10;
+      transition: background 0.2s;
+    }
+    #mute-btn:hover { background: rgba(255,255,255,0.22); }
+
+    #seo-block {
+      max-width: 420px;
+      width: 100%;
+      padding: 8px 16px;
+      color: rgba(255,255,255,0.45);
+      font-size: 11px;
+      line-height: 1.5;
+      flex-shrink: 0;
+    }
+    #seo-block summary {
+      cursor: pointer;
+      font-weight: 600;
+      color: rgba(255,255,255,0.6);
+      margin-bottom: 4px;
+    }
+    #seo-block p { margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <div id="game-container">
+    <canvas id="gameCanvas"></canvas>
+    <button id="mute-btn" aria-label="Toggle sound">🔊</button>
+  </div>
+
+  <!-- SEO text block -->
+  <div id="seo-block">
+    <details>
+      <summary>About Spin Warp &amp; How to Play</summary>
+      <p><strong>Spin Warp</strong> is a free hyper-casual HTML5 game where you pilot a tiny ship orbiting a glowing core. Tap or press Space/Enter to instantly flip your ship to the opposite side of its orbit and dodge incoming ring gates.</p>
+      <p><strong>How to play:</strong> Tap (or press Space/Enter) to flip your ship. Avoid the solid parts of each ring gate — only the gap is safe. The arena rotates on a beat, so watch the telegraph ring and plan your flips. Survive longer for a higher score. Near-misses earn bonus points and increase your score multiplier!</p>
+      <p>Works on mobile and desktop browsers with no downloads required.</p>
+    </details>
+  </div>
+
+<script>
+'use strict';
+// =====================================================================
+//  SPIN WARP - Tap-Flip Orbit Hyper-Casual Game
+// =====================================================================
+
+// ── CONFIG ────────────────────────────────────────────────────────────
+const CONFIG = {
+  W: 420, H: 750,           // design resolution
+  STEP: 1/120,              // fixed physics step
+  DT_CAP: 0.033,
+  DPR_CAP: 2,
+
+  // Ship
+  SHIP_RADIUS: 118,         // orbit radius px (design units)
+  SHIP_SIZE: 6,             // collision radius
+  FLIP_COOLDOWN: 0.08,
+
+  // Core
+  CORE_R: 18,
+
+  // Gates
+  GATE_THICKNESS_BASE: 22,
+  GATE_GAP_BASE: 1.35,
+  GATE_VR_BASE: 120,
+  GATE_SPAWN_MULT: 0.62,
+
+  // Particles
+  MAX_PARTICLES: 260,
+
+  // Beat
+  BEAT_TELEGRAPH_R: 150,
+
+  // Colors
+  BG_HUE_OFFSET: 220,
+};
+
+// ── UTIL ──────────────────────────────────────────────────────────────
+const util = {
+  clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; },
+  lerp(a, b, t) { return a + (b - a) * t; },
+  rand(lo, hi) { return lo + Math.random() * (hi - lo); },
+  randInt(lo, hi) { return Math.floor(util.rand(lo, hi + 1)); },
+  wrapAngle(a) {
+    a = a % (Math.PI * 2);
+    if (a < 0) a += Math.PI * 2;
+    return a;
+  },
+  // Angular difference (always positive, shortest path)
+  angDiff(a, b) {
+    let d = util.wrapAngle(b - a);
+    if (d > Math.PI) d = Math.PI * 2 - d;
+    return d;
+  },
+  // Is angle `a` inside arc [start, start+span] (wrapped)?
+  inArc(a, start, span) {
+    a = util.wrapAngle(a);
+    start = util.wrapAngle(start);
+    const end = util.wrapAngle(start + span);
+    if (start <= end) return a >= start && a <= end;
+    return a >= start || a <= end;
+  },
+};
+
+// ── STORAGE ───────────────────────────────────────────────────────────
+const storage = {
+  KEY: 'spinwarp_best',
+  load() {
+    try { return parseInt(localStorage.getItem(this.KEY)) || 0; } catch(e) { return 0; }
+  },
+  save(v) {
+    try { localStorage.setItem(this.KEY, String(Math.floor(v))); } catch(e) {}
+  },
+};
+
+// ── AUDIO ─────────────────────────────────────────────────────────────
+const audio = (() => {
+  let ctx = null, muted = false, enabled = false;
+  function init() {
+    if (ctx) return;
+    try {
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      enabled = true;
+    } catch(e) { enabled = false; }
+  }
+  function beep(freq, dur, vol, type='sine', when=0) {
+    if (!enabled || muted || !ctx) return;
+    try {
+      const t = ctx.currentTime + when;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, t);
+      gain.gain.setValueAtTime(vol, t);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      osc.start(t); osc.stop(t + dur + 0.01);
+    } catch(e) {}
+  }
+  return {
+    init,
+    flip() { beep(440, 0.06, 0.15, 'square'); },
+    nearMiss() { beep(880, 0.05, 0.2, 'sine'); beep(1200, 0.08, 0.15, 'sine', 0.04); },
+    beat() { beep(220, 0.12, 0.12, 'sine'); },
+    death() {
+      beep(150, 0.3, 0.3, 'sawtooth');
+      beep(80, 0.5, 0.25, 'sine', 0.1);
+    },
+    score() { beep(660, 0.05, 0.1, 'sine'); },
+    get muted() { return muted; },
+    toggleMute() { muted = !muted; return muted; },
+  };
+})();
+
+// ── INPUT ─────────────────────────────────────────────────────────────
+const input = {
+  _cb: null,
+  init(flipCallback) {
+    this._cb = flipCallback;
+    window.addEventListener('pointerdown', e => { e.preventDefault(); this._cb(); });
+    window.addEventListener('keydown', e => {
+      if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); this._cb(); }
+    });
+  },
+};
+
+// ── FX (Particles + Screen Shake) ────────────────────────────────────
+const fx = {
+  particles: [],
+  shakeAmp: 0,
+  shakeDur: 0,
+  shakeTime: 0,
+  shakeX: 0,
+  shakeY: 0,
+
+  addParticle(x, y, vx, vy, r, life, hue, drag=6) {
+    const p = { x, y, vx, vy, r, life, maxLife: life, hue, drag };
+    if (this.particles.length >= CONFIG.MAX_PARTICLES) this.particles.shift();
+    this.particles.push(p);
+  },
+
+  emitFlip(x, y, hue) {
+    for (let i = 0; i < 10; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = util.rand(80, 160);
+      const life = util.rand(0.22, 0.35);
+      this.addParticle(x, y, Math.cos(ang)*spd, Math.sin(ang)*spd,
+                       util.rand(1.5, 3), life, hue);
+    }
+  },
+
+  emitNearMiss(x, y, hue) {
+    for (let i = 0; i < 6; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = util.rand(140, 220);
+      const life = util.rand(0.18, 0.28);
+      this.addParticle(x, y, Math.cos(ang)*spd, Math.sin(ang)*spd,
+                       util.rand(1, 2.5), life, hue + 30);
+    }
+  },
+
+  emitDeath(x, y, hue) {
+    for (let i = 0; i < 40; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = util.rand(60, 320);
+      const life = util.rand(0.4, 0.9);
+      this.addParticle(x, y, Math.cos(ang)*spd, Math.sin(ang)*spd,
+                       util.rand(2, 5), life, hue + util.rand(-40, 40));
+    }
+  },
+
+  addShake(dur, amp) {
+    if (amp > this.shakeAmp) {
+      this.shakeAmp = amp;
+      this.shakeDur = dur;
+      this.shakeTime = dur;
+    }
+  },
+
+  update(dt) {
+    // Update particles
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      const p = this.particles[i];
+      p.life -= dt;
+      if (p.life <= 0) { this.particles.splice(i, 1); continue; }
+      const drag = Math.exp(-p.drag * dt);
+      p.vx *= drag; p.vy *= drag;
+      p.x += p.vx * dt; p.y += p.vy * dt;
+    }
+    // Update shake
+    if (this.shakeTime > 0) {
+      this.shakeTime -= dt;
+      const k = Math.max(0, this.shakeTime / this.shakeDur);
+      const mag = this.shakeAmp * k * k;
+      this.shakeX = (Math.random() * 2 - 1) * mag;
+      this.shakeY = (Math.random() * 2 - 1) * mag;
+      if (this.shakeTime <= 0) { this.shakeX = 0; this.shakeY = 0; }
+    }
+  },
+
+  drawParticles(ctx) {
+    for (const p of this.particles) {
+      const alpha = (p.life / p.maxLife) * 0.85;
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = `hsl(${p.hue},100%,65%)`;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  },
+
+  reset() {
+    this.particles.length = 0;
+    this.shakeAmp = 0; this.shakeDur = 0; this.shakeTime = 0;
+    this.shakeX = 0; this.shakeY = 0;
+  },
+};
+
+// ── GAME ──────────────────────────────────────────────────────────────
+const game = {
+  state: 'start',   // 'start' | 'playing' | 'gameover'
+
+  // Canvas references (set by resize)
+  canvas: null, ctx: null,
+  cssW: 1, cssH: 1,
+  cx: 0, cy: 0,
+  scale: 1,
+
+  // Game world
+  t: 0,             // time survived (seconds)
+  score: 0,
+  best: 0,
+  mult: 1,
+  nearChain: 0,
+  baseHue: 0,
+
+  // Ship
+  ship: { angle: -Math.PI/2, flipCooldown: 0 },
+
+  // Arena rotation
+  arenaAngle: 0,
+  arenaOmega: 0,
+  arenaTargetOmega: 0,
+
+  // Beat
+  beatTimer: 0,
+  beatInterval: 999,
+  stormPhase: 0,      // 0=long, 1=short
+  stormPhaseTimer: 0,
+
+  // Gates + debris
+  gates: [],
+  debris: [],
+  spawnTimer: 0,
+
+  // Death flash
+  deathFlash: 0,
+
+  // Precomputed stars
+  stars: [],
+
+  // ── INIT ──
+  init() {
+    this.canvas = document.getElementById('gameCanvas');
+    this.ctx = this.canvas.getContext('2d');
+    this.best = storage.load();
+    this.generateStars();
+    this.resize();
+    input.init(() => this.flip());
+    window.addEventListener('resize', () => this.resize());
+  },
+
+  generateStars() {
+    this.stars = [];
+    for (let i = 0; i < 60; i++) {
+      this.stars.push({
+        // normalized [0,1] coords, mapped to design space
+        nx: Math.random(), ny: Math.random(),
+        r: util.rand(0.4, 1.4),
+        alpha: util.rand(0.2, 0.7),
+      });
+    }
+  },
+
+  resize() {
+    const W = CONFIG.W, H = CONFIG.H;
+    const dpr = Math.min(window.devicePixelRatio || 1, CONFIG.DPR_CAP);
+    const scale = Math.min(window.innerWidth / W, window.innerHeight / H, 1);
+    this.scale = scale;
+    const cssW = Math.floor(W * scale);
+    const cssH = Math.floor(H * scale);
+    this.cssW = cssW; this.cssH = cssH;
+    this.cx = cssW * 0.5;
+    this.cy = cssH * 0.52;
+
+    const c = this.canvas;
+    c.style.width  = cssW + 'px';
+    c.style.height = cssH + 'px';
+    c.width  = Math.floor(cssW * dpr);
+    c.height = Math.floor(cssH * dpr);
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.dpr = dpr;
+  },
+
+  // ── FLIP ──
+  flip() {
+    audio.init();
+    if (this.state === 'start') {
+      this.startGame();
+      return;
+    }
+    if (this.state === 'gameover') {
+      this.startGame();
+      return;
+    }
+    if (this.ship.flipCooldown > 0) return;
+    // Flip ship
+    this.ship.angle = util.wrapAngle(this.ship.angle + Math.PI);
+    this.ship.flipCooldown = CONFIG.FLIP_COOLDOWN;
+    // Particles at ship position
+    const sx = this.cx + Math.cos(this.ship.angle) * CONFIG.SHIP_RADIUS * this.scale;
+    const sy = this.cy + Math.sin(this.ship.angle) * CONFIG.SHIP_RADIUS * this.scale;
+    fx.emitFlip(sx, sy, this.baseHue);
+    audio.flip();
+  },
+
+  // ── START ──
+  startGame() {
+    this.t = 0; this.score = 0; this.mult = 1; this.nearChain = 0;
+    this.baseHue = 0;
+    this.ship.angle = -Math.PI / 2;
+    this.ship.flipCooldown = 0;
+    this.arenaAngle = 0; this.arenaOmega = 0; this.arenaTargetOmega = 0;
+    this.beatTimer = 0; this.beatInterval = 999;
+    this.stormPhase = 0; this.stormPhaseTimer = 0;
+    this.gates = []; this.debris = [];
+    this.spawnTimer = 0;
+    this.deathFlash = 0;
+    fx.reset();
+    this.state = 'playing';
+  },
+
+  // ── DIFFICULTY ──
+  vrAt(t)        { return 120 + 1.6*t + 18*Math.floor(t/20); },
+  gapAt(t)       { return util.clamp(1.35 - 0.0065*t, 0.62, 1.35); },
+  thickAt(t)     { return util.clamp(22 + 0.05*t, 22, 30) * this.scale; },
+  spawnDtAt(t)   { return util.clamp(1.05 - 0.004*t, 0.48, 1.05); },
+
+  beatIntervalAt(t) {
+    if (t < 10) return 999;
+    if (t < 25) return 4.0;
+    if (t < 70) return 3.0;
+    // Storm phase alternation
+    return this.stormPhase === 0 ? 2.4 : 3.2;
+  },
+
+  // ── SPAWN GATE ──
+  spawnGate(angleOverride) {
+    const t = this.t;
+    const gap = this.gapAt(t);
+    const vr = this.vrAt(t) * this.scale;
+    const thick = this.thickAt(t);
+    const spawnR = Math.max(this.cssW, this.cssH) * CONFIG.GATE_SPAWN_MULT;
+    const hue = (this.baseHue + util.rand(-30, 30)) % 360;
+
+    let th0;
+    if (angleOverride !== undefined) {
+      th0 = util.wrapAngle(angleOverride);
+    } else if (t < 8) {
+      // Onboarding: force gap to include ship angle
+      const shipA = util.wrapAngle(this.ship.angle - this.arenaAngle);
+      th0 = util.wrapAngle(shipA - gap * 0.5);
+    } else {
+      th0 = Math.random() * Math.PI * 2;
+    }
+
+    this.gates.push({ r: spawnR, vr, th0, gap, thick, hue, scored: false, nearMissed: false });
+  },
+
+  spawnDebris() {
+    const spawnR = Math.max(this.cssW, this.cssH) * 0.55;
+    const ang = Math.random() * Math.PI * 2;
+    const x = this.cx + Math.cos(ang) * spawnR;
+    const y = this.cy + Math.sin(ang) * spawnR;
+    // Velocity inward
+    const spd = util.rand(40, 90) * this.scale;
+    const vx = (this.cx - x) / spawnR * spd;
+    const vy = (this.cy - y) / spawnR * spd;
+    this.debris.push({ x, y, vx, vy, life: util.rand(0.8, 1.4), maxLife: 1.0,
+                       r: util.rand(1, 2.5), hue: this.baseHue });
+  },
+
+  // ── UPDATE ──
+  update(dt) {
+    if (this.state !== 'playing') return;
+
+    this.t += dt;
+    this.score += dt * 10;
+    this.baseHue = (this.t * 12) % 360;
+
+    // Ship cooldown
+    if (this.ship.flipCooldown > 0) this.ship.flipCooldown -= dt;
+
+    // Beat / arena rotation
+    this.updateBeat(dt);
+
+    // Integrate arena angle
+    this.arenaOmega = util.lerp(this.arenaOmega, this.arenaTargetOmega, Math.min(1, dt / 0.25));
+    this.arenaAngle = util.wrapAngle(this.arenaAngle + this.arenaOmega * dt);
+
+    // Spawn gates
+    this.spawnTimer -= dt;
+    if (this.spawnTimer <= 0) {
+      this.spawnTimer = this.spawnDtAt(this.t);
+      this.spawnGate();
+
+      // Pattern: paired gates
+      const paired = this.t >= 45 ? 0.40 : this.t >= 25 ? 0.25 : 0;
+      if (Math.random() < paired) {
+        const delay = 0.28;
+        setTimeout(() => {
+          if (this.state === 'playing') {
+            let th0;
+            // Optional offset variant
+            if (this.t >= 45 && Math.random() < 0.15) {
+              th0 = util.wrapAngle(this.gates[this.gates.length-1]?.th0 + util.rand(-0.35, 0.35));
+            }
+            this.spawnGate(th0);
+          }
+        }, delay * 1000);
+      }
+
+      // Debris
+      if (Math.random() < 0.5) this.spawnDebris();
+    }
+
+    // Update gates
+    for (let i = this.gates.length - 1; i >= 0; i--) {
+      const g = this.gates[i];
+      g.r -= g.vr * dt;
+      if (g.r < CONFIG.CORE_R * this.scale + 10 * this.scale) {
+        this.gates.splice(i, 1);
+        continue;
+      }
+      // Score pass-through
+      if (!g.scored && g.r < CONFIG.SHIP_RADIUS * this.scale) {
+        g.scored = true;
+      }
+    }
+
+    // Update debris
+    for (let i = this.debris.length - 1; i >= 0; i--) {
+      const d = this.debris[i];
+      d.life -= dt;
+      d.x += d.vx * dt; d.y += d.vy * dt;
+      if (d.life <= 0) this.debris.splice(i, 1);
+    }
+
+    // Collision detection
+    this.checkCollision();
+
+    // Update fx
+    fx.update(dt);
+
+    // Death flash decay
+    if (this.deathFlash > 0) this.deathFlash -= dt * 3;
+  },
+
+  updateBeat(dt) {
+    const bi = this.beatIntervalAt(this.t);
+    this.beatInterval = bi;
+
+    // Storm phase timer (for t >= 70)
+    if (this.t >= 70) {
+      this.stormPhaseTimer += dt;
+      const phaseDur = this.stormPhase === 0 ? 8.0 : 6.0;
+      if (this.stormPhaseTimer >= phaseDur) {
+        this.stormPhase = 1 - this.stormPhase;
+        this.stormPhaseTimer = 0;
+      }
+    }
+
+    if (bi >= 999) { this.beatTimer = 0; return; }
+
+    this.beatTimer += dt;
+    if (this.beatTimer >= bi) {
+      this.beatTimer -= bi;
+      this.onBeat();
+    }
+  },
+
+  onBeat() {
+    audio.beat();
+    fx.addShake(0.06, 1);
+    // Choose target omega
+    let choices;
+    if (this.t < 40) {
+      choices = [0.35, -0.35];
+    } else {
+      choices = [0.55, -0.55, 0.75, -0.75];
+    }
+    // Pick one that differs from current
+    let next = choices[Math.floor(Math.random() * choices.length)];
+    // Scale by scale factor
+    this.arenaTargetOmega = next;
+  },
+
+  // ── COLLISION ──
+  checkCollision() {
+    const sr = CONFIG.SHIP_RADIUS * this.scale;
+    const ss = CONFIG.SHIP_SIZE * this.scale;
+    const shipA = this.ship.angle;
+
+    for (const g of this.gates) {
+      // Candidate: ship orbit radius close to gate radius
+      const diff = Math.abs(g.r - sr);
+      if (diff > g.thick / 2 + ss) continue;
+
+      // Rotate to arena frame
+      const a = util.wrapAngle(shipA - this.arenaAngle);
+
+      // Is ship in the safe gap?
+      const inGap = util.inArc(a, g.th0, g.gap);
+
+      if (!inGap) {
+        // Collision!
+        this.die();
+        return;
+      }
+
+      // Near-miss check
+      if (!g.nearMissed) {
+        const aWrapped = util.wrapAngle(a);
+        const edge0 = util.wrapAngle(g.th0);
+        const edge1 = util.wrapAngle(g.th0 + g.gap);
+        const d0 = util.angDiff(aWrapped, edge0);
+        const d1 = util.angDiff(aWrapped, edge1);
+        const edgeDist = Math.min(d0, d1);
+        const arc = edgeDist * sr;
+        if (arc <= 10 * this.scale) {
+          g.nearMissed = true;
+          this.nearChain++;
+          this.mult = 1 + Math.min(this.nearChain, 12) * 0.15;
+          this.mult = Math.min(this.mult, 2.8);
+          this.score += 25 * this.mult;
+          fx.addShake(0.10, 2);
+          // Emit spark at ship
+          const sx = this.cx + Math.cos(shipA) * sr;
+          const sy = this.cy + Math.sin(shipA) * sr;
+          fx.emitNearMiss(sx, sy, this.baseHue);
+          audio.nearMiss();
+        }
+      }
+    }
+  },
+
+  // ── DIE ──
+  die() {
+    this.state = 'gameover';
+    const sr = CONFIG.SHIP_RADIUS * this.scale;
+    const sx = this.cx + Math.cos(this.ship.angle) * sr;
+    const sy = this.cy + Math.sin(this.ship.angle) * sr;
+    fx.emitDeath(sx, sy, this.baseHue);
+    fx.addShake(0.35, 10);
+    this.deathFlash = 1;
+    audio.death();
+    const s = Math.floor(this.score);
+    if (s > this.best) { this.best = s; storage.save(s); }
+  },
+
+  // ── RENDER ──
+  render() {
+    const ctx = this.ctx;
+    const W = this.cssW, H = this.cssH;
+    const cx = this.cx, cy = this.cy;
+    const t = this.t;
+    const baseHue = this.baseHue;
+
+    // 1) Background
+    ctx.fillStyle = `hsl(${(baseHue + 220) % 360},20%,5%)`;
+    ctx.fillRect(0, 0, W, H);
+
+    // Subtle radial background gradient
+    const bgGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(W, H) * 0.7);
+    bgGrad.addColorStop(0, `hsla(${baseHue},40%,10%,0.5)`);
+    bgGrad.addColorStop(1, 'transparent');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, W, H);
+
+    // 2) Stars
+    for (const s of this.stars) {
+      ctx.globalAlpha = s.alpha;
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.arc(s.nx * W, s.ny * H, s.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // Death flash overlay
+    if (this.deathFlash > 0) {
+      ctx.fillStyle = `rgba(255,80,80,${this.deathFlash * 0.45})`;
+      ctx.fillRect(0, 0, W, H);
+    }
+
+    // 3) Apply screen shake
+    ctx.save();
+    ctx.translate(fx.shakeX, fx.shakeY);
+
+    // 4) Draw arena-rotated elements
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(this.arenaAngle);
+    ctx.translate(-cx, -cy);
+
+    // Debris
+    for (const d of this.debris) {
+      ctx.globalAlpha = (d.life / d.maxLife) * 0.5;
+      ctx.fillStyle = `hsl(${d.hue},80%,70%)`;
+      ctx.beginPath();
+      ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // Gates
+    this.drawGates(ctx, cx, cy);
+
+    ctx.restore(); // arena rotation
+
+    // 5) Core glow
+    this.drawCore(ctx, cx, cy);
+
+    // 6) Ship
+    if (this.state === 'playing' || this.state === 'gameover') {
+      this.drawShip(ctx, cx, cy);
+    }
+
+    // 7) Particles
+    fx.drawParticles(ctx);
+
+    ctx.restore(); // screen shake
+
+    // 8) Telegraph ring (no shake)
+    if (this.state === 'playing') {
+      this.drawTelegraph(ctx, cx, cy);
+    }
+
+    // 9) HUD + Overlays
+    this.drawHUD(ctx, W, H);
+    if (this.state === 'start')    this.drawStart(ctx, W, H);
+    if (this.state === 'gameover') this.drawGameover(ctx, W, H);
+  },
+
+  drawGates(ctx, cx, cy) {
+    for (const g of this.gates) {
+      const alpha = util.clamp((g.r - CONFIG.CORE_R * this.scale) / (80 * this.scale), 0, 1);
+      ctx.globalAlpha = alpha * 0.92;
+
+      // Draw annulus arc excluding the safe gap
+      // Safe gap: [th0, th0+gap]  →  draw solid arc from (th0+gap) to (th0+2PI)
+      const t0 = g.th0 + g.gap;  // solid start
+      const t1 = g.th0 + Math.PI * 2; // solid end (= th0 wrapping)
+
+      const outerR = g.r + g.thick / 2;
+      const innerR = Math.max(0, g.r - g.thick / 2);
+
+      // Gate glow
+      ctx.shadowColor = `hsl(${g.hue},100%,60%)`;
+      ctx.shadowBlur = 8;
+
+      ctx.beginPath();
+      // Outer arc (solid part)
+      ctx.arc(cx, cy, outerR, t0, t1, false);
+      ctx.arc(cx, cy, innerR, t1, t0, true);
+      ctx.closePath();
+      ctx.fillStyle = `hsl(${g.hue},100%,58%)`;
+      ctx.fill();
+
+      // Gap edge highlights
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = alpha * 0.6;
+      ctx.strokeStyle = `hsl(${g.hue},100%,80%)`;
+      ctx.lineWidth = 1.5;
+      // Draw tiny arc at gap edges as markers
+      for (const edgeAng of [g.th0, g.th0 + g.gap]) {
+        const ex = cx + Math.cos(edgeAng) * g.r;
+        const ey = cy + Math.sin(edgeAng) * g.r;
+        ctx.beginPath();
+        ctx.arc(ex, ey, g.thick / 2 + 2, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur = 0;
+  },
+
+  drawCore(ctx, cx, cy) {
+    const r = CONFIG.CORE_R * this.scale;
+    const hue = this.baseHue;
+    // Outer glow
+    const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 3.5);
+    glow.addColorStop(0, `hsla(${hue},100%,80%,0.6)`);
+    glow.addColorStop(0.4, `hsla(${hue},100%,60%,0.25)`);
+    glow.addColorStop(1, 'transparent');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 3.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Core body
+    const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+    core.addColorStop(0, '#fff');
+    core.addColorStop(0.4, `hsl(${hue},100%,80%)`);
+    core.addColorStop(1, `hsl(${hue},100%,55%)`);
+    ctx.fillStyle = core;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fill();
+  },
+
+  drawShip(ctx, cx, cy) {
+    const sr = CONFIG.SHIP_RADIUS * this.scale;
+    const ss = CONFIG.SHIP_SIZE * this.scale;
+    const ang = this.ship.angle;
+    const sx = cx + Math.cos(ang) * sr;
+    const sy = cy + Math.sin(ang) * sr;
+    const chainHue = (this.baseHue + this.nearChain * 25) % 360;
+
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(ang + Math.PI / 2); // nose pointing outward
+
+    // Ship body (triangle)
+    ctx.shadowColor = `hsl(${chainHue},100%,70%)`;
+    ctx.shadowBlur = 10;
+    ctx.fillStyle = `hsl(${chainHue},100%,72%)`;
+    ctx.beginPath();
+    ctx.moveTo(0, -ss * 1.6);
+    ctx.lineTo(-ss, ss);
+    ctx.lineTo(ss, ss);
+    ctx.closePath();
+    ctx.fill();
+
+    // Engine glow
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = `hsl(${(chainHue+180)%360},100%,80%)`;
+    ctx.beginPath();
+    ctx.arc(0, ss * 0.5, ss * 0.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+    ctx.shadowBlur = 0;
+  },
+
+  drawTelegraph(ctx, cx, cy) {
+    if (this.beatInterval >= 999) return;
+    const R = CONFIG.BEAT_TELEGRAPH_R * this.scale;
+    const p = util.clamp(this.beatTimer / this.beatInterval, 0, 1);
+    const pulse = p > 0.9 ? 0.5 + 0.5 * Math.sin((p - 0.9) / 0.1 * Math.PI * 6) : 0;
+
+    // Background ring track
+    ctx.globalAlpha = 0.18;
+    ctx.strokeStyle = `hsl(${this.baseHue},60%,60%)`;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Fill arc
+    ctx.globalAlpha = 0.5 + pulse * 0.4;
+    ctx.strokeStyle = `hsl(${this.baseHue},100%,70%)`;
+    ctx.lineWidth = 3 + pulse * 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, -Math.PI / 2, -Math.PI / 2 + p * Math.PI * 2);
+    ctx.stroke();
+
+    // Arrow showing next omega direction (clockwise vs counter)
+    const arrowAng = -Math.PI / 2 + p * Math.PI * 2;
+    const ax = cx + Math.cos(arrowAng) * R;
+    const ay = cy + Math.sin(arrowAng) * R;
+    const dir = this.arenaTargetOmega >= 0 ? 1 : -1;
+    const perpAng = arrowAng + dir * Math.PI / 2;
+
+    ctx.globalAlpha = 0.7 + pulse * 0.3;
+    ctx.fillStyle = `hsl(${this.baseHue},100%,80%)`;
+    ctx.beginPath();
+    ctx.moveTo(ax + Math.cos(perpAng) * 6 * this.scale,
+               ay + Math.sin(perpAng) * 6 * this.scale);
+    ctx.lineTo(ax - Math.cos(perpAng) * 6 * this.scale,
+               ay - Math.sin(perpAng) * 6 * this.scale);
+    ctx.lineTo(ax + Math.cos(arrowAng) * dir * 12 * this.scale,
+               ay + Math.sin(arrowAng) * dir * 12 * this.scale);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.globalAlpha = 1;
+    ctx.lineWidth = 1;
+  },
+
+  drawHUD(ctx, W, H) {
+    if (this.state !== 'playing') return;
+    const t = this.t;
+    const score = Math.floor(this.score);
+
+    ctx.save();
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = '#fff';
+    ctx.font = `bold ${Math.round(14 * this.scale)}px 'Segoe UI', system-ui, sans-serif`;
+    ctx.textBaseline = 'top';
+
+    // Time (top left)
+    ctx.textAlign = 'left';
+    ctx.fillText(`TIME  ${t.toFixed(1)}s`, 12 * this.scale, 12 * this.scale);
+
+    // Score (top right)
+    ctx.textAlign = 'right';
+    ctx.fillText(`SCORE  ${score}`, W - 12 * this.scale, 12 * this.scale);
+
+    // Multiplier (below score)
+    if (this.mult > 1) {
+      const multHue = (this.nearChain * 25 + this.baseHue) % 360;
+      ctx.fillStyle = `hsl(${multHue},100%,70%)`;
+      ctx.font = `bold ${Math.round(12 * this.scale)}px 'Segoe UI', system-ui, sans-serif`;
+      ctx.fillText(`×${this.mult.toFixed(2)}`, W - 12 * this.scale, 30 * this.scale);
+    }
+
+    ctx.restore();
+  },
+
+  drawStart(ctx, W, H) {
+    const scale = this.scale;
+    const cx = this.cx, cy = H * 0.38;
+
+    // Title glow
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    ctx.font = `900 ${Math.round(52 * scale)}px 'Segoe UI', system-ui, sans-serif`;
+    ctx.shadowColor = `hsl(${this.baseHue},100%,60%)`;
+    ctx.shadowBlur = 20;
+    ctx.fillStyle = `hsl(${this.baseHue},100%,80%)`;
+    ctx.fillText('SPIN', cx, cy - 32 * scale);
+    ctx.fillStyle = `hsl(${(this.baseHue + 60) % 360},100%,80%)`;
+    ctx.fillText('WARP', cx, cy + 26 * scale);
+
+    ctx.shadowBlur = 0;
+    ctx.font = `${Math.round(13 * scale)}px 'Segoe UI', system-ui, sans-serif`;
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.fillText('Flip your ship. Dodge the gates.', cx, H * 0.56);
+
+    // Tap prompt
+    const blink = Math.sin(Date.now() / 450) > 0;
+    ctx.globalAlpha = blink ? 1 : 0.5;
+    ctx.font = `bold ${Math.round(15 * scale)}px 'Segoe UI', system-ui, sans-serif`;
+    ctx.fillStyle = '#fff';
+    ctx.fillText('TAP TO START', cx, H * 0.64);
+    ctx.globalAlpha = 1;
+
+    // Best score
+    if (this.best > 0) {
+      ctx.font = `${Math.round(12 * scale)}px 'Segoe UI', system-ui, sans-serif`;
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.fillText(`Best: ${this.best}`, cx, H * 0.72);
+    }
+
+    // Controls hint
+    ctx.font = `${Math.round(11 * scale)}px 'Segoe UI', system-ui, sans-serif`;
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.fillText('Tap / Space / Enter', cx, H * 0.77);
+
+    ctx.restore();
+  },
+
+  drawGameover(ctx, W, H) {
+    const scale = this.scale;
+    const cx = this.cx;
+
+    ctx.save();
+    // Dark overlay
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    // "GAME OVER"
+    ctx.font = `900 ${Math.round(42 * scale)}px 'Segoe UI', system-ui, sans-serif`;
+    ctx.shadowColor = '#ff4455';
+    ctx.shadowBlur = 18;
+    ctx.fillStyle = '#ff6677';
+    ctx.fillText('GAME OVER', cx, H * 0.30);
+    ctx.shadowBlur = 0;
+
+    // Score
+    ctx.font = `bold ${Math.round(20 * scale)}px 'Segoe UI', system-ui, sans-serif`;
+    ctx.fillStyle = '#fff';
+    ctx.fillText(`Score: ${Math.floor(this.score)}`, cx, H * 0.42);
+
+    // Best
+    const isNew = Math.floor(this.score) >= this.best && this.score > 0;
+    ctx.font = `${Math.round(14 * scale)}px 'Segoe UI', system-ui, sans-serif`;
+    ctx.fillStyle = isNew ? `hsl(50,100%,70%)` : 'rgba(255,255,255,0.6)';
+    ctx.fillText(isNew ? `NEW BEST: ${this.best}!` : `Best: ${this.best}`, cx, H * 0.50);
+
+    // Time
+    ctx.font = `${Math.round(13 * scale)}px 'Segoe UI', system-ui, sans-serif`;
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.fillText(`Survived: ${this.t.toFixed(1)}s`, cx, H * 0.57);
+
+    // Near-miss chain
+    if (this.nearChain > 0) {
+      ctx.fillStyle = `hsl(${this.baseHue},100%,70%)`;
+      ctx.fillText(`Near-miss chain: ${this.nearChain} (×${this.mult.toFixed(2)})`, cx, H * 0.63);
+    }
+
+    // Retry prompt
+    const blink = Math.sin(Date.now() / 450) > 0;
+    ctx.globalAlpha = blink ? 1 : 0.5;
+    ctx.font = `bold ${Math.round(15 * scale)}px 'Segoe UI', system-ui, sans-serif`;
+    ctx.fillStyle = '#fff';
+    ctx.fillText('TAP TO RETRY', cx, H * 0.73);
+    ctx.globalAlpha = 1;
+
+    ctx.restore();
+  },
+};
+
+// ── LOOP ──────────────────────────────────────────────────────────────
+const loop = {
+  last: 0,
+  acc: 0,
+
+  tick(now) {
+    requestAnimationFrame(t => loop.tick(t));
+    const raw = (now - this.last) / 1000;
+    this.last = now;
+    if (raw <= 0 || raw > 0.5) { game.render(); return; }
+    const dt = Math.min(raw, CONFIG.DT_CAP);
+
+    this.acc += dt;
+    while (this.acc >= CONFIG.STEP) {
+      game.update(CONFIG.STEP);
+      this.acc -= CONFIG.STEP;
+    }
+    game.render();
+  },
+
+  start() {
+    requestAnimationFrame(t => { this.last = t; this.tick(t); });
+  },
+};
+
+// ── MUTE BUTTON ───────────────────────────────────────────────────────
+document.getElementById('mute-btn').addEventListener('click', e => {
+  e.stopPropagation();
+  const muted = audio.toggleMute();
+  document.getElementById('mute-btn').textContent = muted ? '🔇' : '🔊';
+});
+
+// ── BOOT ──────────────────────────────────────────────────────────────
+game.init();
+loop.start();
+</script>
+</body>
+</html>

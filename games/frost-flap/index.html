@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Frost Flap - Free HTML5 Game</title>
+<meta name="description" content="Play Frost Flap - Tap to navigate a snowy owl past frosty obstacles and rack up combo streaks for bonus points.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0a1628">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Frost Flap - Free HTML5 Game">
+<meta property="og:description" content="Play Frost Flap - Tap to navigate a snowy owl past frosty obstacles and rack up combo streaks for bonus points.">
+<meta property="og:url" content="https://balinti.github.io/frost-flap/">
+<meta property="og:image" content="https://balinti.github.io/frost-flap/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Frost Flap - Free HTML5 Game">
+<meta name="twitter:description" content="Play Frost Flap - Tap to navigate a snowy owl past frosty obstacles and rack up combo streaks for bonus points.">
+<meta name="twitter:image" content="https://balinti.github.io/frost-flap/og-image.png">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#0a1628;font-family:'Segoe UI',system-ui,sans-serif;touch-action:manipulation;-webkit-tap-highlight-color:transparent;user-select:none}
+body{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;min-height:100dvh}
+#wrap{position:relative;width:100%;max-width:420px;height:100vh;height:100dvh;max-height:750px;overflow:hidden;border-radius:12px;box-shadow:0 0 40px rgba(100,180,255,.15)}
+canvas{display:block;width:100%;height:100%}
+#seo{max-width:420px;width:100%;margin:8px auto 0;color:#7a9cc6;font-size:13px;line-height:1.5}
+#seo summary{cursor:pointer;color:#99c0e8;font-weight:600;padding:6px 0}
+#seo p{padding:4px 0}
+@media(min-height:780px){#wrap{margin-top:8px;margin-bottom:8px}}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="c"></canvas></div>
+<details id="seo">
+<summary>About Frost Flap</summary>
+<p>Frost Flap is a free-to-play hyper-casual HTML5 game where you guide a snowy owl through an icy gauntlet of frost pillars and howling wind lanes. Tap or press Space/Enter to flap and navigate the owl through gaps between towering ice obstacles. Each gate you pass earns a point, and threading the centerline of a gap awards a bonus point for precision flying.</p>
+<p>As your score climbs, the challenge intensifies: scroll speed increases, new wind lanes appear, and sudden gusts can push you off course. Starting with two wind lanes, you'll face three lanes after reaching 10 points and four lanes beyond 50. Watch the aurora ribbon at the top of the screen — it shifts to telegraph wind direction changes and incoming gusts.</p>
+<p>Obstacles evolve over time with decorative nubs and dangerous spikes at higher tiers, demanding sharper reflexes. Particle effects bring the frosty world to life: flap puffs trail behind the owl, rings burst on scoring, and ice shards scatter on a crash. Your best score is saved automatically so you can always try to beat your record. Works on desktop and mobile — just tap or press to play!</p>
+</details>
+<script>
+(function(){
+"use strict";
+const canvas=document.getElementById("c");
+const ctx=canvas.getContext("2d");
+const wrap=document.getElementById("wrap");
+
+/* --- DPR & sizing --- */
+let W,H,dpr;
+function resize(){
+  const r=wrap.getBoundingClientRect();
+  dpr=Math.min(window.devicePixelRatio||1,2);
+  W=r.width; H=r.height;
+  canvas.width=W*dpr; canvas.height=H*dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+resize();
+window.addEventListener("resize",resize);
+
+/* --- constants --- */
+const G=980, FLAP_V=-320, PILLAR_W=48, MIN_GAP=115, OWL_R=14;
+const LS_KEY="ff_best";
+
+/* --- state --- */
+let state="start"; // start | playing | gameover
+let score,best,owl,pillars,particles,snowflakes,shakeX,shakeY,shakeDur;
+let scrollSpeed,spawnTimer,spawnInterval,windDrift,windTarget,windAx;
+let gustTimer,gustActive,gustDur,gustTelegraph,gustDir;
+let hue,vignette,nearMissFlag,restartLock,restartTimer;
+let laneCount,lanes;
+let dt,lastTime;
+let inputDown=false;
+
+best=parseInt(localStorage.getItem(LS_KEY))||0;
+
+function initGame(){
+  score=0; hue=200; vignette=0;
+  owl={x:W*0.28, y:H*0.5, vy:0, flapAnim:0, wingUp:true, alive:true};
+  pillars=[]; particles=[]; snowflakes=[];
+  shakeX=0; shakeY=0; shakeDur=0;
+  scrollSpeed=120; spawnTimer=0; spawnInterval=2.2;
+  windDrift=0; windTarget=0; windAx=0;
+  gustTimer=8+Math.random()*6; gustActive=false; gustDur=0; gustTelegraph=0; gustDir=0;
+  laneCount=2; lanes=[];
+  nearMissFlag=false;
+  buildLanes();
+  for(let i=0;i<40;i++) snowflakes.push(mkSnow());
+}
+
+function buildLanes(){
+  lanes=[];
+  const seg=H/laneCount;
+  for(let i=0;i<laneCount;i++){
+    lanes.push({y:seg*i, h:seg, drift:((i%2===0)?1:-1)*0.3});
+  }
+}
+
+function mkSnow(){
+  return{x:Math.random()*W, y:Math.random()*H, r:Math.random()*2+1, sp:Math.random()*30+15, wx:Math.random()*20-10, a:Math.random()*0.5+0.3};
+}
+
+/* --- difficulty --- */
+function updateDifficulty(){
+  const s=score;
+  scrollSpeed=120+s*1.8;
+  if(scrollSpeed>320) scrollSpeed=320;
+  spawnInterval=Math.max(1.05, 2.2-s*0.022);
+  const newLC=s<10?2:s<50?3:4;
+  if(newLC!==laneCount){laneCount=newLC; buildLanes();}
+}
+
+/* --- pillar spawning --- */
+function spawnPillar(){
+  const tier=score<10?0:score<30?1:score<50?2:3;
+  const gapSize=Math.max(MIN_GAP-score*0.3, 85);
+  const margin=50;
+  const gapY=margin+Math.random()*(H-gapSize-margin*2);
+  const p={
+    x:W+PILLAR_W,
+    gapY:gapY,
+    gapH:gapSize,
+    w:PILLAR_W,
+    scored:false,
+    tier:tier,
+    nubs:tier>=1,
+    spikes:tier>=2
+  };
+  pillars.push(p);
+}
+
+/* --- particles --- */
+function emitFlap(x,y){
+  for(let i=0;i<6;i++){
+    particles.push({x:x, y:y, vx:-Math.random()*50-20, vy:(Math.random()-0.5)*60, life:0.5+Math.random()*0.3, maxLife:0.8, r:3+Math.random()*3, type:"puff"});
+  }
+}
+function emitScore(x,y){
+  for(let i=0;i<10;i++){
+    const a=Math.PI*2*i/10;
+    particles.push({x:x, y:y, vx:Math.cos(a)*80, vy:Math.sin(a)*80, life:0.6, maxLife:0.6, r:3, type:"ring"});
+  }
+}
+function emitCrash(x,y){
+  for(let i=0;i<20;i++){
+    const a=Math.random()*Math.PI*2;
+    const sp=Math.random()*200+50;
+    particles.push({x:x, y:y, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp, life:0.8+Math.random()*0.4, maxLife:1.2, r:2+Math.random()*4, type:"shard"});
+  }
+}
+
+/* --- input --- */
+function doFlap(){
+  if(state==="start"){state="playing"; initGame(); doFlap(); return;}
+  if(state==="gameover"){
+    if(restartLock) return;
+    state="start"; return;
+  }
+  if(!owl.alive) return;
+  owl.vy=FLAP_V;
+  owl.flapAnim=0.18;
+  owl.wingUp=!owl.wingUp;
+  emitFlap(owl.x-10, owl.y);
+}
+
+canvas.addEventListener("pointerdown",function(e){e.preventDefault(); doFlap();});
+document.addEventListener("keydown",function(e){
+  if(e.code==="Space"||e.code==="Enter"){e.preventDefault(); doFlap();}
+});
+
+/* --- collision --- */
+function circRect(cx,cy,cr,rx,ry,rw,rh){
+  const nx=Math.max(rx,Math.min(cx,rx+rw));
+  const ny=Math.max(ry,Math.min(cy,ry+rh));
+  const dx=cx-nx, dy=cy-ny;
+  return dx*dx+dy*dy<cr*cr;
+}
+
+/* --- shake --- */
+function triggerShake(intensity,dur){
+  shakeDur=dur; shakeX=(Math.random()-0.5)*intensity; shakeY=(Math.random()-0.5)*intensity;
+}
+
+/* --- main loop --- */
+function loop(ts){
+  requestAnimationFrame(loop);
+  if(!lastTime) lastTime=ts;
+  dt=(ts-lastTime)/1000;
+  if(dt>1/30) dt=1/30;
+  lastTime=ts;
+
+  update(dt);
+  render();
+}
+
+function update(dt){
+  hue=(hue+dt*12)%360;
+
+  /* shake decay */
+  if(shakeDur>0){
+    shakeDur-=dt;
+    if(shakeDur<=0){shakeX=0;shakeY=0;}
+    else{shakeX*=0.85;shakeY*=0.85;}
+  }
+
+  /* snow */
+  snowflakes.forEach(s=>{
+    s.y+=s.sp*dt;
+    s.x+=s.wx*dt+windDrift*0.3*dt;
+    if(s.y>H){s.y=-5;s.x=Math.random()*W;}
+    if(s.x<-5)s.x=W+5;
+    if(s.x>W+5)s.x=-5;
+  });
+
+  if(state!=="playing") {
+    if(state==="gameover"){
+      restartTimer-=dt;
+      if(restartTimer<=0) restartLock=false;
+    }
+    return;
+  }
+
+  /* wind */
+  if(Math.random()<dt*0.3){windTarget=(Math.random()-0.5)*100;}
+  windDrift+=(windTarget-windDrift)*dt*1.5;
+  windAx=windDrift*0.5;
+
+  /* gusts */
+  if(score>=25 && !gustActive){
+    gustTimer-=dt;
+    if(gustTimer<=0){
+      gustActive=true;
+      gustDur=2;
+      gustTelegraph=0.5;
+      gustDir=Math.random()<0.5?-1:1;
+      gustTimer=9+Math.random()*6;
+    }
+  }
+  if(gustActive){
+    if(gustTelegraph>0){gustTelegraph-=dt;}
+    else{
+      windAx+=gustDir*160*1.55;
+      gustDur-=dt;
+      if(gustDur<=0) gustActive=false;
+    }
+  }
+
+  /* owl physics */
+  owl.vy+=G*dt;
+  owl.y+=owl.vy*dt;
+  owl.x+=windAx*dt*0.15;
+  if(owl.x<OWL_R) owl.x=OWL_R;
+  if(owl.x>W-OWL_R) owl.x=W-OWL_R;
+  owl.flapAnim-=dt;
+  if(owl.flapAnim<0) owl.flapAnim=0;
+
+  /* ceiling/floor */
+  if(owl.y<OWL_R){owl.y=OWL_R; owl.vy=0;}
+  if(owl.y>H-OWL_R) die();
+
+  /* spawn pillars */
+  spawnTimer-=dt;
+  if(spawnTimer<=0){spawnPillar(); spawnTimer=spawnInterval;}
+
+  /* move pillars & check collision/score */
+  nearMissFlag=false;
+  for(let i=pillars.length-1;i>=0;i--){
+    const p=pillars[i];
+    p.x-=scrollSpeed*dt;
+    if(p.x+p.w<-10){pillars.splice(i,1);continue;}
+
+    /* collision with top pillar */
+    if(circRect(owl.x,owl.y,OWL_R, p.x,0,p.w,p.gapY)){die();return;}
+    /* collision with bottom pillar */
+    if(circRect(owl.x,owl.y,OWL_R, p.x,p.gapY+p.gapH,p.w,H-(p.gapY+p.gapH))){die();return;}
+
+    /* spike collision (extra rects on tier>=2) */
+    if(p.spikes){
+      const sw=8, sh=14;
+      // top spike
+      if(circRect(owl.x,owl.y,OWL_R-2, p.x+p.w/2-sw/2, p.gapY-sh, sw, sh)){die();return;}
+      // bottom spike
+      if(circRect(owl.x,owl.y,OWL_R-2, p.x+p.w/2-sw/2, p.gapY+p.gapH, sw, sh)){die();return;}
+    }
+
+    /* scoring */
+    if(!p.scored && p.x+p.w<owl.x){
+      p.scored=true;
+      score++;
+      updateDifficulty();
+      emitScore(owl.x, owl.y);
+      triggerShake(2,0.1);
+      /* center bonus */
+      const gapCenter=p.gapY+p.gapH/2;
+      if(Math.abs(owl.y-gapCenter)<p.gapH*0.18){
+        score++;
+        updateDifficulty();
+      }
+      if(score>best){best=score; localStorage.setItem(LS_KEY,""+best);}
+    }
+
+    /* near miss detection */
+    if(!p.scored){
+      const dx=owl.x-(p.x+p.w/2);
+      if(Math.abs(dx)<p.w*0.8){
+        const topDist=owl.y-(p.gapY);
+        const botDist=(p.gapY+p.gapH)-owl.y;
+        if(topDist>0 && botDist>0 && (topDist<22||botDist<22)){
+          if(!nearMissFlag){triggerShake(3,0.08); nearMissFlag=true;}
+        }
+      }
+    }
+  }
+
+  /* particles */
+  for(let i=particles.length-1;i>=0;i--){
+    const pt=particles[i];
+    pt.x+=pt.vx*dt; pt.y+=pt.vy*dt;
+    pt.life-=dt;
+    if(pt.type==="shard") pt.vy+=400*dt;
+    if(pt.life<=0) particles.splice(i,1);
+  }
+
+  vignette=Math.min(score*0.004, 0.35);
+}
+
+function die(){
+  owl.alive=false;
+  state="gameover";
+  restartLock=true;
+  restartTimer=0.7+Math.random()*0.2;
+  triggerShake(8,0.35);
+  emitCrash(owl.x, owl.y);
+  if(score>best){best=score; localStorage.setItem(LS_KEY,""+best);}
+}
+
+/* --- render --- */
+function render(){
+  ctx.save();
+  ctx.translate(shakeX,shakeY);
+
+  /* background gradient */
+  const bg=ctx.createLinearGradient(0,0,0,H);
+  bg.addColorStop(0,"#0a1628");
+  bg.addColorStop(0.5,"#0f2240");
+  bg.addColorStop(1,"#162d50");
+  ctx.fillStyle=bg;
+  ctx.fillRect(-10,-10,W+20,H+20);
+
+  /* snow */
+  snowflakes.forEach(s=>{
+    ctx.globalAlpha=s.a;
+    ctx.fillStyle="#d0e8ff";
+    ctx.beginPath();ctx.arc(s.x,s.y,s.r,0,Math.PI*2);ctx.fill();
+  });
+  ctx.globalAlpha=1;
+
+  /* aurora ribbon */
+  drawAurora();
+
+  /* lane indicators */
+  if(state==="playing"){
+    ctx.globalAlpha=0.06;
+    for(let i=1;i<laneCount;i++){
+      const ly=lanes[i].y;
+      ctx.strokeStyle="#7ac4ff";
+      ctx.lineWidth=1;
+      ctx.setLineDash([6,8]);
+      ctx.beginPath();ctx.moveTo(0,ly);ctx.lineTo(W,ly);ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    ctx.globalAlpha=1;
+  }
+
+  /* pillars */
+  pillars.forEach(p=>drawPillar(p));
+
+  /* owl */
+  if(state==="playing"||state==="gameover") drawOwl();
+
+  /* particles */
+  particles.forEach(pt=>{
+    const alpha=Math.max(0,pt.life/pt.maxLife);
+    ctx.globalAlpha=alpha;
+    if(pt.type==="puff"){
+      ctx.fillStyle="rgba(200,230,255,0.7)";
+      ctx.beginPath();ctx.arc(pt.x,pt.y,pt.r*(1+0.5*(1-alpha)),0,Math.PI*2);ctx.fill();
+    } else if(pt.type==="ring"){
+      ctx.strokeStyle=`hsl(${hue},80%,70%)`;
+      ctx.lineWidth=2;
+      ctx.beginPath();ctx.arc(pt.x,pt.y,pt.r+(1-alpha)*20,0,Math.PI*2);ctx.stroke();
+    } else if(pt.type==="shard"){
+      ctx.fillStyle=`hsl(${190+Math.random()*40},60%,75%)`;
+      ctx.fillRect(pt.x-pt.r/2,pt.y-pt.r/2,pt.r,pt.r);
+    }
+  });
+  ctx.globalAlpha=1;
+
+  /* vignette */
+  if(vignette>0){
+    const vg=ctx.createRadialGradient(W/2,H/2,W*0.3, W/2,H/2,W*0.9);
+    vg.addColorStop(0,"rgba(0,0,0,0)");
+    vg.addColorStop(1,`rgba(0,0,0,${vignette})`);
+    ctx.fillStyle=vg;
+    ctx.fillRect(0,0,W,H);
+  }
+
+  /* HUD */
+  if(state==="playing"){
+    ctx.fillStyle="#fff";
+    ctx.font="bold 36px 'Segoe UI',system-ui,sans-serif";
+    ctx.textAlign="center";
+    ctx.shadowColor="rgba(0,0,0,0.5)"; ctx.shadowBlur=6;
+    ctx.fillText(score, W/2, 52);
+    ctx.shadowBlur=0;
+  }
+
+  /* start screen */
+  if(state==="start") drawStartScreen();
+  /* gameover screen */
+  if(state==="gameover") drawGameOver();
+
+  ctx.restore();
+}
+
+function drawAurora(){
+  ctx.save();
+  ctx.globalAlpha=gustActive&&gustTelegraph<=0?0.45:0.2;
+  const auroraHue=(hue+60)%360;
+  for(let i=0;i<3;i++){
+    ctx.beginPath();
+    ctx.moveTo(0, 20+i*12);
+    const windOff=windDrift*0.4;
+    ctx.quadraticCurveTo(W*0.25, 10+i*12+windOff+Math.sin(hue*0.05+i)*8, W*0.5, 18+i*12);
+    ctx.quadraticCurveTo(W*0.75, 26+i*12-windOff+Math.cos(hue*0.04+i)*8, W, 20+i*12);
+    ctx.strokeStyle=`hsla(${auroraHue+i*30},70%,60%,0.6)`;
+    ctx.lineWidth=3+i;
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawPillar(p){
+  ctx.save();
+  /* top pillar */
+  const topGrad=ctx.createLinearGradient(p.x,0,p.x+p.w,0);
+  topGrad.addColorStop(0,"#1a3a5c");
+  topGrad.addColorStop(0.5,"#264e72");
+  topGrad.addColorStop(1,"#1a3a5c");
+  ctx.fillStyle=topGrad;
+  ctx.fillRect(p.x, 0, p.w, p.gapY);
+
+  /* bottom pillar */
+  ctx.fillStyle=topGrad;
+  ctx.fillRect(p.x, p.gapY+p.gapH, p.w, H-(p.gapY+p.gapH));
+
+  /* gap edge glow */
+  ctx.shadowColor=`hsla(${hue},80%,65%,0.6)`;
+  ctx.shadowBlur=10;
+  ctx.strokeStyle=`hsla(${hue},70%,70%,0.7)`;
+  ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(p.x,p.gapY);ctx.lineTo(p.x+p.w,p.gapY);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(p.x,p.gapY+p.gapH);ctx.lineTo(p.x+p.w,p.gapY+p.gapH);ctx.stroke();
+  ctx.shadowBlur=0;
+
+  /* nubs */
+  if(p.nubs){
+    ctx.fillStyle="#1e3f5f";
+    /* top nub */
+    ctx.beginPath();
+    ctx.arc(p.x+p.w*0.3, p.gapY, 5, Math.PI, 0);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(p.x+p.w*0.7, p.gapY, 4, Math.PI, 0);
+    ctx.fill();
+    /* bottom nub */
+    ctx.beginPath();
+    ctx.arc(p.x+p.w*0.4, p.gapY+p.gapH, 5, 0, Math.PI);
+    ctx.fill();
+  }
+
+  /* spikes */
+  if(p.spikes){
+    ctx.fillStyle="#4af0ff";
+    ctx.globalAlpha=0.6;
+    /* top spike */
+    ctx.beginPath();
+    ctx.moveTo(p.x+p.w/2-6, p.gapY);
+    ctx.lineTo(p.x+p.w/2, p.gapY+14);
+    ctx.lineTo(p.x+p.w/2+6, p.gapY);
+    ctx.fill();
+    /* bottom spike */
+    ctx.beginPath();
+    ctx.moveTo(p.x+p.w/2-6, p.gapY+p.gapH);
+    ctx.lineTo(p.x+p.w/2, p.gapY+p.gapH-14);
+    ctx.lineTo(p.x+p.w/2+6, p.gapY+p.gapH);
+    ctx.fill();
+    ctx.globalAlpha=1;
+  }
+
+  ctx.restore();
+}
+
+function drawOwl(){
+  ctx.save();
+  ctx.translate(owl.x, owl.y);
+  const tilt=Math.max(-0.5, Math.min(0.5, owl.vy*0.0015));
+  ctx.rotate(tilt);
+
+  /* body */
+  ctx.fillStyle="#1a1a2e";
+  ctx.strokeStyle="#e8f0ff";
+  ctx.lineWidth=2;
+  ctx.beginPath();
+  ctx.ellipse(0,0,OWL_R-2,OWL_R,0,0,Math.PI*2);
+  ctx.fill(); ctx.stroke();
+
+  /* eyes */
+  ctx.fillStyle="#ffeeaa";
+  ctx.beginPath();ctx.arc(-5,-4,3,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.arc(5,-4,3,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle="#111";
+  ctx.beginPath();ctx.arc(-5,-4,1.5,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.arc(5,-4,1.5,0,Math.PI*2);ctx.fill();
+
+  /* beak */
+  ctx.fillStyle="#e8a030";
+  ctx.beginPath();
+  ctx.moveTo(-2,0);ctx.lineTo(2,0);ctx.lineTo(0,4);ctx.closePath();
+  ctx.fill();
+
+  /* wings */
+  const wingFlap=owl.flapAnim>0;
+  const wingY=wingFlap?(owl.wingUp?-8:8):2;
+  ctx.fillStyle="#2a2a4e";
+  ctx.strokeStyle="#c0d8ff";
+  ctx.lineWidth=1.5;
+  /* left wing */
+  ctx.beginPath();
+  ctx.moveTo(-OWL_R+3, 0);
+  ctx.quadraticCurveTo(-OWL_R-8, wingY, -OWL_R+1, 8);
+  ctx.fill(); ctx.stroke();
+  /* right wing */
+  ctx.beginPath();
+  ctx.moveTo(OWL_R-3, 0);
+  ctx.quadraticCurveTo(OWL_R+8, wingY, OWL_R-1, 8);
+  ctx.fill(); ctx.stroke();
+
+  ctx.restore();
+}
+
+function drawStartScreen(){
+  ctx.fillStyle="rgba(10,22,40,0.55)";
+  ctx.fillRect(0,0,W,H);
+
+  ctx.textAlign="center";
+  ctx.fillStyle="#e0f0ff";
+  ctx.font="bold 40px 'Segoe UI',system-ui,sans-serif";
+  ctx.shadowColor="rgba(100,200,255,0.5)"; ctx.shadowBlur=16;
+  ctx.fillText("Frost Flap",W/2,H*0.32);
+  ctx.shadowBlur=0;
+
+  ctx.font="18px 'Segoe UI',system-ui,sans-serif";
+  ctx.fillStyle="#8ab8dd";
+  ctx.fillText("Wind Lanes",W/2,H*0.38);
+
+  /* owl preview */
+  owl={x:W/2, y:H*0.52, vy:0, flapAnim:0, wingUp:true, alive:true};
+  drawOwl();
+
+  ctx.font="20px 'Segoe UI',system-ui,sans-serif";
+  ctx.fillStyle=`hsla(${hue},70%,75%,${0.6+Math.sin(Date.now()*0.004)*0.4})`;
+  ctx.fillText("Tap to Start",W/2,H*0.68);
+
+  if(best>0){
+    ctx.font="15px 'Segoe UI',system-ui,sans-serif";
+    ctx.fillStyle="#6a98bb";
+    ctx.fillText("Best: "+best, W/2, H*0.75);
+  }
+}
+
+function drawGameOver(){
+  ctx.fillStyle="rgba(5,12,25,0.65)";
+  ctx.fillRect(0,0,W,H);
+
+  ctx.textAlign="center";
+  ctx.fillStyle="#ff6b6b";
+  ctx.font="bold 34px 'Segoe UI',system-ui,sans-serif";
+  ctx.shadowColor="rgba(255,80,80,0.4)"; ctx.shadowBlur=12;
+  ctx.fillText("Game Over",W/2,H*0.32);
+  ctx.shadowBlur=0;
+
+  ctx.font="48px 'Segoe UI',system-ui,sans-serif";
+  ctx.fillStyle="#fff";
+  ctx.fillText(score, W/2, H*0.45);
+
+  ctx.font="16px 'Segoe UI',system-ui,sans-serif";
+  ctx.fillStyle="#7aaad0";
+  ctx.fillText("Score", W/2, H*0.49);
+
+  ctx.font="22px 'Segoe UI',system-ui,sans-serif";
+  ctx.fillStyle="#ffd700";
+  ctx.fillText("Best: "+best, W/2, H*0.57);
+
+  if(!restartLock){
+    ctx.font="20px 'Segoe UI',system-ui,sans-serif";
+    ctx.fillStyle=`hsla(${hue},70%,75%,${0.6+Math.sin(Date.now()*0.004)*0.4})`;
+    ctx.fillText("Tap to Retry",W/2,H*0.68);
+  }
+}
+
+/* --- init & start --- */
+initGame();
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

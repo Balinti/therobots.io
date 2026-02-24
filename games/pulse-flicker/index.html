@@ -1,0 +1,1051 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Pulse Flicker - Free HTML5 Game</title>
+  <meta name="description" content="Play Pulse Flicker - Tap to the rhythm as shrinking stars align in the galaxy.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Pulse Flicker - Free HTML5 Game">
+  <meta property="og:description" content="Play Pulse Flicker - Tap to the rhythm as shrinking stars align in the galaxy.">
+  <meta property="og:url" content="https://balinti.github.io/pulse-flicker/">
+  <meta property="og:image" content="https://balinti.github.io/pulse-flicker/og.png">
+  <meta name="theme-color" content="#05060a">
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: #05060a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      touch-action: manipulation;
+    }
+    #container {
+      position: relative;
+      width: min(420px, 100vw);
+      height: min(750px, 100vh);
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+<div id="container">
+  <canvas id="c"></canvas>
+</div>
+<script>
+// =============================================================
+// PULSE FLICKER: ORBIT SWAP
+// =============================================================
+
+// ---- Constants ----
+const LS_KEY = 'pf_orbitswap_highscore';
+const LANES = 3; // 0=Inner, 1=Mid, 2=Outer
+const LANE_NAMES = ['INNER', 'MID', 'OUTER'];
+const LANE_COLORS = ['#ff6b6b', '#ffd93d', '#6bcb77'];
+const LANE_HUE   = [0, 50, 130];
+
+// ---- Canvas setup ----
+const container = document.getElementById('container');
+const canvas    = document.getElementById('c');
+const ctx       = canvas.getContext('2d');
+let CW, CH, dpr;
+
+function resizeCanvas() {
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  CW  = container.clientWidth;
+  CH  = container.clientHeight;
+  canvas.width  = CW * dpr;
+  canvas.height = CH * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+resizeCanvas();
+window.addEventListener('resize', () => { resizeCanvas(); });
+
+// ---- URL params ----
+const urlParams   = new URLSearchParams(location.search);
+let   challengeSeed  = urlParams.get('seed')  ? parseInt(urlParams.get('seed'))  : null;
+let   challengeScore = urlParams.get('challenge') ? parseInt(urlParams.get('challenge')) : null;
+
+// ---- Deterministic RNG (mulberry32) ----
+function mulberry32(seed) {
+  return function() {
+    seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+let rng = mulberry32(0);
+
+function makeSeed() { return (Math.random() * 0xFFFFFF | 0) + 1; }
+
+// ---- Audio ----
+let audioCtx = null;
+
+function initAudio() {
+  if (audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+}
+
+function playBeep(freq = 220, type = 'sine', vol = 0.18, dur = 0.08) {
+  if (!audioCtx) return;
+  try {
+    const osc  = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.type      = type;
+    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+    osc.start(audioCtx.currentTime);
+    osc.stop(audioCtx.currentTime + dur + 0.01);
+  } catch(e) {}
+}
+
+function playBeatSound(bpm) {
+  playBeep(110, 'sine', 0.22, 0.06);
+  playBeep(220, 'triangle', 0.08, 0.04);
+}
+
+function playCollect(perfect) {
+  if (perfect) {
+    playBeep(880, 'sine',     0.15, 0.12);
+    playBeep(1320,'triangle', 0.08, 0.10);
+  } else {
+    playBeep(440, 'sine',     0.12, 0.09);
+  }
+}
+
+function playMiss() {
+  playBeep(80, 'sawtooth', 0.25, 0.18);
+}
+
+function playGhost() {
+  playBeep(660, 'sine', 0.10, 0.10);
+}
+
+// ---- Game State ----
+const STATE = { START: 'start', PLAYING: 'playing', GAMEOVER: 'gameover' };
+let state = STATE.START;
+
+// ---- Persistent high score ----
+let highScore = parseInt(localStorage.getItem(LS_KEY) || '0');
+
+// ---- Game variables ----
+let score, combo, multiplier, runTime, beatCount;
+let playerLane, lastSwapTime;
+let currentSeed, beatInterval, nextBeatTime;
+let stars, particles, ambientParticles;
+let missReason;
+let shakeAmt, shakeFade;
+let beatFlash, beatPulse;
+let globalHue;
+let starfieldStreaks;
+let perfectStreak;
+
+// ---- Orbit geometry ----
+function orbitRadius(lane) {
+  const cx = CW / 2, cy = CH / 2;
+  const base = Math.min(cx, cy) * 0.28;
+  const step = Math.min(cx, cy) * 0.19;
+  return base + lane * step;
+}
+function centerX() { return CW / 2; }
+function centerY() { return CH / 2 + CH * 0.04; }
+
+// ---- Starfield ----
+function initStarfield() {
+  starfieldStreaks = [];
+  for (let i = 0; i < 60; i++) {
+    starfieldStreaks.push({
+      x: Math.random() * CW,
+      y: Math.random() * CH,
+      len: 2 + Math.random() * 6,
+      speed: 0.2 + Math.random() * 0.8,
+      alpha: 0.1 + Math.random() * 0.4,
+    });
+  }
+}
+
+// ---- Pattern generation ----
+function genBeatPattern(beatIdx, runT, rngFn) {
+  // BPM ramp
+  const bpm     = clamp(90 + 70 * (1 - Math.exp(-runT / 35)), 90, 160);
+  const pReq    = clamp(0.55 + 0.35 * (1 - Math.exp(-runT / 25)), 0.55, 0.90);
+  const pGhost  = runT > 60 ? 0.25 : 0.10;
+  const pDouble = runT > 60 ? 0.08 : 0.0;
+
+  // Avoid unfair lane jumps at high BPM
+  let req = null;
+  if (rngFn() < pReq) {
+    if (beatIdx < 6) {
+      // Onboarding: simple ramps
+      req = [0, 0, 1, 1, 2, 1][beatIdx % 6];
+    } else if (beatIdx < 20) {
+      // Easy alternation
+      req = beatIdx % 2 === 0 ? 0 : 1;
+      if (beatIdx % 7 === 0) req = 2;
+    } else {
+      // Random lane but feasible
+      req = Math.floor(rngFn() * LANES);
+    }
+  }
+
+  let ghost = null;
+  if (rngFn() < pGhost) {
+    const g = Math.floor(rngFn() * LANES);
+    if (g !== req) ghost = g;
+  }
+
+  // Second star (rare, only ghost)
+  let extra = null;
+  if (runT > 60 && rngFn() < pDouble && req !== null) {
+    const choices = [0, 1, 2].filter(l => l !== req);
+    extra = choices[Math.floor(rngFn() * choices.length)];
+  }
+
+  return { req, ghost, extra, bpm };
+}
+
+// ---- Init / Reset game ----
+function initGame(seed) {
+  currentSeed   = seed || makeSeed();
+  rng           = mulberry32(currentSeed);
+  score         = 0;
+  combo         = 0;
+  multiplier    = 1;
+  runTime       = 0;
+  beatCount     = 0;
+  playerLane    = 1;
+  lastSwapTime  = -999;
+  stars         = [];
+  particles     = [];
+  ambientParticles = [];
+  missReason    = '';
+  shakeAmt      = 0;
+  shakeFade     = 0.85;
+  beatFlash     = 0;
+  beatPulse     = 0;
+  globalHue     = 200;
+  perfectStreak = 0;
+
+  // Set BPM from start
+  const bpm     = 90;
+  beatInterval  = 60 / bpm;
+  nextBeatTime  = 0.5; // short lead-in
+
+  // Pre-generate first stars
+  for (let i = 0; i < 5; i++) {
+    scheduleStarForBeat(i, 0);
+  }
+
+  // Update URL with seed
+  const newUrl = new URL(location.href);
+  newUrl.searchParams.set('seed', currentSeed);
+  newUrl.searchParams.delete('challenge');
+  history.replaceState(null, '', newUrl.toString());
+
+  initStarfield();
+}
+
+function scheduleStarForBeat(beatIdx, runT) {
+  const pattern = genBeatPattern(beatIdx, runT, rng);
+  const beatTime = nextBeatTime + (beatIdx - beatCount) * beatInterval;
+
+  if (pattern.req !== null) {
+    stars.push({
+      lane:      pattern.req,
+      beatIdx,
+      beatTime,
+      type:      'required',
+      angle:     -Math.PI / 2,
+      collected: false,
+      missed:    false,
+      alpha:     1,
+      scale:     1,
+    });
+  }
+  if (pattern.ghost !== null) {
+    stars.push({
+      lane:      pattern.ghost,
+      beatIdx,
+      beatTime,
+      type:      'ghost',
+      angle:     -Math.PI / 2,
+      collected: false,
+      missed:    false,
+      alpha:     0.7,
+      scale:     1,
+    });
+  }
+  if (pattern.extra !== null) {
+    stars.push({
+      lane:      pattern.extra,
+      beatIdx,
+      beatTime,
+      type:      'ghost',
+      angle:     -Math.PI / 2,
+      collected: false,
+      missed:    false,
+      alpha:     0.65,
+      scale:     1,
+    });
+  }
+}
+
+// ---- Particles ----
+function spawnCollectParticles(lane, perfect) {
+  const cx = centerX(), cy = centerY();
+  const r  = orbitRadius(lane);
+  const angle = -Math.PI / 2;
+  const x = cx + Math.cos(angle) * r;
+  const y = cy + Math.sin(angle) * r;
+  const count = perfect ? 20 : 10;
+  for (let i = 0; i < count; i++) {
+    const a   = (Math.random() * Math.PI * 2);
+    const spd = 1.5 + Math.random() * 3;
+    particles.push({
+      x, y,
+      vx: Math.cos(a) * spd,
+      vy: Math.sin(a) * spd,
+      life: 1,
+      decay: 0.025 + Math.random() * 0.03,
+      size: 2 + Math.random() * (perfect ? 5 : 3),
+      hue: LANE_HUE[lane] + (Math.random() - 0.5) * 40,
+      sat: 80 + Math.random() * 20,
+    });
+  }
+}
+
+function spawnBeatAmbient() {
+  const cx = centerX(), cy = centerY();
+  for (let i = 0; i < 6; i++) {
+    const a   = Math.random() * Math.PI * 2;
+    const r   = 10 + Math.random() * 25;
+    particles.push({
+      x: cx + Math.cos(a) * r,
+      y: cy + Math.sin(a) * r,
+      vx: Math.cos(a) * (0.5 + Math.random()),
+      vy: Math.sin(a) * (0.5 + Math.random()),
+      life: 1,
+      decay: 0.04 + Math.random() * 0.04,
+      size: 1 + Math.random() * 2,
+      hue: globalHue + (Math.random() - 0.5) * 60,
+      sat: 70,
+    });
+  }
+}
+
+function spawnMissParticles() {
+  const cx = centerX(), cy = centerY();
+  for (let i = 0; i < 30; i++) {
+    const a   = Math.random() * Math.PI * 2;
+    const spd = 2 + Math.random() * 5;
+    particles.push({
+      x: cx, y: cy,
+      vx: Math.cos(a) * spd,
+      vy: Math.sin(a) * spd,
+      life: 1,
+      decay: 0.018 + Math.random() * 0.02,
+      size: 3 + Math.random() * 5,
+      hue: 0,
+      sat: 80,
+    });
+  }
+}
+
+// ---- Shake ----
+function triggerShake(amount) {
+  shakeAmt = Math.max(shakeAmt, amount);
+}
+
+// ---- Utility ----
+function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+
+function getMultiplier(combo) {
+  if (combo >= 30) return 8;
+  if (combo >= 20) return 6;
+  if (combo >= 12) return 4;
+  if (combo >= 6)  return 3;
+  if (combo >= 3)  return 2;
+  return 1;
+}
+
+// ---- Main loop ----
+let lastTimestamp = null;
+let accumTime = 0;
+
+function loop(ts) {
+  requestAnimationFrame(loop);
+
+  if (lastTimestamp === null) lastTimestamp = ts;
+  let dt = (ts - lastTimestamp) / 1000;
+  lastTimestamp = ts;
+  dt = Math.min(dt, 0.033);
+
+  // Shake
+  if (shakeAmt > 0.3) {
+    shakeAmt *= shakeFade;
+  } else {
+    shakeAmt = 0;
+  }
+
+  if (state === STATE.PLAYING) {
+    updateGame(dt);
+  }
+
+  draw(dt);
+}
+
+function updateGame(dt) {
+  runTime   += dt;
+  accumTime += dt;
+  globalHue  = (globalHue + dt * 12) % 360;
+
+  // BPM recalc
+  const bpm      = clamp(90 + 70 * (1 - Math.exp(-runTime / 35)), 90, 160);
+  beatInterval   = 60 / bpm;
+
+  // Beat boundaries
+  while (accumTime >= nextBeatTime) {
+    onBeat();
+    nextBeatTime += beatInterval;
+  }
+
+  // Update stars approach (stars orbit around until beat)
+  for (const s of stars) {
+    if (s.collected || s.missed) {
+      s.alpha -= dt * 4;
+      s.scale += dt * 3;
+      continue;
+    }
+    // Stars move from a far angle down to top (-π/2)
+    // They approach from ahead
+  }
+
+  // Update particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x    += p.vx;
+    p.y    += p.vy;
+    p.vx   *= 0.94;
+    p.vy   *= 0.94;
+    p.life -= p.decay;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+
+  // Beat visuals
+  beatFlash = Math.max(0, beatFlash - dt * 6);
+  beatPulse = Math.max(0, beatPulse - dt * 4);
+
+  // Starfield
+  const speedMult = bpm / 90;
+  for (const s of starfieldStreaks) {
+    s.y += s.speed * speedMult;
+    if (s.y > CH) { s.y = 0; s.x = Math.random() * CW; }
+  }
+}
+
+function onBeat() {
+  beatCount++;
+  beatFlash = 1;
+  beatPulse = 1;
+  spawnBeatAmbient();
+  playBeatSound();
+
+  // Check required star for THIS beat
+  const reqStar = stars.find(s =>
+    s.beatIdx === beatCount && s.type === 'required' && !s.collected && !s.missed
+  );
+
+  if (reqStar) {
+    if (playerLane === reqStar.lane) {
+      // Collect!
+      const perfect = (accumTime - lastSwapTime) > 0.12;
+      reqStar.collected = true;
+      const pts = 10 * multiplier * (perfect ? 2 : 1);
+      score += pts;
+      combo++;
+      if (perfect) perfectStreak++;
+      multiplier = getMultiplier(combo);
+      spawnCollectParticles(reqStar.lane, perfect);
+      playCollect(perfect);
+
+      // Milestone shake
+      if (combo % 10 === 0) triggerShake(4);
+    } else {
+      // Miss!
+      reqStar.missed = true;
+      missReason = `MISS: ${LANE_NAMES[reqStar.lane]} (Beat ${beatCount})`;
+      playMiss();
+      spawnMissParticles();
+      triggerShake(14);
+      endGame();
+      return;
+    }
+  } else {
+    // No required star — check if there was a star that just passed
+    // still OK, just mark missed
+    stars.filter(s => s.beatIdx === beatCount && s.type === 'required' && !s.collected)
+         .forEach(s => { s.missed = true; });
+  }
+
+  // Collect ghost stars if in lane
+  stars.filter(s =>
+    s.beatIdx === beatCount && s.type === 'ghost' && !s.collected && !s.missed
+  ).forEach(s => {
+    if (playerLane === s.lane) {
+      s.collected = true;
+      score += 5 * multiplier;
+      spawnCollectParticles(s.lane, false);
+      playGhost();
+    } else {
+      s.missed = true;
+    }
+  });
+
+  // Schedule future stars
+  const lookAhead = 6;
+  scheduleStarForBeat(beatCount + lookAhead, runTime);
+}
+
+function endGame() {
+  state = STATE.GAMEOVER;
+  if (score > highScore) {
+    highScore = score;
+    localStorage.setItem(LS_KEY, highScore);
+  }
+}
+
+// ---- Input ----
+function handleInput() {
+  initAudio();
+
+  if (state === STATE.START) {
+    state = STATE.PLAYING;
+    initGame(challengeSeed || makeSeed());
+    return;
+  }
+
+  if (state === STATE.GAMEOVER) {
+    state = STATE.PLAYING;
+    initGame(null);
+    return;
+  }
+
+  if (state === STATE.PLAYING) {
+    // Cycle lane: Inner -> Mid -> Outer -> Inner
+    playerLane = (playerLane + 1) % LANES;
+    lastSwapTime = accumTime;
+    playBeep(330, 'sine', 0.08, 0.04);
+  }
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+
+  // Check challenge share button
+  if (state === STATE.GAMEOVER) {
+    const bx = CW / 2 - 120, by = CH * 0.72, bw = 240, bh = 44;
+    const rx = e.offsetX, ry = e.offsetY;
+    if (rx >= bx && rx <= bx + bw && ry >= by && ry <= by + bh) {
+      shareChallenge();
+      return;
+    }
+  }
+
+  handleInput();
+});
+
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    handleInput();
+  }
+});
+
+// ---- Share ----
+function shareChallenge() {
+  const url = `${location.origin}${location.pathname}?challenge=${score}&seed=${currentSeed}`;
+  const text = `I scored ${score} in Pulse Flicker! Can you beat me?\n${url}`;
+
+  if (navigator.share) {
+    navigator.share({ title: 'Pulse Flicker Challenge', text, url }).catch(() => {});
+  } else {
+    navigator.clipboard.writeText(text).then(() => {
+      showToast('Link copied!');
+    }).catch(() => {
+      showToast('Challenge: ' + url);
+    });
+  }
+}
+
+let toastMsg = '', toastAlpha = 0;
+function showToast(msg) {
+  toastMsg   = msg;
+  toastAlpha = 1;
+}
+
+// ---- Draw ----
+function draw(dt) {
+  const cx = centerX(), cy = centerY();
+
+  // Shake transform
+  const sx = shakeAmt > 0 ? (Math.random() - 0.5) * shakeAmt : 0;
+  const sy = shakeAmt > 0 ? (Math.random() - 0.5) * shakeAmt : 0;
+
+  ctx.save();
+  ctx.translate(sx, sy);
+
+  // Background
+  const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(CW, CH) * 0.8);
+  grad.addColorStop(0,   `hsl(${globalHue}, 30%, 8%)`);
+  grad.addColorStop(0.5, `hsl(${(globalHue + 30) % 360}, 20%, 5%)`);
+  grad.addColorStop(1,   '#05060a');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, CW, CH);
+
+  // Starfield
+  drawStarfield();
+
+  if (state === STATE.START) {
+    drawStart();
+  } else if (state === STATE.PLAYING) {
+    drawGame(dt);
+  } else if (state === STATE.GAMEOVER) {
+    drawGame(dt);
+    drawGameOver();
+  }
+
+  // Toast
+  if (toastAlpha > 0) {
+    toastAlpha -= dt * 0.7;
+    ctx.globalAlpha = Math.max(0, toastAlpha);
+    ctx.fillStyle = '#fff';
+    ctx.font      = 'bold 16px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(toastMsg, CW / 2, CH * 0.85);
+    ctx.globalAlpha = 1;
+  }
+
+  ctx.restore();
+}
+
+function drawStarfield() {
+  for (const s of starfieldStreaks) {
+    ctx.globalAlpha = s.alpha * 0.6;
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth   = 0.8;
+    ctx.beginPath();
+    ctx.moveTo(s.x, s.y);
+    ctx.lineTo(s.x, s.y - s.len);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawGame(dt) {
+  const cx = centerX(), cy = centerY();
+
+  // Galaxy core
+  drawGalaxyCore(cx, cy);
+
+  // Orbit rings
+  drawOrbitRings(cx, cy);
+
+  // Stars
+  drawStars(cx, cy);
+
+  // Particles
+  drawParticles();
+
+  // Player indicator
+  drawPlayer(cx, cy);
+
+  // HUD
+  drawHUD();
+}
+
+function drawGalaxyCore(cx, cy) {
+  // Pulsing glow on beat
+  const pulse = 1 + beatPulse * 0.5;
+  const flashAlpha = 0.1 + beatFlash * 0.3;
+
+  // Outer glow
+  const grd = ctx.createRadialGradient(cx, cy, 0, cx, cy, 55 * pulse);
+  grd.addColorStop(0,   `hsla(${globalHue}, 90%, 70%, ${flashAlpha + 0.25})`);
+  grd.addColorStop(0.3, `hsla(${globalHue}, 70%, 50%, ${flashAlpha * 0.5})`);
+  grd.addColorStop(1,   'transparent');
+  ctx.fillStyle = grd;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 55 * pulse, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Core dot
+  ctx.beginPath();
+  ctx.arc(cx, cy, 8 * pulse, 0, Math.PI * 2);
+  ctx.fillStyle = `hsl(${globalHue}, 100%, 80%)`;
+  ctx.fill();
+
+  // Expanding ring on beat
+  if (beatPulse > 0.05) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, (1 - beatPulse) * 80 + 12, 0, Math.PI * 2);
+    ctx.strokeStyle = `hsla(${globalHue}, 90%, 70%, ${beatPulse * 0.6})`;
+    ctx.lineWidth = 3 * beatPulse;
+    ctx.stroke();
+  }
+}
+
+function drawOrbitRings(cx, cy) {
+  const bpm = state === STATE.PLAYING ? clamp(90 + 70 * (1 - Math.exp(-runTime / 35)), 90, 160) : 90;
+
+  for (let lane = 0; lane < LANES; lane++) {
+    const r     = orbitRadius(lane);
+    const active = (lane === playerLane);
+    const baseH = (globalHue + LANE_HUE[lane]) % 360;
+
+    // Check if an upcoming star is on this lane
+    const upcoming = stars.find(s =>
+      !s.collected && !s.missed &&
+      s.lane === lane &&
+      s.type === 'required' &&
+      s.beatIdx > beatCount &&
+      s.beatIdx <= beatCount + 3
+    );
+    const highlighted = upcoming !== null && upcoming !== undefined;
+
+    // Ring
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    if (active) {
+      ctx.strokeStyle = `hsl(${baseH}, 90%, 70%)`;
+      ctx.lineWidth   = 3.5;
+      ctx.globalAlpha = 0.9;
+    } else if (highlighted) {
+      ctx.strokeStyle = `hsl(${baseH}, 80%, 55%)`;
+      ctx.lineWidth   = 2;
+      ctx.globalAlpha = 0.55;
+    } else {
+      ctx.strokeStyle = `hsl(${baseH}, 50%, 40%)`;
+      ctx.lineWidth   = 1.5;
+      ctx.globalAlpha = 0.3;
+    }
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    // Lane label (small)
+    ctx.save();
+    ctx.font      = '10px sans-serif';
+    ctx.fillStyle = `hsl(${baseH}, 60%, 60%)`;
+    ctx.globalAlpha = active ? 0.8 : 0.25;
+    ctx.textAlign = 'center';
+    ctx.fillText(LANE_NAMES[lane], cx + r + 20, cy + 4);
+    ctx.restore();
+  }
+}
+
+function drawStars(cx, cy) {
+  const now = accumTime;
+
+  for (const s of stars) {
+    if (s.alpha <= 0) continue;
+    if (s.collected || s.missed) {
+      ctx.globalAlpha = Math.max(0, s.alpha);
+    }
+
+    const r     = orbitRadius(s.lane);
+    const x     = cx + Math.cos(-Math.PI / 2) * r;
+    const y     = cy + Math.sin(-Math.PI / 2) * r;
+    const baseH = (globalHue + LANE_HUE[s.lane]) % 360;
+
+    // How close to beat?
+    const timeTobeat = s.beatTime - nextBeatTime + beatInterval;
+    const proximity  = clamp(1 - Math.abs(timeTobeat) / (beatInterval * 3), 0, 1);
+
+    const rad = (s.type === 'required' ? 14 : 10) * s.scale * (0.7 + proximity * 0.5);
+
+    if (s.type === 'required') {
+      // Star polygon
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(performance.now() * 0.001);
+      drawStar5(ctx, 0, 0, rad, rad * 0.45);
+      const grd = ctx.createRadialGradient(0, 0, 0, 0, 0, rad);
+      grd.addColorStop(0,   `hsl(${baseH}, 100%, 90%)`);
+      grd.addColorStop(0.5, `hsl(${baseH}, 90%, 65%)`);
+      grd.addColorStop(1,   `hsl(${baseH}, 80%, 40%)`);
+      ctx.fillStyle   = grd;
+      ctx.strokeStyle = `hsl(${baseH}, 100%, 80%)`;
+      ctx.lineWidth   = 1.5;
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+
+      // Glow
+      ctx.beginPath();
+      ctx.arc(x, y, rad * 1.6, 0, Math.PI * 2);
+      const glow = ctx.createRadialGradient(x, y, 0, x, y, rad * 1.6);
+      glow.addColorStop(0, `hsla(${baseH}, 100%, 70%, ${0.3 * proximity})`);
+      glow.addColorStop(1, 'transparent');
+      ctx.fillStyle = glow;
+      ctx.fill();
+    } else {
+      // Ghost star - diamond
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(Math.PI / 4 + performance.now() * 0.0007);
+      ctx.beginPath();
+      ctx.rect(-rad * 0.7, -rad * 0.7, rad * 1.4, rad * 1.4);
+      ctx.strokeStyle = `hsla(${baseH}, 80%, 70%, 0.7)`;
+      ctx.lineWidth   = 1.5;
+      ctx.setLineDash([3, 3]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = `hsla(${baseH}, 80%, 60%, 0.25)`;
+      ctx.fill();
+      ctx.restore();
+    }
+
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawStar5(ctx, cx, cy, outerR, innerR) {
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const angle = (i * Math.PI) / 5 - Math.PI / 2;
+    const r     = i % 2 === 0 ? outerR : innerR;
+    const x     = cx + Math.cos(angle) * r;
+    const y     = cy + Math.sin(angle) * r;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    ctx.globalAlpha = p.life;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    ctx.fillStyle = `hsl(${p.hue}, ${p.sat}%, 65%)`;
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawPlayer(cx, cy) {
+  const lane  = playerLane;
+  const r     = orbitRadius(lane);
+  const x     = cx + Math.cos(-Math.PI / 2) * r;
+  const y     = cy + Math.sin(-Math.PI / 2) * r;
+  const baseH = (globalHue + LANE_HUE[lane]) % 360;
+
+  // Ship triangle
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(0);
+
+  const size = 11;
+  ctx.beginPath();
+  ctx.moveTo(0, -size);
+  ctx.lineTo(-size * 0.65, size * 0.75);
+  ctx.lineTo(0, size * 0.3);
+  ctx.lineTo(size * 0.65, size * 0.75);
+  ctx.closePath();
+
+  const pg = ctx.createLinearGradient(0, -size, 0, size);
+  pg.addColorStop(0, `hsl(${baseH}, 100%, 90%)`);
+  pg.addColorStop(1, `hsl(${baseH}, 80%, 50%)`);
+  ctx.fillStyle = pg;
+  ctx.fill();
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth   = 1.2;
+  ctx.stroke();
+
+  // Engine glow
+  ctx.beginPath();
+  ctx.arc(0, size * 0.5, 5, 0, Math.PI * 2);
+  ctx.fillStyle = `hsla(${(baseH + 30) % 360}, 100%, 80%, 0.8)`;
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawHUD() {
+  // Score
+  ctx.font      = 'bold 28px sans-serif';
+  ctx.fillStyle = '#fff';
+  ctx.textAlign = 'center';
+  ctx.fillText(score, CW / 2, 44);
+
+  // Best
+  ctx.font      = '13px sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.45)';
+  ctx.fillText(`BEST ${highScore}`, CW / 2, 62);
+
+  // Combo + multiplier
+  if (combo > 0) {
+    const mult  = getMultiplier(combo);
+    const hue   = mult >= 6 ? 45 : mult >= 3 ? 130 : 200;
+    ctx.font      = `bold ${14 + Math.min(combo, 10)}px sans-serif`;
+    ctx.fillStyle = `hsl(${hue}, 90%, 65%)`;
+    ctx.textAlign = 'left';
+    ctx.fillText(`×${mult}  ${combo} combo`, 14, 44);
+  }
+
+  // BPM indicator
+  if (state === STATE.PLAYING) {
+    const bpm = clamp(90 + 70 * (1 - Math.exp(-runTime / 35)), 90, 160);
+    ctx.font      = '11px sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.textAlign = 'right';
+    ctx.fillText(`${Math.round(bpm)} BPM`, CW - 10, CH - 12);
+  }
+}
+
+function drawStart() {
+  const cx = CW / 2, cy = CH / 2;
+
+  // Title
+  ctx.textAlign = 'center';
+  ctx.font      = 'bold 42px sans-serif';
+  ctx.fillStyle = `hsl(${globalHue}, 90%, 75%)`;
+  ctx.fillText('PULSE FLICKER', cx, cy - 95);
+
+  ctx.font      = 'bold 20px sans-serif';
+  ctx.fillStyle = `hsl(${(globalHue + 60) % 360}, 80%, 65%)`;
+  ctx.fillText('ORBIT SWAP', cx, cy - 65);
+
+  // How-to
+  ctx.font      = '14px sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.65)';
+  ctx.fillText('Tap to cycle lanes.', cx, cy - 20);
+  ctx.fillText('Collect on the pulse.', cx, cy + 4);
+
+  // Challenge info
+  if (challengeScore !== null && challengeSeed !== null) {
+    ctx.font      = 'bold 15px sans-serif';
+    ctx.fillStyle = `hsl(50, 90%, 65%)`;
+    ctx.fillText(`Beat ${challengeScore} on Seed ${challengeSeed}`, cx, cy + 38);
+  }
+
+  // Tap prompt
+  const pulse = 0.7 + 0.3 * Math.sin(performance.now() * 0.003);
+  ctx.globalAlpha = pulse;
+  ctx.font        = 'bold 18px sans-serif';
+  ctx.fillStyle   = '#fff';
+  ctx.fillText('TAP TO START', cx, cy + 80);
+  ctx.globalAlpha = 1;
+
+  // Decorative orbit rings
+  for (let lane = 0; lane < LANES; lane++) {
+    const r    = orbitRadius(lane);
+    const baseH = (globalHue + LANE_HUE[lane] + performance.now() * 0.01) % 360;
+    ctx.beginPath();
+    ctx.arc(cx, cy + CH * 0.04, r, 0, Math.PI * 2);
+    ctx.strokeStyle = `hsla(${baseH}, 60%, 50%, 0.2)`;
+    ctx.lineWidth   = 1.5;
+    ctx.stroke();
+  }
+
+  // Starfield needs to move in start screen too
+  const bpm = 90;
+  const speedMult = bpm / 90;
+  for (const s of starfieldStreaks) {
+    s.y += s.speed * speedMult * 0.016;
+    if (s.y > CH) { s.y = 0; s.x = Math.random() * CW; }
+  }
+}
+
+function drawGameOver() {
+  const cx = CW / 2, cy = CH / 2;
+
+  // Dimmed overlay
+  ctx.fillStyle = 'rgba(0,0,0,0.65)';
+  ctx.fillRect(0, 0, CW, CH);
+
+  // Miss banner
+  ctx.textAlign = 'center';
+  ctx.font      = 'bold 22px sans-serif';
+  ctx.fillStyle = '#ff5555';
+  ctx.fillText('GAME OVER', cx, cy - 115);
+
+  ctx.font      = '14px sans-serif';
+  ctx.fillStyle = 'rgba(255,100,100,0.85)';
+  ctx.fillText(missReason, cx, cy - 88);
+
+  // Score
+  ctx.font      = 'bold 54px sans-serif';
+  ctx.fillStyle = '#fff';
+  ctx.fillText(score, cx, cy - 32);
+
+  // New high score
+  if (score >= highScore && score > 0) {
+    const pulse = 0.8 + 0.2 * Math.sin(performance.now() * 0.005);
+    ctx.globalAlpha = pulse;
+    ctx.font        = 'bold 16px sans-serif';
+    ctx.fillStyle   = `hsl(50, 100%, 65%)`;
+    ctx.fillText('NEW BEST!', cx, cy + 2);
+    ctx.globalAlpha = 1;
+  } else {
+    ctx.font      = '14px sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.fillText(`Best: ${highScore}`, cx, cy + 2);
+  }
+
+  // Combo/streak info
+  if (combo > 0 || perfectStreak > 0) {
+    ctx.font      = '13px sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.fillText(`Combo: ${combo}   Perfects: ${perfectStreak}`, cx, cy + 24);
+  }
+
+  // Seed / challenge info
+  ctx.font      = '12px sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.3)';
+  ctx.fillText(`Seed: ${currentSeed}`, cx, cy + 46);
+
+  // Retry prompt
+  const pls = 0.7 + 0.3 * Math.sin(performance.now() * 0.003);
+  ctx.globalAlpha = pls;
+  ctx.font        = 'bold 17px sans-serif';
+  ctx.fillStyle   = '#fff';
+  ctx.fillText('TAP TO RETRY', cx, cy + 78);
+  ctx.globalAlpha = 1;
+
+  // Challenge button
+  const bx = cx - 120, by = CH * 0.72, bw = 240, bh = 44;
+  ctx.beginPath();
+  ctx.roundRect(bx, by, bw, bh, 8);
+  ctx.fillStyle = `hsl(${globalHue}, 75%, 30%)`;
+  ctx.fill();
+  ctx.strokeStyle = `hsl(${globalHue}, 85%, 55%)`;
+  ctx.lineWidth   = 1.5;
+  ctx.stroke();
+
+  ctx.font      = 'bold 15px sans-serif';
+  ctx.fillStyle = '#fff';
+  ctx.textAlign = 'center';
+  ctx.fillText('Challenge a Friend  ↗', cx, by + 27);
+}
+
+// ---- Init starfield before first frame ----
+initStarfield();
+
+// ---- Start loop ----
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

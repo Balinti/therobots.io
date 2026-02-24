@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Cloud Shift - Free HTML5 Game</title>
+  <meta name="description" content="Play Cloud Shift - Slide clouds to form images as gravity shifts in multiple directions.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#1a0a2e">
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Cloud Shift - Free HTML5 Game">
+  <meta property="og:description" content="Play Cloud Shift - Slide clouds to form images as gravity shifts in multiple directions.">
+  <meta property="og:url" content="https://balinti.github.io/cloud-shift/">
+  <meta property="og:image" content="https://balinti.github.io/cloud-shift/og-image.png">
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Cloud Shift - Free HTML5 Game">
+  <meta name="twitter:description" content="Play Cloud Shift - Slide clouds to form images as gravity shifts in multiple directions.">
+  <meta name="twitter:image" content="https://balinti.github.io/cloud-shift/og-image.png">
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #0d0820;
+      display: flex; flex-direction: column;
+      align-items: center;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      color: #e8e0ff;
+      overflow-x: hidden;
+    }
+    #game-wrapper {
+      width: 100%;
+      max-width: 420px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    #canvas-container {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      height: min(750px, 100dvh);
+      touch-action: manipulation;
+      user-select: none;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      border-radius: 0;
+    }
+    #below-canvas {
+      width: 100%;
+      max-width: 420px;
+      padding: 20px 16px 40px;
+      background: #100825;
+    }
+    #below-canvas h2 {
+      font-size: 1.1rem;
+      color: #b89fff;
+      margin-bottom: 8px;
+      border-bottom: 1px solid #2a1f4a;
+      padding-bottom: 6px;
+    }
+    #below-canvas p, #below-canvas li {
+      font-size: 0.85rem;
+      color: #9087b8;
+      line-height: 1.6;
+      margin-bottom: 6px;
+    }
+    #below-canvas ul { padding-left: 20px; margin-bottom: 12px; }
+    #below-canvas .section { margin-bottom: 18px; }
+    #below-canvas .faq-q { color: #c4b0ff; font-weight: 600; font-size: 0.88rem; }
+  </style>
+</head>
+<body>
+<div id="game-wrapper">
+  <div id="canvas-container">
+    <canvas id="gameCanvas"></canvas>
+  </div>
+  <div id="below-canvas">
+    <div class="section">
+      <h2>How to Play Cloud Shift</h2>
+      <ul>
+        <li>Tap (or press Space / Enter) to <strong>flip gravity</strong> for the falling orbs.</li>
+        <li>Guide each color-coded orb into the <strong>matching gate</strong> at the top or bottom of its lane.</li>
+        <li>Wind bumpers deflect orbs between lanes — use them strategically.</li>
+        <li>Score combos by sending multiple correct orbs in a row.</li>
+        <li>Survive <strong>Gust Events</strong> that blast orbs sideways — watch for the warning!</li>
+      </ul>
+    </div>
+    <div class="section">
+      <h2>Scoring Tips</h2>
+      <ul>
+        <li>Every correct delivery earns points; combos multiply your score.</li>
+        <li>Hit 10 consecutive correct orbs for a bonus burst.</li>
+        <li>3 strikes (wrong gate or missed orb) ends the game — be precise!</li>
+        <li>Too many orbs on screen at once causes an instant overfill game over.</li>
+        <li>Speed and spawn rate increase over time — stay focused.</li>
+      </ul>
+    </div>
+    <div class="section">
+      <h2>FAQ</h2>
+      <p class="faq-q">What are the gates?</p>
+      <p>Gates are colored slots at the top/bottom of each lane. They only accept the matching orb color/icon.</p>
+      <p class="faq-q">What is a Gust Event?</p>
+      <p>After ~25 seconds, a warning flash appears, then horizontal wind briefly accelerates all orbs sideways.</p>
+      <p class="faq-q">Does it save my score?</p>
+      <p>Yes — your best score is saved locally in your browser via localStorage.</p>
+      <p class="faq-q">Is it mobile-friendly?</p>
+      <p>Absolutely. Tap anywhere on the canvas to flip gravity. Works on all modern browsers.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+'use strict';
+
+// ─── Constants ──────────────────────────────────────────────────────────────
+const LS_KEY = 'cloudshift_highscore';
+const MAX_STRIKES = 3;
+const MAX_ORBS = 18;
+const OVERFILL_LIMIT = 14;
+const DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+// Lane configs
+const LANE_CONFIGS = [3, 4, 5]; // laneCount options
+const TYPE_ICONS = ['☁','★','♦','◆','●']; // symbols per type
+
+// ─── State ──────────────────────────────────────────────────────────────────
+let state = 'start';
+let score = 0;
+let best = parseInt(localStorage.getItem(LS_KEY) || '0', 10);
+let combo = 0;
+let strikes = 0;
+let hue = 180;
+let elapsedMs = 0;
+let spawnTimer = 0;
+let gustTimer = 0;
+let gustActive = false;
+let gustWarning = false;
+let gustDuration = 0;
+let shakeFrames = 0;
+let shakeAmt = 0;
+let hitstopFrames = 0;
+let laneCount = 3;
+let typeCount = 2;
+let orbs = [];
+let particles = [];
+let gates = []; // {lane, side:'top'|'bot', type, x, y, w, h}
+let bumpers = [];
+let lastTime = 0;
+
+// Challenge param
+const urlParams = new URLSearchParams(location.search);
+const challengeScore = parseInt(urlParams.get('challenge') || '0', 10);
+
+// ─── Canvas setup ───────────────────────────────────────────────────────────
+const container = document.getElementById('canvas-container');
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+let CW, CH; // logical px
+function resizeCanvas() {
+  const rect = container.getBoundingClientRect();
+  CW = rect.width;
+  CH = rect.height;
+  canvas.width = Math.round(CW * DPR);
+  canvas.height = Math.round(CH * DPR);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+resizeCanvas();
+window.addEventListener('resize', () => { resizeCanvas(); buildLevel(); });
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+function rand(a, b) { return a + Math.random() * (b - a); }
+function randInt(a, b) { return Math.floor(rand(a, b + 1)); }
+function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+function typeColor(t) {
+  const h = (t * 72 + 200) % 360;
+  return `hsl(${h},80%,65%)`;
+}
+function typeColorDark(t) {
+  const h = (t * 72 + 200) % 360;
+  return `hsl(${h},70%,35%)`;
+}
+function typeGlow(t) {
+  const h = (t * 72 + 200) % 360;
+  return `hsla(${h},100%,70%,0.55)`;
+}
+
+// ─── Level build ────────────────────────────────────────────────────────────
+function buildLevel() {
+  // Lane width
+  const laneW = CW / laneCount;
+  // Gates: each lane gets top gate (type a) and bottom gate (type b)
+  // Ensure typeCount <= laneCount
+  typeCount = Math.min(typeCount, laneCount);
+
+  gates = [];
+  bumpers = [];
+  const GH = 42, GW = laneW - 10;
+
+  for (let i = 0; i < laneCount; i++) {
+    const cx = laneW * i + laneW / 2;
+    const topType = i % typeCount;
+    const botType = (i + 1) % typeCount;
+    gates.push({
+      lane: i, side: 'top', type: topType,
+      x: cx - GW / 2, y: 4, w: GW, h: GH,
+      cx, cy: 4 + GH / 2
+    });
+    gates.push({
+      lane: i, side: 'bot', type: botType,
+      x: cx - GW / 2, y: CH - 4 - GH, w: GW, h: GH,
+      cx, cy: CH - 4 - GH / 2
+    });
+  }
+
+  // Bumpers: soft elliptical bumpers at mid-height
+  const numBumpers = laneCount - 1;
+  for (let i = 0; i < numBumpers; i++) {
+    const lw = CW / laneCount;
+    bumpers.push({
+      x: lw * (i + 1),
+      y: CH / 2 + rand(-CH * 0.12, CH * 0.12),
+      rx: 22, ry: 14,
+      phase: rand(0, Math.PI * 2),
+      speed: rand(0.3, 0.7)
+    });
+  }
+}
+
+// ─── Game init ──────────────────────────────────────────────────────────────
+function startGame() {
+  score = 0; combo = 0; strikes = 0;
+  elapsedMs = 0; spawnTimer = 0; gustTimer = 0;
+  gustActive = false; gustWarning = false; gustDuration = 0;
+  shakeFrames = 0; hitstopFrames = 0;
+  laneCount = 3; typeCount = 2;
+  orbs = []; particles = [];
+  hue = 180;
+  buildLevel();
+  state = 'playing';
+}
+
+// ─── Orb ────────────────────────────────────────────────────────────────────
+function spawnOrb() {
+  if (orbs.length >= MAX_ORBS) return;
+  const lane = randInt(0, laneCount - 1);
+  const laneW = CW / laneCount;
+  const x = laneW * lane + laneW / 2 + rand(-8, 8);
+  const type = randInt(0, typeCount - 1);
+  const vy = (Math.random() < 0.5 ? 1 : -1) * rand(1.2, 2.2);
+  orbs.push({
+    x, y: CH / 2 + rand(-60, 60),
+    vx: rand(-0.4, 0.4), vy,
+    type, lane,
+    r: 18,
+    alive: true,
+    gravDir: vy > 0 ? 1 : -1,
+    alpha: 1,
+    age: 0
+  });
+}
+
+function flipGravity() {
+  for (const o of orbs) {
+    o.gravDir *= -1;
+    o.vy *= -1;
+  }
+  // small particle burst
+  spawnParticles(CW / 2, CH / 2, 8, '#aaf', 1.5);
+}
+
+// ─── Particles ───────────────────────────────────────────────────────────────
+function spawnParticles(x, y, count, color, speed) {
+  for (let i = 0; i < count; i++) {
+    const a = rand(0, Math.PI * 2);
+    const s = rand(speed * 0.4, speed * 2);
+    particles.push({
+      x, y,
+      vx: Math.cos(a) * s,
+      vy: Math.sin(a) * s,
+      life: 1, decay: rand(0.02, 0.05),
+      r: rand(2, 5), color,
+      alive: true
+    });
+  }
+}
+
+// ─── Difficulty ──────────────────────────────────────────────────────────────
+function getDifficulty() {
+  const t = elapsedMs / 1000;
+  const spawnInterval = Math.max(700, 2000 - t * 18);
+  const gravSpeed = Math.min(3.8, 1.2 + t * 0.04);
+  return { spawnInterval, gravSpeed };
+}
+
+// ─── Gate check ─────────────────────────────────────────────────────────────
+function checkGates(orb) {
+  const laneW = CW / laneCount;
+  for (const g of gates) {
+    const gCx = laneW * g.lane + laneW / 2;
+    // horizontal overlap
+    if (Math.abs(orb.x - gCx) > laneW / 2 + orb.r) continue;
+
+    let hit = false;
+    if (g.side === 'top' && orb.y - orb.r <= g.cy + g.h / 2 && orb.vy < 0) hit = true;
+    if (g.side === 'bot' && orb.y + orb.r >= g.cy - g.h / 2 && orb.vy > 0) hit = true;
+
+    if (hit) {
+      orb.alive = false;
+      if (orb.type === g.type) {
+        // Correct!
+        combo++;
+        const pts = 10 * Math.max(1, Math.floor(combo / 3));
+        score += pts;
+        if (score > best) { best = score; localStorage.setItem(LS_KEY, best); }
+        spawnParticles(orb.x, orb.y, 14, typeColor(orb.type), 2.5);
+        // Hit-stop on combo milestones
+        if (combo % 10 === 0 || combo === 5) hitstopFrames = 4;
+        shakeFrames = 2; shakeAmt = 2;
+      } else {
+        // Wrong gate
+        strikes++;
+        spawnParticles(orb.x, orb.y, 10, '#f55', 2);
+        shakeFrames = 8; shakeAmt = 6;
+        combo = 0;
+        if (strikes >= MAX_STRIKES) endGame();
+      }
+      return true;
+    }
+  }
+  return false;
+}
+
+// ─── Bumper collision ────────────────────────────────────────────────────────
+function checkBumpers(orb) {
+  for (const b of bumpers) {
+    const dx = orb.x - b.x;
+    const dy = orb.y - b.y;
+    const nx = dx / b.rx, ny = dy / b.ry;
+    if (nx * nx + ny * ny < 1.1) {
+      // reflect
+      const len = Math.sqrt(nx * nx + ny * ny) || 1;
+      const nxn = nx / len, nyn = ny / len;
+      const dot = orb.vx * nxn + orb.vy * nyn;
+      orb.vx -= 1.8 * dot * nxn;
+      orb.vy -= 1.8 * dot * nyn;
+      // push out
+      orb.x = b.x + nxn * (b.rx + orb.r + 1);
+      orb.y = b.y + nyn * (b.ry + orb.r + 1);
+      spawnParticles(orb.x, orb.y, 4, '#adf', 1);
+    }
+  }
+}
+
+// ─── End game ────────────────────────────────────────────────────────────────
+function endGame() {
+  shakeFrames = 18; shakeAmt = 10;
+  state = 'gameover';
+}
+
+// ─── Update ─────────────────────────────────────────────────────────────────
+function update(dt) {
+  if (hitstopFrames > 0) { hitstopFrames--; return; }
+
+  elapsedMs += dt;
+  hue = (hue + 0.03) % 360;
+
+  const { spawnInterval, gravSpeed } = getDifficulty();
+
+  // Difficulty gates: ramp laneCount/typeCount
+  const t = elapsedMs / 1000;
+  if (t > 40 && laneCount < 5) { laneCount = 5; typeCount = Math.min(3, 5); buildLevel(); }
+  else if (t > 20 && laneCount < 4) { laneCount = 4; typeCount = Math.min(3, 4); buildLevel(); }
+
+  // Spawn
+  spawnTimer += dt;
+  if (spawnTimer >= spawnInterval) {
+    spawnTimer = 0;
+    spawnOrb();
+  }
+
+  // Gust events
+  gustTimer += dt;
+  if (!gustWarning && !gustActive && gustTimer > 25000) {
+    gustWarning = true;
+    gustTimer = 0;
+    setTimeout(() => {
+      gustWarning = false;
+      gustActive = true;
+      gustDuration = 3000;
+    }, 2000);
+  }
+  if (gustActive) {
+    gustDuration -= dt;
+    if (gustDuration <= 0) {
+      gustActive = false;
+      gustTimer = 0;
+    }
+  }
+
+  // Bumper animation
+  for (const b of bumpers) {
+    b.phase += b.speed * dt / 1000;
+    b.y = CH / 2 + Math.sin(b.phase) * CH * 0.08;
+  }
+
+  // Orb physics
+  const laneW = CW / laneCount;
+  const gustForce = gustActive ? (Math.sin(elapsedMs / 200) * 0.8) : 0;
+
+  for (const orb of orbs) {
+    if (!orb.alive) continue;
+    orb.age += dt;
+    const gravForce = gravSpeed * orb.gravDir * 0.055 * (dt / 16.67);
+    orb.vy += gravForce;
+    orb.vx += gustForce * (dt / 16.67);
+    // Soft speed cap
+    const spd = Math.sqrt(orb.vx * orb.vx + orb.vy * orb.vy);
+    const maxSpd = 5.5;
+    if (spd > maxSpd) { orb.vx *= maxSpd / spd; orb.vy *= maxSpd / spd; }
+
+    orb.x += orb.vx;
+    orb.y += orb.vy;
+
+    // Wall bounce (lane boundaries soft)
+    if (orb.x - orb.r < 0) { orb.x = orb.r; orb.vx = Math.abs(orb.vx) * 0.7; }
+    if (orb.x + orb.r > CW) { orb.x = CW - orb.r; orb.vx = -Math.abs(orb.vx) * 0.7; }
+
+    checkBumpers(orb);
+    const eaten = checkGates(orb);
+
+    // Miss detection: left the playfield completely past margin
+    if (!eaten && orb.alive) {
+      const margin = 60;
+      if (orb.y < -margin || orb.y > CH + margin) {
+        orb.alive = false;
+        strikes++;
+        combo = 0;
+        shakeFrames = 8; shakeAmt = 5;
+        spawnParticles(orb.x, clamp(orb.y, 0, CH), 6, '#f88', 1.5);
+        if (strikes >= MAX_STRIKES) endGame();
+      }
+    }
+  }
+
+  // Clean dead orbs
+  orbs = orbs.filter(o => o.alive);
+
+  // Overfill
+  if (orbs.length >= OVERFILL_LIMIT) {
+    endGame();
+  }
+
+  // Particles
+  for (const p of particles) {
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vx *= 0.93;
+    p.vy *= 0.93;
+    p.life -= p.decay;
+    if (p.life <= 0) p.alive = false;
+  }
+  particles = particles.filter(p => p.alive);
+
+  // Shake decay
+  if (shakeFrames > 0) shakeFrames--;
+}
+
+// ─── Draw helpers ────────────────────────────────────────────────────────────
+function drawRoundRect(x, y, w, h, r, fill, stroke) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+  if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+  if (stroke) { ctx.strokeStyle = stroke; ctx.stroke(); }
+}
+
+function drawGate(g) {
+  const col = typeColor(g.type);
+  const dark = typeColorDark(g.type);
+  const pulse = 0.5 + 0.5 * Math.sin(elapsedMs / 600 + g.lane);
+  ctx.lineWidth = 2.5;
+  drawRoundRect(g.x, g.y, g.w, g.h, 8, dark + 'aa', col);
+  // icon
+  ctx.fillStyle = col;
+  ctx.font = `bold ${16 + pulse * 2}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = col;
+  ctx.shadowBlur = 8 + pulse * 6;
+  ctx.fillText(TYPE_ICONS[g.type], g.cx, g.cy);
+  ctx.shadowBlur = 0;
+}
+
+function drawOrb(o) {
+  const col = typeColor(o.type);
+  const glow = typeGlow(o.type);
+  const pulse = 0.7 + 0.3 * Math.sin(o.age / 300);
+
+  ctx.save();
+  ctx.globalAlpha = o.alpha;
+  // glow
+  const grad = ctx.createRadialGradient(o.x, o.y, 0, o.x, o.y, o.r * 2.2 * pulse);
+  grad.addColorStop(0, glow);
+  grad.addColorStop(1, 'transparent');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(o.x, o.y, o.r * 2.2 * pulse, 0, Math.PI * 2);
+  ctx.fill();
+
+  // body
+  const bodyGrad = ctx.createRadialGradient(o.x - o.r * 0.3, o.y - o.r * 0.3, o.r * 0.1, o.x, o.y, o.r);
+  bodyGrad.addColorStop(0, '#fff8');
+  bodyGrad.addColorStop(0.4, col);
+  bodyGrad.addColorStop(1, typeColorDark(o.type));
+  ctx.fillStyle = bodyGrad;
+  ctx.beginPath();
+  ctx.arc(o.x, o.y, o.r, 0, Math.PI * 2);
+  ctx.fill();
+
+  // icon
+  ctx.fillStyle = '#fff';
+  ctx.font = `bold ${o.r}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = col;
+  ctx.shadowBlur = 6;
+  ctx.fillText(TYPE_ICONS[o.type], o.x, o.y);
+  ctx.shadowBlur = 0;
+  ctx.restore();
+}
+
+function drawBumper(b) {
+  ctx.save();
+  const grad = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.rx);
+  grad.addColorStop(0, `hsla(${hue},60%,80%,0.25)`);
+  grad.addColorStop(1, `hsla(${hue},60%,60%,0.05)`);
+  ctx.fillStyle = grad;
+  ctx.strokeStyle = `hsla(${hue},80%,70%,0.5)`;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.ellipse(b.x, b.y, b.rx, b.ry, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    ctx.save();
+    ctx.globalAlpha = p.life * 0.9;
+    ctx.fillStyle = p.color;
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur = 4;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r * p.life, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawHUD() {
+  // Score
+  ctx.fillStyle = `hsla(${hue},80%,85%,0.95)`;
+  ctx.font = 'bold 28px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.shadowColor = `hsl(${hue},80%,65%)`;
+  ctx.shadowBlur = 12;
+  ctx.fillText(score, CW / 2, 56);
+  ctx.shadowBlur = 0;
+
+  // Combo
+  if (combo >= 3) {
+    ctx.fillStyle = `hsla(50,100%,75%,${0.7 + 0.3 * Math.sin(elapsedMs / 150)})`;
+    ctx.font = `bold ${14 + Math.min(combo, 20) * 0.4}px sans-serif`;
+    ctx.fillText(`×${combo} COMBO`, CW / 2, 90);
+  }
+
+  // Strikes
+  const sx = CW - 16;
+  for (let i = 0; i < MAX_STRIKES; i++) {
+    const used = i < strikes;
+    ctx.fillStyle = used ? '#f55' : '#555';
+    ctx.font = '16px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'top';
+    ctx.fillText('♥', sx - i * 22, 56);
+  }
+
+  // Gust warning
+  if (gustWarning) {
+    const alpha = 0.5 + 0.5 * Math.sin(elapsedMs / 80);
+    ctx.fillStyle = `rgba(255,200,50,${alpha})`;
+    ctx.font = 'bold 18px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('⚡ GUST INCOMING ⚡', CW / 2, CH / 2 - 60);
+  }
+
+  // Gust active
+  if (gustActive) {
+    ctx.fillStyle = `rgba(255,180,30,0.18)`;
+    ctx.fillRect(0, 0, CW, CH);
+    ctx.fillStyle = 'rgba(255,200,60,0.7)';
+    ctx.font = 'bold 14px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText('⚡ GUST ⚡', CW / 2, 116);
+  }
+
+  // Overfill warning
+  if (orbs.length >= OVERFILL_LIMIT - 2) {
+    const alpha = 0.4 + 0.4 * Math.sin(elapsedMs / 100);
+    ctx.fillStyle = `rgba(255,60,60,${alpha})`;
+    ctx.font = 'bold 13px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText('TOO MANY ORBS!', CW / 2, CH - 56);
+  }
+}
+
+function drawBg() {
+  const grad = ctx.createLinearGradient(0, 0, 0, CH);
+  grad.addColorStop(0, `hsl(${hue},40%,8%)`);
+  grad.addColorStop(1, `hsl(${(hue + 60) % 360},35%,5%)`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, CW, CH);
+
+  // Lane dividers
+  const laneW = CW / laneCount;
+  ctx.strokeStyle = `hsla(${hue},40%,50%,0.12)`;
+  ctx.lineWidth = 1;
+  for (let i = 1; i < laneCount; i++) {
+    ctx.beginPath();
+    ctx.setLineDash([6, 8]);
+    ctx.moveTo(laneW * i, 50);
+    ctx.lineTo(laneW * i, CH - 50);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+}
+
+function drawOverlay(title, sub1, sub2, challenge) {
+  ctx.fillStyle = 'rgba(8,4,22,0.82)';
+  ctx.fillRect(0, 0, CW, CH);
+
+  // Title
+  ctx.fillStyle = `hsl(${hue},90%,78%)`;
+  ctx.font = 'bold 42px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = `hsl(${hue},100%,60%)`;
+  ctx.shadowBlur = 24;
+  ctx.fillText(title, CW / 2, CH * 0.35);
+  ctx.shadowBlur = 0;
+
+  if (sub1) {
+    ctx.fillStyle = '#c0b8e8';
+    ctx.font = '20px sans-serif';
+    ctx.fillText(sub1, CW / 2, CH * 0.35 + 60);
+  }
+  if (sub2) {
+    ctx.fillStyle = '#8880aa';
+    ctx.font = '16px sans-serif';
+    ctx.fillText(sub2, CW / 2, CH * 0.35 + 92);
+  }
+  if (challenge && challengeScore > 0) {
+    ctx.fillStyle = '#ffd060';
+    ctx.font = 'bold 15px sans-serif';
+    ctx.fillText(`🏆 Beat ${challengeScore}`, CW / 2, CH * 0.35 + 124);
+  }
+
+  // Tap prompt pulse
+  const pulse = 0.6 + 0.4 * Math.sin(Date.now() / 500);
+  ctx.fillStyle = `rgba(200,180,255,${pulse})`;
+  ctx.font = '18px sans-serif';
+  ctx.fillText('Tap to ' + (title === 'Cloud Shift' ? 'Start' : 'Retry'), CW / 2, CH * 0.72);
+}
+
+// ─── Draw ────────────────────────────────────────────────────────────────────
+function draw() {
+  ctx.save();
+
+  // Screen shake
+  if (shakeFrames > 0) {
+    const sx = rand(-shakeAmt, shakeAmt);
+    const sy = rand(-shakeAmt, shakeAmt);
+    ctx.translate(sx, sy);
+  }
+
+  drawBg();
+
+  if (state === 'start') {
+    drawOverlay('Cloud Shift', 'Flip gravity. Match the gates.', `Best: ${best}`, true);
+    if (challengeScore > 0) {
+      ctx.fillStyle = '#ffd060';
+      ctx.font = 'bold 14px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`Challenge: Beat ${challengeScore}`, CW / 2, CH * 0.88);
+    }
+  } else if (state === 'playing') {
+    for (const b of bumpers) drawBumper(b);
+    for (const g of gates) drawGate(g);
+    for (const o of orbs) if (o.alive) drawOrb(o);
+    drawParticles();
+    drawHUD();
+  } else if (state === 'gameover') {
+    // Draw faded game elements
+    for (const b of bumpers) drawBumper(b);
+    for (const g of gates) drawGate(g);
+    drawParticles();
+    drawOverlay('Game Over', `Score: ${score}  Best: ${best}`, `Combo reached: ${combo}`, true);
+    // Challenge share button hint
+    ctx.fillStyle = 'rgba(180,160,255,0.7)';
+    ctx.font = '14px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('↓ Challenge a Friend ↓', CW / 2, CH * 0.82);
+  }
+
+  ctx.restore();
+}
+
+// ─── Share / Challenge ───────────────────────────────────────────────────────
+function shareChallenge() {
+  const url = `${location.origin}${location.pathname}?challenge=${score}`;
+  const text = `I scored ${score} in Cloud Shift! Can you beat me?`;
+  if (navigator.share) {
+    navigator.share({ title: 'Cloud Shift', text, url }).catch(() => {});
+  } else {
+    navigator.clipboard?.writeText(url).then(() => {
+      alert('Challenge link copied!');
+    }).catch(() => { prompt('Copy this link:', url); });
+  }
+}
+
+// ─── Input ───────────────────────────────────────────────────────────────────
+function handleInput() {
+  if (state === 'start') {
+    startGame();
+  } else if (state === 'playing') {
+    flipGravity();
+  } else if (state === 'gameover') {
+    // check if tapped share zone
+    startGame();
+  }
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  // Check gameover share button area
+  if (state === 'gameover') {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = CW / rect.width;
+    const scaleY = CH / rect.height;
+    const cx = (e.clientX - rect.left) * scaleX;
+    const cy = (e.clientY - rect.top) * scaleY;
+    if (cy > CH * 0.79 && cy < CH * 0.87 && Math.abs(cx - CW / 2) < 120) {
+      shareChallenge();
+      return;
+    }
+  }
+  handleInput();
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    handleInput();
+  }
+});
+
+// Prevent scroll on space
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'Space') e.preventDefault();
+}, { passive: false });
+
+// ─── Game loop ────────────────────────────────────────────────────────────────
+function loop(ts) {
+  const dt = Math.min(ts - lastTime, 50); // clamp dt to 50ms max
+  lastTime = ts;
+
+  if (state === 'playing') update(dt);
+  draw();
+  hue = (hue + 0.01) % 360;
+
+  requestAnimationFrame(loop);
+}
+
+// Kick off
+buildLevel();
+requestAnimationFrame((ts) => { lastTime = ts; loop(ts); });
+
+})();
+</script>
+</body>
+</html>

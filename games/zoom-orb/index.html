@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Zoom Orb - Free HTML5 Game</title>
+  <meta name="description" content="Play Zoom Orb - Swipe to navigate a zooming nebula and collect rare cosmic orbs before time runs out.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a0015">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Zoom Orb - Free HTML5 Game">
+  <meta property="og:description" content="Play Zoom Orb - Phase Lock incoming orbs in the right moment to score cosmic combos!">
+  <meta property="og:url" content="https://balinti.github.io/zoom-orb/">
+  <meta property="og:image" content="https://balinti.github.io/zoom-orb/preview.png">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #000;
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      touch-action: none;
+    }
+    #gameContainer {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      height: 100vh;
+      max-height: 750px;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+<div id="gameContainer">
+  <canvas id="gameCanvas"></canvas>
+</div>
+
+<script>
+(function() {
+'use strict';
+
+// ── Constants ────────────────────────────────────────────────────────────────
+const W = 420, H = 750;
+const LANES = [1, 2, 3, 4, 5];   // lane counts by difficulty tier
+const LANE_COLORS = ['#7c3aed','#2563eb','#0891b2','#059669','#d97706'];
+const CAPTURE_Y = H - 160;
+const CAPTURE_WINDOW = 52;        // px half-window
+const PLAYER_Y = H - 110;
+const PHASE_PERIOD = 1400;        // ms full cycle Near→Far→Near
+const MAX_SHIELDS = 5;
+const SHARE_URL = 'https://balinti.github.io/zoom-orb/';
+
+// ── Canvas setup ─────────────────────────────────────────────────────────────
+const container = document.getElementById('gameContainer');
+const canvas    = document.getElementById('gameCanvas');
+const ctx       = canvas.getContext('2d');
+let   dpr       = 1;
+
+function resizeCanvas() {
+  const rect = container.getBoundingClientRect();
+  dpr = window.devicePixelRatio || 1;
+  canvas.width  = rect.width  * dpr;
+  canvas.height = rect.height * dpr;
+  ctx.setTransform(1,0,0,1,0,0);
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+// Compute uniform scale to fit logical W×H into canvas
+function getScale() {
+  return Math.min(canvas.width / W, canvas.height / H);
+}
+function getOffset() {
+  const s = getScale();
+  return { ox: (canvas.width  - W*s) / 2,
+           oy: (canvas.height - H*s) / 2 };
+}
+
+// ── State ────────────────────────────────────────────────────────────────────
+let state       = 'start';  // 'start' | 'playing' | 'gameover'
+let score       = 0;
+let bestScore   = parseInt(localStorage.getItem('zoomOrb_best') || '0');
+let combo       = 0;
+let shields     = MAX_SHIELDS;
+let hue         = 200;
+let timeElapsed = 0;        // ms since game start
+let orbs        = [];
+let particles   = [];
+let popups      = [];
+let stars       = [];
+let shake       = { x:0, y:0, dur:0, mag:0 };
+let lockFlash   = 0;        // countdown ms for phase-lock visual
+let gameoverTime = 0;       // timestamp for restart lock
+let lastTime    = 0;
+let animFrame   = null;
+
+// Difficulty params
+function getDiff() {
+  const t = timeElapsed / 1000;
+  const tier = Math.min(4, Math.floor(t / 20));
+  return {
+    lanes:      Math.min(5, 3 + Math.floor(t / 25)),
+    speed:      2.4 + t * 0.045,
+    spawnRate:  Math.max(700, 1600 - t * 18),
+    windowMult: Math.max(0.45, 1 - t * 0.012),
+    fakeChance: Math.min(0.18, t * 0.004),
+    tier
+  };
+}
+
+let spawnTimer = 0;
+let nextSpawn  = 1200;
+
+// ── Stars ────────────────────────────────────────────────────────────────────
+function initStars() {
+  stars = [];
+  for (let i = 0; i < 55; i++) {
+    stars.push({
+      x: Math.random() * W,
+      y: Math.random() * H,
+      r: 0.5 + Math.random() * 1.2,
+      a: 0.2 + Math.random() * 0.5,
+      drift: (Math.random() - 0.5) * 0.06
+    });
+  }
+}
+initStars();
+
+// ── Orb factory ──────────────────────────────────────────────────────────────
+function makeLaneX(laneIdx, numLanes) {
+  const margin = 48;
+  const span   = W - margin * 2;
+  return margin + (laneIdx / (numLanes - 1)) * span;
+}
+
+let orbId = 0;
+function spawnOrb() {
+  const diff = getDiff();
+  const nl   = diff.lanes;
+  const laneIdx = Math.floor(Math.random() * nl);
+  const x    = makeLaneX(laneIdx, nl);
+  // Required phase: even lane → Near (0), odd lane → Far (1)
+  const reqPhase = laneIdx % 2 === 0 ? 0 : 1;
+  const isFake   = Math.random() < diff.fakeChance;
+  const h        = (hue + laneIdx * 55) % 360;
+  orbs.push({
+    id:       orbId++,
+    x, y: -30,
+    laneIdx, reqPhase, isFake,
+    speed:    diff.speed,
+    hue:      h,
+    phase:    0,           // 0=Near 1=Far, cycles
+    phaseT:   Math.random() * PHASE_PERIOD, // offset
+    locked:   false,
+    lockTimer:0,
+    alive:    true,
+    radius:   0,
+    ring:     0,
+  });
+}
+
+// ── Particles ────────────────────────────────────────────────────────────────
+function burst(x, y, color, count, speed) {
+  for (let i = 0; i < count; i++) {
+    const ang = Math.random() * Math.PI * 2;
+    const spd = speed * (0.4 + Math.random());
+    particles.push({
+      x, y,
+      vx: Math.cos(ang) * spd,
+      vy: Math.sin(ang) * spd,
+      life: 1, decay: 0.025 + Math.random() * 0.025,
+      r: 2 + Math.random() * 4,
+      color
+    });
+  }
+}
+
+function shockwave(x, y, color) {
+  particles.push({
+    x, y, vx:0, vy:0,
+    life:1, decay:0.04,
+    r:0, maxR:80,
+    isWave:true, color
+  });
+}
+
+// ── Score popups ─────────────────────────────────────────────────────────────
+function addPopup(x, y, text, color) {
+  popups.push({ x, y, vy:-1.2, life:1, decay:0.022, text, color });
+}
+
+// ── Input ────────────────────────────────────────────────────────────────────
+function onTap() {
+  if (state === 'start') {
+    startGame();
+    return;
+  }
+  if (state === 'gameover') {
+    if (performance.now() - gameoverTime < 400) return; // lock delay
+    resetGame();
+    return;
+  }
+  if (state === 'playing') {
+    doPhoneLock();
+  }
+}
+
+canvas.addEventListener('pointerdown', e => { e.preventDefault(); onTap(); });
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); onTap(); }
+});
+
+// ── Game control ─────────────────────────────────────────────────────────────
+function startGame() {
+  state       = 'playing';
+  score       = 0;
+  combo       = 0;
+  shields     = MAX_SHIELDS;
+  timeElapsed = 0;
+  orbs        = [];
+  particles   = [];
+  popups      = [];
+  spawnTimer  = 0;
+  nextSpawn   = 1200;
+  shake       = { x:0, y:0, dur:0, mag:0 };
+  lockFlash   = 0;
+  lastTime    = performance.now();
+}
+
+function resetGame() { startGame(); }
+
+function endGame() {
+  state = 'gameover';
+  gameoverTime = performance.now();
+  if (score > bestScore) {
+    bestScore = score;
+    localStorage.setItem('zoomOrb_best', bestScore);
+  }
+  triggerShake(10, 500);
+  burst(W/2, H/2, `hsl(0,90%,60%)`, 40, 7);
+}
+
+// ── Phase Lock mechanic ───────────────────────────────────────────────────────
+function doPhoneLock() {
+  // Find closest orb to capture line within window
+  let best = null, bestDist = Infinity;
+  for (const orb of orbs) {
+    if (!orb.alive || orb.locked) continue;
+    const dist = Math.abs(orb.y - CAPTURE_Y);
+    if (dist < CAPTURE_WINDOW && dist < bestDist) {
+      bestDist = dist;
+      best = orb;
+    }
+  }
+
+  if (!best) {
+    // Missed — no orb in window, small penalty visual only
+    lockFlash = 200;
+    return;
+  }
+
+  const orbPhase = best.phase;
+  const match    = orbPhase === best.reqPhase;
+
+  if (match) {
+    // Success
+    const perfectBonus = bestDist < 14 ? 2 : 1;
+    const comboMult    = 1 + Math.floor(combo / 5);
+    const pts          = 10 * perfectBonus * comboMult;
+    score += pts;
+    combo++;
+    lockFlash = 220;
+    best.locked   = true;
+    best.lockTimer= 280;
+    burst(best.x, CAPTURE_Y, `hsl(${best.hue},90%,65%)`, 18, 5);
+    if (perfectBonus === 2) shockwave(best.x, CAPTURE_Y, `hsl(${best.hue},100%,70%)`);
+    addPopup(best.x, CAPTURE_Y - 20, `+${pts}`, `hsl(${best.hue},90%,70%)`);
+    if (combo % 5 === 0) addPopup(best.x, CAPTURE_Y - 50, `COMBO x${Math.floor(combo/5)+1}!`, `#fff`);
+  } else {
+    // Miss / wrong phase
+    combo = 0;
+    shields--;
+    triggerShake(5, 250);
+    burst(best.x, CAPTURE_Y, `hsl(0,90%,60%)`, 14, 5);
+    addPopup(best.x, CAPTURE_Y - 20, 'MISS', `#f87171`);
+    best.alive = false;
+    if (shields <= 0) endGame();
+  }
+}
+
+function triggerShake(mag, dur) {
+  shake.mag = mag; shake.dur = dur;
+}
+
+// ── Main loop ─────────────────────────────────────────────────────────────────
+function loop(ts) {
+  animFrame = requestAnimationFrame(loop);
+  const dt  = Math.min(ts - lastTime, 80);
+  lastTime  = ts;
+
+  if (state === 'playing') update(dt);
+  render(dt);
+}
+
+function update(dt) {
+  timeElapsed += dt;
+  hue = (hue + dt * 0.04) % 360;
+
+  // Shake
+  if (shake.dur > 0) {
+    shake.dur -= dt;
+    const m = shake.mag * (shake.dur / 300);
+    shake.x = (Math.random()-0.5)*m*2;
+    shake.y = (Math.random()-0.5)*m*2;
+  } else { shake.x = 0; shake.y = 0; }
+
+  if (lockFlash > 0) lockFlash -= dt;
+
+  // Spawn
+  spawnTimer += dt;
+  const diff = getDiff();
+  if (spawnTimer >= nextSpawn) {
+    spawnTimer = 0;
+    nextSpawn  = diff.spawnRate + (Math.random()-0.5)*200;
+    spawnOrb();
+  }
+
+  // Update orbs
+  for (const orb of orbs) {
+    if (!orb.alive) continue;
+    orb.y += orb.speed * (dt / 16);
+    orb.phaseT += dt;
+    if (orb.phaseT >= PHASE_PERIOD) orb.phaseT -= PHASE_PERIOD;
+
+    // Phase: 0 = Near (big), 1 = Far (small)
+    const raw   = Math.sin(orb.phaseT / PHASE_PERIOD * Math.PI * 2);
+    orb.phase   = raw >= 0 ? 0 : 1;           // Near half / Far half
+    const t01   = (raw + 1) / 2;              // 0…1
+    orb.radius  = 12 + t01 * 10;             // 12 Far, 22 Near
+    orb.ring    = 4 + t01 * 3;               // ring thickness
+
+    // Lock timer
+    if (orb.locked) {
+      orb.lockTimer -= dt;
+      if (orb.lockTimer <= 0) orb.alive = false;
+    }
+
+    // Off screen
+    if (orb.y > H + 40) {
+      // Missed (passed through)
+      orb.alive = false;
+    }
+  }
+
+  // Particles
+  for (const p of particles) {
+    p.life -= p.decay * (dt/16);
+    if (p.isWave) {
+      p.r = (1 - p.life) * p.maxR;
+    } else {
+      p.x  += p.vx * (dt/16);
+      p.y  += p.vy * (dt/16);
+      p.vy += 0.18 * (dt/16);
+    }
+  }
+  particles = particles.filter(p => p.life > 0);
+
+  // Popups
+  for (const p of popups) {
+    p.life -= p.decay * (dt/16);
+    p.y    += p.vy * (dt/16);
+  }
+  popups = popups.filter(p => p.life > 0);
+
+  // Stars drift
+  for (const s of stars) {
+    s.x += s.drift;
+    if (s.x < 0) s.x = W;
+    if (s.x > W) s.x = 0;
+  }
+
+  // Cleanup dead orbs
+  orbs = orbs.filter(o => o.alive);
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function render() {
+  const s  = getScale();
+  const {ox, oy} = getOffset();
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Letterbox bg
+  ctx.fillStyle = '#050010';
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  // Save, apply letterbox + scale
+  ctx.save();
+  ctx.translate(ox, oy);
+  ctx.scale(s, s);
+
+  // Shake (applied before clip)
+  if (state === 'playing' || state === 'gameover') {
+    ctx.translate(shake.x, shake.y);
+  }
+
+  // Clip to logical rect
+  ctx.beginPath();
+  ctx.rect(0, 0, W, H);
+  ctx.clip();
+
+  drawBackground();
+
+  if (state === 'start')    drawStart();
+  else if (state === 'playing')  { drawGame(); drawHUDNoShake(s, ox, oy); }
+  else if (state === 'gameover') { drawGame(); drawGameover(); drawHUDNoShake(s, ox, oy); }
+
+  ctx.restore();
+
+  // HUD drawn outside shake in playing state
+}
+
+function drawBackground() {
+  // Gradient
+  const grad = ctx.createLinearGradient(0,0,0,H);
+  grad.addColorStop(0, `hsl(${hue},60%,5%)`);
+  grad.addColorStop(1, `hsl(${(hue+60)%360},50%,8%)`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0,0,W,H);
+
+  // Stars
+  for (const s of stars) {
+    ctx.globalAlpha = s.a * (0.6 + 0.4*Math.sin(Date.now()*0.001 + s.x));
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r, 0, Math.PI*2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawStart() {
+  // Title glow
+  ctx.save();
+  ctx.shadowColor = `hsl(${hue},90%,60%)`;
+  ctx.shadowBlur  = 30;
+  ctx.fillStyle   = '#fff';
+  ctx.font        = 'bold 58px "Segoe UI", system-ui, sans-serif';
+  ctx.textAlign   = 'center';
+  ctx.textBaseline= 'middle';
+  ctx.fillText('ZOOM ORB', W/2, 200);
+  ctx.restore();
+
+  ctx.fillStyle = `hsl(${hue},80%,70%)`;
+  ctx.font      = '22px "Segoe UI", system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('Phase Lock', W/2, 258);
+
+  // How to play
+  const cardY = 320;
+  ctx.fillStyle = 'rgba(255,255,255,0.06)';
+  roundRect(ctx, 40, cardY, W-80, 210, 18);
+  ctx.fill();
+
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  ctx.font      = '14px "Segoe UI", system-ui, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  const lines = [
+    '⬤  Orbs fall down lanes',
+    '    Each orb pulses Near (big) ↔ Far (small)',
+    '',
+    '⬤  Even lanes → catch when NEAR (big)',
+    '⬤  Odd lanes → catch when FAR (small)',
+    '',
+    '⬤  Tap when orb is at the capture line',
+    '    Match the phase → score & combo!',
+    '    Wrong phase → lose a shield ♥',
+    '',
+    '⬤  0 shields = Game Over',
+  ];
+  lines.forEach((l, i) => {
+    ctx.fillText(l, 58, cardY + 16 + i*18);
+  });
+
+  // Tap to start
+  const pulse = 0.8 + 0.2*Math.sin(Date.now()*0.003);
+  ctx.globalAlpha = pulse;
+  ctx.fillStyle   = '#fff';
+  ctx.font        = 'bold 20px "Segoe UI", system-ui, sans-serif';
+  ctx.textAlign   = 'center';
+  ctx.textBaseline= 'middle';
+  ctx.fillText('Tap to Start', W/2, 660);
+  ctx.globalAlpha = 1;
+}
+
+function drawGame() {
+  // Lane guides
+  const diff = getDiff();
+  const nl   = diff.lanes;
+  for (let i = 0; i < nl; i++) {
+    const lx = makeLaneX(i, nl);
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.lineWidth   = 1;
+    ctx.setLineDash([6,12]);
+    ctx.beginPath(); ctx.moveTo(lx, 0); ctx.lineTo(lx, H); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Lane phase hint dot at top
+    const reqP = i % 2 === 0 ? 0 : 1;
+    ctx.fillStyle = reqP === 0 ? `rgba(100,220,255,0.35)` : `rgba(220,100,255,0.35)`;
+    ctx.beginPath(); ctx.arc(lx, 22, 5, 0, Math.PI*2); ctx.fill();
+  }
+
+  // Capture line
+  const capWindow = CAPTURE_WINDOW * getDiff().windowMult;
+  ctx.strokeStyle = `hsl(${hue},80%,60%)`;
+  ctx.lineWidth   = 2.5;
+  ctx.globalAlpha = 0.7;
+  ctx.beginPath(); ctx.moveTo(20, CAPTURE_Y); ctx.lineTo(W-20, CAPTURE_Y); ctx.stroke();
+  ctx.globalAlpha = 0.18;
+  ctx.fillStyle   = `hsl(${hue},80%,60%)`;
+  ctx.fillRect(20, CAPTURE_Y - capWindow, W-40, capWindow*2);
+  ctx.globalAlpha = 1;
+
+  // Particles
+  for (const p of particles) {
+    ctx.globalAlpha = p.life;
+    if (p.isWave) {
+      ctx.strokeStyle = p.color;
+      ctx.lineWidth   = 2.5 * p.life;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2); ctx.stroke();
+    } else {
+      ctx.fillStyle = p.color;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r * p.life, 0, Math.PI*2); ctx.fill();
+    }
+  }
+  ctx.globalAlpha = 1;
+
+  // Orbs
+  for (const orb of orbs) {
+    drawOrb(orb);
+  }
+
+  // Player orb
+  drawPlayer();
+
+  // Popups
+  for (const p of popups) {
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle   = p.color;
+    ctx.font        = `bold 18px "Segoe UI", system-ui, sans-serif`;
+    ctx.textAlign   = 'center';
+    ctx.textBaseline= 'middle';
+    ctx.fillText(p.text, p.x, p.y);
+  }
+  ctx.globalAlpha = 1;
+
+  // Phase lock flash
+  if (lockFlash > 0) {
+    ctx.globalAlpha = (lockFlash / 220) * 0.15;
+    ctx.fillStyle   = `hsl(${hue},90%,70%)`;
+    ctx.fillRect(0,0,W,H);
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawOrb(orb) {
+  const { x, y, radius, ring, hue: h, phase, reqPhase, locked, lockTimer } = orb;
+
+  // Glow
+  const glow = ctx.createRadialGradient(x,y,0, x,y,radius*2.5);
+  glow.addColorStop(0, `hsla(${h},90%,70%,0.4)`);
+  glow.addColorStop(1, `hsla(${h},80%,50%,0)`);
+  ctx.fillStyle = glow;
+  ctx.beginPath(); ctx.arc(x, y, radius*2.5, 0, Math.PI*2); ctx.fill();
+
+  // Body
+  const bodyGrad = ctx.createRadialGradient(x-radius*0.3, y-radius*0.3, 0, x, y, radius);
+  bodyGrad.addColorStop(0, `hsl(${h},80%,80%)`);
+  bodyGrad.addColorStop(1, `hsl(${h},80%,45%)`);
+  ctx.fillStyle = bodyGrad;
+  ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI*2); ctx.fill();
+
+  // Ring: color indicates required phase
+  const ringColor = reqPhase === 0
+    ? `rgba(100,220,255,${locked ? 1 : 0.9})`   // Near = cyan
+    : `rgba(220,100,255,${locked ? 1 : 0.9})`;  // Far = purple
+  ctx.strokeStyle = ringColor;
+  ctx.lineWidth   = ring;
+  ctx.beginPath(); ctx.arc(x, y, radius + ring*0.6, 0, Math.PI*2); ctx.stroke();
+
+  // Phase label
+  ctx.fillStyle    = 'rgba(255,255,255,0.9)';
+  ctx.font         = `bold ${Math.round(radius*0.7)}px "Segoe UI", system-ui, sans-serif`;
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(phase === 0 ? 'N' : 'F', x, y);
+
+  // Lock animation
+  if (locked) {
+    const prog = 1 - lockTimer/280;
+    ctx.strokeStyle = `rgba(255,255,255,${1-prog})`;
+    ctx.lineWidth   = 3;
+    ctx.beginPath(); ctx.arc(x, y, radius + 12 + prog*20, 0, Math.PI*2); ctx.stroke();
+  }
+}
+
+function drawPlayer() {
+  const x  = W/2, y = PLAYER_Y;
+  const r  = 18;
+  const ph = hue;
+
+  // Glow
+  const glow = ctx.createRadialGradient(x,y,0,x,y,r*3);
+  glow.addColorStop(0, `hsla(${ph},90%,70%,0.35)`);
+  glow.addColorStop(1, `hsla(${ph},90%,70%,0)`);
+  ctx.fillStyle = glow;
+  ctx.beginPath(); ctx.arc(x, y, r*3, 0, Math.PI*2); ctx.fill();
+
+  const bg = ctx.createRadialGradient(x-r*0.3, y-r*0.3, 0, x, y, r);
+  bg.addColorStop(0, '#fff');
+  bg.addColorStop(1, `hsl(${ph},80%,60%)`);
+  ctx.fillStyle = bg;
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2); ctx.fill();
+
+  ctx.strokeStyle = `hsl(${ph},90%,80%)`;
+  ctx.lineWidth   = 3;
+  ctx.beginPath(); ctx.arc(x, y, r+3, 0, Math.PI*2); ctx.stroke();
+}
+
+// HUD drawn without shake
+function drawHUDNoShake(s, ox, oy) {
+  // We're inside the already-translated/scaled ctx, so draw in logical coords
+  // Score
+  ctx.fillStyle    = 'rgba(0,0,0,0.45)';
+  roundRect(ctx, 14, 12, 130, 54, 12);
+  ctx.fill();
+
+  ctx.fillStyle    = 'rgba(255,255,255,0.5)';
+  ctx.font         = '11px "Segoe UI", system-ui, sans-serif';
+  ctx.textAlign    = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText('SCORE', 24, 18);
+  ctx.fillStyle    = '#fff';
+  ctx.font         = 'bold 24px "Segoe UI", system-ui, sans-serif';
+  ctx.fillText(score, 24, 32);
+
+  // Best
+  ctx.fillStyle    = 'rgba(0,0,0,0.45)';
+  roundRect(ctx, W-144, 12, 130, 54, 12);
+  ctx.fill();
+
+  ctx.fillStyle    = 'rgba(255,255,255,0.5)';
+  ctx.font         = '11px "Segoe UI", system-ui, sans-serif';
+  ctx.textAlign    = 'right';
+  ctx.textBaseline = 'top';
+  ctx.fillText('BEST', W-24, 18);
+  ctx.fillStyle    = `hsl(${hue},80%,70%)`;
+  ctx.font         = 'bold 24px "Segoe UI", system-ui, sans-serif';
+  ctx.fillText(bestScore, W-24, 32);
+
+  // Combo
+  if (combo >= 2) {
+    ctx.fillStyle    = `hsl(${hue},90%,65%)`;
+    ctx.font         = `bold 16px "Segoe UI", system-ui, sans-serif`;
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(`x${combo} COMBO`, W/2, 18);
+  }
+
+  // Shields
+  const shieldY = H - 52;
+  for (let i = 0; i < MAX_SHIELDS; i++) {
+    const sx = W/2 + (i - (MAX_SHIELDS-1)/2) * 26;
+    ctx.fillStyle = i < shields ? `hsl(${hue},80%,65%)` : 'rgba(255,255,255,0.15)';
+    ctx.beginPath(); ctx.arc(sx, shieldY, 8, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = i < shields ? `hsl(${hue},60%,40%)` : 'rgba(255,255,255,0.08)';
+    ctx.lineWidth   = 1.5;
+    ctx.stroke();
+  }
+}
+
+function drawGameover() {
+  // Overlay
+  ctx.fillStyle = 'rgba(0,0,0,0.72)';
+  ctx.fillRect(0,0,W,H);
+
+  ctx.save();
+  ctx.shadowColor = `hsl(0,90%,60%)`;
+  ctx.shadowBlur  = 24;
+  ctx.fillStyle   = '#fff';
+  ctx.font        = 'bold 52px "Segoe UI", system-ui, sans-serif';
+  ctx.textAlign   = 'center';
+  ctx.textBaseline= 'middle';
+  ctx.fillText('GAME OVER', W/2, 250);
+  ctx.restore();
+
+  ctx.fillStyle    = 'rgba(255,255,255,0.7)';
+  ctx.font         = '18px "Segoe UI", system-ui, sans-serif';
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(`Score: ${score}`, W/2, 318);
+
+  ctx.fillStyle    = `hsl(${hue},80%,70%)`;
+  ctx.font         = '18px "Segoe UI", system-ui, sans-serif';
+  ctx.fillText(`Best: ${bestScore}`, W/2, 346);
+
+  // Share button
+  ctx.fillStyle = `hsl(${hue},65%,22%)`;
+  roundRect(ctx, W/2-80, 390, 160, 42, 12);
+  ctx.fill();
+  ctx.strokeStyle = `hsl(${hue},80%,55%)`;
+  ctx.lineWidth   = 1.5;
+  ctx.stroke();
+  ctx.fillStyle   = '#fff';
+  ctx.font        = 'bold 15px "Segoe UI", system-ui, sans-serif';
+  ctx.fillText('⇪ Share Score', W/2, 411);
+
+  // Tap to retry
+  const pulse = 0.75 + 0.25*Math.sin(Date.now()*0.004);
+  ctx.globalAlpha = pulse;
+  ctx.fillStyle   = '#fff';
+  ctx.font        = 'bold 20px "Segoe UI", system-ui, sans-serif';
+  ctx.fillText('Tap to Retry', W/2, 490);
+  ctx.globalAlpha = 1;
+}
+
+// ── Share ─────────────────────────────────────────────────────────────────────
+function tryShare() {
+  const text = `I scored ${score} in Zoom Orb! Can you beat me? ${SHARE_URL}`;
+  if (navigator.share) {
+    navigator.share({ title: 'Zoom Orb', text, url: SHARE_URL }).catch(()=>{});
+  } else {
+    navigator.clipboard && navigator.clipboard.writeText(text).catch(()=>{});
+    addPopup(W/2, 360, 'Copied!', '#6ee7b7');
+  }
+}
+
+// Detect share button tap
+canvas.addEventListener('pointerdown', e => {
+  if (state !== 'gameover') return;
+  const rect = container.getBoundingClientRect();
+  const s    = getScale();
+  const {ox, oy} = getOffset();
+  const lx   = (e.clientX - rect.left) * dpr;
+  const ly   = (e.clientY - rect.top)  * dpr;
+  const gx   = (lx - ox) / s;
+  const gy   = (ly - oy) / s;
+  if (gx >= W/2-80 && gx <= W/2+80 && gy >= 390 && gy <= 432) {
+    e.stopImmediatePropagation();
+    tryShare();
+  }
+}, true);
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function makeLaneX(laneIdx, numLanes) {
+  const margin = 48;
+  const span   = W - margin * 2;
+  if (numLanes === 1) return W/2;
+  return margin + (laneIdx / (numLanes - 1)) * span;
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.lineTo(x+w-r, y);
+  ctx.quadraticCurveTo(x+w, y, x+w, y+r);
+  ctx.lineTo(x+w, y+h-r);
+  ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+  ctx.lineTo(x+r, y+h);
+  ctx.quadraticCurveTo(x, y+h, x, y+h-r);
+  ctx.lineTo(x, y+r);
+  ctx.quadraticCurveTo(x, y, x+r, y);
+  ctx.closePath();
+}
+
+// ── Boot ─────────────────────────────────────────────────────────────────────
+animFrame = requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

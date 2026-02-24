@@ -1,0 +1,1143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Shape Surge - Free HTML5 Game</title>
+  <meta name="description" content="Play Shape Surge - Swipe to climb a geometric tower by matching shapes for combo multipliers and rapid ascents.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a0a1a">
+  <link rel="canonical" href="https://balinti.github.io/shape-surge/">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Shape Surge - Free HTML5 Game">
+  <meta property="og:description" content="Play Shape Surge - Swipe to climb a geometric tower by matching shapes for combo multipliers and rapid ascents.">
+  <meta property="og:url" content="https://balinti.github.io/shape-surge/">
+  <meta property="og:image" content="https://balinti.github.io/shape-surge/og-image.png">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Shape Surge - Free HTML5 Game">
+  <meta name="twitter:description" content="Play Shape Surge - Swipe to climb a geometric tower by matching shapes for combo multipliers and rapid ascents.">
+  <meta name="twitter:image" content="https://balinti.github.io/shape-surge/og-image.png">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #0a0a1a;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      color: #fff;
+      overflow-x: hidden;
+    }
+    body { display: flex; flex-direction: column; align-items: center; }
+
+    #top-ad-bar {
+      width: 100%; max-width: 420px;
+      min-height: 50px;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(255,255,255,0.03);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+
+    #game-wrapper {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      flex: 0 0 auto;
+    }
+
+    #canvas {
+      display: block;
+      width: 100%;
+      touch-action: none;
+      cursor: pointer;
+    }
+
+    #panel {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    #overlay {
+      background: rgba(10,10,26,0.88);
+      border-radius: 24px;
+      padding: 32px 28px;
+      text-align: center;
+      width: 80%;
+      max-width: 320px;
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,0.10);
+      pointer-events: all;
+      display: none;
+    }
+    #overlay.visible { display: block; }
+
+    #overlay h1 {
+      font-size: 2rem;
+      font-weight: 900;
+      letter-spacing: 0.04em;
+      background: linear-gradient(135deg, #7ef fff, #a78bfa, #38bdf8);
+      background: linear-gradient(135deg, #f0f, #a78bfa, #38bdf8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 6px;
+    }
+    #overlay h2 {
+      font-size: 1.3rem;
+      font-weight: 700;
+      margin-bottom: 4px;
+      color: #e2e8f0;
+    }
+    #overlay .subtitle {
+      font-size: 0.85rem;
+      color: #94a3b8;
+      margin-bottom: 18px;
+    }
+    #overlay .score-display {
+      font-size: 3rem;
+      font-weight: 900;
+      color: #fff;
+      line-height: 1;
+      margin: 8px 0 4px;
+    }
+    #overlay .best-display {
+      font-size: 0.9rem;
+      color: #a78bfa;
+      margin-bottom: 20px;
+    }
+    #challenge-banner {
+      background: rgba(167,139,250,0.15);
+      border: 1px solid rgba(167,139,250,0.4);
+      border-radius: 10px;
+      padding: 8px 14px;
+      font-size: 0.82rem;
+      color: #a78bfa;
+      margin-bottom: 14px;
+      display: none;
+    }
+    #challenge-banner.visible { display: block; }
+    #overlay .tap-hint {
+      font-size: 0.9rem;
+      color: #64748b;
+      margin-top: 14px;
+      animation: pulse-hint 1.4s ease-in-out infinite;
+    }
+    @keyframes pulse-hint {
+      0%,100% { opacity: 0.5; } 50% { opacity: 1; }
+    }
+    #share-btn {
+      margin-top: 14px;
+      background: rgba(56,189,248,0.15);
+      border: 1px solid rgba(56,189,248,0.4);
+      color: #38bdf8;
+      border-radius: 12px;
+      padding: 9px 22px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+      display: none;
+    }
+    #share-btn:hover { background: rgba(56,189,248,0.28); }
+    #share-btn.visible { display: inline-block; }
+    #copy-feedback {
+      font-size: 0.75rem;
+      color: #4ade80;
+      margin-top: 6px;
+      min-height: 18px;
+      display: none;
+    }
+    #copy-feedback.visible { display: block; }
+
+    #below-canvas {
+      width: 100%;
+      max-width: 420px;
+      padding: 24px 20px 40px;
+    }
+    #below-canvas h3 {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #a78bfa;
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    #below-canvas p, #below-canvas li {
+      font-size: 0.82rem;
+      color: #64748b;
+      line-height: 1.6;
+      margin-bottom: 6px;
+    }
+    #below-canvas ul { padding-left: 18px; margin-bottom: 14px; }
+    #below-canvas .faq-q {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #94a3b8;
+      margin-top: 12px;
+      margin-bottom: 4px;
+    }
+    #ad-overlay-anchor {
+      width: 100%; max-width: 420px;
+      min-height: 90px;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(255,255,255,0.02);
+      border-top: 1px solid rgba(255,255,255,0.05);
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+
+<div id="top-ad-bar">
+  <!-- AdSense Auto Ad anchor -->
+</div>
+
+<div id="game-wrapper">
+  <canvas id="canvas"></canvas>
+  <div id="panel">
+    <div id="overlay">
+      <div id="challenge-banner"></div>
+      <h1 id="ol-title">SHAPE SURGE</h1>
+      <div id="ol-sub" class="subtitle">Tap to lock your shape through the gates</div>
+      <h2 id="ol-score-label" style="display:none">SCORE</h2>
+      <div id="ol-score" class="score-display" style="display:none"></div>
+      <div id="ol-best" class="best-display" style="display:none"></div>
+      <div class="tap-hint" id="ol-hint">Tap to Start</div>
+      <button id="share-btn">&#x1F4E4; Share Score</button>
+      <div id="copy-feedback"></div>
+    </div>
+  </div>
+</div>
+
+<div id="below-canvas">
+  <h3>How to Play</h3>
+  <p>Shape Surge is a fast-paced tap-lock game. Your avatar constantly cycles through shapes — tap at the right moment to lock your current shape and smash through matching gates!</p>
+  <ul>
+    <li><strong>TAP / SPACE / ENTER</strong> — Lock your current shape</li>
+    <li><strong>PERFECT timing</strong> — Fills your energy bar; every 3 perfects triggers SURGE mode</li>
+    <li><strong>SURGE mode</strong> — 2 seconds of invincible smashing with bonus score ticks</li>
+    <li><strong>Cracked gates</strong> — Appear after score 25; only a PERFECT clears them cleanly</li>
+    <li>Too many bonks or falling off the screen ends your run</li>
+  </ul>
+  <h3>Tips</h3>
+  <ul>
+    <li>Watch the gate shape, not your avatar — anticipate when to tap</li>
+    <li>Aim for PERFECT timing to build SURGE energy fast</li>
+    <li>During SURGE, keep tapping — bonus points rack up automatically</li>
+    <li>Double gates appear later; be ready to tap twice quickly</li>
+  </ul>
+  <h3>FAQ</h3>
+  <p class="faq-q">What shapes are in the game?</p>
+  <p>Circle and Square appear from the start. Triangle unlocks after 10 points or 10 seconds of play.</p>
+  <p class="faq-q">How do I trigger SURGE mode?</p>
+  <p>Land 3 PERFECT hits in a row (or total energy). The screen flashes and you get 2 seconds of invincible score-boosting mode.</p>
+  <p class="faq-q">What is a cracked gate?</p>
+  <p>Cracked gates (appear after score 25) can only be cleared perfectly — a wrong shape or bad timing results in a harder bonk.</p>
+  <p class="faq-q">Is there an end to the game?</p>
+  <p>There's no end — the game gets faster and harder until you run out of speed. Beat your best score and challenge friends!</p>
+</div>
+
+<div id="ad-overlay-anchor">
+  <!-- AdSense Auto Ad anchor -->
+</div>
+
+<script>
+(function() {
+'use strict';
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+const VW = 420, VH = 750;
+const HIT_Y_OFFSET = 34;
+const SHAPES = ['circle', 'triangle', 'square'];
+const SHAPE_COLORS = { circle: 200, triangle: 280, square: 40 }; // hue offsets
+
+// ─── State ────────────────────────────────────────────────────────────────────
+let state = 'start';
+let score = 0, bestScore = 0;
+let baseHue = 0;
+let frameTime = 0, lastTime = 0;
+let hitStop = 0;
+let shakeX = 0, shakeY = 0, shakeMag = 0, shakeDur = 0;
+let particles = [];
+let shockwaves = [];
+let gates = [];
+let speedLines = [];
+let gateSpawnTimer = 0;
+let surgeTime = 0;
+let surgeTickTimer = 0;
+let energy = 0;
+let stallTimer = 0;
+let diffTime = 0;
+let shapesUnlocked = 2;
+let doubleGateMode = false;
+let doubleGatePending = false;
+
+let player = {};
+
+// ─── Canvas Setup ─────────────────────────────────────────────────────────────
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const wrapper = document.getElementById('game-wrapper');
+
+function resizeCanvas() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const wrapW = wrapper.clientWidth;
+  const wrapH = Math.min(wrapper.clientWidth * VH / VW, window.innerHeight * 0.85);
+  canvas.style.width = wrapW + 'px';
+  canvas.style.height = wrapH + 'px';
+  canvas.width = Math.round(wrapW * dpr);
+  canvas.height = Math.round(wrapH * dpr);
+  ctx.scale(dpr, dpr);
+  // Store logical dimensions
+  canvas._lw = wrapW;
+  canvas._lh = wrapH;
+  canvas._scale = wrapW / VW;
+}
+
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+// ─── High Score ───────────────────────────────────────────────────────────────
+try { bestScore = parseInt(localStorage.getItem('shapeSurgeBest') || '0'); } catch(e) {}
+function saveBest() {
+  try { localStorage.setItem('shapeSurgeBest', String(bestScore)); } catch(e) {}
+}
+
+// ─── Challenge param ──────────────────────────────────────────────────────────
+const urlParams = new URLSearchParams(location.search);
+const challengeScore = parseInt(urlParams.get('score') || '0');
+if (challengeScore > 0) {
+  const cb = document.getElementById('challenge-banner');
+  cb.textContent = `🏆 Challenge: beat ${challengeScore}!`;
+  cb.classList.add('visible');
+}
+
+// ─── Player ───────────────────────────────────────────────────────────────────
+function resetPlayer() {
+  player = {
+    x: VW / 2,
+    y: VH * 0.62,
+    r: 18,
+    shapeIndex: 0,
+    cycleT: 0,
+    cyclePeriod: 0.42,
+    lockT: 0,
+    locked: false,
+    lockDuration: 0.16,
+    speed: 160,
+    morphT: 0,   // 0 = shape A, 1 = shape B (morphing visual)
+    morphFrom: 0,
+    morphTo: 1,
+    prevLockShape: -1
+  };
+}
+
+// ─── Gate ─────────────────────────────────────────────────────────────────────
+function spawnGate(y, cracked, forced) {
+  const availShapes = SHAPES.slice(0, shapesUnlocked);
+  const shape = availShapes[Math.floor(Math.random() * availShapes.length)];
+  const gateW = 110 + Math.random() * 20;
+  gates.push({
+    x: VW / 2,
+    y: y === undefined ? -30 : y,
+    shape,
+    w: gateW,
+    h: 28,
+    cracked: cracked || false,
+    evaluated: false,
+    broken: false,
+    breakT: 0,
+    offscreen: false
+  });
+}
+
+function getGateSpacing() {
+  return Math.max(118, 190 - score * 0.7);
+}
+
+// ─── Particles ────────────────────────────────────────────────────────────────
+function spawnParticles(x, y, count, hue, speed, size, alpha) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const v = speed * (0.5 + Math.random() * 0.8);
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * v,
+      vy: Math.sin(angle) * v,
+      life: 1, decay: 0.025 + Math.random() * 0.035,
+      r: size * (0.5 + Math.random() * 0.8),
+      hue: hue + (Math.random() - 0.5) * 40,
+      alpha: alpha || 1
+    });
+  }
+}
+
+function spawnShockwave(x, y, hue) {
+  shockwaves.push({ x, y, r: 12, maxR: 70, hue, life: 1 });
+}
+
+// ─── Screen Shake ─────────────────────────────────────────────────────────────
+function triggerShake(mag, dur) {
+  shakeMag = Math.max(shakeMag, mag);
+  shakeDur = Math.max(shakeDur, dur);
+}
+
+// ─── Speed Lines ──────────────────────────────────────────────────────────────
+function initSpeedLines() {
+  speedLines = [];
+  for (let i = 0; i < 18; i++) {
+    speedLines.push({
+      x: Math.random() * VW,
+      y: Math.random() * VH,
+      len: 30 + Math.random() * 60,
+      speed: 100 + Math.random() * 180,
+      alpha: 0.05 + Math.random() * 0.12
+    });
+  }
+}
+
+// ─── Init / Reset ─────────────────────────────────────────────────────────────
+function initGame() {
+  score = 0;
+  baseHue = 0;
+  particles = [];
+  shockwaves = [];
+  gates = [];
+  gateSpawnTimer = 0;
+  surgeTime = 0;
+  surgeTickTimer = 0;
+  energy = 0;
+  stallTimer = 0;
+  diffTime = 0;
+  shapesUnlocked = 2;
+  doubleGateMode = false;
+  doubleGatePending = false;
+  hitStop = 0;
+  shakeMag = 0; shakeDur = 0; shakeX = 0; shakeY = 0;
+  resetPlayer();
+  initSpeedLines();
+  // Pre-spawn some gates
+  for (let i = 0; i < 4; i++) {
+    spawnGate(-30 - i * getGateSpacing());
+  }
+}
+
+// ─── UI ───────────────────────────────────────────────────────────────────────
+const overlay = document.getElementById('overlay');
+const olTitle = document.getElementById('ol-title');
+const olSub = document.getElementById('ol-sub');
+const olScoreLabel = document.getElementById('ol-score-label');
+const olScore = document.getElementById('ol-score');
+const olBest = document.getElementById('ol-best');
+const olHint = document.getElementById('ol-hint');
+const shareBtn = document.getElementById('share-btn');
+const copyFeedback = document.getElementById('copy-feedback');
+
+function showStartScreen() {
+  olTitle.textContent = 'SHAPE SURGE';
+  olSub.textContent = 'Tap to lock your shape through the gates';
+  olScoreLabel.style.display = 'none';
+  olScore.style.display = 'none';
+  olBest.style.display = 'none';
+  olHint.textContent = 'Tap to Start';
+  shareBtn.classList.remove('visible');
+  overlay.classList.add('visible');
+}
+
+function showGameOverScreen() {
+  olTitle.textContent = 'GAME OVER';
+  olSub.textContent = 'Better luck next time!';
+  olScoreLabel.style.display = 'block';
+  olScore.style.display = 'block';
+  olScore.textContent = String(score);
+  olBest.style.display = 'block';
+  olBest.textContent = `Best: ${bestScore}`;
+  olHint.textContent = 'Tap to Retry';
+  shareBtn.classList.add('visible');
+  overlay.classList.add('visible');
+}
+
+function hideOverlay() {
+  overlay.classList.remove('visible');
+  copyFeedback.classList.remove('visible');
+  copyFeedback.textContent = '';
+}
+
+// ─── Share ────────────────────────────────────────────────────────────────────
+shareBtn.addEventListener('click', function(e) {
+  e.stopPropagation();
+  const url = `https://balinti.github.io/shape-surge/?score=${score}`;
+  const text = `I scored ${score} in Shape Surge! Can you beat me? 🎮`;
+  if (navigator.share) {
+    navigator.share({ title: 'Shape Surge', text, url }).catch(() => {});
+  } else {
+    navigator.clipboard.writeText(url + '\n' + text).then(() => {
+      copyFeedback.textContent = 'Link copied!';
+      copyFeedback.classList.add('visible');
+    }).catch(() => {
+      copyFeedback.textContent = 'Share: ' + url;
+      copyFeedback.classList.add('visible');
+    });
+  }
+});
+
+// ─── Input ────────────────────────────────────────────────────────────────────
+function handleTap() {
+  if (state === 'start') {
+    state = 'playing';
+    initGame();
+    hideOverlay();
+    return;
+  }
+  if (state === 'gameover') {
+    state = 'playing';
+    initGame();
+    hideOverlay();
+    return;
+  }
+  if (state === 'playing') {
+    // Lock current shape
+    if (!player.locked) {
+      player.locked = true;
+      player.lockT = player.lockDuration;
+      player.prevLockShape = player.shapeIndex;
+    }
+  }
+}
+
+canvas.addEventListener('pointerdown', function(e) {
+  e.preventDefault();
+  handleTap();
+});
+document.addEventListener('keydown', function(e) {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    handleTap();
+  }
+});
+
+// ─── Shape drawing helpers ────────────────────────────────────────────────────
+function drawCircle(ctx, x, y, r) {
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.closePath();
+}
+
+function drawTriangle(ctx, x, y, r) {
+  ctx.beginPath();
+  for (let i = 0; i < 3; i++) {
+    const angle = -Math.PI / 2 + (i / 3) * Math.PI * 2;
+    const px = x + Math.cos(angle) * r;
+    const py = y + Math.sin(angle) * r;
+    i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+}
+
+function drawSquare(ctx, x, y, r) {
+  const s = r * 1.55;
+  ctx.beginPath();
+  ctx.rect(x - s / 2, y - s / 2, s, s);
+  ctx.closePath();
+}
+
+function drawShape(ctx, shape, x, y, r) {
+  if (shape === 'circle') drawCircle(ctx, x, y, r);
+  else if (shape === 'triangle') drawTriangle(ctx, x, y, r);
+  else drawSquare(ctx, x, y, r);
+}
+
+// Interpolate between two polygon paths
+function getShapePoints(shape, x, y, r, n) {
+  const pts = [];
+  if (shape === 'circle') {
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 - Math.PI / 2;
+      pts.push([x + Math.cos(a) * r, y + Math.sin(a) * r]);
+    }
+  } else if (shape === 'triangle') {
+    for (let i = 0; i < n; i++) {
+      const t = i / n;
+      const seg = Math.floor(t * 3);
+      const segT = (t * 3) % 1;
+      const a1 = -Math.PI / 2 + (seg / 3) * Math.PI * 2;
+      const a2 = -Math.PI / 2 + ((seg + 1) / 3) * Math.PI * 2;
+      const p1 = [x + Math.cos(a1) * r, y + Math.sin(a1) * r];
+      const p2 = [x + Math.cos(a2) * r, y + Math.sin(a2) * r];
+      pts.push([p1[0] + (p2[0] - p1[0]) * segT, p1[1] + (p2[1] - p1[1]) * segT]);
+    }
+  } else {
+    const s = r * 1.55;
+    const corners = [
+      [x - s/2, y - s/2], [x + s/2, y - s/2],
+      [x + s/2, y + s/2], [x - s/2, y + s/2]
+    ];
+    for (let i = 0; i < n; i++) {
+      const t = i / n;
+      const seg = Math.floor(t * 4);
+      const segT = (t * 4) % 1;
+      const p1 = corners[seg % 4];
+      const p2 = corners[(seg + 1) % 4];
+      pts.push([p1[0] + (p2[0] - p1[0]) * segT, p1[1] + (p2[1] - p1[1]) * segT]);
+    }
+  }
+  return pts;
+}
+
+function drawMorphShape(ctx, shapeA, shapeB, t, x, y, r) {
+  const n = 48;
+  const pA = getShapePoints(shapeA, x, y, r, n);
+  const pB = getShapePoints(shapeB, x, y, r, n);
+  ctx.beginPath();
+  for (let i = 0; i < n; i++) {
+    const px = pA[i][0] + (pB[i][0] - pA[i][0]) * t;
+    const py = pA[i][1] + (pB[i][1] - pA[i][1]) * t;
+    i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+}
+
+// ─── Gate shape drawing ───────────────────────────────────────────────────────
+function drawGateShape(ctx, shape, x, y, r, fill, stroke) {
+  ctx.fillStyle = fill;
+  ctx.strokeStyle = stroke;
+  ctx.lineWidth = 2.5;
+  drawShape(ctx, shape, x, y, r);
+  ctx.fill();
+  ctx.stroke();
+}
+
+// ─── UPDATE ───────────────────────────────────────────────────────────────────
+function update(dt) {
+  if (state !== 'playing') return;
+
+  diffTime += dt;
+  baseHue += dt * 30;
+
+  // Unlock triangle after 10s or 10 score
+  if (shapesUnlocked < 3 && (diffTime > 10 || score >= 10)) shapesUnlocked = 3;
+
+  // Enable double gate mode after ~45s
+  if (!doubleGateMode && diffTime > 45) doubleGateMode = true;
+
+  // Player cycle
+  if (!player.locked) {
+    player.cycleT += dt;
+    const cyclePeriod = Math.max(0.25, player.cyclePeriod - score * 0.002);
+    if (player.cycleT >= cyclePeriod) {
+      player.cycleT = 0;
+      player.morphFrom = player.shapeIndex;
+      player.shapeIndex = (player.shapeIndex + 1) % shapesUnlocked;
+      player.morphTo = player.shapeIndex;
+      player.morphT = 0;
+    }
+    player.morphT = Math.min(1, player.cycleT / Math.max(0.12, player.cyclePeriod * 0.4));
+  } else {
+    player.lockT -= dt;
+    if (player.lockT <= 0) {
+      player.locked = false;
+      player.lockT = 0;
+    }
+  }
+
+  // Passive speed ramp
+  player.speed += 6 * dt;
+
+  // Surge
+  const inSurge = surgeTime > 0;
+  if (inSurge) {
+    surgeTime -= dt;
+    surgeTickTimer -= dt;
+    if (surgeTickTimer <= 0) {
+      surgeTickTimer = 0.20;
+      score++;
+      if (score > bestScore) { bestScore = score; saveBest(); }
+    }
+    if (surgeTime <= 0) surgeTime = 0;
+  }
+
+  // Stall check
+  if (player.speed < 90) {
+    stallTimer += dt;
+    if (stallTimer > 0.35) {
+      triggerGameOver();
+      return;
+    }
+  } else {
+    stallTimer = 0;
+  }
+
+  // Clamp speed
+  player.speed = Math.min(520, Math.max(0, player.speed));
+
+  // Player fall off bottom
+  if (player.y - player.r > VH + 40) {
+    triggerGameOver();
+    return;
+  }
+
+  // Speed line update
+  const speedFrac = (player.speed - 140) / (520 - 140);
+  for (const sl of speedLines) {
+    sl.y += sl.speed * (1 + speedFrac * 2.5) * dt;
+    if (sl.y > VH + sl.len) {
+      sl.y = -sl.len;
+      sl.x = Math.random() * VW;
+    }
+  }
+
+  // Gate spawn
+  gateSpawnTimer -= dt;
+  const spacing = getGateSpacing();
+  if (gateSpawnTimer <= 0) {
+    const topY = gates.length > 0 ? Math.min(...gates.map(g => g.y)) : 0;
+    const newY = Math.min(topY - spacing, -30);
+    spawnGate(newY, score >= 25 && Math.random() < 0.25);
+    if (doubleGateMode && Math.random() < 0.22) {
+      spawnGate(newY - 60, score >= 25 && Math.random() < 0.35);
+    }
+    gateSpawnTimer = spacing / Math.max(player.speed, 80);
+  }
+
+  // Gate movement
+  const hitY = player.y - HIT_Y_OFFSET;
+  const perfectWindow = inSurge
+    ? Math.min(0.085, Math.max(0.045, 0.085 - 0.00035 * score)) * 1.35
+    : Math.min(0.085, Math.max(0.045, 0.085 - 0.00035 * score));
+  const okWindow = inSurge
+    ? Math.min(0.145, Math.max(0.075, 0.145 - 0.00045 * score)) * 1.15
+    : Math.min(0.145, Math.max(0.075, 0.145 - 0.00045 * score));
+  const perfectPx = player.speed * perfectWindow;
+  const okPx = player.speed * okWindow;
+
+  for (let i = gates.length - 1; i >= 0; i--) {
+    const g = gates[i];
+    if (g.broken) {
+      g.breakT += dt;
+      g.y += player.speed * dt;
+      if (g.breakT > 0.5) { gates.splice(i, 1); }
+      continue;
+    }
+    g.y += player.speed * dt;
+
+    // Evaluate gate when it enters ok window
+    if (!g.evaluated) {
+      const dist = Math.abs(g.y - hitY);
+      if (dist <= okPx) {
+        g.evaluated = true;
+        // Check if player is locked with matching shape
+        const currentShape = SHAPES[player.shapeIndex];
+        const locked = player.locked;
+        const matchShape = locked && currentShape === g.shape;
+
+        if (matchShape) {
+          // Hit!
+          const isPerfect = dist <= perfectPx;
+          if (isPerfect) {
+            handlePerfect(g);
+          } else {
+            handleOk(g);
+          }
+          g.broken = true;
+          g.breakT = 0;
+        } else {
+          // Bonk
+          handleBonk(g);
+          g.broken = true;
+          g.breakT = 0;
+        }
+      }
+    }
+
+    // Remove passed/offscreen gates
+    if (g.y > VH + 60) {
+      if (!g.evaluated) {
+        // Missed without any interaction — treat as bonk (not locked / wrong)
+        handleBonk(g);
+      }
+      gates.splice(i, 1);
+    }
+  }
+
+  // Particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy += 120 * dt;
+    p.life -= p.decay;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+
+  // Shockwaves
+  for (let i = shockwaves.length - 1; i >= 0; i--) {
+    const sw = shockwaves[i];
+    sw.r += 180 * dt;
+    sw.life -= 2.2 * dt;
+    if (sw.life <= 0) shockwaves.splice(i, 1);
+  }
+
+  // Shake decay
+  if (shakeDur > 0) {
+    shakeDur -= dt;
+    const s = shakeMag * (shakeDur / Math.max(shakeDur + dt, 0.001));
+    shakeX = (Math.random() - 0.5) * s * 2;
+    shakeY = (Math.random() - 0.5) * s * 2;
+  } else {
+    shakeX = 0; shakeY = 0; shakeMag = 0;
+  }
+
+  // Hit stop
+  if (hitStop > 0) hitStop -= dt;
+}
+
+function handlePerfect(g) {
+  const hue = baseHue + SHAPE_COLORS[g.shape];
+  spawnParticles(g.x, g.y, 28, hue, 200, 5, 1);
+  spawnShockwave(g.x, g.y, hue);
+  triggerShake(4, 0.12);
+  hitStop = 0.07;
+  player.speed += 16;
+  score++;
+  energy++;
+  if (energy >= 3) {
+    energy = 0;
+    surgeTime = 2.0;
+    surgeTickTimer = 0.20;
+    player.speed += 80;
+    triggerShake(7, 0.22);
+    // Surge burst
+    spawnParticles(player.x, player.y, 40, hue, 260, 6, 1);
+    spawnShockwave(player.x, player.y, hue);
+  }
+  if (score > bestScore) { bestScore = score; saveBest(); }
+}
+
+function handleOk(g) {
+  const hue = baseHue + SHAPE_COLORS[g.shape];
+  spawnParticles(g.x, g.y, 18, hue, 140, 4, 0.85);
+  triggerShake(2, 0.08);
+  player.speed += 10;
+  score++;
+  if (score > bestScore) { bestScore = score; saveBest(); }
+}
+
+function handleBonk(g) {
+  const inSurge = surgeTime > 0;
+  spawnParticles(g ? g.x : player.x, g ? g.y : player.y, 14, 0, 100, 3.5, 0.7);
+  triggerShake(8, 0.22);
+  energy = 0;
+  if (!inSurge) {
+    const extra = (g && g.cracked) ? 22 : 0;
+    player.speed -= (42 + 0.6 * score + extra);
+    player.y += Math.min(52, 18 + 0.25 * score);
+  }
+}
+
+function triggerGameOver() {
+  state = 'gameover';
+  triggerShake(16, 0.5);
+  spawnParticles(player.x, player.y, 40, 0, 220, 5, 0.8);
+  showGameOverScreen();
+}
+
+// ─── DRAW ─────────────────────────────────────────────────────────────────────
+function draw() {
+  const lw = canvas._lw || VW;
+  const lh = canvas._lh || VH;
+  const scale = canvas._scale || 1;
+  const inSurge = surgeTime > 0;
+
+  ctx.save();
+  ctx.translate(shakeX * scale, shakeY * scale);
+
+  // Scale virtual → logical
+  ctx.save();
+  ctx.scale(scale, scale);
+
+  // 1) Background gradient
+  const grad = ctx.createLinearGradient(0, 0, 0, VH);
+  grad.addColorStop(0, `hsl(${baseHue % 360}, 40%, 6%)`);
+  grad.addColorStop(1, `hsl(${(baseHue + 60) % 360}, 35%, 10%)`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, VW, VH);
+
+  // 2) Speed lines
+  const speedFrac = (player.speed - 140) / (520 - 140);
+  ctx.save();
+  for (const sl of speedLines) {
+    const a = sl.alpha * Math.max(0.3, speedFrac);
+    ctx.strokeStyle = `rgba(255,255,255,${a})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(sl.x, sl.y - sl.len);
+    ctx.lineTo(sl.x, sl.y);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // Surge glow overlay
+  if (inSurge) {
+    const surgeAlpha = 0.12 + 0.06 * Math.sin(diffTime * 10);
+    const sg = ctx.createRadialGradient(VW/2, VH*0.62, 20, VW/2, VH*0.62, VH*0.6);
+    sg.addColorStop(0, `hsla(${baseHue % 360}, 100%, 70%, ${surgeAlpha * 2})`);
+    sg.addColorStop(1, `hsla(${(baseHue+120)%360}, 100%, 60%, 0)`);
+    ctx.fillStyle = sg;
+    ctx.fillRect(0, 0, VW, VH);
+  }
+
+  // Hit line indicator
+  const hitY = player.y - HIT_Y_OFFSET;
+  ctx.save();
+  ctx.strokeStyle = `rgba(255,255,255,0.08)`;
+  ctx.lineWidth = 1;
+  ctx.setLineDash([6, 8]);
+  ctx.beginPath();
+  ctx.moveTo(20, hitY); ctx.lineTo(VW - 20, hitY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+
+  // 3) Gates
+  for (const g of gates) {
+    if (g.broken) {
+      // Break animation — fade out, scale up
+      const bt = g.breakT / 0.5;
+      ctx.save();
+      ctx.globalAlpha = 1 - bt;
+      ctx.translate(g.x, g.y);
+      ctx.scale(1 + bt * 0.6, 1 + bt * 0.3);
+      ctx.translate(-g.x, -g.y);
+    }
+
+    const hue = (baseHue + SHAPE_COLORS[g.shape]) % 360;
+    const lum = g.cracked ? 40 : 55;
+    const sat = g.cracked ? 60 : 80;
+
+    // Gate bar left
+    const barH = g.h;
+    const gw = g.w;
+    const barW = (VW - gw) / 2;
+
+    // Left bar
+    const barGrad1 = ctx.createLinearGradient(0, g.y - barH/2, barW, g.y + barH/2);
+    barGrad1.addColorStop(0, `hsla(${hue},${sat}%,${lum}%,0.9)`);
+    barGrad1.addColorStop(1, `hsla(${hue},${sat}%,${lum+15}%,0.95)`);
+    ctx.fillStyle = barGrad1;
+    ctx.fillRect(0, g.y - barH/2, barW, barH);
+
+    // Right bar
+    ctx.fillStyle = barGrad1;
+    ctx.fillRect(VW - barW, g.y - barH/2, barW, barH);
+
+    // Cracked overlay
+    if (g.cracked) {
+      ctx.save();
+      ctx.globalAlpha = 0.5;
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1.5;
+      // Crack lines on bars
+      for (let c = 0; c < 3; c++) {
+        const cx1 = Math.random() * barW;
+        const cy1 = g.y - barH/2;
+        ctx.beginPath();
+        ctx.moveTo(cx1, cy1);
+        ctx.lineTo(cx1 + (Math.random()-0.5)*20, cy1 + barH);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // Shape icon in gate gap
+    const r2 = 11;
+    ctx.save();
+    ctx.globalAlpha = 0.9;
+    const sFill = `hsla(${hue},90%,75%,0.95)`;
+    const sStroke = `hsla(${hue},70%,90%,1)`;
+    drawGateShape(ctx, g.shape, g.x, g.y, r2, sFill, sStroke);
+    ctx.restore();
+
+    // Border lines on bars
+    ctx.strokeStyle = `hsla(${hue},90%,80%,0.7)`;
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(0, g.y - barH/2, barW, barH);
+    ctx.strokeRect(VW - barW, g.y - barH/2, barW, barH);
+
+    if (g.broken) ctx.restore();
+  }
+
+  // 4) Player
+  {
+    const hue = (baseHue + SHAPE_COLORS[SHAPES[player.shapeIndex]]) % 360;
+    const r = player.r;
+    const px = player.x, py = player.y;
+
+    // Pulse ring during lock
+    if (player.locked) {
+      const lockFrac = 1 - player.lockT / player.lockDuration;
+      ctx.save();
+      ctx.globalAlpha = 0.4 * (1 - lockFrac);
+      ctx.strokeStyle = `hsl(${hue},100%,80%)`;
+      ctx.lineWidth = 3;
+      const ringR = r + 6 + lockFrac * 12;
+      ctx.beginPath();
+      ctx.arc(px, py, ringR, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Surge aura
+    if (inSurge) {
+      ctx.save();
+      const aura = ctx.createRadialGradient(px, py, r, px, py, r * 3);
+      aura.addColorStop(0, `hsla(${hue},100%,70%,0.35)`);
+      aura.addColorStop(1, `hsla(${hue},100%,60%,0)`);
+      ctx.fillStyle = aura;
+      ctx.beginPath();
+      ctx.arc(px, py, r * 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Morphing blob
+    ctx.save();
+    const morphT = player.morphT || 0;
+    const shapeA = SHAPES[player.morphFrom] || SHAPES[player.shapeIndex];
+    const shapeB = SHAPES[player.shapeIndex];
+    const hueA = (baseHue + SHAPE_COLORS[shapeA]) % 360;
+    const hueB = (baseHue + SHAPE_COLORS[shapeB]) % 360;
+    const blendH = hueA + (hueB - hueA) * morphT;
+
+    const pGrad = ctx.createRadialGradient(px - r*0.3, py - r*0.3, 1, px, py, r * 1.1);
+    pGrad.addColorStop(0, `hsl(${blendH},100%,88%)`);
+    pGrad.addColorStop(1, `hsl(${blendH},90%,55%)`);
+    ctx.fillStyle = pGrad;
+    ctx.strokeStyle = `hsl(${blendH},80%,90%)`;
+    ctx.lineWidth = 2;
+    drawMorphShape(ctx, shapeA, shapeB, morphT, px, py, r);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // 5) Particles
+  for (const p of particles) {
+    ctx.save();
+    ctx.globalAlpha = p.life * p.alpha;
+    ctx.fillStyle = `hsl(${p.hue % 360},90%,65%)`;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r * p.life, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // 6) Shockwaves
+  for (const sw of shockwaves) {
+    ctx.save();
+    ctx.globalAlpha = sw.life * 0.6;
+    ctx.strokeStyle = `hsl(${sw.hue % 360},100%,75%)`;
+    ctx.lineWidth = 2 + sw.life * 2;
+    ctx.beginPath();
+    ctx.arc(sw.x, sw.y, sw.r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // 7) UI
+  // Score
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.fillRect(0, 0, VW, 58);
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 28px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(String(score), VW / 2, 36);
+  ctx.font = '11px system-ui, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.45)';
+  ctx.fillText(`BEST ${bestScore}`, VW / 2, 52);
+  ctx.restore();
+
+  // Energy dots
+  ctx.save();
+  for (let i = 0; i < 3; i++) {
+    const filled = i < energy;
+    ctx.beginPath();
+    ctx.arc(VW/2 - 22 + i*22, 68, 6, 0, Math.PI*2);
+    ctx.fillStyle = filled ? `hsl(${baseHue%360},100%,65%)` : 'rgba(255,255,255,0.15)';
+    ctx.fill();
+    if (filled) {
+      ctx.strokeStyle = `hsl(${baseHue%360},100%,80%)`;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+
+  // Surge banner
+  if (surgeTime > 0) {
+    ctx.save();
+    const surgeAlpha = Math.min(1, surgeTime * 2);
+    ctx.globalAlpha = surgeAlpha;
+    ctx.font = 'bold 18px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = `hsl(${baseHue%360},100%,75%)`;
+    ctx.fillText('⚡ SURGE!', VW/2, 92);
+    ctx.restore();
+  }
+
+  // Speed indicator (small bar)
+  ctx.save();
+  const speedFrac2 = Math.min(1, (player.speed - 140) / (520 - 140));
+  ctx.fillStyle = 'rgba(255,255,255,0.08)';
+  ctx.fillRect(16, VH - 14, VW - 32, 5);
+  ctx.fillStyle = inSurge
+    ? `hsl(${baseHue%360},100%,65%)`
+    : `hsl(${120 + speedFrac2 * 60},80%,55%)`;
+  ctx.fillRect(16, VH - 14, (VW - 32) * speedFrac2, 5);
+  ctx.restore();
+
+  ctx.restore(); // end scale
+  ctx.restore(); // end shake
+
+  // Start/gameover overlays drawn by DOM
+}
+
+// ─── GAME LOOP ────────────────────────────────────────────────────────────────
+function loop(ts) {
+  requestAnimationFrame(loop);
+
+  if (hitStop > 0 && state === 'playing') {
+    // Freeze rendering update but still draw
+    draw();
+    return;
+  }
+
+  const now = ts / 1000;
+  let dt = lastTime ? now - lastTime : 0;
+  lastTime = now;
+  dt = Math.min(dt, 0.05); // cap dt
+
+  update(dt);
+  draw();
+}
+
+// ─── START ────────────────────────────────────────────────────────────────────
+initSpeedLines();
+showStartScreen();
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

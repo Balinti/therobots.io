@@ -1,0 +1,1161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Jungle Sprint - Free HTML5 Game</title>
+  <meta name="description" content="Play Jungle Sprint - Swipe to dodge vines and rocks as your speed increases in a dense jungle trail.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#1a3a1a">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Jungle Sprint - Free HTML5 Game">
+  <meta property="og:description" content="Play Jungle Sprint - Swipe to dodge vines and rocks as your speed increases in a dense jungle trail.">
+  <meta property="og:url" content="https://balinti.github.io/jungle-sprint/">
+  <meta property="og:image" content="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='630'%3E%3Crect width='1200' height='630' fill='%231a3a1a'/%3E%3Crect x='480' y='0' width='240' height='630' fill='%23234023' opacity='0.5'/%3E%3Ctext x='600' y='280' font-family='Arial Black,sans-serif' font-size='90' font-weight='900' fill='%2339ff14' text-anchor='middle'%3EJUNGLE%3C/text%3E%3Ctext x='600' y='390' font-family='Arial Black,sans-serif' font-size='90' font-weight='900' fill='%23ffd700' text-anchor='middle'%3ESPRINT%3C/text%3E%3Ctext x='600' y='480' font-family='Arial,sans-serif' font-size='36' fill='%23ccffcc' text-anchor='middle'%3ETap. Slash. Survive.%3C/text%3E%3C/svg%3E">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Jungle Sprint - Free HTML5 Game">
+  <meta name="twitter:description" content="Play Jungle Sprint - Swipe to dodge vines and rocks as your speed increases in a dense jungle trail.">
+  <meta name="twitter:image" content="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='630'%3E%3Crect width='1200' height='630' fill='%231a3a1a'/%3E%3Ctext x='600' y='320' font-family='Arial Black,sans-serif' font-size='90' font-weight='900' fill='%2339ff14' text-anchor='middle'%3EJUNGLE SPRINT%3C/text%3E%3C/svg%3E">
+
+  <link rel="canonical" href="https://balinti.github.io/jungle-sprint/">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0d1f0d;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      color: #ccffcc;
+      overflow-x: hidden;
+      touch-action: manipulation;
+    }
+
+    h1.seo-title {
+      font-size: 1.4rem;
+      font-weight: 900;
+      color: #39ff14;
+      text-shadow: 0 0 12px #39ff1488;
+      padding: 10px 0 4px;
+      letter-spacing: 2px;
+      text-align: center;
+    }
+
+    #game-wrap {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      max-height: 750px;
+      aspect-ratio: 420 / 750;
+      margin: 0 auto;
+    }
+
+    #gameCanvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      border-radius: 12px;
+      box-shadow: 0 0 40px #39ff1433, 0 0 80px #00000088;
+    }
+
+    /* DOM Overlays */
+    .overlay {
+      position: absolute;
+      inset: 0;
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 24px 20px;
+      pointer-events: none;
+      transition: opacity 0.3s;
+    }
+    .overlay.active { pointer-events: all; }
+    .overlay.hidden { opacity: 0; pointer-events: none; }
+
+    #startOverlay {
+      background: linear-gradient(180deg, rgba(10,28,10,0.93) 0%, rgba(20,50,15,0.88) 100%);
+    }
+    #gameoverOverlay {
+      background: linear-gradient(180deg, rgba(8,20,8,0.95) 0%, rgba(15,35,10,0.92) 100%);
+    }
+
+    .overlay h2 {
+      font-size: 2.8rem;
+      font-weight: 900;
+      color: #39ff14;
+      text-shadow: 0 0 20px #39ff14cc, 0 2px 0 #003300;
+      letter-spacing: 3px;
+      margin-bottom: 4px;
+      line-height: 1;
+    }
+    .overlay .subtitle {
+      font-size: 1rem;
+      color: #ffd700;
+      letter-spacing: 2px;
+      margin-bottom: 18px;
+      text-shadow: 0 0 8px #ffd700aa;
+    }
+    .overlay .instructions {
+      font-size: 0.82rem;
+      color: #99cc99;
+      line-height: 1.6;
+      margin-bottom: 22px;
+      max-width: 280px;
+    }
+    .overlay .instructions strong { color: #39ff14; }
+
+    .btn {
+      background: linear-gradient(135deg, #39ff14, #00cc00);
+      color: #001a00;
+      border: none;
+      border-radius: 50px;
+      padding: 14px 48px;
+      font-size: 1.1rem;
+      font-weight: 900;
+      letter-spacing: 2px;
+      cursor: pointer;
+      box-shadow: 0 0 24px #39ff1466, 0 4px 12px #00000066;
+      transition: transform 0.1s, box-shadow 0.1s;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .btn:active { transform: scale(0.95); box-shadow: 0 0 12px #39ff1444; }
+
+    .btn-secondary {
+      background: transparent;
+      color: #99cc99;
+      border: 1px solid #99cc9966;
+      border-radius: 50px;
+      padding: 10px 32px;
+      font-size: 0.85rem;
+      font-weight: 700;
+      letter-spacing: 1px;
+      cursor: pointer;
+      margin-top: 10px;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .btn-secondary:active { opacity: 0.7; }
+
+    .score-display {
+      margin-bottom: 22px;
+    }
+    .score-display .big-score {
+      font-size: 3.5rem;
+      font-weight: 900;
+      color: #39ff14;
+      text-shadow: 0 0 16px #39ff14bb;
+      line-height: 1;
+    }
+    .score-display .label {
+      font-size: 0.75rem;
+      color: #66aa66;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+    .score-display .best-row {
+      display: flex;
+      gap: 24px;
+      justify-content: center;
+      margin-top: 12px;
+    }
+    .score-display .stat {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .score-display .stat-val {
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: #ffd700;
+      text-shadow: 0 0 8px #ffd700aa;
+    }
+    .score-display .stat-lbl {
+      font-size: 0.65rem;
+      color: #66aa66;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    #howto {
+      max-width: 420px;
+      width: 100%;
+      padding: 14px 18px 10px;
+      font-size: 0.78rem;
+      color: #669966;
+      line-height: 1.7;
+      text-align: center;
+    }
+    #howto strong { color: #99cc99; }
+
+    @media (max-height: 650px) {
+      h1.seo-title { font-size: 1rem; padding: 4px 0; }
+      #howto { display: none; }
+    }
+    @media (min-height: 751px) {
+      #game-wrap { max-height: min(750px, calc(100vh - 120px)); }
+    }
+  </style>
+</head>
+<body>
+
+<h1 class="seo-title">JUNGLE SPRINT</h1>
+
+<div id="game-wrap">
+  <canvas id="gameCanvas"></canvas>
+
+  <!-- Start Overlay -->
+  <div class="overlay active" id="startOverlay">
+    <h2>JUNGLE<br>SPRINT</h2>
+    <div class="subtitle">TAP TO CUT &bull; DODGE &bull; SURVIVE</div>
+    <div class="instructions">
+      <strong>Tap</strong> to slash vines &amp; cycle lanes<br>
+      <strong>Rocks</strong> are deadly — dodge by switching lanes<br>
+      <strong>Idols</strong> extend your combo<br>
+      Hit vine at the <strong>right moment</strong> for a perfect cut
+    </div>
+    <button class="btn" id="startBtn">PLAY</button>
+  </div>
+
+  <!-- Game Over Overlay -->
+  <div class="overlay hidden" id="gameoverOverlay">
+    <div class="score-display">
+      <div class="label">SCORE</div>
+      <div class="big-score" id="goScore">0</div>
+      <div class="best-row">
+        <div class="stat"><div class="stat-val" id="goBest">0</div><div class="stat-lbl">Best</div></div>
+        <div class="stat"><div class="stat-val" id="goCombo">0</div><div class="stat-lbl">Max Combo</div></div>
+      </div>
+    </div>
+    <button class="btn" id="retryBtn">RETRY</button>
+    <button class="btn-secondary" id="shareBtn">SHARE SCORE</button>
+  </div>
+</div>
+
+<div id="howto">
+  <strong>How to play:</strong> Tap (or press Space/Enter) to slash vines and cycle between the 3 jungle lanes.
+  Hit vines inside the <strong>green cut window</strong> for a perfect cut. Dodge rocks by switching lanes early.
+  Grab golden idols to extend your combo and multiply your score!
+</div>
+
+<script>
+(function() {
+'use strict';
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+const LS_SCORE = 'jungleSprint_highscore';
+const LS_COMBO = 'jungleSprint_bestcombo';
+
+// ─── Canvas setup ────────────────────────────────────────────────────────────
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+let W = 420, H = 750; // logical size
+let DPR = 1;
+
+function resizeCanvas() {
+  const wrap = document.getElementById('game-wrap');
+  const rect = wrap.getBoundingClientRect();
+  W = rect.width || 420;
+  H = rect.height || 750;
+  const rawDPR = window.devicePixelRatio || 1;
+  DPR = Math.min(rawDPR, 2.5);
+  canvas.width = Math.round(W * DPR);
+  canvas.height = Math.round(H * DPR);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+resizeCanvas();
+window.addEventListener('resize', () => { resizeCanvas(); if (state !== 'playing') renderStatic(); });
+
+// ─── Game State ───────────────────────────────────────────────────────────────
+let state = 'start'; // 'start' | 'playing' | 'gameover'
+
+// Player
+const LANE_COUNT = 3;
+let playerLane = 1; // 0,1,2
+let playerX = 0, playerY = 0;
+const PLAYER_W = 28, PLAYER_H = 42;
+
+// Slash
+let slashActive = false;
+let slashTimer = 0;
+const SLASH_DURATION = 160; // ms
+let slashArcAngle = 0;
+
+// Score / Combo
+let score = 0;
+let combo = 0;
+let maxCombo = 0;
+let bestScore = 0;
+let bestCombo = 0;
+
+// Difficulty / timing
+let elapsed = 0; // ms since game start
+let speed = 0;   // px/s (logical)
+const SPEED_BASE = 220;
+const SPEED_MAX = 560;
+const SPEED_ACCEL = 18; // per second increase
+let spawnTimer = 0;
+let spawnInterval = 1400; // ms
+const SPAWN_MIN = 500;
+
+// Obstacles
+let obstacles = [];
+
+// Particles
+let particles = [];
+
+// Floating texts
+let floatTexts = [];
+
+// Screen shake
+let shakeX = 0, shakeY = 0;
+let shakeMag = 0, shakeDecay = 0;
+
+// Background hue
+let bgHue = 120;
+
+// Motion lines
+let motionLines = [];
+const MOTION_LINE_COUNT = 18;
+
+// Silhouette trees
+let silhouettes = [];
+const SIL_COUNT = 12;
+
+// Last frame time
+let lastTime = 0;
+
+// Lane positions (computed each frame based on W)
+function laneX(lane) {
+  const margin = W * 0.14;
+  const road = W - margin * 2;
+  return margin + road * (lane / (LANE_COUNT - 1));
+}
+
+// ─── Load/Save ────────────────────────────────────────────────────────────────
+function loadBests() {
+  bestScore = parseInt(localStorage.getItem(LS_SCORE) || '0', 10);
+  bestCombo = parseInt(localStorage.getItem(LS_COMBO) || '0', 10);
+}
+function saveBests() {
+  if (score > bestScore) { bestScore = score; localStorage.setItem(LS_SCORE, bestScore); }
+  if (maxCombo > bestCombo) { bestCombo = maxCombo; localStorage.setItem(LS_COMBO, bestCombo); }
+}
+loadBests();
+
+// ─── Combo multiplier ─────────────────────────────────────────────────────────
+function comboMult() {
+  if (combo >= 12) return 5;
+  if (combo >= 7)  return 3;
+  if (combo >= 3)  return 2;
+  return 1;
+}
+
+// ─── Init game ───────────────────────────────────────────────────────────────
+function initGame() {
+  playerLane = 1;
+  playerX = laneX(1);
+  playerY = H * 0.78;
+  score = 0; combo = 0; maxCombo = 0;
+  elapsed = 0; speed = SPEED_BASE; spawnTimer = 0; spawnInterval = 1400;
+  obstacles = []; particles = []; floatTexts = [];
+  shakeMag = 0; shakeX = 0; shakeY = 0;
+  bgHue = 120;
+  initMotionLines();
+  initSilhouettes();
+  slashActive = false; slashTimer = 0;
+}
+
+// ─── Motion lines ─────────────────────────────────────────────────────────────
+function initMotionLines() {
+  motionLines = [];
+  for (let i = 0; i < MOTION_LINE_COUNT; i++) {
+    motionLines.push(newMotionLine(true));
+  }
+}
+function newMotionLine(rand) {
+  return {
+    x: rand ? Math.random() * W : (Math.random() < 0.5 ? Math.random() * W * 0.2 : W * 0.8 + Math.random() * W * 0.2),
+    y: rand ? Math.random() * H : -20,
+    len: 18 + Math.random() * 40,
+    speed: 0.6 + Math.random() * 0.4,
+    alpha: 0.08 + Math.random() * 0.14,
+    w: 0.5 + Math.random() * 1
+  };
+}
+function updateMotionLines(dt) {
+  const spd = speed * dt / 1000;
+  for (let ml of motionLines) {
+    ml.y += spd * ml.speed * 2.5;
+    if (ml.y > H + ml.len) { Object.assign(ml, newMotionLine(false)); }
+  }
+}
+
+// ─── Silhouettes ──────────────────────────────────────────────────────────────
+function initSilhouettes() {
+  silhouettes = [];
+  for (let i = 0; i < SIL_COUNT; i++) {
+    silhouettes.push(newSilhouette(true));
+  }
+}
+function newSilhouette(rand) {
+  const side = Math.random() < 0.5 ? 'L' : 'R';
+  return {
+    side,
+    x: side === 'L' ? Math.random() * W * 0.22 : W * 0.78 + Math.random() * W * 0.22,
+    y: rand ? Math.random() * H : -120,
+    h: 80 + Math.random() * 120,
+    w: 28 + Math.random() * 36,
+    speed: 0.25 + Math.random() * 0.25,
+    alpha: 0.15 + Math.random() * 0.2
+  };
+}
+function updateSilhouettes(dt) {
+  const spd = speed * dt / 1000;
+  for (let s of silhouettes) {
+    s.y += spd * s.speed;
+    if (s.y > H + 140) { Object.assign(s, newSilhouette(false)); }
+  }
+}
+
+// ─── Obstacle spawning ────────────────────────────────────────────────────────
+const OBJ_VINE      = 0;
+const OBJ_VINE_GOLD = 1;
+const OBJ_ROCK      = 2;
+const OBJ_IDOL      = 3;
+
+function getSpawnWeights() {
+  const t = elapsed / 1000;
+  if (t < 8)  return [70, 5, 10, 15];
+  if (t < 20) return [55, 10, 22, 13];
+  if (t < 40) return [45, 15, 28, 12];
+  return [38, 18, 32, 12];
+}
+function weightedPick(weights) {
+  const total = weights.reduce((a,b) => a+b, 0);
+  let r = Math.random() * total;
+  for (let i = 0; i < weights.length; i++) { r -= weights[i]; if (r <= 0) return i; }
+  return weights.length - 1;
+}
+
+function spawnObstacle() {
+  const t = elapsed / 1000;
+  const type = weightedPick(getSpawnWeights());
+  const lane = Math.floor(Math.random() * LANE_COUNT);
+
+  let cutHalf = 0;
+  if (type === OBJ_VINE)      cutHalf = Math.max(8, 14 - t * 0.12);
+  if (type === OBJ_VINE_GOLD) cutHalf = Math.max(6, 10 - t * 0.08);
+
+  // Check no collision with recent obstacles in same lane
+  for (let o of obstacles) {
+    if (o.lane === lane && o.y < 0 && o.y > -120) return; // too close
+  }
+
+  obstacles.push({
+    type, lane,
+    x: laneX(lane),
+    y: -30,
+    cutHalf,
+    cut: false,
+    alive: true,
+    r: type === OBJ_ROCK ? 18 : (type === OBJ_IDOL ? 14 : 0),
+    phase: Math.random() * Math.PI * 2
+  });
+}
+
+// ─── Particles ────────────────────────────────────────────────────────────────
+function spawnParticles(x, y, color, count, type) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const spd = 60 + Math.random() * 180;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * spd,
+      vy: Math.sin(angle) * spd - (type === 'leaf' ? 60 : 0),
+      life: 1,
+      decay: 0.018 + Math.random() * 0.025,
+      size: type === 'spark' ? (1.5 + Math.random() * 2.5) : (4 + Math.random() * 8),
+      color,
+      type,
+      rot: Math.random() * Math.PI * 2,
+      rotSpeed: (Math.random() - 0.5) * 0.2
+    });
+  }
+}
+
+function updateParticles(dt) {
+  const dtS = dt / 1000;
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx * dtS;
+    p.y += p.vy * dtS;
+    p.vy += 220 * dtS; // gravity
+    p.life -= p.decay * (dt / 16.67);
+    p.rot += p.rotSpeed;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+// ─── Float texts ──────────────────────────────────────────────────────────────
+function addFloat(text, x, y, color, size) {
+  floatTexts.push({ text, x, y, vy: -1.8, life: 1, decay: 0.022, color, size: size || 18 });
+}
+function updateFloats(dt) {
+  for (let i = floatTexts.length - 1; i >= 0; i--) {
+    const f = floatTexts[i];
+    f.y += f.vy * (dt / 16.67);
+    f.life -= f.decay * (dt / 16.67);
+    if (f.life <= 0) floatTexts.splice(i, 1);
+  }
+}
+
+// ─── Screen shake ─────────────────────────────────────────────────────────────
+function triggerShake(mag, dec) {
+  if (mag > shakeMag) { shakeMag = mag; shakeDecay = dec; }
+}
+function updateShake(dt) {
+  if (shakeMag <= 0) { shakeX = 0; shakeY = 0; return; }
+  shakeX = (Math.random() - 0.5) * 2 * shakeMag;
+  shakeY = (Math.random() - 0.5) * 2 * shakeMag;
+  shakeMag -= shakeDecay * (dt / 16.67);
+  if (shakeMag < 0) shakeMag = 0;
+}
+
+// ─── Input ────────────────────────────────────────────────────────────────────
+function onTap() {
+  if (state === 'start') { startGame(); return; }
+  if (state === 'gameover') { startGame(); return; }
+  if (state !== 'playing') return;
+  doSlash();
+}
+
+function doSlash() {
+  slashActive = true;
+  slashTimer = SLASH_DURATION;
+  slashArcAngle = 0;
+  playerLane = (playerLane + 1) % LANE_COUNT;
+  // Check near-miss on rocks in adjacent lane (the lane we just came from)
+  checkNearMiss();
+}
+
+function checkNearMiss() {
+  for (let o of obstacles) {
+    if (!o.alive || o.type !== OBJ_ROCK) continue;
+    if (Math.abs(o.y - playerY) < 60 && Math.abs(o.lane - playerLane) === 1) {
+      const pts = Math.round(25 * comboMult());
+      score += pts;
+      addFloat('NEAR MISS!', laneX(o.lane), o.y, '#ffaa00', 14);
+    }
+  }
+}
+
+document.addEventListener('pointerdown', (e) => {
+  // Ignore clicks on overlay buttons
+  if (e.target.tagName === 'BUTTON') return;
+  onTap();
+}, { passive: true });
+
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    onTap();
+  }
+});
+
+document.getElementById('startBtn').addEventListener('click', startGame);
+document.getElementById('retryBtn').addEventListener('click', startGame);
+document.getElementById('shareBtn').addEventListener('click', shareScore);
+
+function startGame() {
+  document.getElementById('startOverlay').classList.add('hidden');
+  document.getElementById('startOverlay').classList.remove('active');
+  document.getElementById('gameoverOverlay').classList.add('hidden');
+  document.getElementById('gameoverOverlay').classList.remove('active');
+  initGame();
+  state = 'playing';
+  lastTime = performance.now();
+  requestAnimationFrame(gameLoop);
+}
+
+function gameOver() {
+  state = 'gameover';
+  triggerShake(14, 0.35);
+  saveBests();
+  document.getElementById('goScore').textContent = score;
+  document.getElementById('goBest').textContent = bestScore;
+  document.getElementById('goCombo').textContent = maxCombo;
+  setTimeout(() => {
+    const ov = document.getElementById('gameoverOverlay');
+    ov.classList.remove('hidden');
+    ov.classList.add('active');
+  }, 600);
+}
+
+function shareScore() {
+  const text = `I scored ${score} in Jungle Sprint! (Max Combo: ${maxCombo}x) Can you beat it? 🌿⚡ https://balinti.github.io/jungle-sprint/`;
+  if (navigator.share) {
+    navigator.share({ title: 'Jungle Sprint', text }).catch(() => {});
+  } else {
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = document.getElementById('shareBtn');
+      btn.textContent = 'COPIED!';
+      setTimeout(() => btn.textContent = 'SHARE SCORE', 2000);
+    }).catch(() => {});
+  }
+}
+
+// ─── Collision / logic ────────────────────────────────────────────────────────
+function updateObstacles(dt) {
+  const dtS = dt / 1000;
+  const moveY = speed * dtS;
+
+  for (let i = obstacles.length - 1; i >= 0; i--) {
+    const o = obstacles[i];
+    if (!o.alive) { obstacles.splice(i, 1); continue; }
+    o.x = laneX(o.lane); // recompute for resize
+    o.y += moveY;
+    o.phase += dtS * 2;
+
+    if (o.type === OBJ_VINE || o.type === OBJ_VINE_GOLD) {
+      // Check cut
+      if (slashActive && o.lane === playerLane && !o.cut) {
+        const dy = Math.abs(o.y - playerY);
+        if (dy <= o.cutHalf) {
+          // Perfect cut!
+          o.cut = true; o.alive = false;
+          const mult = comboMult();
+          const pts = Math.round((o.type === OBJ_VINE_GOLD ? 180 : 100) * mult);
+          score += pts;
+          combo++; if (combo > maxCombo) maxCombo = combo;
+          spawnParticles(o.x, o.y, o.type === OBJ_VINE_GOLD ? '#ffd700' : '#39ff14', 14, 'leaf');
+          spawnParticles(o.x, o.y, '#ffffff', 6, 'spark');
+          addFloat('PERFECT!', o.x, o.y - 10, '#ffffff', 20);
+          addFloat('+' + pts, o.x, o.y + 14, o.type === OBJ_VINE_GOLD ? '#ffd700' : '#39ff14', 16);
+          triggerShake(3, 0.4);
+          obstacles.splice(i, 1);
+          continue;
+        }
+      }
+      // Vine passed player without cut => game over
+      if (o.y > playerY + PLAYER_H / 2 + 12 && !o.cut) {
+        gameOver();
+        spawnParticles(playerX, playerY, '#ff4444', 20, 'spark');
+        return;
+      }
+    } else if (o.type === OBJ_ROCK) {
+      const dx = Math.abs(o.x - playerX);
+      const dy = Math.abs(o.y - playerY);
+      // Circle vs rect collision
+      if (dx < PLAYER_W / 2 + o.r - 4 && dy < PLAYER_H / 2 + o.r - 8) {
+        gameOver();
+        spawnParticles(playerX, playerY, '#ff8800', 20, 'spark');
+        return;
+      }
+    } else if (o.type === OBJ_IDOL) {
+      const dx = Math.abs(o.x - playerX);
+      const dy = Math.abs(o.y - playerY);
+      if (dx < PLAYER_W / 2 + o.r && dy < PLAYER_H / 2 + o.r) {
+        o.alive = false;
+        const mult = comboMult();
+        const pts = Math.round(120 * mult);
+        score += pts;
+        combo++; if (combo > maxCombo) maxCombo = combo;
+        spawnParticles(o.x, o.y, '#ffd700', 12, 'spark');
+        spawnParticles(o.x, o.y, '#ffaa00', 8, 'leaf');
+        addFloat('IDOL!', o.x, o.y - 10, '#ffd700', 20);
+        addFloat('+' + pts, o.x, o.y + 14, '#ffd700', 15);
+        triggerShake(2, 0.45);
+        obstacles.splice(i, 1);
+        continue;
+      }
+    }
+
+    // Remove off-screen
+    if (o.y > H + 60) { obstacles.splice(i, 1); }
+  }
+}
+
+// ─── Main game loop ───────────────────────────────────────────────────────────
+function gameLoop(ts) {
+  if (state !== 'playing') return;
+
+  const raw = ts - lastTime;
+  lastTime = ts;
+  const dt = Math.min(raw, 50); // clamp
+
+  // Update difficulty
+  elapsed += dt;
+  speed = Math.min(SPEED_MAX, SPEED_BASE + (elapsed / 1000) * SPEED_ACCEL);
+  spawnInterval = Math.max(SPAWN_MIN, 1400 - (elapsed / 1000) * 12);
+
+  // Spawn
+  spawnTimer += dt;
+  if (spawnTimer >= spawnInterval) {
+    spawnTimer = 0;
+    spawnObstacle();
+  }
+
+  // Background hue
+  bgHue = (120 + elapsed * 0.003) % 360;
+
+  // Player X lerp to lane
+  const targetX = laneX(playerLane);
+  playerX += (targetX - playerX) * Math.min(1, dt * 0.018);
+  playerY = H * 0.78;
+
+  // Slash timer
+  if (slashActive) {
+    slashTimer -= dt;
+    slashArcAngle = 1 - slashTimer / SLASH_DURATION;
+    if (slashTimer <= 0) { slashActive = false; slashTimer = 0; }
+  }
+
+  updateObstacles(dt);
+  if (state !== 'playing') { // may have died in updateObstacles
+    updateShake(dt);
+    render();
+    return;
+  }
+  updateParticles(dt);
+  updateFloats(dt);
+  updateShake(dt);
+  updateMotionLines(dt);
+  updateSilhouettes(dt);
+
+  render();
+  requestAnimationFrame(gameLoop);
+}
+
+// ─── Rendering ────────────────────────────────────────────────────────────────
+function renderStatic() {
+  ctx.save();
+  drawBackground(0);
+  ctx.restore();
+}
+
+function render() {
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
+
+  drawBackground(elapsed);
+  drawSilhouettes();
+  drawRoad();
+  drawMotionLines();
+  drawObstacles();
+  drawPlayer();
+  drawParticles();
+  drawFloatTexts();
+  drawHUD();
+
+  ctx.restore();
+}
+
+function drawBackground(t) {
+  // Gradient sky/jungle
+  const h1 = (110 + t * 0.003) % 360;
+  const h2 = (140 + t * 0.003) % 360;
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, `hsl(${h1},55%,8%)`);
+  grad.addColorStop(0.5, `hsl(${h2},50%,10%)`);
+  grad.addColorStop(1, `hsl(120,45%,6%)`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+}
+
+function drawSilhouettes() {
+  for (const s of silhouettes) {
+    ctx.save();
+    ctx.globalAlpha = s.alpha;
+    ctx.fillStyle = '#001200';
+    // Draw simple tree silhouette
+    const x = s.x, y = s.y, w = s.w, h = s.h;
+    // Trunk
+    ctx.fillRect(x - w * 0.12, y + h * 0.55, w * 0.24, h * 0.45);
+    // Canopy layers
+    ctx.beginPath();
+    ctx.moveTo(x - w/2, y + h * 0.6);
+    ctx.lineTo(x, y);
+    ctx.lineTo(x + w/2, y + h * 0.6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(x - w * 0.4, y + h * 0.75);
+    ctx.lineTo(x, y + h * 0.2);
+    ctx.lineTo(x + w * 0.4, y + h * 0.75);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawRoad() {
+  const margin = W * 0.14;
+  // Road base
+  const rg = ctx.createLinearGradient(margin, 0, W - margin, 0);
+  rg.addColorStop(0, '#0a1a08');
+  rg.addColorStop(0.5, '#122010');
+  rg.addColorStop(1, '#0a1a08');
+  ctx.fillStyle = rg;
+  ctx.fillRect(margin, 0, W - margin * 2, H);
+
+  // Lane dividers (dashed perspective)
+  ctx.strokeStyle = 'rgba(80,160,60,0.18)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([18, 22]);
+  for (let l = 1; l < LANE_COUNT; l++) {
+    const x = margin + (W - margin * 2) * (l / LANE_COUNT);
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  // Edge vines / borders
+  ctx.strokeStyle = 'rgba(57,255,20,0.25)';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.moveTo(margin, 0); ctx.lineTo(margin, H); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(W - margin, 0); ctx.lineTo(W - margin, H); ctx.stroke();
+}
+
+function drawMotionLines() {
+  for (const ml of motionLines) {
+    ctx.save();
+    ctx.globalAlpha = ml.alpha * (speed / SPEED_MAX);
+    ctx.strokeStyle = '#39ff14';
+    ctx.lineWidth = ml.w;
+    ctx.beginPath(); ctx.moveTo(ml.x, ml.y); ctx.lineTo(ml.x, ml.y - ml.len); ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function drawObstacles() {
+  const t = Date.now();
+  for (const o of obstacles) {
+    if (!o.alive) continue;
+    ctx.save();
+
+    if (o.type === OBJ_VINE || o.type === OBJ_VINE_GOLD) {
+      drawVine(o, t);
+    } else if (o.type === OBJ_ROCK) {
+      drawRock(o, t);
+    } else if (o.type === OBJ_IDOL) {
+      drawIdol(o, t);
+    }
+    ctx.restore();
+  }
+}
+
+function drawVine(o, t) {
+  const x = o.x, y = o.y;
+  const isGold = o.type === OBJ_VINE_GOLD;
+  const color = isGold ? '#ffd700' : '#39ff14';
+  const glow  = isGold ? '#ffaa00' : '#00cc00';
+
+  // Vine band (horizontal rope across lane)
+  const margin = W * 0.14;
+  const lw = (W - margin * 2) / LANE_COUNT;
+  const x0 = margin + o.lane * lw, x1 = x0 + lw;
+
+  // Wavy vine
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 8;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = isGold ? 4 : 3;
+  ctx.beginPath();
+  ctx.moveTo(x0, y);
+  for (let px = x0; px <= x1; px += 4) {
+    const wave = Math.sin((px * 0.08) + t * 0.006 + o.phase) * 4;
+    ctx.lineTo(px, y + wave);
+  }
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Leaf dangles
+  for (let j = 0; j < 3; j++) {
+    const lx = x0 + lw * (0.25 + j * 0.25);
+    const ly = y + Math.sin(t * 0.004 + j * 1.5) * 5;
+    ctx.fillStyle = isGold ? '#ffcc00' : '#22cc00';
+    ctx.beginPath();
+    ctx.ellipse(lx, ly + 7, 5, 9, Math.sin(t * 0.003 + j) * 0.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Cut window indicator
+  const cwTop = y - o.cutHalf, cwBot = y + o.cutHalf;
+  ctx.strokeStyle = isGold ? 'rgba(255,215,0,0.8)' : 'rgba(255,255,255,0.75)';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([4, 3]);
+  ctx.beginPath(); ctx.moveTo(x - 22, cwTop); ctx.lineTo(x + 22, cwTop); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x - 22, cwBot); ctx.lineTo(x + 22, cwBot); ctx.stroke();
+  ctx.setLineDash([]);
+  // Window fill
+  ctx.fillStyle = isGold ? 'rgba(255,215,0,0.08)' : 'rgba(255,255,255,0.06)';
+  ctx.fillRect(x - 22, cwTop, 44, o.cutHalf * 2);
+}
+
+function drawRock(o, t) {
+  const x = o.x, y = o.y, r = o.r;
+  // Hazard glow
+  ctx.shadowColor = '#ff4400';
+  ctx.shadowBlur = 16;
+  // Rock body
+  ctx.fillStyle = '#3a2810';
+  ctx.beginPath();
+  ctx.ellipse(x, y, r, r * 0.8, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  // Outline
+  ctx.strokeStyle = '#ff5500';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.ellipse(x, y, r, r * 0.8, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  // Highlights
+  ctx.fillStyle = 'rgba(255,100,0,0.25)';
+  ctx.beginPath();
+  ctx.ellipse(x - r*0.2, y - r*0.25, r*0.35, r*0.2, -0.5, 0, Math.PI*2);
+  ctx.fill();
+  // Hazard X
+  ctx.strokeStyle = 'rgba(255,80,0,0.6)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(x-8, y-8); ctx.lineTo(x+8, y+8); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x+8, y-8); ctx.lineTo(x-8, y+8); ctx.stroke();
+}
+
+function drawIdol(o, t) {
+  const x = o.x, y = o.y, r = o.r;
+  const bob = Math.sin(t * 0.005 + o.phase) * 4;
+  const yy = y + bob;
+
+  ctx.shadowColor = '#ffd700';
+  ctx.shadowBlur = 20;
+
+  // Outer glow ring
+  const pulse = 0.5 + 0.5 * Math.sin(t * 0.007 + o.phase);
+  ctx.strokeStyle = `rgba(255,215,0,${0.3 + pulse * 0.4})`;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(x, yy, r + 6 + pulse * 4, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Idol body (diamond shape)
+  ctx.fillStyle = '#ffd700';
+  ctx.beginPath();
+  ctx.moveTo(x, yy - r);
+  ctx.lineTo(x + r, yy);
+  ctx.lineTo(x, yy + r * 0.9);
+  ctx.lineTo(x - r, yy);
+  ctx.closePath();
+  ctx.fill();
+
+  // Facets
+  ctx.fillStyle = 'rgba(255,255,200,0.5)';
+  ctx.beginPath();
+  ctx.moveTo(x, yy - r);
+  ctx.lineTo(x + r, yy);
+  ctx.lineTo(x, yy);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.shadowBlur = 0;
+}
+
+function drawPlayer() {
+  const x = playerX, y = playerY;
+
+  // Combo glow
+  const m = comboMult();
+  if (m > 1) {
+    ctx.save();
+    const glowR = 28 + m * 8;
+    const glowA = 0.12 + m * 0.05;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, glowR);
+    g.addColorStop(0, `rgba(57,255,20,${glowA * 2})`);
+    g.addColorStop(1, 'rgba(57,255,20,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(x, y, glowR, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
+  // Runner body
+  ctx.save();
+  ctx.shadowColor = '#39ff14';
+  ctx.shadowBlur = 10;
+
+  // Legs (animated)
+  const legPhase = elapsed * 0.012;
+  ctx.strokeStyle = '#88ff44';
+  ctx.lineWidth = 4;
+  ctx.lineCap = 'round';
+  // Left leg
+  ctx.beginPath();
+  ctx.moveTo(x - 7, y + 10);
+  ctx.quadraticCurveTo(x - 10, y + 22, x - 5 + Math.sin(legPhase) * 8, y + PLAYER_H / 2 + 2);
+  ctx.stroke();
+  // Right leg
+  ctx.beginPath();
+  ctx.moveTo(x + 7, y + 10);
+  ctx.quadraticCurveTo(x + 10, y + 22, x + 5 + Math.sin(legPhase + Math.PI) * 8, y + PLAYER_H / 2 + 2);
+  ctx.stroke();
+
+  // Body
+  ctx.fillStyle = '#22aa00';
+  ctx.beginPath();
+  ctx.roundRect(x - PLAYER_W/2 + 2, y - PLAYER_H/2 + 6, PLAYER_W - 4, PLAYER_H - 14, 6);
+  ctx.fill();
+
+  // Head
+  ctx.fillStyle = '#ffe0a0';
+  ctx.beginPath();
+  ctx.arc(x, y - PLAYER_H/2 + 4, 10, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Arms (animated)
+  ctx.strokeStyle = '#22aa00';
+  ctx.lineWidth = 3.5;
+  ctx.beginPath();
+  ctx.moveTo(x - 8, y - 2);
+  ctx.lineTo(x - 14 + Math.sin(legPhase + Math.PI) * 6, y + 12);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x + 8, y - 2);
+  ctx.lineTo(x + 14 + Math.sin(legPhase) * 6, y + 12);
+  ctx.stroke();
+
+  ctx.shadowBlur = 0;
+  ctx.restore();
+
+  // Slash arc
+  if (slashActive) {
+    ctx.save();
+    const prog = slashArcAngle;
+    const arcAlpha = 1 - prog;
+    ctx.globalAlpha = arcAlpha;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2.5;
+    ctx.shadowColor = '#ffffff';
+    ctx.shadowBlur = 12;
+    ctx.beginPath();
+    ctx.arc(x, y - 5, 26, -Math.PI * 0.8 + prog * Math.PI, Math.PI * 0.8 - prog * Math.PI * 0.3);
+    ctx.stroke();
+    // Slash streak lines
+    ctx.lineWidth = 1.5;
+    for (let k = 0; k < 4; k++) {
+      const angle = -Math.PI * 0.7 + k * (Math.PI * 0.45);
+      const cx2 = x + Math.cos(angle) * 30;
+      const cy2 = y - 5 + Math.sin(angle) * 30;
+      ctx.globalAlpha = arcAlpha * (1 - k * 0.2);
+      ctx.beginPath();
+      ctx.moveTo(x, y - 5);
+      ctx.lineTo(cx2, cy2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, p.life);
+    if (p.type === 'leaf') {
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.moveTo(0, -p.size/2);
+      ctx.lineTo(p.size/2, p.size/2);
+      ctx.lineTo(-p.size/2, p.size/2);
+      ctx.closePath();
+      ctx.fill();
+    } else {
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
+function drawFloatTexts() {
+  for (const f of floatTexts) {
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, f.life);
+    ctx.font = `900 ${f.size}px 'Segoe UI', Arial, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = f.color;
+    ctx.shadowColor = f.color;
+    ctx.shadowBlur = 10;
+    ctx.fillText(f.text, f.x, f.y);
+    ctx.restore();
+  }
+}
+
+function drawHUD() {
+  // Score
+  ctx.save();
+  ctx.font = '900 26px "Segoe UI", Arial, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = '#ffffff';
+  ctx.shadowColor = '#39ff14';
+  ctx.shadowBlur = 8;
+  ctx.fillText(score, 14, 12);
+
+  // Best
+  ctx.font = '700 13px "Segoe UI", Arial, sans-serif';
+  ctx.fillStyle = '#99cc99';
+  ctx.shadowBlur = 0;
+  ctx.fillText('BEST ' + bestScore, 14, 42);
+
+  // Combo
+  if (combo > 0) {
+    const mult = comboMult();
+    ctx.textAlign = 'right';
+    ctx.font = '900 20px "Segoe UI", Arial, sans-serif';
+    const comboColor = mult >= 5 ? '#ffd700' : mult >= 3 ? '#ff8800' : mult >= 2 ? '#ffff00' : '#39ff14';
+    ctx.fillStyle = comboColor;
+    ctx.shadowColor = comboColor;
+    ctx.shadowBlur = 12;
+    ctx.fillText('x' + mult + ' COMBO ' + combo, W - 14, 12);
+    ctx.shadowBlur = 0;
+  }
+
+  // Speed indicator (subtle)
+  const spPct = (speed - SPEED_BASE) / (SPEED_MAX - SPEED_BASE);
+  if (spPct > 0.05) {
+    ctx.textAlign = 'center';
+    ctx.font = '600 11px "Segoe UI", Arial, sans-serif';
+    ctx.fillStyle = `rgba(200,255,180,${0.3 + spPct * 0.4})`;
+    ctx.fillText('▲ ' + Math.round(spPct * 100) + '% SPEED', W / 2, H - 14);
+  }
+
+  ctx.restore();
+}
+
+// ─── Start render static bg on load ──────────────────────────────────────────
+renderStatic();
+
+// Prevent spacebar scroll
+window.addEventListener('keydown', e => { if (e.code === 'Space') e.preventDefault(); });
+
+})(); // end IIFE
+</script>
+</body>
+</html>

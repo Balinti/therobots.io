@@ -1,0 +1,1207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Tide Twins - Free HTML5 Game</title>
+  <meta name="description" content="Play Tide Twins - Swipe to shoot pairs of twin fish that split on impact to hit multiple ocean targets.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a1628">
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="Tide Twins - Free HTML5 Game">
+  <meta property="og:description" content="Play Tide Twins - Swipe to shoot pairs of twin fish that split on impact to hit multiple ocean targets.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://balinti.github.io/tide-twins/">
+  <meta property="og:image" content="https://balinti.github.io/tide-twins/og.png">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Tide Twins - Free HTML5 Game">
+  <meta name="twitter:description" content="Play Tide Twins - Swipe to shoot pairs of twin fish that split on impact to hit multiple ocean targets.">
+  <meta name="twitter:image" content="https://balinti.github.io/tide-twins/og.png">
+
+  <link rel="canonical" href="https://balinti.github.io/tide-twins/">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #050e1c;
+      display: flex; align-items: center; justify-content: center;
+      font-family: system-ui, -apple-system, sans-serif;
+      overflow: hidden;
+      touch-action: none;
+      user-select: none;
+    }
+    #game-wrap {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      height: 100%;
+      max-height: 750px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    #gameCanvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+    }
+    #info-block {
+      position: absolute;
+      bottom: -80px;
+      left: 0; right: 0;
+      color: #4a6fa5;
+      font-size: 11px;
+      text-align: center;
+      padding: 8px;
+      line-height: 1.5;
+    }
+    #info-block h1 {
+      font-size: 13px;
+      font-weight: 600;
+      color: #5a8fd4;
+      margin-bottom: 4px;
+    }
+    @media (max-height: 830px) { #info-block { display: none; } }
+  </style>
+</head>
+<body>
+<div id="game-wrap">
+  <canvas id="gameCanvas"></canvas>
+  <div id="info-block">
+    <h1>Tide Twins — Split &amp; Sweep</h1>
+    Tap to fire twin shots · They split on impact · Destroy enemies before they reach the reef
+  </div>
+</div>
+
+<script>
+// ─── Constants ───────────────────────────────────────────────────────────────
+const W = 420, H = 750;
+const REEF_Y = 700;
+const LANES = 6;
+const LANE_W = W / LANES;
+const FIRE_COOLDOWN = 0.18;
+const TWIN_OFFSET = 8;
+const SHOT_VY = -980;
+const SPLIT_SPEED = 900;
+const SPLIT_ANGLE = 25 * Math.PI / 180;
+const COMBO_EXPIRE = 1.35;
+const LS_BEST = 'tt_best';
+const LS_MUTE = 'tt_mute';
+const DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+// ─── Canvas setup ────────────────────────────────────────────────────────────
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+function resizeCanvas() {
+  const wrap = document.getElementById('game-wrap');
+  const rect = wrap.getBoundingClientRect();
+  const sz = Math.min(rect.width, rect.height * (W / H));
+  const sh = sz * (H / W);
+  canvas.style.width = sz + 'px';
+  canvas.style.height = sh + 'px';
+  canvas.width = Math.round(sz * DPR);
+  canvas.height = Math.round(sh * DPR);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.scale(DPR * sz / W, DPR * sh / H);
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+// ─── Audio (simple procedural tones) ─────────────────────────────────────────
+let audioCtx = null;
+let muted = localStorage.getItem(LS_MUTE) === '1';
+
+function getAudioCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+
+function playTone(freq, type, duration, vol = 0.18, startFreq = null) {
+  if (muted) return;
+  try {
+    const ac = getAudioCtx();
+    const osc = ac.createOscillator();
+    const gain = ac.createGain();
+    osc.connect(gain);
+    gain.connect(ac.destination);
+    osc.type = type;
+    if (startFreq) {
+      osc.frequency.setValueAtTime(startFreq, ac.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(freq, ac.currentTime + duration);
+    } else {
+      osc.frequency.setValueAtTime(freq, ac.currentTime);
+    }
+    gain.gain.setValueAtTime(vol, ac.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + duration);
+    osc.start(ac.currentTime);
+    osc.stop(ac.currentTime + duration);
+  } catch(e) {}
+}
+
+function sfxShoot()  { playTone(440, 'sine', 0.12, 0.12, 660); }
+function sfxHit()    { playTone(220, 'square', 0.08, 0.10); }
+function sfxSplit()  { playTone(550, 'sine', 0.15, 0.13, 330); }
+function sfxCombo()  { playTone(880, 'sine', 0.2, 0.15); }
+function sfxDie()    { playTone(80, 'sawtooth', 0.6, 0.25, 200); }
+function sfxGolden() { playTone(1200, 'sine', 0.3, 0.18, 800); }
+
+// ─── State ───────────────────────────────────────────────────────────────────
+let state = 'start'; // 'start' | 'playing' | 'gameover'
+let score, best, combo, comboTimer, multiplier, hue, elapsed;
+let shots, enemies, particles, bumpers;
+let fireCooldown, spawnTimer, spawnInterval;
+let hitStopTimer;
+let shakeTimer, shakeAmt;
+let dangerFlash;
+
+function initGame() {
+  score = 0;
+  best = parseInt(localStorage.getItem(LS_BEST) || '0');
+  combo = 0;
+  comboTimer = 0;
+  multiplier = 1;
+  hue = 200;
+  elapsed = 0;
+  shots = [];
+  enemies = [];
+  particles = [];
+  bumpers = [];
+  fireCooldown = 0;
+  spawnTimer = 0;
+  spawnInterval = 0.85;
+  hitStopTimer = 0;
+  shakeTimer = 0;
+  shakeAmt = 0;
+  dangerFlash = 0;
+  initBumpers();
+}
+
+// ─── Bumpers ─────────────────────────────────────────────────────────────────
+function bumperCount() {
+  return Math.max(1, Math.min(3, 3 - Math.floor(elapsed / 18)));
+}
+
+function initBumpers() {
+  bumpers = [];
+  const cnt = bumperCount();
+  const positions = [W * 0.25, W * 0.5, W * 0.75];
+  for (let i = 0; i < cnt; i++) {
+    bumpers.push({
+      x: positions[i],
+      y: 200 + Math.random() * 260,
+      r: 18,
+      hue: Math.random() * 360
+    });
+  }
+}
+
+function refreshBumpers() {
+  const cnt = bumperCount();
+  while (bumpers.length < cnt) {
+    bumpers.push({
+      x: LANE_W * 0.5 + Math.floor(Math.random() * LANES) * LANE_W,
+      y: 160 + Math.random() * 300,
+      r: 18,
+      hue: Math.random() * 360
+    });
+  }
+  while (bumpers.length > cnt) bumpers.pop();
+}
+
+// ─── Enemy types ─────────────────────────────────────────────────────────────
+const ENEMY_TYPES = [
+  { id: 'trash',   hp: 1, r: 16, pts: 10,  color: '#6a8fa0', weight: 50 },
+  { id: 'puffer',  hp: 2, r: 20, pts: 25,  color: '#c06030', weight: 30 },
+  { id: 'armored', hp: 3, r: 18, pts: 50,  color: '#708090', weight: 15 },
+  { id: 'golden',  hp: 1, r: 22, pts: 200, color: '#ffd700', weight: 5  },
+];
+
+function pickEnemyType() {
+  const total = ENEMY_TYPES.reduce((s, t) => s + t.weight, 0);
+  let r = Math.random() * total;
+  for (const t of ENEMY_TYPES) {
+    r -= t.weight;
+    if (r <= 0) return t;
+  }
+  return ENEMY_TYPES[0];
+}
+
+function spawnEnemy() {
+  const t = elapsed;
+  const vy = 70 + 3.2 * t + 18 * (multiplier - 1);
+  const lane = Math.floor(Math.random() * LANES);
+  const type = pickEnemyType();
+  enemies.push({
+    x: lane * LANE_W + LANE_W / 2,
+    y: -30,
+    vy,
+    hp: type.hp,
+    maxHp: type.hp,
+    r: type.r,
+    pts: type.pts,
+    color: type.color,
+    id: type.id,
+    hue: Math.random() * 360,
+    hit: 0, // flash timer
+  });
+}
+
+// ─── Shots ───────────────────────────────────────────────────────────────────
+function fireShots() {
+  if (fireCooldown > 0) return;
+  fireCooldown = FIRE_COOLDOWN;
+  sfxShoot();
+  const cx = W / 2;
+  const y = REEF_Y - 30;
+  for (let s = -1; s <= 1; s += 2) {
+    shots.push({
+      x: cx + s * TWIN_OFFSET,
+      y,
+      vx: 0,
+      vy: SHOT_VY,
+      r: 7,
+      split: false,
+      generation: 0,
+      hue: hue,
+      trail: [],
+    });
+  }
+}
+
+function splitShot(shot, impactX, impactY) {
+  sfxSplit();
+  for (let s = -1; s <= 1; s += 2) {
+    const angle = -Math.PI / 2 + s * SPLIT_ANGLE;
+    shots.push({
+      x: impactX,
+      y: impactY,
+      vx: Math.cos(angle) * SPLIT_SPEED,
+      vy: Math.sin(angle) * SPLIT_SPEED,
+      r: 6,
+      split: true,
+      generation: shot.generation + 1,
+      hue: (shot.hue + 40) % 360,
+      trail: [],
+    });
+  }
+}
+
+// ─── Particles ───────────────────────────────────────────────────────────────
+function spawnParticles(x, y, hue, count = 8, speed = 180) {
+  for (let i = 0; i < count; i++) {
+    const angle = (Math.PI * 2 * i) / count + Math.random() * 0.4;
+    const spd = speed * (0.5 + Math.random() * 0.8);
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * spd,
+      vy: Math.sin(angle) * spd,
+      r: 3 + Math.random() * 3,
+      life: 0.5 + Math.random() * 0.3,
+      maxLife: 0.5 + Math.random() * 0.3,
+      hue: hue + Math.random() * 30 - 15,
+    });
+  }
+}
+
+// ─── Score URL banner ─────────────────────────────────────────────────────────
+let challengeScore = null;
+(function() {
+  const params = new URLSearchParams(window.location.search);
+  const s = parseInt(params.get('score'));
+  if (!isNaN(s) && s > 0) challengeScore = s;
+})();
+
+// ─── Main loop ───────────────────────────────────────────────────────────────
+let lastTime = 0;
+
+function loop(ts) {
+  requestAnimationFrame(loop);
+  const rawDt = Math.min((ts - lastTime) / 1000, 0.05);
+  lastTime = ts;
+
+  // Hit stop: freeze game logic
+  if (hitStopTimer > 0) {
+    hitStopTimer -= rawDt;
+    render(0);
+    return;
+  }
+
+  const dt = rawDt;
+
+  if (state === 'playing') update(dt);
+  render(dt);
+}
+
+function update(dt) {
+  elapsed += dt;
+  hue = (hue + dt * 20) % 360;
+  fireCooldown = Math.max(0, fireCooldown - dt);
+
+  // Combo decay
+  if (combo > 0) {
+    comboTimer -= dt;
+    if (comboTimer <= 0) {
+      combo = 0;
+      if (multiplier > 1) multiplier = Math.max(1, multiplier - 1);
+    }
+  }
+
+  // Spawn
+  spawnTimer -= dt;
+  if (spawnTimer <= 0) {
+    spawnEnemy();
+    spawnInterval = Math.max(0.28, Math.min(0.85, 0.85 - 0.010 * elapsed));
+    spawnTimer = spawnInterval;
+  }
+
+  // Update shots
+  for (let i = shots.length - 1; i >= 0; i--) {
+    const s = shots[i];
+    s.trail.push({ x: s.x, y: s.y });
+    if (s.trail.length > 8) s.trail.shift();
+    s.x += s.vx * dt;
+    s.y += s.vy * dt;
+
+    // Out of bounds
+    if (s.x < -20 || s.x > W + 20 || s.y < -50 || s.y > H + 20) {
+      shots.splice(i, 1);
+      continue;
+    }
+
+    // Bumper collision (only unsplit shots)
+    if (!s.split) {
+      for (const b of bumpers) {
+        const dx = s.x - b.x, dy = s.y - b.y;
+        if (dx * dx + dy * dy < (s.r + b.r) * (s.r + b.r)) {
+          splitShot(s, s.x, s.y);
+          spawnParticles(s.x, s.y, b.hue, 6, 120);
+          shots.splice(i, 1);
+          break;
+        }
+      }
+      if (i >= shots.length || shots[i] !== s) continue;
+    }
+
+    // Enemy collision
+    let hit = false;
+    for (let j = enemies.length - 1; j >= 0; j--) {
+      const e = enemies[j];
+      const dx = s.x - e.x, dy = s.y - e.y;
+      if (dx * dx + dy * dy < (s.r + e.r) * (s.r + e.r)) {
+        // Split on first impact if unsplit
+        if (!s.split) {
+          splitShot(s, s.x, s.y);
+        }
+        sfxHit();
+        e.hp--;
+        e.hit = 0.12;
+        spawnParticles(s.x, s.y, parseFloat(e.hue), 5, 140);
+
+        if (e.hp <= 0) {
+          const pts = e.pts * multiplier;
+          score += pts;
+          if (e.id === 'golden') sfxGolden();
+          spawnParticles(e.x, e.y, parseFloat(e.hue), 14, 220);
+          enemies.splice(j, 1);
+          combo++;
+          comboTimer = COMBO_EXPIRE;
+          const newMult = Math.min(6, 1 + Math.floor(combo / 6));
+          if (newMult > multiplier) { multiplier = newMult; sfxCombo(); }
+          // Hit-stop on multi-kill potential
+          if (combo % 6 === 0 && combo > 0) hitStopTimer = 0.06;
+          // Screen shake on large combos
+          if (pts >= 100) { shakeTimer = 0.15; shakeAmt = 4; }
+        }
+
+        shots.splice(i, 1);
+        hit = true;
+        break;
+      }
+    }
+    if (hit) continue;
+  }
+
+  // Update enemies
+  dangerFlash = 0;
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    const e = enemies[i];
+    e.y += e.vy * dt;
+    if (e.hit > 0) e.hit -= dt;
+
+    if (e.y > REEF_Y) {
+      // Game over
+      sfxDie();
+      shakeTimer = 0.5; shakeAmt = 10;
+      if (score > best) { best = score; localStorage.setItem(LS_BEST, best); }
+      state = 'gameover';
+      return;
+    }
+    if (e.y > REEF_Y - 80) dangerFlash = Math.max(dangerFlash, 1 - (REEF_Y - e.y) / 80);
+  }
+
+  // Particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy += 80 * dt;
+    p.life -= dt;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+
+  // Bumper refresh
+  refreshBumpers();
+
+  // Shake
+  if (shakeTimer > 0) shakeTimer -= dt;
+}
+
+// ─── Rendering ───────────────────────────────────────────────────────────────
+function render(dt) {
+  ctx.save();
+
+  // Screen shake
+  if (shakeTimer > 0 && state !== 'start') {
+    const intensity = (shakeTimer / 0.5) * shakeAmt;
+    ctx.translate(
+      (Math.random() - 0.5) * intensity * 2,
+      (Math.random() - 0.5) * intensity * 2
+    );
+  }
+
+  // Background gradient
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, '#020a18');
+  bg.addColorStop(1, '#0a1e38');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // Ocean shimmer lines
+  ctx.save();
+  for (let i = 0; i < 6; i++) {
+    const lineY = ((Date.now() / 3000 + i / 6) % 1) * H;
+    ctx.strokeStyle = `rgba(30,100,200,0.06)`;
+    ctx.lineWidth = 40;
+    ctx.beginPath();
+    ctx.moveTo(0, lineY);
+    ctx.lineTo(W, lineY);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  if (state === 'start') {
+    drawStartScreen();
+  } else if (state === 'playing') {
+    drawGame();
+    drawHUD();
+  } else if (state === 'gameover') {
+    drawGame();
+    drawGameOver();
+  }
+
+  ctx.restore();
+}
+
+function drawStartScreen() {
+  // Title
+  ctx.save();
+  const cy = H / 2 - 60;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  // Animated title hue
+  const th = (Date.now() / 20) % 360;
+
+  ctx.font = 'bold 56px system-ui';
+  ctx.fillStyle = `hsl(${th}, 80%, 65%)`;
+  ctx.shadowColor = `hsl(${th}, 100%, 50%)`;
+  ctx.shadowBlur = 24;
+  ctx.fillText('TIDE', W / 2, cy);
+  ctx.fillStyle = `hsl(${(th + 180) % 360}, 80%, 65%)`;
+  ctx.shadowColor = `hsl(${(th + 180) % 360}, 100%, 50%)`;
+  ctx.fillText('TWINS', W / 2, cy + 64);
+
+  ctx.shadowBlur = 0;
+  ctx.font = '18px system-ui';
+  ctx.fillStyle = '#8ab8d8';
+  ctx.fillText('Split & Sweep', W / 2, cy + 120);
+
+  // Instructions
+  ctx.font = '14px system-ui';
+  ctx.fillStyle = '#4a7090';
+  ctx.fillText('Tap to fire twin shots', W / 2, cy + 160);
+  ctx.fillText('They split on impact', W / 2, cy + 182);
+  ctx.fillText('Destroy enemies before they reach the reef!', W / 2, cy + 204);
+
+  // Pulse tap
+  const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 400);
+  ctx.font = `bold 20px system-ui`;
+  ctx.fillStyle = `rgba(140,200,255,${0.6 + 0.4 * pulse})`;
+  ctx.fillText('TAP TO START', W / 2, cy + 260);
+
+  // Challenge banner
+  if (challengeScore !== null) {
+    ctx.font = '14px system-ui';
+    ctx.fillStyle = '#ffd700';
+    ctx.fillText(`Can you beat ${challengeScore}?`, W / 2, cy + 296);
+  }
+
+  // Best score
+  if (best > 0) {
+    ctx.font = '13px system-ui';
+    ctx.fillStyle = '#4a6080';
+    ctx.fillText(`Best: ${best}`, W / 2, H - 40);
+  }
+
+  // Mute button
+  drawMuteButton();
+  ctx.restore();
+}
+
+function drawGame() {
+  // Danger warning overlay
+  if (dangerFlash > 0) {
+    ctx.save();
+    ctx.fillStyle = `rgba(255,40,40,${dangerFlash * 0.25})`;
+    ctx.fillRect(0, 0, W, H);
+    // Danger line
+    ctx.strokeStyle = `rgba(255,60,60,${dangerFlash * 0.9})`;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8, 6]);
+    ctx.beginPath();
+    ctx.moveTo(0, REEF_Y - 60);
+    ctx.lineTo(W, REEF_Y - 60);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
+  // Reef line
+  const reefGrad = ctx.createLinearGradient(0, REEF_Y - 4, 0, REEF_Y + 20);
+  reefGrad.addColorStop(0, `hsl(${hue}, 60%, 50%)`);
+  reefGrad.addColorStop(1, `hsl(${hue}, 40%, 20%)`);
+  ctx.fillStyle = reefGrad;
+  ctx.fillRect(0, REEF_Y, W, H - REEF_Y);
+
+  // Reef texture bumps
+  ctx.save();
+  for (let i = 0; i < LANES; i++) {
+    const bx = i * LANE_W + LANE_W / 2;
+    ctx.fillStyle = `hsl(${(hue + i * 20) % 360}, 55%, 45%)`;
+    ctx.beginPath();
+    ctx.ellipse(bx, REEF_Y, LANE_W * 0.35, 10, 0, Math.PI, 0);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // Cannon
+  drawCannon();
+
+  // Bumpers
+  for (const b of bumpers) drawBumper(b);
+
+  // Preview wedge (for the primary unsplit shot)
+  drawPreviewWedge();
+
+  // Enemies
+  for (const e of enemies) drawEnemy(e);
+
+  // Shots
+  for (const s of shots) drawShot(s);
+
+  // Particles
+  for (const p of particles) drawParticle(p);
+}
+
+function drawCannon() {
+  const cx = W / 2;
+  const cy = REEF_Y - 18;
+
+  // Base platform
+  ctx.save();
+  ctx.fillStyle = `hsl(${hue}, 50%, 30%)`;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + 10, 30, 10, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Barrel
+  ctx.fillStyle = `hsl(${hue}, 60%, 55%)`;
+  ctx.beginPath();
+  ctx.roundRect(cx - 8, cy - 28, 16, 36, 4);
+  ctx.fill();
+
+  // Twin barrels
+  for (let s = -1; s <= 1; s += 2) {
+    ctx.fillStyle = `hsl(${(hue + 30) % 360}, 70%, 65%)`;
+    ctx.beginPath();
+    ctx.roundRect(cx + s * TWIN_OFFSET - 4, cy - 32, 8, 36, 3);
+    ctx.fill();
+  }
+
+  // Glow
+  const cool = fireCooldown / FIRE_COOLDOWN;
+  if (cool < 0.4) {
+    ctx.shadowColor = `hsl(${hue}, 100%, 60%)`;
+    ctx.shadowBlur = 16 * (1 - cool / 0.4);
+    ctx.fillStyle = `hsl(${hue}, 80%, 70%)`;
+    ctx.beginPath();
+    ctx.arc(cx, cy - 28, 5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawBumper(b) {
+  ctx.save();
+  const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 600 + b.x);
+  ctx.shadowColor = `hsl(${b.hue}, 90%, 60%)`;
+  ctx.shadowBlur = 12 + 6 * pulse;
+  ctx.strokeStyle = `hsl(${b.hue}, 80%, 65%)`;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = `hsla(${b.hue}, 70%, 40%, 0.4)`;
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawPreviewWedge() {
+  // Find the first unsplit shot going upward
+  const primary = shots.find(s => !s.split && s.vy < 0);
+  if (!primary) {
+    // Draw static preview from cannon if no shot active
+    drawStaticPreview();
+    return;
+  }
+
+  // Find next obstacle along vertical path
+  let hitY = primary.y + primary.vy / Math.abs(primary.vy) * 1000;
+  let hitX = primary.x;
+  let found = false;
+
+  // Check bumpers
+  for (const b of bumpers) {
+    if (Math.abs(b.x - primary.x) < b.r + primary.r) {
+      if (b.y < primary.y) {
+        if (!found || b.y > hitY) {
+          hitY = b.y;
+          hitX = primary.x;
+          found = true;
+        }
+      }
+    }
+  }
+
+  // Check enemies
+  for (const e of enemies) {
+    if (Math.abs(e.x - primary.x) < e.r + primary.r) {
+      if (e.y < primary.y) {
+        if (!found || e.y > hitY) {
+          hitY = e.y;
+          hitX = primary.x;
+          found = true;
+        }
+      }
+    }
+  }
+
+  if (!found) { drawStaticPreview(); return; }
+
+  drawWedgeAt(hitX, hitY, primary.hue);
+}
+
+function drawStaticPreview() {
+  // Show wedge from cannon position
+  const cx = W / 2;
+  const cy = REEF_Y - 48;
+  // Simplified static indicator
+  ctx.save();
+  ctx.globalAlpha = 0.18;
+  ctx.strokeStyle = `hsl(${hue}, 80%, 65%)`;
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([4, 6]);
+  ctx.beginPath();
+  ctx.moveTo(cx - TWIN_OFFSET, cy);
+  ctx.lineTo(cx - TWIN_OFFSET, 40);
+  ctx.moveTo(cx + TWIN_OFFSET, cy);
+  ctx.lineTo(cx + TWIN_OFFSET, 40);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+function drawWedgeAt(x, y, h) {
+  ctx.save();
+  ctx.globalAlpha = 0.5;
+  const len = 80;
+  const ang1 = -Math.PI / 2 + SPLIT_ANGLE;
+  const ang2 = -Math.PI / 2 - SPLIT_ANGLE;
+  ctx.strokeStyle = `hsl(${h}, 90%, 70%)`;
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([5, 4]);
+  ctx.shadowColor = `hsl(${h}, 100%, 60%)`;
+  ctx.shadowBlur = 8;
+
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x + Math.cos(ang1) * len, y + Math.sin(ang1) * len);
+  ctx.moveTo(x, y);
+  ctx.lineTo(x + Math.cos(ang2) * len, y + Math.sin(ang2) * len);
+  ctx.stroke();
+
+  // Impact point marker
+  ctx.setLineDash([]);
+  ctx.globalAlpha = 0.8;
+  ctx.beginPath();
+  ctx.arc(x, y, 5, 0, Math.PI * 2);
+  ctx.fillStyle = `hsl(${h}, 90%, 75%)`;
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawEnemy(e) {
+  ctx.save();
+  const eh = typeof e.hue === 'number' ? e.hue : parseFloat(e.hue) || 0;
+
+  if (e.hit > 0) {
+    ctx.shadowColor = 'white';
+    ctx.shadowBlur = 20;
+  }
+
+  if (e.id === 'golden') {
+    // Golden jelly – pulsing gold
+    const pulse = 0.6 + 0.4 * Math.sin(Date.now() / 200);
+    ctx.shadowColor = '#ffd700';
+    ctx.shadowBlur = 16 * pulse;
+    ctx.fillStyle = '#ffd700';
+    ctx.beginPath();
+    ctx.ellipse(e.x, e.y, e.r, e.r * 1.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Shine
+    ctx.fillStyle = 'rgba(255,255,200,0.6)';
+    ctx.beginPath();
+    ctx.ellipse(e.x - e.r * 0.3, e.y - e.r * 0.3, e.r * 0.3, e.r * 0.2, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (e.id === 'puffer') {
+    // Puffer mine – spiky
+    ctx.fillStyle = e.color;
+    ctx.shadowColor = '#ff6030';
+    ctx.shadowBlur = 10;
+    const spikes = 8;
+    ctx.beginPath();
+    for (let i = 0; i < spikes * 2; i++) {
+      const ang = (i / (spikes * 2)) * Math.PI * 2;
+      const r = i % 2 === 0 ? e.r : e.r * 0.6;
+      i === 0 ? ctx.moveTo(e.x + Math.cos(ang) * r, e.y + Math.sin(ang) * r)
+               : ctx.lineTo(e.x + Math.cos(ang) * r, e.y + Math.sin(ang) * r);
+    }
+    ctx.closePath();
+    ctx.fill();
+  } else if (e.id === 'armored') {
+    // Armored – hexagonal with border
+    ctx.fillStyle = e.color;
+    ctx.strokeStyle = '#aab8c8';
+    ctx.lineWidth = 3;
+    const sides = 6;
+    ctx.beginPath();
+    for (let i = 0; i < sides; i++) {
+      const ang = (i / sides) * Math.PI * 2;
+      i === 0 ? ctx.moveTo(e.x + Math.cos(ang) * e.r, e.y + Math.sin(ang) * e.r)
+               : ctx.lineTo(e.x + Math.cos(ang) * e.r, e.y + Math.sin(ang) * e.r);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    // HP pips
+    for (let i = 0; i < e.hp; i++) {
+      ctx.fillStyle = '#dde8f0';
+      ctx.beginPath();
+      ctx.arc(e.x + (i - (e.maxHp - 1) / 2) * 7, e.y + e.r + 6, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else {
+    // Trash – simple circle
+    ctx.fillStyle = e.color;
+    ctx.shadowColor = `hsl(${eh}, 60%, 50%)`;
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.arc(e.x, e.y, e.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+function drawShot(s) {
+  ctx.save();
+  const sh = s.hue;
+
+  // Trail
+  for (let i = 0; i < s.trail.length; i++) {
+    const t = s.trail[i];
+    const alpha = (i / s.trail.length) * 0.4;
+    const r = s.r * (i / s.trail.length) * 0.6;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = `hsl(${sh}, 90%, 70%)`;
+    ctx.beginPath();
+    ctx.arc(t.x, t.y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.globalAlpha = 1;
+  ctx.shadowColor = `hsl(${sh}, 100%, 60%)`;
+  ctx.shadowBlur = 14;
+  ctx.fillStyle = `hsl(${sh}, 85%, 72%)`;
+  ctx.beginPath();
+  ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Core
+  ctx.fillStyle = 'white';
+  ctx.shadowBlur = 0;
+  ctx.beginPath();
+  ctx.arc(s.x, s.y, s.r * 0.4, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawParticle(p) {
+  const alpha = p.life / p.maxLife;
+  ctx.save();
+  ctx.globalAlpha = alpha * 0.9;
+  ctx.fillStyle = `hsl(${p.hue}, 90%, 65%)`;
+  ctx.shadowColor = `hsl(${p.hue}, 100%, 60%)`;
+  ctx.shadowBlur = 6;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, p.r * alpha, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawHUD() {
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+
+  // Score
+  ctx.font = 'bold 32px system-ui';
+  ctx.fillStyle = 'white';
+  ctx.shadowColor = `hsl(${hue}, 80%, 50%)`;
+  ctx.shadowBlur = 12;
+  ctx.fillText(score, W / 2, 18);
+  ctx.shadowBlur = 0;
+
+  // Multiplier
+  if (multiplier > 1) {
+    ctx.font = 'bold 18px system-ui';
+    ctx.fillStyle = `hsl(${hue}, 90%, 70%)`;
+    ctx.fillText(`x${multiplier}`, W / 2 + 60, 22);
+  }
+
+  // Combo meter bar
+  if (combo > 0) {
+    const barW = 160;
+    const barX = W / 2 - barW / 2;
+    const barY = 58;
+    const fill = Math.max(0, comboTimer / COMBO_EXPIRE);
+    ctx.fillStyle = 'rgba(255,255,255,0.1)';
+    ctx.beginPath();
+    ctx.roundRect(barX, barY, barW, 6, 3);
+    ctx.fill();
+    const barHue = fill > 0.5 ? 120 : fill > 0.25 ? 50 : 0;
+    ctx.fillStyle = `hsl(${barHue}, 90%, 60%)`;
+    ctx.beginPath();
+    ctx.roundRect(barX, barY, barW * fill, 6, 3);
+    ctx.fill();
+
+    ctx.font = '12px system-ui';
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.fillText(`COMBO x${combo}`, W / 2, barY + 10);
+  }
+
+  // Mute button
+  drawMuteButton();
+
+  ctx.restore();
+}
+
+function drawMuteButton() {
+  const mx = W - 30, my = 20;
+  ctx.save();
+  ctx.font = '18px system-ui';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = muted ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.7)';
+  ctx.fillText(muted ? '🔇' : '🔊', mx, my);
+  ctx.restore();
+}
+
+function drawGameOver() {
+  // Dark overlay
+  ctx.fillStyle = 'rgba(2,10,24,0.78)';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  const cy = H / 2 - 60;
+
+  // Game over title
+  ctx.font = 'bold 44px system-ui';
+  ctx.fillStyle = `hsl(${hue}, 80%, 65%)`;
+  ctx.shadowColor = `hsl(${hue}, 100%, 50%)`;
+  ctx.shadowBlur = 20;
+  ctx.fillText('GAME OVER', W / 2, cy);
+
+  ctx.shadowBlur = 0;
+  ctx.font = 'bold 36px system-ui';
+  ctx.fillStyle = 'white';
+  ctx.fillText(score, W / 2, cy + 60);
+
+  ctx.font = '16px system-ui';
+  ctx.fillStyle = '#4a7090';
+  ctx.fillText(`Best: ${best}`, W / 2, cy + 100);
+
+  if (score >= best && score > 0) {
+    ctx.font = 'bold 15px system-ui';
+    ctx.fillStyle = '#ffd700';
+    ctx.shadowColor = '#ffd700';
+    ctx.shadowBlur = 10;
+    ctx.fillText('NEW BEST!', W / 2, cy + 126);
+    ctx.shadowBlur = 0;
+  }
+
+  // Tap to retry
+  const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 400);
+  ctx.font = `bold 20px system-ui`;
+  ctx.fillStyle = `rgba(140,200,255,${0.6 + 0.4 * pulse})`;
+  ctx.fillText('TAP TO RETRY', W / 2, cy + 180);
+
+  // Share button
+  drawShareButton(cy + 230);
+
+  // Mute
+  drawMuteButton();
+
+  ctx.restore();
+}
+
+let shareButtonRect = null;
+
+function drawShareButton(y) {
+  const bw = 180, bh = 40;
+  const bx = W / 2 - bw / 2;
+  const by = y;
+  shareButtonRect = { x: bx, y: by, w: bw, h: bh };
+
+  ctx.save();
+  ctx.fillStyle = `hsl(${hue}, 60%, 30%)`;
+  ctx.strokeStyle = `hsl(${hue}, 80%, 55%)`;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(bx, by, bw, bh, 8);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.font = 'bold 15px system-ui';
+  ctx.fillStyle = 'white';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('📤 Share Score', W / 2, by + bh / 2);
+  ctx.restore();
+}
+
+async function doShare() {
+  const url = `https://balinti.github.io/tide-twins/?score=${score}`;
+  const text = `I scored ${score} in Tide Twins! Can you beat me?`;
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: 'Tide Twins', text, url });
+      return;
+    } catch(e) {}
+  }
+  // Fallback: copy
+  try {
+    await navigator.clipboard.writeText(url);
+    showToast('Link copied!');
+  } catch(e) {
+    showToast(url);
+  }
+}
+
+// Simple toast
+let toastMsg = '', toastTimer = 0;
+function showToast(msg) { toastMsg = msg; toastTimer = 2; }
+
+function renderToast(dt) {
+  if (toastTimer <= 0) return;
+  toastTimer -= dt;
+  ctx.save();
+  ctx.globalAlpha = Math.min(1, toastTimer);
+  ctx.fillStyle = 'rgba(20,60,100,0.9)';
+  ctx.beginPath();
+  ctx.roundRect(W / 2 - 120, H - 80, 240, 36, 8);
+  ctx.fill();
+  ctx.font = '14px system-ui';
+  ctx.fillStyle = 'white';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(toastMsg, W / 2, H - 62);
+  ctx.restore();
+}
+
+// ─── Input ───────────────────────────────────────────────────────────────────
+function getCanvasPoint(e) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = W / rect.width;
+  const scaleY = H / rect.height;
+  return {
+    x: (e.clientX - rect.left) * scaleX,
+    y: (e.clientY - rect.top) * scaleY,
+  };
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  const pt = getCanvasPoint(e);
+
+  // Mute button hit test
+  const mx = W - 30, my = 20;
+  if (Math.abs(pt.x - mx) < 20 && Math.abs(pt.y - my) < 20) {
+    muted = !muted;
+    localStorage.setItem(LS_MUTE, muted ? '1' : '0');
+    return;
+  }
+
+  if (state === 'start') {
+    state = 'playing';
+    initGame();
+    return;
+  }
+
+  if (state === 'gameover') {
+    // Share button?
+    if (shareButtonRect) {
+      const r = shareButtonRect;
+      if (pt.x >= r.x && pt.x <= r.x + r.w && pt.y >= r.y && pt.y <= r.y + r.h) {
+        doShare();
+        return;
+      }
+    }
+    state = 'playing';
+    initGame();
+    return;
+  }
+
+  if (state === 'playing') {
+    fireShots();
+  }
+}, { passive: false });
+
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    if (state === 'start' || state === 'gameover') {
+      state = 'playing';
+      initGame();
+    } else if (state === 'playing') {
+      fireShots();
+    }
+  }
+  if (e.code === 'KeyM') {
+    muted = !muted;
+    localStorage.setItem(LS_MUTE, muted ? '1' : '0');
+  }
+});
+
+// Prevent context menu and scroll
+window.addEventListener('contextmenu', e => e.preventDefault());
+window.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+
+// ─── Override render to include toast ────────────────────────────────────────
+const _render = render;
+const originalLoop = loop;
+// Patch loop to include toast
+function patchedLoop(ts) {
+  requestAnimationFrame(patchedLoop);
+  const rawDt = Math.min((ts - lastTime) / 1000, 0.05);
+  lastTime = ts;
+
+  if (hitStopTimer > 0) {
+    hitStopTimer -= rawDt;
+    renderFrame(0);
+    renderToast(rawDt);
+    return;
+  }
+
+  const dt = rawDt;
+  if (state === 'playing') update(dt);
+  renderFrame(dt);
+  renderToast(dt);
+}
+
+function renderFrame(dt) {
+  ctx.save();
+
+  if (shakeTimer > 0 && state !== 'start') {
+    const intensity = (shakeTimer / 0.5) * shakeAmt;
+    ctx.translate(
+      (Math.random() - 0.5) * intensity * 2,
+      (Math.random() - 0.5) * intensity * 2
+    );
+  }
+
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, '#020a18');
+  bg.addColorStop(1, '#0a1e38');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.save();
+  for (let i = 0; i < 6; i++) {
+    const lineY = ((Date.now() / 3000 + i / 6) % 1) * H;
+    ctx.strokeStyle = `rgba(30,100,200,0.06)`;
+    ctx.lineWidth = 40;
+    ctx.beginPath();
+    ctx.moveTo(0, lineY);
+    ctx.lineTo(W, lineY);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  if (state === 'start') {
+    drawStartScreen();
+  } else if (state === 'playing') {
+    drawGame();
+    drawHUD();
+  } else if (state === 'gameover') {
+    drawGame();
+    drawGameOver();
+  }
+
+  ctx.restore();
+}
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+requestAnimationFrame(patchedLoop);
+</script>
+
+<!-- SEO content block -->
+<section id="info-block">
+  <h1>Tide Twins — Split &amp; Sweep</h1>
+  <p>Tap to fire twin shots &middot; They split on impact &middot; Destroy enemies before they reach the reef &middot; Chain kills for combo multipliers!</p>
+</section>
+</body>
+</html>

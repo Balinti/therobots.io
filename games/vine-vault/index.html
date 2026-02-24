@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Vine Vault - Free HTML5 Game</title>
+  <meta name="description" content="Play Vine Vault - Tap to reverse gravity and vault off forest vines, racing upwards through shifting perspectives.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0d1f0f">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Vine Vault - Free HTML5 Game">
+  <meta property="og:description" content="Tap to reverse gravity and vault off forest vines, racing upwards through shifting perspectives.">
+  <meta property="og:url" content="https://balinti.github.io/vine-vault/">
+  <meta property="og:image" content="https://balinti.github.io/vine-vault/preview.png">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Vine Vault - Free HTML5 Game">
+  <meta name="twitter:description" content="Tap to reverse gravity and vault off forest vines, racing upwards through shifting perspectives.">
+  <meta name="twitter:image" content="https://balinti.github.io/vine-vault/preview.png">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #060e07;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: flex-start;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      overflow-x: hidden;
+    }
+    #game-wrap {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      height: 100dvh;
+      max-height: 750px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    #gameCanvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+      cursor: pointer;
+    }
+    #seo-section {
+      max-width: 420px;
+      width: 100%;
+      padding: 18px 16px 24px;
+      color: #8ab88a;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    #seo-section h2 { color: #aee8a0; font-size: 15px; margin-bottom: 6px; }
+    #seo-section p { margin-bottom: 8px; }
+    #seo-section .kw { color: #5a9a5a; font-size: 11px; }
+  </style>
+</head>
+<body>
+<div id="game-wrap">
+  <canvas id="gameCanvas"></canvas>
+</div>
+
+<section id="seo-section" aria-label="About Vine Vault">
+  <h2>How to Play Vine Vault</h2>
+  <p>Tap or press Space to flip gravity. Drift toward vines and snap onto them to launch yourself upward. Hit the glowing sweet spot for a Perfect Snap bonus and combo multiplier. Avoid spike bands at the edges!</p>
+  <p>Score points through height gained, combos, and perfect launches. Difficulty increases over time — vines move faster, sweet spots shrink, and dangerous red vines appear.</p>
+  <p class="kw">Keywords: vine vault, html5 game, casual game, gravity flip, free browser game, mobile game, tap game, arcade game, hyper-casual</p>
+</section>
+
+<script>
+(function() {
+'use strict';
+
+// ── Canvas Setup ─────────────────────────────────────────────────────────────
+const wrap   = document.getElementById('game-wrap');
+const canvas = document.getElementById('gameCanvas');
+const ctx    = canvas.getContext('2d');
+
+let W = 0, H = 0, DPR = 1;
+
+function resize() {
+  const rect = wrap.getBoundingClientRect();
+  W = rect.width;
+  H = rect.height;
+  DPR = Math.min(window.devicePixelRatio || 1, 3);
+  canvas.width  = W * DPR;
+  canvas.height = H * DPR;
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.scale(DPR, DPR);
+}
+window.addEventListener('resize', () => { resize(); if (state !== 'playing') drawStatic(); });
+resize();
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+const LANE_L = 0.28;  // fraction of W
+const LANE_R = 0.72;
+const PREVIEW_H = 48;  // top preview band height px
+const SPIKE_H   = 22;  // spike zone height px
+const PLAYER_R  = 13;
+const GRAVITY   = 900;
+const LAUNCH_SPEED = -620; // upward
+const SNAP_DURATION = 0.12; // seconds clamped to vine
+const SWEET_R_BASE  = 28;
+const COMBO_MAX     = 10;
+const SHARE_URL     = 'https://balinti.github.io/vine-vault/';
+
+// ── Persistent State ──────────────────────────────────────────────────────────
+let highScore = parseInt(localStorage.getItem('vv_hs') || '0', 10);
+let muted     = localStorage.getItem('vv_mute') === '1';
+
+// ── Game State ────────────────────────────────────────────────────────────────
+let state = 'start'; // 'start' | 'playing' | 'gameover'
+let score = 0, combo = 0, height = 0;
+let hue   = 120; // HSL cycling
+
+// Player
+let px, py, pvx, pvy;
+let gravDir    = 1; // +1 down, -1 up
+let snapTarget = null; // vine being snapped
+let snapTimer  = 0;
+let lane       = 0; // 0 = left, 1 = right (current committed lane)
+let lastLaunchY = 0;
+
+// Vines array
+let vines = [];
+let vineSpawnY = 0; // next spawn Y in world coords (world scrolls down on screen)
+let scrollY = 0;   // how many px the world has scrolled (camera offset)
+let scrollSpeed = 120; // px/sec base
+let spawnInterval = 180; // px between vines
+
+// Particles pool
+const POOL_SIZE = 300;
+const pool = [];
+let poolIdx = 0;
+for (let i = 0; i < POOL_SIZE; i++) pool.push({ alive: false });
+
+// Screen shake
+let shakeAmt = 0, shakeDur = 0;
+
+// Retry button region
+let retryBtn  = { x: 0, y: 0, w: 0, h: 0 };
+let shareBtn  = { x: 0, y: 0, w: 0, h: 0 };
+let muteBtn   = { x: 0, y: 0, w: 20, h: 20 };
+let startBtn  = { x: 0, y: 0, w: 0, h: 0 };
+
+// ── Audio (Web Audio API minimal) ─────────────────────────────────────────────
+let audioCtx = null;
+function ensureAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+}
+function playTone(freq, type, dur, vol) {
+  if (muted) return;
+  try {
+    ensureAudio();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.type = type || 'sine';
+    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    gain.gain.setValueAtTime(vol || 0.18, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+    osc.start(); osc.stop(audioCtx.currentTime + dur);
+  } catch(e) {}
+}
+function sfxSnap()    { playTone(280, 'triangle', 0.10, 0.22); }
+function sfxPerfect() { playTone(560, 'sine', 0.18, 0.28); setTimeout(()=>playTone(700,'sine',0.12,0.20),80); }
+function sfxDeath()   { playTone(100, 'sawtooth', 0.35, 0.30); }
+function sfxFlip()    { playTone(200, 'square', 0.06, 0.10); }
+
+// ── Particle Pool ─────────────────────────────────────────────────────────────
+function spawnParticle(x, y, vx, vy, life, r, h, s, l, alpha) {
+  const p = pool[poolIdx % POOL_SIZE]; poolIdx++;
+  p.alive = true; p.x = x; p.y = y; p.vx = vx; p.vy = vy;
+  p.life = life; p.maxLife = life; p.r = r;
+  p.h = h; p.s = s; p.l = l; p.alpha = alpha || 1;
+}
+function burstParticles(x, y, count, h, perfect) {
+  for (let i = 0; i < count; i++) {
+    const angle = (Math.PI * 2 / count) * i + Math.random() * 0.5;
+    const spd   = perfect ? 80 + Math.random() * 160 : 40 + Math.random() * 100;
+    spawnParticle(x, y, Math.cos(angle)*spd, Math.sin(angle)*spd,
+      0.5 + Math.random() * 0.4, 3 + Math.random() * 4,
+      h, 80 + Math.random()*20, 55 + Math.random()*20, 1);
+  }
+}
+
+// ── Vine Generation ───────────────────────────────────────────────────────────
+/*
+  A vine occupies one lane (left or right).
+  It's an arc: center at (laneX, vy), radius arcR, spanning ~120 deg.
+  Sweet spot at arc midpoint.
+  Type: 'green' | 'yellow' | 'red'
+*/
+function spawnVine(worldY) {
+  const diff  = getDifficulty();
+  const isR   = Math.random() < 0.5;
+  const laneX = (isR ? LANE_R : LANE_L) * W;
+  const arcR  = 38 + Math.random() * 18;
+  const span  = 1.1 + Math.random() * 0.5; // radians total arc
+  const baseAngle = isR ? Math.PI : 0; // arc faces inward
+  const startAngle = baseAngle - span / 2;
+  const endAngle   = baseAngle + span / 2;
+  // sweet spot bead at midpoint of arc
+  const sweetAngle = (startAngle + endAngle) / 2;
+  const sweetX = laneX + Math.cos(sweetAngle) * arcR;
+  const sweetY = worldY + Math.sin(sweetAngle) * arcR;
+
+  let type = 'green';
+  if (diff.phase >= 2 && Math.random() < 0.35) type = 'yellow';
+  if (diff.phase >= 3 && Math.random() < 0.25) type = 'red';
+
+  const sweetR = Math.max(10, SWEET_R_BASE - diff.sweetShrink);
+
+  return { laneX, worldY, arcR, startAngle, endAngle, sweetAngle,
+           sweetX: laneX + Math.cos(sweetAngle)*arcR,
+           sweetY: worldY + Math.sin(sweetAngle)*arcR,
+           sweetR, type, isRight: isR,
+           hit: false, screenY: 0 };
+}
+
+function getDifficulty() {
+  const t = Math.min(score / 1200, 1);
+  const phase = score < 200 ? 1 : score < 600 ? 2 : 3;
+  return {
+    scrollSpeed: 120 + t * 280,
+    spawnInterval: Math.max(110, 180 - t * 70),
+    sweetShrink: t * 18,
+    phase
+  };
+}
+
+// ── Init / Reset ──────────────────────────────────────────────────────────────
+function initGame() {
+  score = 0; combo = 0; height = 0; hue = 120;
+  gravDir = 1; snapTarget = null; snapTimer = 0;
+  lane = 0; shakeAmt = 0; shakeDur = 0; poolIdx = 0;
+  scrollY = 0;
+  for (let p of pool) p.alive = false;
+  vines = [];
+
+  // Player starts center, 60% down
+  px = W / 2;
+  py = H * 0.6;
+  pvx = 0;
+  pvy = 0;
+  lastLaunchY = py;
+
+  // Spawn initial vines ahead (in world coords, negative = above current view)
+  const diff = getDifficulty();
+  vineSpawnY = py - 200;
+  for (let i = 0; i < 8; i++) {
+    vines.push(spawnVine(vineSpawnY));
+    vineSpawnY -= diff.spawnInterval;
+  }
+}
+
+// ── Input ─────────────────────────────────────────────────────────────────────
+function handleTap(ex, ey) {
+  if (state === 'start') {
+    state = 'playing';
+    initGame();
+    return;
+  }
+  if (state === 'gameover') {
+    // Check retry btn
+    if (ex >= retryBtn.x && ex <= retryBtn.x + retryBtn.w &&
+        ey >= retryBtn.y && ey <= retryBtn.y + retryBtn.h) {
+      state = 'playing';
+      initGame();
+      return;
+    }
+    // Check share btn
+    if (ex >= shareBtn.x && ex <= shareBtn.x + shareBtn.w &&
+        ey >= shareBtn.y && ey <= shareBtn.y + shareBtn.h) {
+      doShare();
+      return;
+    }
+    return; // no tap-anywhere restart
+  }
+  // Check mute btn (top-right)
+  if (ex >= muteBtn.x && ex <= muteBtn.x + muteBtn.w &&
+      ey >= muteBtn.y && ey <= muteBtn.y + muteBtn.h) {
+    muted = !muted;
+    localStorage.setItem('vv_mute', muted ? '1' : '0');
+    return;
+  }
+  // Playing: flip gravity
+  if (state === 'playing' && !snapTarget) {
+    gravDir *= -1;
+    lane    = gravDir > 0 ? 1 : 0; // flip also changes lane commitment
+    sfxFlip();
+    // Small flip particles
+    for (let i = 0; i < 8; i++) {
+      const a = Math.random() * Math.PI * 2;
+      spawnParticle(px, py, Math.cos(a)*60, Math.sin(a)*60,
+        0.3, 2, hue, 70, 60, 0.8);
+    }
+  }
+}
+
+canvas.addEventListener('pointerdown', e => {
+  const rect = canvas.getBoundingClientRect();
+  const ex = e.clientX - rect.left;
+  const ey = e.clientY - rect.top;
+  handleTap(ex, ey);
+});
+
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    if (state === 'gameover') {
+      // Only retry if Enter/Space (treat as retry button)
+      state = 'playing'; initGame();
+    } else {
+      handleTap(W/2, H/2);
+    }
+  }
+  if (e.code === 'KeyM') { muted = !muted; localStorage.setItem('vv_mute', muted?'1':'0'); }
+});
+
+// ── Share ─────────────────────────────────────────────────────────────────────
+function doShare() {
+  const text = `I scored ${score} in Vine Vault! Can you beat me? ${SHARE_URL}`;
+  if (navigator.share) {
+    navigator.share({ title: 'Vine Vault', text, url: SHARE_URL }).catch(()=>{});
+  } else {
+    navigator.clipboard.writeText(text).then(()=>{
+      // brief flash handled in draw
+    }).catch(()=>{});
+  }
+}
+
+// ── Physics & Game Logic ──────────────────────────────────────────────────────
+function update(dt) {
+  if (state !== 'playing') return;
+  dt = Math.min(dt, 0.05); // clamp
+
+  const diff = getDifficulty();
+  scrollSpeed = diff.scrollSpeed;
+
+  hue = (hue + dt * 12) % 360;
+
+  // Shake
+  if (shakeDur > 0) { shakeDur -= dt; if (shakeDur < 0) { shakeDur = 0; shakeAmt = 0; } }
+
+  // Score: based on scroll distance
+  const oldH = height;
+  height += scrollSpeed * dt;
+  score = Math.floor(height * 0.05 + combo * 50);
+  if (score > highScore) { highScore = score; localStorage.setItem('vv_hs', highScore); }
+
+  // Spawn new vines ahead (above viewport in world)
+  while (vineSpawnY > -scrollY - H * 0.2) {
+    vineSpawnY -= diff.spawnInterval;
+    vines.push(spawnVine(vineSpawnY));
+  }
+  // Remove vines far below viewport
+  vines = vines.filter(v => (v.worldY + scrollY) < H + 100);
+
+  // Update vine screen positions
+  for (const v of vines) {
+    v.screenY = v.worldY + scrollY;
+  }
+
+  // Scroll
+  scrollY += scrollSpeed * dt;
+
+  // Update particles
+  for (const p of pool) {
+    if (!p.alive) continue;
+    p.x  += p.vx * dt;
+    p.y  += p.vy * dt;
+    p.vy += 200 * dt; // gentle gravity on particles
+    p.life -= dt;
+    if (p.life <= 0) p.alive = false;
+  }
+
+  // Snap logic
+  if (snapTarget) {
+    snapTimer -= dt;
+    // hold player at vine center during snap
+    px = snapTarget.laneX;
+    py = snapTarget.screenY;
+    pvx = 0; pvy = 0;
+    if (snapTimer <= 0) {
+      // Launch!
+      const launchDir = snapTarget.isRight ? -1 : 1; // toward center
+      pvx = launchDir * 160;
+      pvy = LAUNCH_SPEED;
+      if (snapTarget.type === 'yellow') pvy *= 1.3;
+      snapTarget.hit = true;
+      snapTarget = null;
+      // switch lane after launch
+      lane = lane === 0 ? 1 : 0;
+    }
+    return;
+  }
+
+  // Player physics
+  pvy += GRAVITY * gravDir * dt;
+
+  // Lane drift: spring toward target lane X
+  const targetX = lane === 0 ? LANE_L * W : LANE_R * W;
+  const dx = targetX - px;
+  pvx += dx * 5 * dt * 60 * dt; // spring
+  pvx *= Math.pow(0.92, dt * 60);
+
+  px += pvx * dt;
+  py += pvy * dt;
+
+  // Clamp X
+  px = Math.max(PLAYER_R, Math.min(W - PLAYER_R, px));
+
+  // Check vine collisions
+  for (const v of vines) {
+    if (v.hit) continue;
+    const sy = v.screenY;
+    if (Math.abs(sy - H * 1.1) > H * 0.6) continue; // skip far vines
+
+    // Check if player near vine arc
+    const distToCenter = Math.hypot(px - v.laneX, py - sy);
+    const onArc = Math.abs(distToCenter - v.arcR) < PLAYER_R + 8;
+
+    // Check angle within arc
+    if (onArc) {
+      const angle = Math.atan2(py - sy, px - v.laneX);
+      let a = angle;
+      // normalize
+      const midA = (v.startAngle + v.endAngle) / 2;
+      // check angular distance
+      let da = angle - midA;
+      while (da > Math.PI) da -= Math.PI * 2;
+      while (da < -Math.PI) da += Math.PI * 2;
+      const span = (v.endAngle - v.startAngle) / 2;
+
+      if (Math.abs(da) <= span + 0.1) {
+        // Check red vine
+        if (v.type === 'red') {
+          const distToSweet = Math.hypot(px - v.sweetX, py - (sy + Math.sin(v.sweetAngle)*0));
+          const distToSweetArc = Math.abs(
+            Math.hypot(px - v.laneX, py - sy) - v.arcR
+          ) + Math.abs(angle - v.sweetAngle) * v.arcR;
+          if (distToSweetArc > v.sweetR * 1.5) {
+            // weak bounce for red miss
+            pvy = -Math.abs(pvy) * 0.3;
+            combo = 0;
+            continue;
+          }
+        }
+
+        // Snap!
+        snapTarget = v;
+        snapTimer  = SNAP_DURATION;
+        sfxSnap();
+
+        // Check perfect
+        const distToSweet = Math.hypot(
+          px - (v.laneX + Math.cos(v.sweetAngle) * v.arcR),
+          py - (sy  + Math.sin(v.sweetAngle) * v.arcR)
+        );
+        const perfect = distToSweet < v.sweetR;
+        if (perfect) {
+          combo = Math.min(combo + 1, COMBO_MAX);
+          sfxPerfect();
+          burstParticles(px, py, 18, hue, true);
+          score += 100 * combo;
+        } else {
+          combo = Math.max(0, combo - 1);
+          burstParticles(px, py, 8, hue, false);
+        }
+        break;
+      }
+    }
+  }
+
+  // Death: hit top spike band (below preview)
+  const topBound  = PREVIEW_H + SPIKE_H;
+  const botBound  = H - SPIKE_H;
+
+  if (py < topBound || py > botBound) {
+    triggerDeath();
+  }
+}
+
+function triggerDeath() {
+  state = 'gameover';
+  if (score > highScore) { highScore = score; localStorage.setItem('vv_hs', highScore); }
+  sfxDeath();
+  shakeAmt = 12; shakeDur = 0.5;
+  burstParticles(px, py, 30, 0, false);
+}
+
+// ── Drawing ───────────────────────────────────────────────────────────────────
+function drawStatic() {
+  if (state === 'start') drawStart();
+  else if (state === 'gameover') drawGameover();
+}
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+
+  // Shake transform
+  let sx = 0, sy2 = 0;
+  if (shakeAmt > 0) {
+    sx  = (Math.random() - 0.5) * shakeAmt * 2;
+    sy2 = (Math.random() - 0.5) * shakeAmt * 2;
+    ctx.save();
+    ctx.translate(sx, sy2);
+  }
+
+  drawBackground();
+  if (state === 'playing' || state === 'gameover') {
+    drawVines();
+    drawPlayer();
+    drawParticles();
+    drawHUD();
+    drawPreviewBand();
+    drawSpikeBands();
+  }
+  if (state === 'start')    drawStart();
+  if (state === 'gameover') drawGameoverOverlay();
+
+  if (shakeAmt > 0) ctx.restore();
+}
+
+function drawBackground() {
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, `hsl(${(hue+160)%360},30%,6%)`);
+  grad.addColorStop(1, `hsl(${hue},25%,10%)`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Subtle vertical grid lines (lanes)
+  ctx.strokeStyle = `hsla(${hue},40%,40%,0.08)`;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(LANE_L * W, PREVIEW_H); ctx.lineTo(LANE_L * W, H);
+  ctx.moveTo(LANE_R * W, PREVIEW_H); ctx.lineTo(LANE_R * W, H);
+  ctx.stroke();
+}
+
+function drawPreviewBand() {
+  // Dark band at top showing upcoming vines
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(0, 0, W, PREVIEW_H);
+
+  ctx.strokeStyle = `hsla(${hue},60%,50%,0.4)`;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(0, PREVIEW_H); ctx.lineTo(W, PREVIEW_H);
+  ctx.stroke();
+
+  // Show upcoming vines as small dots in preview band
+  for (const v of vines) {
+    if (v.screenY < PREVIEW_H + 10 && v.screenY > -PREVIEW_H * 3) {
+      const previewX = v.laneX;
+      const previewY = PREVIEW_H * 0.5 + (v.screenY / (PREVIEW_H + 10)) * PREVIEW_H * 0.3;
+      const clr = vineColor(v.type, 0.8);
+      ctx.fillStyle = clr;
+      ctx.beginPath();
+      ctx.arc(previewX, Math.max(8, Math.min(PREVIEW_H - 8, previewY)), 4, 0, Math.PI*2);
+      ctx.fill();
+    }
+  }
+
+  // Label
+  ctx.fillStyle = `hsla(${hue},50%,70%,0.5)`;
+  ctx.font = '9px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('UPCOMING', W/2, 14);
+}
+
+function drawSpikeBands() {
+  // Top spikes (just below preview)
+  drawSpikeRow(PREVIEW_H, 1);
+  // Bottom spikes
+  drawSpikeRow(H - SPIKE_H, -1);
+}
+
+function drawSpikeRow(baseY, dir) {
+  const spikeW = 14, spikeH = SPIKE_H;
+  const count  = Math.ceil(W / spikeW) + 1;
+  ctx.fillStyle = '#ff3322cc';
+  for (let i = 0; i < count; i++) {
+    const x = i * spikeW;
+    ctx.beginPath();
+    if (dir > 0) { // points down
+      ctx.moveTo(x, baseY);
+      ctx.lineTo(x + spikeW/2, baseY + spikeH * 0.8);
+      ctx.lineTo(x + spikeW, baseY);
+    } else { // points up
+      ctx.moveTo(x, baseY + spikeH);
+      ctx.lineTo(x + spikeW/2, baseY + spikeH * 0.2);
+      ctx.lineTo(x + spikeW, baseY + spikeH);
+    }
+    ctx.closePath();
+    ctx.fill();
+  }
+  // Glow
+  ctx.fillStyle = 'rgba(255,50,30,0.15)';
+  ctx.fillRect(0, baseY, W, spikeH);
+}
+
+function vineColor(type, alpha) {
+  if (type === 'yellow') return `hsla(50,90%,55%,${alpha})`;
+  if (type === 'red')    return `hsla(0,90%,55%,${alpha})`;
+  return `hsla(${hue},75%,55%,${alpha})`;
+}
+
+function drawVines() {
+  for (const v of vines) {
+    if (v.hit) continue;
+    const sy = v.screenY;
+    if (sy < -50 || sy > H + 50) continue;
+
+    const clr = vineColor(v.type, 1);
+
+    // Arc
+    ctx.save();
+    ctx.strokeStyle = clr;
+    ctx.lineWidth = 5;
+    ctx.lineCap   = 'round';
+    ctx.shadowColor = clr;
+    ctx.shadowBlur  = 10;
+    ctx.beginPath();
+    ctx.arc(v.laneX, sy, v.arcR, v.startAngle, v.endAngle);
+    ctx.stroke();
+
+    // Sweet spot bead
+    const bx = v.laneX + Math.cos(v.sweetAngle) * v.arcR;
+    const by = sy       + Math.sin(v.sweetAngle) * v.arcR;
+    const pulse = 0.8 + 0.2 * Math.sin(Date.now() * 0.006);
+    ctx.shadowBlur = 16;
+    ctx.fillStyle  = '#fff';
+    ctx.beginPath();
+    ctx.arc(bx, by, v.sweetR * 0.22 * pulse, 0, Math.PI*2);
+    ctx.fill();
+
+    // Sweet zone ring (subtle)
+    ctx.strokeStyle = `rgba(255,255,255,0.2)`;
+    ctx.lineWidth   = 1.5;
+    ctx.shadowBlur  = 0;
+    ctx.beginPath();
+    ctx.arc(v.laneX, sy, v.arcR, v.sweetAngle - v.sweetR/v.arcR, v.sweetAngle + v.sweetR/v.arcR);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+}
+
+function drawPlayer() {
+  const px2 = px, py2 = py;
+
+  // Trail
+  ctx.save();
+  ctx.globalAlpha = 0.3;
+  ctx.fillStyle = `hsl(${hue},80%,60%)`;
+  ctx.beginPath();
+  ctx.arc(px2, py2 + pvy * 0.04, PLAYER_R * 0.7, 0, Math.PI*2);
+  ctx.fill();
+  ctx.restore();
+
+  // Glow
+  const grd = ctx.createRadialGradient(px2, py2, 0, px2, py2, PLAYER_R * 2);
+  grd.addColorStop(0, `hsla(${hue},90%,70%,0.35)`);
+  grd.addColorStop(1, 'transparent');
+  ctx.fillStyle = grd;
+  ctx.beginPath();
+  ctx.arc(px2, py2, PLAYER_R * 2, 0, Math.PI*2);
+  ctx.fill();
+
+  // Main body
+  ctx.save();
+  ctx.shadowColor = `hsl(${hue},80%,60%)`;
+  ctx.shadowBlur  = 14;
+  ctx.fillStyle   = `hsl(${hue},80%,65%)`;
+  ctx.beginPath();
+  ctx.arc(px2, py2, PLAYER_R, 0, Math.PI*2);
+  ctx.fill();
+
+  // Gravity arrow indicator
+  ctx.fillStyle = 'rgba(255,255,255,0.8)';
+  ctx.beginPath();
+  const ay = gravDir > 0 ? 4 : -4;
+  ctx.moveTo(px2, py2 - ay * 2);
+  ctx.lineTo(px2 - 4, py2 - ay);
+  ctx.lineTo(px2 + 4, py2 - ay);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+
+  // Snap indicator ring
+  if (snapTarget) {
+    const progress = 1 - (snapTimer / SNAP_DURATION);
+    ctx.save();
+    ctx.strokeStyle = '#ffffffcc';
+    ctx.lineWidth   = 2;
+    ctx.beginPath();
+    ctx.arc(px2, py2, PLAYER_R + 6, -Math.PI/2, -Math.PI/2 + progress * Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function drawParticles() {
+  for (const p of pool) {
+    if (!p.alive) continue;
+    const t = p.life / p.maxLife;
+    ctx.globalAlpha = t * p.alpha;
+    ctx.fillStyle = `hsl(${p.h},${p.s}%,${p.l}%)`;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r * t, 0, Math.PI*2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawHUD() {
+  // Combo
+  if (combo > 0) {
+    const comboX = W / 2, comboY = PREVIEW_H + 50;
+    ctx.save();
+    ctx.fillStyle = `hsl(${hue},80%,65%)`;
+    ctx.font = `bold ${16 + combo}px 'Segoe UI', Arial`;
+    ctx.textAlign = 'center';
+    ctx.shadowColor = `hsl(${hue},80%,50%)`;
+    ctx.shadowBlur  = 10;
+    ctx.fillText(`x${combo} COMBO`, comboX, comboY);
+    ctx.restore();
+  }
+
+  // Score top-left
+  ctx.save();
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.font = 'bold 18px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText(score, 14, PREVIEW_H + 26);
+  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  ctx.font = '11px monospace';
+  ctx.fillText('BEST ' + highScore, 14, PREVIEW_H + 42);
+  ctx.restore();
+
+  // Mute button top-right
+  const mx = W - 34, my = PREVIEW_H + 10;
+  muteBtn.x = mx; muteBtn.y = my; muteBtn.w = 24; muteBtn.h = 24;
+  ctx.save();
+  ctx.fillStyle = muted ? 'rgba(255,80,80,0.7)' : 'rgba(100,220,100,0.7)';
+  ctx.font = '16px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(muted ? '🔇' : '🔊', mx + 12, my + 17);
+  ctx.restore();
+}
+
+function drawStart() {
+  // Overlay
+  ctx.fillStyle = 'rgba(5,15,6,0.82)';
+  ctx.fillRect(0, 0, W, H);
+
+  // Animated vines in bg
+  const t = Date.now() * 0.001;
+  ctx.save();
+  ctx.strokeStyle = `hsla(120,60%,30%,0.3)`;
+  ctx.lineWidth = 3;
+  for (let i = 0; i < 5; i++) {
+    const x = (i / 4) * W;
+    const y = H * 0.5 + Math.sin(t + i) * 60;
+    ctx.beginPath();
+    ctx.arc(x, y, 40, 0, Math.PI * 1.2);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // Title
+  ctx.save();
+  const titleY = H * 0.35;
+  ctx.textAlign = 'center';
+
+  ctx.shadowColor = `hsl(120,80%,40%)`;
+  ctx.shadowBlur  = 30;
+  ctx.fillStyle   = `hsl(120,80%,70%)`;
+  ctx.font        = `bold 52px 'Segoe UI', Arial`;
+  ctx.fillText('VINE', W/2, titleY);
+
+  ctx.shadowColor = `hsl(80,80%,50%)`;
+  ctx.fillStyle   = `hsl(80,80%,70%)`;
+  ctx.fillText('VAULT', W/2, titleY + 56);
+  ctx.restore();
+
+  // Tagline
+  ctx.fillStyle = 'rgba(200,255,180,0.7)';
+  ctx.font      = '14px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('SNAP · LAUNCH · ASCEND', W/2, H*0.35 + 100);
+
+  // Best score
+  if (highScore > 0) {
+    ctx.fillStyle = 'rgba(255,220,100,0.7)';
+    ctx.font      = '13px monospace';
+    ctx.fillText('BEST: ' + highScore, W/2, H*0.35 + 126);
+  }
+
+  // Tap to start (pulsing)
+  const pulse2 = 0.6 + 0.4 * Math.abs(Math.sin(t * 2));
+  ctx.fillStyle = `rgba(180,255,150,${pulse2})`;
+  ctx.font      = 'bold 17px monospace';
+  ctx.fillText('TAP TO START', W/2, H * 0.72);
+
+  // Controls hint
+  ctx.fillStyle = 'rgba(150,200,130,0.45)';
+  ctx.font      = '11px monospace';
+  ctx.fillText('tap / space = flip gravity', W/2, H * 0.72 + 24);
+  ctx.fillText('hit vines to vault upward!', W/2, H * 0.72 + 40);
+
+  startBtn = { x: W/2 - 100, y: H*0.72 - 24, w: 200, h: 60 };
+}
+
+function drawGameoverOverlay() {
+  ctx.fillStyle = 'rgba(5,10,6,0.80)';
+  ctx.fillRect(0, 0, W, H);
+
+  const cx = W / 2, cy = H * 0.38;
+
+  ctx.textAlign = 'center';
+
+  // Title
+  ctx.fillStyle = '#ff5544';
+  ctx.font      = 'bold 36px monospace';
+  ctx.shadowColor = '#ff3322'; ctx.shadowBlur = 20;
+  ctx.fillText('GAME OVER', cx, cy);
+  ctx.shadowBlur = 0;
+
+  // Score
+  ctx.fillStyle = 'rgba(220,255,200,0.9)';
+  ctx.font      = 'bold 28px monospace';
+  ctx.fillText(score, cx, cy + 52);
+  ctx.fillStyle = 'rgba(180,210,160,0.6)';
+  ctx.font      = '13px monospace';
+  ctx.fillText('SCORE', cx, cy + 72);
+
+  if (score >= highScore && score > 0) {
+    ctx.fillStyle = `hsl(50,90%,65%)`;
+    ctx.font      = 'bold 13px monospace';
+    ctx.fillText('✦ NEW BEST! ✦', cx, cy + 94);
+  } else {
+    ctx.fillStyle = 'rgba(180,210,160,0.5)';
+    ctx.font      = '12px monospace';
+    ctx.fillText('BEST: ' + highScore, cx, cy + 94);
+  }
+
+  // Combo info
+  if (combo > 0) {
+    ctx.fillStyle = `hsl(${hue},70%,60%)`;
+    ctx.font      = '12px monospace';
+    ctx.fillText('MAX COMBO x' + combo, cx, cy + 116);
+  }
+
+  // Retry button
+  const btnW = 180, btnH = 46, btnX = cx - btnW/2, btnY = cy + 140;
+  retryBtn = { x: btnX, y: btnY, w: btnW, h: btnH };
+
+  ctx.save();
+  ctx.shadowColor = `hsl(${hue},80%,40%)`; ctx.shadowBlur = 16;
+  roundRect(ctx, btnX, btnY, btnW, btnH, 12);
+  const rg = ctx.createLinearGradient(btnX, btnY, btnX, btnY+btnH);
+  rg.addColorStop(0, `hsl(${hue},70%,35%)`);
+  rg.addColorStop(1, `hsl(${hue},60%,25%)`);
+  ctx.fillStyle = rg; ctx.fill();
+  ctx.strokeStyle = `hsl(${hue},60%,50%)`; ctx.lineWidth = 1.5; ctx.stroke();
+  ctx.restore();
+
+  ctx.fillStyle = '#e8ffe0';
+  ctx.font      = 'bold 16px monospace';
+  ctx.fillText('TAP TO RETRY', cx, btnY + 29);
+
+  // Share button
+  const sbW = 160, sbH = 38, sbX = cx - sbW/2, sbY = btnY + btnH + 14;
+  shareBtn = { x: sbX, y: sbY, w: sbW, h: sbH };
+
+  ctx.save();
+  roundRect(ctx, sbX, sbY, sbW, sbH, 10);
+  ctx.fillStyle = 'rgba(255,255,255,0.08)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 1; ctx.stroke();
+  ctx.restore();
+
+  ctx.fillStyle = 'rgba(220,240,200,0.8)';
+  ctx.font      = '13px monospace';
+  ctx.fillText('⇗ CHALLENGE FRIEND', cx, sbY + 24);
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x+w, y, x+w, y+r);
+  ctx.lineTo(x+w, y+h-r);
+  ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+  ctx.lineTo(x+r, y+h);
+  ctx.quadraticCurveTo(x, y+h, x, y+h-r);
+  ctx.lineTo(x, y+r);
+  ctx.quadraticCurveTo(x, y, x+r, y);
+  ctx.closePath();
+}
+
+// ── Game Loop ─────────────────────────────────────────────────────────────────
+let lastTime = 0;
+function loop(ts) {
+  const dt = Math.min((ts - lastTime) / 1000, 0.05);
+  lastTime = ts;
+
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// Initial draw then start loop
+drawBackground();
+drawStart();
+requestAnimationFrame(ts => { lastTime = ts; loop(ts); });
+
+})();
+</script>
+</body>
+</html>

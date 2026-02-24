@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Leaf Pyramid - Free HTML5 Game</title>
+  <meta name="description" content="Play Leaf Pyramid - Stack shrinking jungle leaves to form a perfect pyramid against the sunset.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#1a2a1a">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Leaf Pyramid - Free HTML5 Game">
+  <meta property="og:description" content="Play Leaf Pyramid - Stack shrinking jungle leaves to form a perfect pyramid against the sunset.">
+  <meta property="og:url" content="https://balinti.github.io/leaf-pyramid/">
+  <meta property="og:image" content="https://balinti.github.io/leaf-pyramid/og.jpg">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #0d1a0d;
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden;
+      touch-action: manipulation;
+      user-select: none;
+      -webkit-user-select: none;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+    }
+    #wrap {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      height: 100%;
+      max-height: 750px;
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: manipulation;
+    }
+    .sr-only {
+      position: absolute;
+      width: 1px; height: 1px;
+      padding: 0; margin: -1px;
+      overflow: hidden;
+      clip: rect(0,0,0,0);
+      white-space: nowrap;
+      border: 0;
+    }
+    #game-info {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      padding: 8px 12px;
+      color: rgba(255,255,255,0.35);
+      font-size: 11px;
+      text-align: center;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <div id="game-info" aria-hidden="true">Leaf Pyramid &mdash; Stack jungle leaves into a perfect pyramid</div>
+</div>
+
+<!-- SEO text block -->
+<section class="sr-only" aria-label="Game description">
+  <h1>Leaf Pyramid - Free HTML5 Browser Game</h1>
+  <p>Leaf Pyramid is a free hyper-casual HTML5 game where you stack falling jungle leaf slabs to build a towering pyramid. Tap or press Space to drop each swaying leaf, aiming for perfect alignment. Land a perfect snap to regrow your leaves and extend your pyramid higher! Combo bonuses reward precision. Increasing wind and narrowing snap windows challenge your timing as the score rises. Play instantly in any browser — no download, no install, no ads to dismiss. Beat your high score and share with friends!</p>
+  <ul>
+    <li>Tap or click to drop the leaf</li>
+    <li>Perfect alignment grants bonus points and regrows the leaf</li>
+    <li>Wind speed increases as your score climbs</li>
+    <li>Build combos for multiplied score bonuses</li>
+    <li>Works on mobile and desktop browsers</li>
+  </ul>
+</section>
+
+<script>
+(function() {
+'use strict';
+
+// ─── Constants ─────────────────────────────────────────────────────────────
+const START_W   = 260;
+const SLAB_H    = 22;
+const MIN_OVERLAP_PX = 10;
+const FALL_G    = 0.55;
+const OFFCUT_G  = 0.38;
+const BASE_SPEED = 1.6;
+
+// ─── Canvas setup ──────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const wrap   = document.getElementById('wrap');
+const ctx    = canvas.getContext('2d');
+
+let W, H, DPR;
+function resize() {
+  const r = wrap.getBoundingClientRect();
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W   = r.width;
+  H   = r.height;
+  canvas.width  = W * DPR;
+  canvas.height = H * DPR;
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ─── Audio ─────────────────────────────────────────────────────────────────
+let audioCtx = null;
+let muted = false;
+function initAudio() {
+  if (audioCtx) return;
+  try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {}
+}
+function beep(freq, type, dur, vol) {
+  if (muted || !audioCtx) return;
+  try {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.type = type || 'sine';
+    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    gain.gain.setValueAtTime(vol || 0.18, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+    osc.start(); osc.stop(audioCtx.currentTime + dur);
+  } catch(e) {}
+}
+function soundLand()    { beep(220, 'triangle', 0.12, 0.12); }
+function soundSnap(tier){ beep(tier===0?880:tier===1?660:440, 'sine', 0.18, 0.20); }
+function soundGameover(){ beep(110, 'sawtooth', 0.35, 0.22); }
+
+// ─── High score ────────────────────────────────────────────────────────────
+let best = 0;
+try { best = parseInt(localStorage.getItem('leafPyramid_best') || '0', 10) || 0; } catch(e){}
+function saveBest(s) { try { localStorage.setItem('leafPyramid_best', s); } catch(e){} }
+
+// ─── State ─────────────────────────────────────────────────────────────────
+let state = 'start'; // 'start' | 'playing' | 'gameover'
+let score, combo, stack, mover, offcuts, particles, flashTimer, shake;
+let camY, hueShift, t;
+let vignetteAlpha = 0;
+
+function initGame() {
+  score     = 0;
+  combo     = 0;
+  t         = 0;
+  hueShift  = 0;
+  camY      = 0;
+  vignetteAlpha = 0;
+  flashTimer= 0;
+  shake     = { x:0, y:0, dur:0, mag:0, t:0 };
+  offcuts   = [];
+  particles = [];
+
+  // Foundation slab
+  const baseY = H * 0.78;
+  stack = [{
+    x: W/2 - START_W/2,
+    y: baseY,
+    w: START_W,
+    h: SLAB_H,
+    hue: 100
+  }];
+  spawnMover();
+}
+
+function spawnMover() {
+  const top = stack[stack.length - 1];
+  const newW = top.w;
+  const startY = -SLAB_H - 20;
+  const hue = (hueShift * 0.4 + 100) % 360;
+  mover = {
+    x: W/2 - newW/2,
+    y: startY,
+    w: newW,
+    h: SLAB_H,
+    hue: hue,
+    vy: 0,
+    falling: false,
+    landed: false,
+    sineOff: Math.random() * Math.PI * 2
+  };
+}
+
+// ─── Snap radius & wind ────────────────────────────────────────────────────
+function snapR()    { return Math.max(10, Math.min(26, 26 - 0.18 * score)); }
+function windSpeed(){ return Math.min(BASE_SPEED + score * 0.045, 5.2); }
+function gustAmp()  { return Math.min(18 + score * 0.3, 52); }
+
+function moverCenterX() { return mover.x + mover.w / 2; }
+
+// ─── Impulse shake ─────────────────────────────────────────────────────────
+function doShake(dur, mag) {
+  shake.dur = dur; shake.mag = mag; shake.t = dur;
+}
+
+// ─── Place action ──────────────────────────────────────────────────────────
+function placeLeaf() {
+  if (!mover || mover.falling || mover.landed) return;
+  initAudio();
+  mover.falling = true;
+}
+
+// ─── Landing logic ─────────────────────────────────────────────────────────
+function land() {
+  const top    = stack[stack.length - 1];
+  const topCx  = top.x + top.w / 2;
+  const moverCx= moverCenterX();
+  const sr     = snapR();
+
+  const delta  = moverCx - topCx;
+  const absDelta = Math.abs(delta);
+
+  // Snap tier
+  let tier = -1; // -1=none, 0=perfect, 1=great, 2=ok
+  if (absDelta <= 0.33 * sr) tier = 0;
+  else if (absDelta <= 0.66 * sr) tier = 1;
+  else if (absDelta <= 1.00 * sr) tier = 2;
+
+  let newX, newW;
+  const trimExtra = Math.min(0.04 * score, 3);
+
+  if (tier >= 0) {
+    // Magnetic align
+    mover.x = topCx - mover.w / 2;
+    newX = mover.x;
+    newW = mover.w; // full snap keeps full width
+    // Regrow on Perfect
+    if (tier === 0) {
+      const regrow = 2 + Math.floor(combo / 5);
+      newW = Math.min(newW + regrow, START_W);
+      newX = topCx - newW / 2;
+    }
+    combo++;
+  } else {
+    // Non-snap: overlap calc
+    const leftEdge  = Math.max(mover.x, top.x);
+    const rightEdge = Math.min(mover.x + mover.w, top.x + top.w);
+    const overlapW  = rightEdge - leftEdge - trimExtra;
+    if (overlapW < MIN_OVERLAP_PX) { triggerGameover(); return; }
+    newX = leftEdge;
+    newW = overlapW;
+    combo = 0;
+  }
+
+  // Offcut pieces
+  spawnOffcut(mover, top, tier >= 0);
+
+  // Score calc
+  const snapBonus = tier === 0 ? 3 : tier === 1 ? 2 : tier === 2 ? 1 : 0;
+  const gained = Math.floor((1 + snapBonus) * (1 + 0.15 * combo));
+  score += gained;
+  if (score > best) { best = score; saveBest(best); }
+
+  // Particles
+  spawnDust(topCx, top.y, 14);
+  if (tier >= 0) spawnSparks(topCx, top.y, 18, tier);
+
+  // Flash
+  if (tier >= 0) flashTimer = 0.08;
+
+  // Shake
+  if (tier === 0) doShake(0.14, 7);
+  else if (tier === 1) doShake(0.12, 5.5);
+  else if (tier === 2) doShake(0.10, 4);
+  else doShake(0.08, 2.5);
+
+  // Sound
+  if (tier >= 0) soundSnap(tier); else soundLand();
+
+  // Push to stack
+  const hue = (hueShift * 0.4 + 100) % 360;
+  stack.push({ x: newX, y: top.y - SLAB_H - 1, w: newW, h: SLAB_H, hue });
+  hueShift += 8;
+
+  spawnMover();
+}
+
+function triggerGameover() {
+  state = 'gameover';
+  doShake(0.22, 10);
+  vignetteAlpha = 0.55;
+  soundGameover();
+  if (score > best) { best = score; saveBest(best); }
+}
+
+// ─── Offcuts ───────────────────────────────────────────────────────────────
+function spawnOffcut(mv, top, snapped) {
+  if (snapped) return;
+  const leftMOver  = mv.x;
+  const rightMOver = mv.x + mv.w;
+  const leftTop    = top.x;
+  const rightTop   = top.x + top.w;
+
+  // Left offcut
+  if (leftMOver < leftTop) {
+    pushOffcut(leftMOver, mv.y, leftTop - leftMOver, mv.h, mv.hue);
+  }
+  // Right offcut
+  if (rightMOver > rightTop) {
+    pushOffcut(rightTop, mv.y, rightMOver - rightTop, mv.h, mv.hue);
+  }
+}
+function pushOffcut(x, y, w, h, hue) {
+  offcuts.push({
+    x, y, w, h, hue,
+    vx: (Math.random() - 0.5) * 3,
+    vy: -1.5 - Math.random() * 1.5,
+    rot: 0,
+    rotV: (Math.random() - 0.5) * 0.18,
+    life: 1.1,
+    maxLife: 1.1
+  });
+}
+
+// ─── Particles ─────────────────────────────────────────────────────────────
+function spawnDust(cx, y, n) {
+  for (let i = 0; i < n; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 0.8 + Math.random() * 2.5;
+    particles.push({
+      x: cx + (Math.random()-0.5)*30, y: y,
+      vx: Math.cos(angle)*speed, vy: Math.sin(angle)*speed - 1.5,
+      r: 2 + Math.random()*3,
+      life: 0.6 + Math.random()*0.4,
+      maxLife: 1,
+      color: `hsl(${100 + Math.random()*40},60%,70%)`,
+      type: 'dust'
+    });
+  }
+}
+function spawnSparks(cx, y, n, tier) {
+  const colors = tier===0 ? ['#ffe080','#ffcc00','#fff'] : tier===1 ? ['#80ffb0','#40ffcc','#fff'] : ['#80d0ff','#40b0ff','#fff'];
+  for (let i = 0; i < n; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 1.5 + Math.random() * 4;
+    particles.push({
+      x: cx, y: y,
+      vx: Math.cos(angle)*speed, vy: Math.sin(angle)*speed - 2,
+      r: 1.5 + Math.random()*2.5,
+      life: 0.5 + Math.random()*0.5,
+      maxLife: 1,
+      color: colors[Math.floor(Math.random()*colors.length)],
+      type: 'spark'
+    });
+  }
+}
+
+// ─── Camera ────────────────────────────────────────────────────────────────
+function targetCamY() {
+  const top = stack[stack.length - 1];
+  return top.y - H * 0.38; // keep action at ~62% down
+}
+
+// ─── Draw helpers ──────────────────────────────────────────────────────────
+function drawSlab(x, y, w, h, hue, alpha) {
+  alpha = alpha === undefined ? 1 : alpha;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+
+  // Gradient fill
+  const grd = ctx.createLinearGradient(x, y, x, y+h);
+  grd.addColorStop(0,   `hsl(${hue},72%,42%)`);
+  grd.addColorStop(0.45,`hsl(${hue},68%,36%)`);
+  grd.addColorStop(1,   `hsl(${hue},60%,26%)`);
+  ctx.fillStyle = grd;
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, 4);
+  ctx.fill();
+
+  // Rim highlight
+  ctx.strokeStyle = `hsla(${hue},80%,70%,0.35)`;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(x+0.5, y+0.5, w-1, h-1, 4);
+  ctx.stroke();
+
+  // Vein line
+  const veinX = x + w/2;
+  const veinGrd = ctx.createLinearGradient(veinX, y, veinX, y+h);
+  veinGrd.addColorStop(0, `hsla(${hue},100%,88%,0.0)`);
+  veinGrd.addColorStop(0.3, `hsla(${hue},100%,90%,0.85)`);
+  veinGrd.addColorStop(0.7, `hsla(${hue},100%,90%,0.85)`);
+  veinGrd.addColorStop(1, `hsla(${hue},100%,88%,0.0)`);
+  ctx.strokeStyle = veinGrd;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(veinX, y + 2);
+  ctx.lineTo(veinX, y + h - 2);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function drawBg() {
+  const hue = (hueShift * 0.2 + 195) % 360;
+  const grd = ctx.createLinearGradient(0, 0, 0, H);
+  grd.addColorStop(0,   `hsl(${hue},30%,8%)`);
+  grd.addColorStop(0.5, `hsl(${(hue+20)%360},28%,13%)`);
+  grd.addColorStop(1,   `hsl(${(hue+40)%360},22%,6%)`);
+  ctx.fillStyle = grd;
+  ctx.fillRect(0, 0, W, H);
+
+  // Canopy atmosphere strip
+  ctx.fillStyle = `hsla(${(hue+30)%360},50%,18%,0.18)`;
+  ctx.fillRect(0, 0, W, H * 0.25);
+}
+
+function drawText(text, x, y, size, color, align, shadow) {
+  ctx.save();
+  ctx.font = `700 ${size}px 'Segoe UI', system-ui, sans-serif`;
+  ctx.textAlign = align || 'center';
+  ctx.textBaseline = 'middle';
+  if (shadow) {
+    ctx.shadowColor = 'rgba(0,0,0,0.7)';
+    ctx.shadowBlur  = 8;
+  }
+  ctx.fillStyle = color || '#fff';
+  ctx.fillText(text, x, y);
+  ctx.restore();
+}
+
+function tierLabel(tier) {
+  if (tier === 0) return { text:'PERFECT!', color:'#ffe066' };
+  if (tier === 1) return { text:'GREAT!',   color:'#66ffaa' };
+  return            { text:'OK',            color:'#66ccff' };
+}
+
+// ─── Main loop ─────────────────────────────────────────────────────────────
+let lastTs = 0;
+let lastTier = -1;
+let tierLabelTimer = 0;
+
+function loop(ts) {
+  requestAnimationFrame(loop);
+  const dt = Math.min((ts - lastTs) / 1000, 0.05);
+  lastTs = ts;
+  t += dt;
+  hueShift += dt * 4;
+
+  // ── Shake ──
+  if (shake.t > 0) {
+    shake.t -= dt;
+    const p = shake.t / shake.dur;
+    shake.x = (Math.random()-0.5) * 2 * shake.mag * p;
+    shake.y = (Math.random()-0.5) * 2 * shake.mag * p;
+  } else {
+    shake.x = 0; shake.y = 0;
+  }
+
+  // ── Camera lerp ──
+  if (state === 'playing') {
+    const tgt = targetCamY();
+    camY += (tgt - camY) * Math.min(dt * 4, 1);
+  }
+
+  ctx.save();
+  ctx.translate(shake.x, shake.y);
+
+  drawBg();
+
+  if (state === 'start') {
+    drawStart();
+  } else if (state === 'playing') {
+    updatePlaying(dt);
+    drawPlaying();
+  } else if (state === 'gameover') {
+    drawPlaying();
+    drawGameover();
+  }
+
+  // Flash overlay
+  if (flashTimer > 0) {
+    flashTimer -= dt;
+    const a = Math.max(flashTimer / 0.08, 0) * 0.35;
+    ctx.fillStyle = `rgba(255,255,220,${a})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // Vignette on gameover
+  if (vignetteAlpha > 0) {
+    const vgrd = ctx.createRadialGradient(W/2,H/2, H*0.2, W/2,H/2, H*0.85);
+    vgrd.addColorStop(0, `rgba(80,0,0,0)`);
+    vgrd.addColorStop(1, `rgba(80,0,0,${vignetteAlpha})`);
+    ctx.fillStyle = vgrd;
+    ctx.fillRect(0,0,W,H);
+    vignetteAlpha *= 0.97;
+  }
+
+  ctx.restore();
+}
+
+// ─── Update ────────────────────────────────────────────────────────────────
+function updatePlaying(dt) {
+  if (!mover) return;
+
+  // Moving slab wind
+  if (!mover.falling && !mover.landed) {
+    const ws = windSpeed();
+    const ga = gustAmp();
+    const sway = Math.sin(t * ws + mover.sineOff) * ga
+               + Math.sin(t * ws * 0.37 + mover.sineOff + 1.3) * ga * 0.4;
+    const top = stack[stack.length - 1];
+    const cx  = top.x + top.w / 2;
+    const rawX = cx + sway - mover.w / 2;
+    mover.x = Math.max(2, Math.min(W - mover.w - 2, rawX));
+  }
+
+  // Falling
+  if (mover.falling && !mover.landed) {
+    mover.vy += FALL_G;
+    mover.y  += mover.vy;
+    const top = stack[stack.length - 1];
+    const landY = top.y - SLAB_H - 1;
+    if (mover.y >= landY) {
+      mover.y = landY;
+      mover.landed = true;
+      // save tier info for label
+      const topCx = top.x + top.w/2;
+      const moverCx = moverCenterX();
+      const absDelta = Math.abs(moverCx - topCx);
+      const sr = snapR();
+      if      (absDelta <= 0.33 * sr) lastTier = 0;
+      else if (absDelta <= 0.66 * sr) lastTier = 1;
+      else if (absDelta <= 1.00 * sr) lastTier = 2;
+      else                             lastTier = -1;
+      tierLabelTimer = lastTier >= 0 ? 1.0 : 0;
+      land();
+    }
+  }
+
+  // Offcuts
+  for (let i = offcuts.length - 1; i >= 0; i--) {
+    const o = offcuts[i];
+    o.vy  += OFFCUT_G;
+    o.x   += o.vx;
+    o.y   += o.vy;
+    o.rot += o.rotV;
+    o.life -= dt;
+    if (o.life <= 0) offcuts.splice(i, 1);
+  }
+
+  // Particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.vy  += 0.08;
+    p.x   += p.vx;
+    p.y   += p.vy;
+    p.vx  *= 0.96;
+    p.life -= dt;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+
+  tierLabelTimer -= dt;
+}
+
+// ─── Draw playing ──────────────────────────────────────────────────────────
+function drawPlaying() {
+  ctx.save();
+  ctx.translate(0, -camY);
+
+  // Stack
+  for (let i = 0; i < stack.length; i++) {
+    const s = stack[i];
+    drawSlab(s.x, s.y, s.w, s.h, s.hue);
+  }
+
+  // Moving slab
+  if (mover && !mover.landed) {
+    // snap zone indicator on top slab
+    const top = stack[stack.length - 1];
+    const sr  = snapR();
+    const topCx = top.x + top.w/2;
+
+    // Zone rings (drawn at top slab Y)
+    ctx.save();
+    ctx.globalAlpha = 0.22;
+    // Ok zone
+    ctx.fillStyle = '#66ccff';
+    ctx.beginPath();
+    ctx.roundRect(topCx - sr, top.y - 3, sr*2, 6, 3);
+    ctx.fill();
+    // Great zone
+    ctx.globalAlpha = 0.30;
+    ctx.fillStyle = '#66ffaa';
+    ctx.beginPath();
+    ctx.roundRect(topCx - sr*0.66, top.y - 3, sr*0.66*2, 6, 3);
+    ctx.fill();
+    // Perfect zone
+    ctx.globalAlpha = 0.38;
+    ctx.fillStyle = '#ffe066';
+    ctx.beginPath();
+    ctx.roundRect(topCx - sr*0.33, top.y - 3, sr*0.33*2, 6, 3);
+    ctx.fill();
+    ctx.restore();
+
+    drawSlab(mover.x, mover.y, mover.w, mover.h, mover.hue);
+  }
+
+  // Offcuts
+  for (const o of offcuts) {
+    ctx.save();
+    ctx.globalAlpha = Math.max(o.life / o.maxLife, 0);
+    ctx.translate(o.x + o.w/2, o.y + o.h/2);
+    ctx.rotate(o.rot);
+    drawSlab(-o.w/2, -o.h/2, o.w, o.h, o.hue);
+    ctx.restore();
+  }
+
+  // Particles
+  for (const p of particles) {
+    const a = Math.max(p.life / p.maxLife, 0);
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    if (p.type === 'spark') {
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+    } else {
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+    }
+    ctx.fill();
+    ctx.restore();
+  }
+
+  ctx.restore(); // end camera transform
+
+  // HUD (fixed, outside camera)
+  drawHUD();
+
+  // Tier label
+  if (tierLabelTimer > 0 && lastTier >= 0) {
+    const lbl = tierLabel(lastTier);
+    const a = Math.min(tierLabelTimer, 0.4) / 0.4;
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.font = `900 ${lastTier===0?32:26}px 'Segoe UI', system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = 'rgba(0,0,0,0.8)';
+    ctx.shadowBlur = 12;
+    ctx.fillStyle = lbl.color;
+    ctx.fillText(lbl.text, W/2, H*0.30);
+    ctx.restore();
+  }
+}
+
+function drawHUD() {
+  // Score
+  drawText(score, W/2, 38, 36, '#fff', 'center', true);
+  drawText('SCORE', W/2, 62, 11, 'rgba(255,255,255,0.55)', 'center', false);
+
+  // Best
+  drawText('BEST ' + best, W - 14, 30, 13, 'rgba(255,220,80,0.85)', 'right', true);
+
+  // Combo
+  if (combo >= 2) {
+    const comboHue = (hueShift*0.5) % 360;
+    ctx.save();
+    ctx.font = `700 16px 'Segoe UI', system-ui, sans-serif`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = `hsl(${comboHue},100%,72%)`;
+    ctx.shadowColor = 'rgba(0,0,0,0.7)';
+    ctx.shadowBlur = 6;
+    ctx.fillText(`x${combo} COMBO`, 14, 36);
+    ctx.restore();
+  }
+
+  // Mute button
+  ctx.save();
+  ctx.globalAlpha = 0.5;
+  ctx.font = '16px sans-serif';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = '#fff';
+  ctx.fillText(muted ? '🔇' : '🔊', W - 10, H - 34);
+  ctx.restore();
+}
+
+// ─── Start screen ──────────────────────────────────────────────────────────
+function drawStart() {
+  // Animated preview stack
+  ctx.save();
+  const previewSlabs = 7;
+  for (let i = 0; i < previewSlabs; i++) {
+    const frac  = i / previewSlabs;
+    const sw    = START_W * (1 - frac * 0.55);
+    const sx    = W/2 - sw/2;
+    const sy    = H * 0.72 - i * (SLAB_H + 1);
+    const hue   = (hueShift * 0.4 + 100 + i * 15) % 360;
+    drawSlab(sx, sy, sw, SLAB_H, hue);
+  }
+  ctx.restore();
+
+  // Title panel
+  ctx.save();
+  const panelW = 300, panelH = 160;
+  const px = W/2 - panelW/2, py = H*0.18;
+  const pgrd = ctx.createLinearGradient(px, py, px, py+panelH);
+  pgrd.addColorStop(0, 'rgba(10,40,10,0.88)');
+  pgrd.addColorStop(1, 'rgba(5,20,5,0.78)');
+  ctx.fillStyle = pgrd;
+  ctx.beginPath();
+  ctx.roundRect(px, py, panelW, panelH, 18);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(120,220,100,0.25)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.restore();
+
+  drawText('🍃 LEAF PYRAMID', W/2, H*0.26, 26, `hsl(${(hueShift*0.4+100)%360},90%,72%)`, 'center', true);
+  drawText('Snap-Stack the Jungle Canopy', W/2, H*0.31, 13, 'rgba(200,255,180,0.8)', 'center', false);
+
+  // Pulse tap prompt
+  const pulse = 0.75 + 0.25 * Math.sin(t * 4);
+  ctx.save();
+  ctx.globalAlpha = pulse;
+  drawText('TAP TO START', W/2, H*0.375, 18, '#fff', 'center', true);
+  ctx.restore();
+
+  // Best score
+  if (best > 0) {
+    drawText(`BEST ${best}`, W/2, H*0.43, 14, 'rgba(255,220,80,0.9)', 'center', true);
+  }
+
+  // Quick instructions
+  const instr = ['Drop leaves to build the pyramid', 'Snap the center vein for bonuses', 'Perfect = leaf regrows!'];
+  for (let i = 0; i < instr.length; i++) {
+    drawText(instr[i], W/2, H*0.52 + i*22, 12, 'rgba(180,255,160,0.7)', 'center', false);
+  }
+}
+
+// ─── Gameover screen ───────────────────────────────────────────────────────
+function drawGameover() {
+  ctx.save();
+  const panelW = 300, panelH = 200;
+  const px = W/2 - panelW/2, py = H*0.2;
+  const pgrd = ctx.createLinearGradient(px, py, px, py+panelH);
+  pgrd.addColorStop(0, 'rgba(40,5,5,0.92)');
+  pgrd.addColorStop(1, 'rgba(10,5,5,0.88)');
+  ctx.fillStyle = pgrd;
+  ctx.beginPath();
+  ctx.roundRect(px, py, panelW, panelH, 18);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(200,60,60,0.4)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.restore();
+
+  drawText('GAME OVER', W/2, H*0.27, 30, '#ff6666', 'center', true);
+  drawText(`SCORE  ${score}`, W/2, H*0.33, 22, '#fff', 'center', true);
+  drawText(`BEST   ${best}`, W/2, H*0.39, 16, 'rgba(255,220,80,0.9)', 'center', true);
+
+  if (score >= best && best > 0) {
+    const pulse = 0.8 + 0.2 * Math.sin(t * 6);
+    ctx.save();
+    ctx.globalAlpha = pulse;
+    drawText('NEW BEST!', W/2, H*0.44, 15, '#ffe066', 'center', true);
+    ctx.restore();
+  }
+
+  const pulse2 = 0.7 + 0.3 * Math.sin(t * 3.5);
+  ctx.save();
+  ctx.globalAlpha = pulse2;
+  drawText('TAP TO RETRY', W/2, H*0.49, 18, '#fff', 'center', true);
+  ctx.restore();
+}
+
+// ─── Input ─────────────────────────────────────────────────────────────────
+function handleAction(ex, ey) {
+  // Mute toggle hitbox (bottom-right 44x44)
+  if (state === 'playing' && ex > W - 54 && ey > H - 54) {
+    muted = !muted;
+    return;
+  }
+  initAudio();
+  if (state === 'start') {
+    state = 'playing';
+    initGame();
+  } else if (state === 'playing') {
+    placeLeaf();
+  } else if (state === 'gameover') {
+    state = 'playing';
+    initGame();
+  }
+}
+
+canvas.addEventListener('pointerdown', function(e) {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const ex = (e.clientX - rect.left) * (W / rect.width);
+  const ey = (e.clientY - rect.top)  * (H / rect.height);
+  handleAction(ex, ey);
+}, { passive: false });
+
+window.addEventListener('keydown', function(e) {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    handleAction(W/2, H/2);
+  }
+  if (e.code === 'KeyM') { muted = !muted; }
+});
+
+// Prevent scroll
+window.addEventListener('touchstart', function(e){ e.preventDefault(); }, { passive: false });
+window.addEventListener('touchmove',  function(e){ e.preventDefault(); }, { passive: false });
+
+// ─── Boot ──────────────────────────────────────────────────────────────────
+// Polyfill roundRect for older browsers
+if (!CanvasRenderingContext2D.prototype.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+    r = Math.min(r, w/2, h/2);
+    this.beginPath();
+    this.moveTo(x + r, y);
+    this.lineTo(x + w - r, y);
+    this.quadraticCurveTo(x + w, y, x + w, y + r);
+    this.lineTo(x + w, y + h - r);
+    this.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    this.lineTo(x + r, y + h);
+    this.quadraticCurveTo(x, y + h, x, y + h - r);
+    this.lineTo(x, y + r);
+    this.quadraticCurveTo(x, y, x + r, y);
+    this.closePath();
+  };
+}
+
+requestAnimationFrame(loop);
+
+})();
+</script>
+
+</body>
+</html>

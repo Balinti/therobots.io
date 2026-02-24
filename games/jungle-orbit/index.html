@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Jungle Orbit - Free HTML5 Game</title>
+  <meta name="description" content="Play Jungle Orbit - Tap to control a magnet-powered drone weaving through airborne jungle debris and asteroids.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a1a0a">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Jungle Orbit - Free HTML5 Game">
+  <meta property="og:description" content="Play Jungle Orbit - Tap to control a magnet-powered drone weaving through airborne jungle debris and asteroids.">
+  <meta property="og:url" content="https://balinti.github.io/jungle-orbit/">
+  <meta property="og:image" content="og-image.png">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Jungle Orbit - Free HTML5 Game">
+  <meta name="twitter:description" content="Play Jungle Orbit - Tap to control a magnet-powered drone weaving through airborne jungle debris and asteroids.">
+  <meta name="twitter:image" content="og-image.png">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    html,body{
+      width:100%;height:100%;
+      background:#040c04;
+      display:flex;flex-direction:column;
+      align-items:center;justify-content:center;
+      font-family:'Segoe UI',system-ui,sans-serif;
+      overflow:hidden;color:#cde;
+    }
+    #top-bar{
+      width:100%;max-width:420px;
+      height:50px;min-height:50px;flex-shrink:0;
+      display:flex;align-items:center;justify-content:center;
+      background:rgba(0,0,0,0.55);
+      font-size:11px;color:#5a7a5a;letter-spacing:2px;
+      text-transform:uppercase;
+    }
+    #game-wrap{
+      position:relative;
+      width:100%;max-width:420px;
+      flex:1 1 auto;min-height:0;
+      overflow:hidden;
+    }
+    canvas{display:block;width:100%;height:100%;touch-action:none;}
+    #hud{
+      position:absolute;top:0;left:0;right:0;
+      pointer-events:none;
+      display:flex;flex-direction:column;
+      align-items:center;padding-top:14px;gap:4px;
+    }
+    #score{
+      font-size:30px;font-weight:700;
+      color:#fff;text-shadow:0 0 14px #0ff8;
+      letter-spacing:3px;opacity:0;transition:opacity .25s;
+    }
+    #combo{font-size:15px;color:#f0f;font-weight:600;text-shadow:0 0 8px #f0f;min-height:20px;}
+    #shield-wrap{
+      width:110px;height:5px;border-radius:3px;
+      background:rgba(255,255,255,.12);overflow:hidden;
+    }
+    #shield-fill{
+      height:100%;width:0%;border-radius:3px;
+      background:linear-gradient(90deg,#0ff,#f0f);
+      transition:width .08s;
+    }
+    #bottom-bar{
+      width:100%;max-width:420px;min-height:60px;flex-shrink:0;
+      background:rgba(0,0,0,0.55);
+      display:flex;flex-direction:column;
+      align-items:center;justify-content:center;
+      padding:6px 14px;gap:2px;
+    }
+    #howto{
+      font-size:11px;color:#4a6a5a;text-align:center;line-height:1.5;
+    }
+    #howto b{color:#6a9a7a;}
+  </style>
+</head>
+<body>
+<div id="top-bar">Jungle Orbit &nbsp;·&nbsp; Magnet Hop</div>
+<div id="game-wrap">
+  <canvas id="c"></canvas>
+  <div id="hud">
+    <div id="score">0</div>
+    <div id="combo"></div>
+    <div id="shield-wrap"><div id="shield-fill"></div></div>
+  </div>
+</div>
+<div id="bottom-bar">
+  <div id="howto">
+    <b>How to Play:</b> Tap / Space to slingshot your drone between magnetic anchors.<br>
+    Match <b style="color:#0ff">cyan</b> or <b style="color:#f0f">magenta</b> side for Perfect Snap! Avoid blades, gates &amp; rocks.
+  </div>
+</div>
+
+<script>
+(()=>{
+'use strict';
+
+// ── Config ──────────────────────────────────────────────────────────────────
+const VW=420,VH=750;
+const HS_KEY='jo_magnethop_high';
+const DRONE_R=8, ANCHOR_R=14, ORBIT_R=52;
+const NEAR_MISS_DIST=16;
+const SHIELD_PER_MISS=0.30;
+
+// Coordinate system:
+// Everything stored in "level Y" where Y increases DOWNWARD (canvas convention).
+// The drone starts near y=VH*0.65 in level space.
+// scrollY increases over time (things scroll UP, i.e. level-Y decreases relative to screen).
+// Draw Y on canvas = levelY - scrollY
+// New anchors are generated at levelY < currentLevelY (above current view)
+
+// ── Canvas ──────────────────────────────────────────────────────────────────
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+let DPR=1,W=VW,H=VH,SX=1,SY=1;
+
+function resize(){
+  const r=canvas.parentElement.getBoundingClientRect();
+  W=r.width; H=r.height;
+  DPR=Math.min(window.devicePixelRatio||1,3);
+  canvas.width=W*DPR; canvas.height=H*DPR;
+  canvas.style.width=W+'px'; canvas.style.height=H+'px';
+  SX=W/VW; SY=H/VH;
+}
+window.addEventListener('resize',resize);
+resize();
+
+// ── State ───────────────────────────────────────────────────────────────────
+let gs='start'; // 'start'|'playing'|'gameover'
+let score=0,best=0,combo=0,mult=1;
+let shieldFill=0,shieldOn=false,shieldT=0;
+let chainsTotal=0;
+let scrollY=0,scrollSpeed=60;
+
+// Drone (level space)
+let dX=0,dY=0;        // drone center
+let orbitAngle=0;      // current angle around anchor
+let droneState='orbit'; // 'orbit'|'sling'
+let slingT=0;          // 0..1 progress along sling arc
+
+// Current and target anchors
+let cur=null,tgt=null;
+let anchors=[];
+let nextLY=0; // next anchor spawn level-Y (decreasing)
+
+// Arc params for current sling
+let arcBulge=0, arcDir=1, slingSpeed=600;
+
+// Particles
+let parts=[];
+// Trail
+let trail=[];
+
+// Screen shake
+let shakeAmt=0,shakeX=0,shakeY=0;
+
+// ── Difficulty ───────────────────────────────────────────────────────────────
+const SCROLL_MAX=200, ORBIT_MIN=1.8, ORBIT_MAX=5.0;
+const PW_BASE=0.55, PW_MIN=0.22; // perfect-snap window half-angle
+
+function diff(){ return 1-Math.exp(-chainsTotal/35); }
+function lerp(a,b,t){ return a+(b-a)*t; }
+
+// ── High Score ───────────────────────────────────────────────────────────────
+function loadBest(){ try{best=parseInt(localStorage.getItem(HS_KEY))||0;}catch(e){} }
+function saveBest(){ if(score>best){best=score;try{localStorage.setItem(HS_KEY,best);}catch(e){}} }
+loadBest();
+
+// ── Anchors ──────────────────────────────────────────────────────────────────
+const SP_BASE=155, SP_MIN=115;
+
+function makeAnchor(levelY){
+  const d=diff();
+  const x=75+Math.random()*(VW-150);
+  const pol=Math.random()<.5?'c':'m'; // cyan or magenta
+  const nb=d<.25?0:d<.5?(Math.random()<.45?2:0):(Math.random()<.65?2+(Math.random()<.35?1:0):0);
+  const gate=d>.2&&Math.random()<d*.5;
+  const nrock=d>.45&&Math.random()<d*.4?1:0;
+  const isDouble=chainsTotal>=80&&Math.random()<.15;
+  return{
+    id:Math.random(), x, levelY, pol,
+    bladeA:Math.random()*Math.PI*2,
+    bladeSpd:(0.7+Math.random()*.9)*(Math.random()<.5?1:-1),
+    numB:nb,
+    gate, gateT:.25+Math.random()*.5,
+    gateHW:14+Math.random()*10, // half-width of gap
+    rocks:Array.from({length:nrock},()=>({
+      a:Math.random()*Math.PI*2,
+      r2:ORBIT_R+28+Math.random()*28,
+      spd:(0.5+Math.random()*.9)*(Math.random()<.5?1:-1),
+      rad:9+Math.random()*5
+    })),
+    hue:40+Math.random()*200,
+    isDouble, dblX:isDouble?70+Math.random()*(VW-140):0,
+    alive:true,
+  };
+}
+
+function genAnchors(){
+  while(anchors.filter(a=>a.alive).length<14){
+    const d=diff();
+    const sp=lerp(SP_BASE,SP_MIN,d);
+    nextLY-=sp;
+    anchors.push(makeAnchor(nextLY));
+  }
+}
+
+function nextAnchor(from){
+  let best=null,bestDist=Infinity;
+  anchors.forEach(a=>{
+    if(!a.alive||a.id===from.id)return;
+    const dist=from.levelY-a.levelY; // positive means a is above
+    if(dist>0&&dist<bestDist){bestDist=dist;best=a;}
+  });
+  return best;
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+function initGame(){
+  gs='playing';
+  score=0;combo=0;mult=1;
+  shieldFill=0;shieldOn=false;shieldT=0;
+  chainsTotal=0;
+  parts=[];trail=[];
+  shakeAmt=0;
+  scrollY=0;scrollSpeed=60;
+  anchors=[];
+
+  // First anchor placed at VH*0.6 (60% down screen initially)
+  nextLY=VH*0.62;
+  const first=makeAnchor(nextLY);
+  first.numB=0; first.gate=false; first.rocks=[]; // safe first anchor
+  anchors.push(first);
+  nextLY-=SP_BASE; // queue
+
+  // Pre-generate anchors above
+  for(let i=0;i<12;i++){
+    nextLY-=lerp(SP_BASE,SP_MIN,0);
+    anchors.push(makeAnchor(nextLY));
+  }
+
+  cur=first;
+  dX=cur.x; dY=cur.levelY;
+  orbitAngle=0;
+  droneState='orbit';
+  tgt=null; slingT=0;
+  updateHUD();
+}
+
+// ── Input ─────────────────────────────────────────────────────────────────────
+function tap(){
+  if(gs==='start'||gs==='gameover'){ initGame(); return; }
+  if(gs==='playing'&&droneState==='orbit') doSling();
+}
+canvas.addEventListener('pointerdown',e=>{e.preventDefault();tap();});
+document.addEventListener('keydown',e=>{
+  if(e.code==='Space'||e.code==='Enter'){e.preventDefault();tap();}
+});
+
+// ── Sling ─────────────────────────────────────────────────────────────────────
+function doSling(){
+  const next=nextAnchor(cur);
+  if(!next)return;
+  const d=diff();
+  const pw=lerp(PW_BASE,PW_MIN,d);
+
+  // Perfect-snap check: cyan = left half (π/2..3π/2), magenta = right half
+  let na=((orbitAngle%(Math.PI*2))+Math.PI*2)%(Math.PI*2);
+  const onLeft=na>Math.PI*.5&&na<Math.PI*1.5;
+  const isPerfect=(cur.pol==='c'&&onLeft)||(cur.pol==='m'&&!onLeft);
+
+  if(isPerfect){
+    arcBulge=.25+Math.random()*.15;
+    slingSpeed=lerp(640,520,d);
+    combo++; mult=Math.min(8,1+Math.floor(combo/3));
+    score+=mult;
+    burst(dX,dY,'perfect',20);
+    shake(2.5);
+  } else {
+    arcBulge=.6+d*.5;
+    slingSpeed=lerp(520,400,d);
+    combo=0;mult=1;
+  }
+
+  // Arc direction: bulge away from anchor line
+  const dx=next.x-cur.x;
+  arcDir=dx>0?-1:1;
+  if(Math.abs(dx)<15) arcDir=na>Math.PI?1:-1;
+
+  tgt=next; droneState='sling'; slingT=0;
+}
+
+// Cubic bezier point from cur to tgt
+function slingPt(t){
+  const ax=cur.x, ay=cur.levelY, bx=tgt.x, by=tgt.levelY;
+  const mx=(ax+bx)/2, my=(ay+by)/2;
+  // perpendicular (rotated 90°)
+  const pdx=-(by-ay), pdy=bx-ax;
+  const plen=Math.sqrt(pdx*pdx+pdy*pdy)||1;
+  const bulge=arcBulge*ORBIT_R*2*arcDir;
+  const cx1=ax+(pdx/plen)*bulge, cy1=ay+(pdy/plen)*bulge;
+  const cx2=bx+(pdx/plen)*bulge, cy2=by+(pdy/plen)*bulge;
+  const u=1-t;
+  return{
+    x:u*u*u*ax+3*u*u*t*cx1+3*u*t*t*cx2+t*t*t*bx,
+    y:u*u*u*ay+3*u*u*t*cy1+3*u*t*t*cy2+t*t*t*by,
+  };
+}
+
+// ── Particles ─────────────────────────────────────────────────────────────────
+// Particles stored in level space (levelY, levelX)
+function addPart(lx,ly,opts){
+  parts.push({
+    lx,ly,
+    vx:(Math.random()-.5)*(opts.spread||120),
+    vy:(Math.random()-.5)*(opts.spread||120)+(opts.bias||0),
+    life:1,
+    dec:.8+Math.random()*.9,
+    r:opts.r||(2+Math.random()*3.5),
+    color:opts.color||'#fff',
+  });
+}
+
+function burst(lx,ly,type,n){
+  if(type==='perfect'){
+    for(let i=0;i<n;i++){
+      addPart(lx,ly,{color:`hsl(${Math.random()<.5?185:300},100%,70%)`,spread:200,bias:-30,r:2+Math.random()*5});
+    }
+  }else if(type==='death'){
+    for(let i=0;i<n;i++){
+      addPart(lx,ly,{color:`hsl(${Math.random()*360},90%,65%)`,spread:280,r:3+Math.random()*5});
+    }
+  }else if(type==='leaf'){
+    for(let i=0;i<n;i++){
+      addPart(lx,ly,{color:`hsl(${90+Math.random()*60},80%,55%)`,spread:70,r:2.5});
+    }
+  }else if(type==='shield'){
+    for(let i=0;i<12;i++){
+      const a=(i/12)*Math.PI*2;
+      parts.push({lx:lx+Math.cos(a)*22,ly:ly+Math.sin(a)*22,
+        vx:Math.cos(a)*90,vy:Math.sin(a)*90,
+        life:1,dec:2.2,r:4,color:'#0ff'});
+    }
+  }
+}
+
+function updParts(dt){
+  for(let i=parts.length-1;i>=0;i--){
+    const p=parts[i];
+    p.lx+=p.vx*dt; p.ly+=p.vy*dt;
+    p.vy+=100*dt; // gravity (downward = positive levelY)
+    p.life-=p.dec*dt;
+    if(p.life<=0) parts.splice(i,1);
+  }
+}
+
+// ── Screen shake ─────────────────────────────────────────────────────────────
+function shake(amt){ shakeAmt=Math.max(shakeAmt,amt); }
+
+// ── Collision helpers ─────────────────────────────────────────────────────────
+function distSeg(px,py,ax,ay,bx,by){
+  const dx=bx-ax,dy=by-ay,l2=dx*dx+dy*dy;
+  if(!l2)return Math.hypot(px-ax,py-ay);
+  let t=((px-ax)*dx+(py-ay)*dy)/l2;
+  t=Math.max(0,Math.min(1,t));
+  return Math.hypot(px-(ax+t*dx),py-(ay+t*dy));
+}
+
+function collideBlades(a){
+  for(let b=0;b<a.numB;b++){
+    const ba=a.bladeA+(b*Math.PI*2/a.numB);
+    const x1=a.x+Math.cos(ba)*ORBIT_R*.35, y1=a.levelY+Math.sin(ba)*ORBIT_R*.35;
+    const x2=a.x+Math.cos(ba)*ORBIT_R*1.45, y2=a.levelY+Math.sin(ba)*ORBIT_R*1.45;
+    const d=distSeg(dX,dY,x1,y1,x2,y2);
+    if(d<DRONE_R+4)return'hit';
+    if(d<DRONE_R+NEAR_MISS_DIST+4)return'near';
+  }
+  return null;
+}
+
+function collideRocks(a){
+  for(const rk of a.rocks){
+    const rx=a.x+Math.cos(rk.a)*rk.r2, ry=a.levelY+Math.sin(rk.a)*rk.r2;
+    const d=Math.hypot(dX-rx,dY-ry);
+    if(d<DRONE_R+rk.rad)return'hit';
+    if(d<DRONE_R+rk.rad+NEAR_MISS_DIST)return'near';
+  }
+  return null;
+}
+
+function collideGate(){
+  // Gate is on the sling path at t=tgt.gateT
+  if(!tgt||!tgt.gate)return null;
+  const gt=tgt.gateT;
+  if(slingT<gt-.08||slingT>gt+.08)return null;
+  const gp=slingPt(gt);
+  const px=dX-gp.x, py=dY-gp.y;
+  // Gate orientation: perpendicular to the sling direction
+  const gp2=slingPt(Math.min(gt+.02,1));
+  const tx=gp2.x-gp.x, ty=gp2.y-gp.y;
+  const tl=Math.hypot(tx,ty)||1;
+  // project drone offset onto perpendicular (normal to path)
+  const nx=-ty/tl, ny=tx/tl;
+  const along=px*nx+py*ny; // distance from path center along normal
+  const thru=px*(tx/tl)+py*(ty/tl); // distance along path
+  // Gate has a gap of half-width gateHW; outside is the wall
+  if(Math.abs(thru)<DRONE_R+8){
+    if(Math.abs(along)>tgt.gateHW+DRONE_R)return'hit';
+    if(Math.abs(along)>tgt.gateHW)return'near';
+  }
+  return null;
+}
+
+function nearMiss(){
+  shieldFill=Math.min(1,shieldFill+SHIELD_PER_MISS);
+  burst(dX,dY,'leaf',4);
+}
+
+function die(){
+  if(shieldOn){
+    shieldOn=false; shieldFill=0;
+    burst(dX,dY,'shield',1);
+    shake(5);
+    return;
+  }
+  burst(dX,dY,'death',30);
+  shake(16);
+  saveBest();
+  gs='gameover';
+  updateHUD();
+}
+
+// ── Update ────────────────────────────────────────────────────────────────────
+function update(dt){
+  if(gs!=='playing')return;
+  const d=diff();
+  scrollSpeed=lerp(60,SCROLL_MAX,d);
+  const orbitSpd=lerp(ORBIT_MIN,ORBIT_MAX,d);
+
+  // Shield
+  if(shieldFill>=1&&!shieldOn){ shieldOn=true; shieldT=1; burst(dX,dY,'shield',1); }
+  if(shieldOn){ shieldT-=dt; if(shieldT<=0){shieldOn=false;} }
+
+  // Camera scroll
+  scrollY+=scrollSpeed*dt;
+
+  // Anchor hazard update
+  anchors.forEach(a=>{
+    if(!a.alive)return;
+    a.bladeA+=a.bladeSpd*dt;
+    a.rocks.forEach(rk=>{ rk.a+=rk.spd*dt; });
+  });
+
+  if(droneState==='orbit'){
+    orbitAngle+=orbitSpd*dt;
+    dX=cur.x+Math.cos(orbitAngle)*ORBIT_R;
+    dY=cur.levelY+Math.sin(orbitAngle)*ORBIT_R;
+
+    // Collision checks
+    const bc=collideBlades(cur);
+    if(bc==='hit'){die();return;}
+    if(bc==='near')nearMiss();
+    const rc=collideRocks(cur);
+    if(rc==='hit'){die();return;}
+    if(rc==='near')nearMiss();
+
+    // Fell off bottom
+    const screenDY=dY-scrollY;
+    if(screenDY>VH+40){die();return;}
+  }
+
+  if(droneState==='sling'){
+    // Advance t
+    const dist=Math.hypot(tgt.x-cur.x,tgt.levelY-cur.levelY)||1;
+    const speed=slingSpeed;
+    slingT+=speed/dist*dt;
+
+    const pt=slingPt(Math.min(slingT,1));
+    dX=pt.x; dY=pt.y;
+    trail.push({lx:dX,ly:dY,t:1});
+
+    // Gate check
+    const gc=collideGate();
+    if(gc==='hit'){die();return;}
+    if(gc==='near')nearMiss();
+
+    if(slingT>=1){
+      dX=tgt.x; dY=tgt.levelY;
+      orbitAngle=Math.atan2(0,ORBIT_R); // start orbit from right
+      cur=tgt; tgt=null; droneState='orbit';
+      chainsTotal++;
+      score+=mult;
+      genAnchors();
+
+      // Cull far-below anchors
+      const cullY=scrollY+VH*1.2;
+      anchors=anchors.filter(a=>{
+        if(a.id===cur.id)return true;
+        if(a.levelY>cullY){a.alive=false;}
+        return a.alive;
+      });
+    }
+  }
+
+  // Trail decay
+  for(let i=trail.length-1;i>=0;i--){
+    trail[i].t-=2.5*dt;
+    if(trail[i].t<=0)trail.splice(i,1);
+  }
+  if(droneState!=='sling')trail=[];
+
+  // Shield fill check
+  if(shieldFill<1){}
+
+  updParts(dt);
+
+  // Shake
+  if(shakeAmt>0.2){
+    shakeX=(Math.random()-.5)*shakeAmt*2;
+    shakeY=(Math.random()-.5)*shakeAmt*2;
+    shakeAmt*=.80;
+  } else { shakeAmt=0; shakeX=0; shakeY=0; }
+}
+
+// ── HUD ───────────────────────────────────────────────────────────────────────
+const scoreEl=document.getElementById('score');
+const comboEl=document.getElementById('combo');
+const shieldEl=document.getElementById('shield-fill');
+
+function updateHUD(){
+  scoreEl.style.opacity=gs==='playing'?'1':'0';
+  scoreEl.textContent=score;
+  comboEl.textContent=mult>=2?`×${mult} COMBO`:'';
+  shieldEl.style.width=(shieldFill*100)+'%';
+  shieldEl.style.background=shieldOn?'linear-gradient(90deg,#fff,#0ff)':'linear-gradient(90deg,#0ff,#f0f)';
+}
+
+// ── Draw ─────────────────────────────────────────────────────────────────────
+const hue0=Date.now(); // for color cycling
+
+function draw(now){
+  ctx.save();
+  ctx.scale(DPR,DPR);
+
+  if(shakeAmt>0.2) ctx.translate(shakeX,shakeY);
+
+  // Background
+  const bg=ctx.createLinearGradient(0,0,0,H);
+  bg.addColorStop(0,'#040d04');
+  bg.addColorStop(1,'#091509');
+  ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
+
+  // Fog bands (parallax)
+  const fy=scrollY*.06;
+  ctx.save(); ctx.globalAlpha=.06;
+  ctx.fillStyle='#3a8a30';
+  ctx.fillRect(0,((fy)%(H*.8+50))*SY,W,35*SY);
+  ctx.fillRect(0,((fy+200)%(H*.8+50))*SY,W,25*SY);
+  ctx.restore();
+
+  // Parallax silhouettes (3 layers, each offset by scroll)
+  drawBG(now);
+
+  // ── Anchor & hazards ──────────────────────────────────────────────────────
+  anchors.forEach(a=>{
+    if(!a.alive)return;
+    const sy=a.levelY-scrollY; // screen Y
+    if(sy<-80||sy>H+80)return; // off-screen
+    const sx=a.x*SX, scY=sy*SY;
+    const sc=Math.min(SX,SY);
+
+    // Beam to next anchor (if this is current)
+    if(a.id===cur.id&&droneState==='orbit'){
+      const nx=nextAnchor(cur);
+      if(nx){
+        const nsy=nx.levelY-scrollY;
+        const hue=(now/20)%360;
+        ctx.save();
+        ctx.globalAlpha=.15;
+        ctx.strokeStyle=`hsl(${hue},100%,65%)`;
+        ctx.lineWidth=2.5*sc;
+        ctx.setLineDash([7,11]);
+        ctx.beginPath();
+        ctx.moveTo(a.x*SX,sy*SY);
+        ctx.lineTo(nx.x*SX,nsy*SY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
+      }
+    }
+
+    // Polarity halo
+    ctx.save();
+    ctx.globalAlpha=.18;
+    // cyan half (left)
+    ctx.beginPath();
+    ctx.moveTo(sx,scY);
+    ctx.arc(sx,scY,(ANCHOR_R+11)*sc,Math.PI*.5,Math.PI*1.5);
+    ctx.closePath();
+    ctx.fillStyle='#0ff'; ctx.fill();
+    // magenta half (right)
+    ctx.beginPath();
+    ctx.moveTo(sx,scY);
+    ctx.arc(sx,scY,(ANCHOR_R+11)*sc,-Math.PI*.5,Math.PI*.5);
+    ctx.closePath();
+    ctx.fillStyle='#f0f'; ctx.fill();
+    ctx.restore();
+
+    // Polarity ring
+    ctx.save();
+    ctx.strokeStyle=a.pol==='c'?'#0ff':'#f0f';
+    ctx.lineWidth=2.5*sc;
+    ctx.globalAlpha=.75;
+    ctx.beginPath();
+    ctx.arc(sx,scY,(ANCHOR_R+5)*sc,0,Math.PI*2);
+    ctx.stroke();
+    ctx.restore();
+
+    // Anchor body
+    const ag=ctx.createRadialGradient(sx,scY,0,sx,scY,ANCHOR_R*sc);
+    ag.addColorStop(0,`hsl(${a.hue},75%,72%)`);
+    ag.addColorStop(1,`hsl(${a.hue},45%,32%)`);
+    ctx.beginPath();
+    ctx.arc(sx,scY,ANCHOR_R*sc,0,Math.PI*2);
+    ctx.fillStyle=ag; ctx.fill();
+
+    // Vine blades
+    for(let b=0;b<a.numB;b++){
+      const ba=a.bladeA+(b*Math.PI*2/a.numB);
+      const x1=sx+Math.cos(ba)*ORBIT_R*.35*sc, y1=scY+Math.sin(ba)*ORBIT_R*.35*sc;
+      const x2=sx+Math.cos(ba)*ORBIT_R*1.45*sc, y2=scY+Math.sin(ba)*ORBIT_R*1.45*sc;
+      ctx.save();
+      ctx.strokeStyle='#6e3'; ctx.lineWidth=5.5*sc; ctx.lineCap='round';
+      ctx.globalAlpha=.88;
+      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+      // thorn tip
+      ctx.strokeStyle='#f70'; ctx.lineWidth=2.5*sc;
+      ctx.beginPath();
+      ctx.moveTo(x2,y2);
+      ctx.lineTo(x2+Math.cos(ba+.55)*9*sc,y2+Math.sin(ba+.55)*9*sc);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Beetle rocks
+    a.rocks.forEach(rk=>{
+      const rx=sx+Math.cos(rk.a)*rk.r2*sc, ry=scY+Math.sin(rk.a)*rk.r2*sc;
+      ctx.save();
+      ctx.fillStyle='#a87'; ctx.beginPath(); ctx.arc(rx,ry,rk.rad*sc,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle='#6a4'; ctx.lineWidth=1.5*sc; ctx.stroke();
+      ctx.restore();
+    });
+
+    // Thorn gate (draw when slinging toward this anchor)
+    if(a.gate&&droneState==='sling'&&tgt&&tgt.id===a.id){
+      const gp=slingPt(a.gateT);
+      const gp2=slingPt(Math.min(a.gateT+.02,1));
+      const tx=gp2.x-gp.x, ty=gp2.y-gp.y;
+      const tl=Math.hypot(tx,ty)||1;
+      const nx=-ty/tl, ny=tx/tl; // normal (perpendicular)
+      const hw=a.gateHW, ext=32;
+      const gsx=(gp.x)*SX, gsy=(gp.y-scrollY)*SY;
+      ctx.save();
+      ctx.strokeStyle='#f50'; ctx.lineWidth=5*sc; ctx.globalAlpha=.9; ctx.lineCap='round';
+      // Left wall (outside gap on left)
+      ctx.beginPath();
+      ctx.moveTo(gsx+(nx*hw+tx*ext/tl)*SX, gsy+(ny*hw+ty*ext/tl)*SY);
+      ctx.lineTo(gsx+(nx*(hw+ext))*SX, gsy+(ny*(hw+ext))*SY);
+      ctx.stroke();
+      // Right wall
+      ctx.beginPath();
+      ctx.moveTo(gsx-(nx*hw-tx*ext/tl)*SX, gsy-(ny*hw-ty*ext/tl)*SY);
+      ctx.lineTo(gsx-(nx*(hw+ext))*SX, gsy-(ny*(hw+ext))*SY);
+      ctx.stroke();
+      ctx.restore();
+    }
+  });
+
+  // Trail
+  if(trail.length>1&&droneState==='sling'){
+    for(let i=1;i<trail.length;i++){
+      const p=trail[i-1], q=trail[i];
+      const alpha=(i/trail.length)*Math.min(1,q.t)*.55*(1+mult*.1);
+      ctx.save();
+      ctx.globalAlpha=Math.min(1,alpha);
+      const hue=(now/12+i*5)%360;
+      ctx.strokeStyle=`hsl(${hue},100%,68%)`;
+      ctx.lineWidth=(i/trail.length)*6*Math.min(SX,SY);
+      ctx.lineCap='round';
+      ctx.beginPath();
+      ctx.moveTo(p.lx*SX,(p.ly-scrollY)*SY);
+      ctx.lineTo(q.lx*SX,(q.ly-scrollY)*SY);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  // Particles
+  parts.forEach(p=>{
+    const sx=p.lx*SX, sy=(p.ly-scrollY)*SY;
+    if(sy<-20||sy>H+20)return;
+    ctx.save();
+    ctx.globalAlpha=Math.max(0,p.life);
+    ctx.fillStyle=p.color;
+    ctx.beginPath(); ctx.arc(sx,sy,Math.max(.5,p.r*Math.min(SX,SY)),0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  });
+
+  // Drone
+  if(gs==='playing'){
+    const dsx=dX*SX, dsy=(dY-scrollY)*SY;
+    const sc=Math.min(SX,SY);
+
+    // Shield ring
+    if(shieldOn){
+      const p=.7+.3*Math.sin(now/80);
+      ctx.save(); ctx.strokeStyle='#0ff'; ctx.lineWidth=3*sc; ctx.globalAlpha=.65*p;
+      ctx.beginPath(); ctx.arc(dsx,dsy,(DRONE_R+10)*sc,0,Math.PI*2); ctx.stroke();
+      ctx.restore();
+    }
+
+    // Glow
+    const hue=(now/14)%360;
+    const dg=ctx.createRadialGradient(dsx,dsy,0,dsx,dsy,DRONE_R*2*sc);
+    dg.addColorStop(0,`hsl(${hue},100%,80%)`);
+    dg.addColorStop(.5,`hsl(${hue},100%,50%)`);
+    dg.addColorStop(1,'transparent');
+    ctx.beginPath(); ctx.arc(dsx,dsy,DRONE_R*2*sc,0,Math.PI*2);
+    ctx.fillStyle=dg; ctx.fill();
+
+    // Body
+    ctx.save();
+    ctx.fillStyle='#ddf'; ctx.strokeStyle='#8af'; ctx.lineWidth=1.5*sc;
+    ctx.beginPath(); ctx.arc(dsx,dsy,DRONE_R*sc,0,Math.PI*2); ctx.fill(); ctx.stroke();
+
+    // Propellers
+    for(let i=0;i<4;i++){
+      const pa=(i/4)*Math.PI*2+(now/90);
+      const px=dsx+Math.cos(pa)*DRONE_R*1.45*sc;
+      const py=dsy+Math.sin(pa)*DRONE_R*1.45*sc;
+      ctx.fillStyle=`hsla(${hue},100%,70%,.75)`;
+      ctx.beginPath(); ctx.arc(px,py,2.8*sc,0,Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // ── Overlays ─────────────────────────────────────────────────────────────
+  if(gs==='start') drawStart(now);
+  if(gs==='gameover') drawOver(now);
+
+  ctx.restore();
+
+  // Update HUD every frame during play (lightweight)
+  if(gs==='playing') updateHUD();
+}
+
+// Parallax background silhouettes
+const bgEls=[];
+function initBG(){
+  bgEls.length=0;
+  for(let l=0;l<3;l++){
+    for(let j=0;j<9;j++){
+      bgEls.push({
+        x:Math.random()*VW,
+        y:Math.random()*VH*2.2,
+        w:25+Math.random()*75,
+        h:70+Math.random()*130,
+        spd:.1+l*.12,
+        alpha:.03+l*.035,
+        color:['#1a3a10','#2a5020','#365c28'][l],
+      });
+    }
+  }
+}
+initBG();
+
+function drawBG(now){
+  bgEls.forEach(el=>{
+    let vy=el.y+(scrollY*el.spd)%(VH*2.2+100);
+    vy=((vy%(VH*2.2))+VH*2.2)%(VH*2.2);
+    if(vy>H+el.h)return;
+    ctx.save();
+    ctx.globalAlpha=el.alpha;
+    ctx.fillStyle=el.color;
+    ctx.beginPath();
+    ctx.ellipse(el.x*SX,vy*SY,el.w*.5*SX,el.h*.5*SY,0,0,Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  });
+}
+
+function drawStart(now){
+  ctx.save();
+  ctx.fillStyle='rgba(0,0,0,.62)';
+  ctx.fillRect(0,0,W,H);
+  const cx=W/2, cy=H/2;
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+
+  // Title glow
+  ctx.font=`bold ${Math.round(41*SY)}px 'Segoe UI',system-ui,sans-serif`;
+  ctx.globalAlpha=.45+.25*Math.sin(now/380);
+  ctx.fillStyle='#0f8';
+  ctx.fillText('JUNGLE ORBIT',cx,cy-105*SY);
+  ctx.globalAlpha=1;
+  ctx.fillStyle='#fff';
+  ctx.fillText('JUNGLE ORBIT',cx,cy-105*SY);
+
+  ctx.font=`${Math.round(15*SY)}px 'Segoe UI',system-ui,sans-serif`;
+  ctx.fillStyle='#8de'; ctx.globalAlpha=.9;
+  ctx.fillText('Magnet Hop',cx,cy-65*SY);
+
+  ctx.font=`${Math.round(19*SY)}px 'Segoe UI',system-ui,sans-serif`;
+  ctx.fillStyle='#fff';
+  ctx.globalAlpha=.7+.3*Math.sin(now/340);
+  ctx.fillText('TAP TO START',cx,cy+18*SY);
+  ctx.globalAlpha=1;
+
+  if(best>0){
+    ctx.font=`${Math.round(14*SY)}px 'Segoe UI',system-ui,sans-serif`;
+    ctx.fillStyle='#adf';
+    ctx.fillText(`Best: ${best}`,cx,cy+56*SY);
+  }
+  ctx.restore();
+}
+
+function drawOver(now){
+  ctx.save();
+  ctx.fillStyle='rgba(0,0,0,.72)';
+  ctx.fillRect(0,0,W,H);
+  const cx=W/2, cy=H/2;
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+
+  ctx.font=`bold ${Math.round(34*SY)}px 'Segoe UI',system-ui,sans-serif`;
+  ctx.fillStyle='#f65'; ctx.fillText('GAME OVER',cx,cy-92*SY);
+
+  ctx.font=`${Math.round(15*SY)}px 'Segoe UI',system-ui,sans-serif`;
+  ctx.fillStyle='#acd'; ctx.fillText('Score',cx,cy-48*SY);
+
+  ctx.font=`bold ${Math.round(50*SY)}px 'Segoe UI',system-ui,sans-serif`;
+  ctx.fillStyle='#fff'; ctx.fillText(score,cx,cy-8*SY);
+
+  ctx.font=`${Math.round(14*SY)}px 'Segoe UI',system-ui,sans-serif`;
+  ctx.fillStyle='#adf'; ctx.fillText(`Best: ${best}`,cx,cy+46*SY);
+
+  ctx.font=`${Math.round(18*SY)}px 'Segoe UI',system-ui,sans-serif`;
+  ctx.fillStyle='#fff';
+  ctx.globalAlpha=.7+.3*Math.sin(now/340);
+  ctx.fillText('TAP TO RETRY',cx,cy+84*SY);
+  ctx.globalAlpha=1;
+  ctx.restore();
+}
+
+// ── Loop ─────────────────────────────────────────────────────────────────────
+let lastT=0;
+function loop(now){
+  const dt=Math.min((now-lastT)/1000,.05);
+  lastT=now;
+  update(dt);
+  draw(now);
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(t=>{lastT=t;loop(t);});
+
+})();
+</script>
+</body>
+</html>

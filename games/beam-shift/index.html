@@ -1,0 +1,880 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Beam Shift - Free HTML5 Game</title>
+  <meta name="description" content="Play Beam Shift - Tap to stabilize your character on a glowing beam that pulses with changing neon colors.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0b0f1a">
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Beam Shift - Free HTML5 Game">
+  <meta property="og:description" content="Play Beam Shift - Tap to stabilize your character on a glowing beam that pulses with changing neon colors.">
+  <meta property="og:url" content="https://balinti.github.io/beam-shift/">
+  <meta property="og:image" content="https://balinti.github.io/beam-shift/og.png">
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Beam Shift - Free HTML5 Game">
+  <meta name="twitter:description" content="Play Beam Shift - Tap to stabilize your character on a glowing beam that pulses with changing neon colors.">
+  <meta name="twitter:image" content="https://balinti.github.io/beam-shift/og.png">
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #0b0f1a;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: flex-start;
+      overflow: hidden;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+    }
+    #wrap {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      height: 100vh;
+      max-height: 750px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+      cursor: pointer;
+    }
+    #info {
+      width: 100%;
+      max-width: 420px;
+      padding: 12px 16px;
+      color: #8899bb;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    #info summary {
+      cursor: pointer;
+      color: #aabbdd;
+      font-size: 13px;
+      list-style: none;
+      padding: 6px 0;
+    }
+    #info summary::before { content: '▶ '; font-size: 10px; }
+    #info[open] summary::before { content: '▼ '; }
+    #info p { margin-top: 8px; }
+    #info .kw { color: #66aaff; }
+  </style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+</div>
+<details id="info">
+  <summary>About Beam Shift</summary>
+  <p>
+    <strong>Beam Shift</strong> is a free <span class="kw">hyper-casual HTML5 game</span> where you auto-run along a
+    neon beam that pulses between phases. <span class="kw">Tap to phase-shift</span> your runner to match the beam's
+    required phase and keep your combo alive. Watch for <span class="kw">switch nodes</span> to swap lanes.
+    Two mismatches and you fall! Survive as long as possible and beat your high score.
+    Keywords: <span class="kw">beam shift game, neon runner, phase shift, tap game, free browser game, HTML5 arcade</span>.
+  </p>
+</details>
+
+<script>
+(function(){
+'use strict';
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+const LS_KEY = 'beamshift_highscore';
+const DPR = Math.min(window.devicePixelRatio || 1, 2);
+const MAX_PHASES = 4;
+const LANE_COUNT = 2;
+const PHASE_COLORS = [
+  { h: 200, s: 100, l: 60 },  // cyan
+  { h: 290, s: 100, l: 65 },  // magenta
+  { h: 50,  s: 100, l: 60 },  // gold
+  { h: 140, s: 100, l: 55 },  // green
+];
+const HIT_STOP_DUR = 80;   // ms
+const SHAKE_DUR    = 350;  // ms
+const SHAKE_AMP    = 8;
+
+// ─── Setup canvas ─────────────────────────────────────────────────────────────
+const wrap = document.getElementById('wrap');
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+function resize() {
+  const W = wrap.clientWidth;
+  const H = wrap.clientHeight;
+  canvas.width  = W * DPR;
+  canvas.height = H * DPR;
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  GW = W; GH = H;
+  initLayout();
+}
+let GW = 0, GH = 0;
+
+// ─── Layout ───────────────────────────────────────────────────────────────────
+let LANE_Y = [0, 0];
+let RUNNER_X = 0;
+let BEAM_W = 0;
+let BEAM_H = 14;
+
+function initLayout() {
+  RUNNER_X = GW * 0.22;
+  BEAM_W   = GW;
+  LANE_Y[0] = GH * 0.38;
+  LANE_Y[1] = GH * 0.62;
+}
+
+// ─── State ─────────────────────────────────────────────────────────────────────
+let state = 'start'; // 'start' | 'playing' | 'gameover'
+let highScore = parseInt(localStorage.getItem(LS_KEY) || '0', 10);
+
+// Game vars
+let score, distance, combo, bestCombo, perfects, totalTaps, goodTaps;
+let strikes;
+let speed;          // px/s
+let bpm;
+let beatInterval;   // ms per beat
+let beatTimer;      // ms until next beat
+let elapsedTime;    // s
+let phaseCount;     // 2 or 3 or 4
+let runnerPhase;    // 0..phaseCount-1
+let runnerLane;     // 0 or 1
+let particles;
+let segments;       // array of beam segment objects
+let switchNodes;    // array of switch node objects
+let shakeTimer, shakeAmp;
+let hitStopTimer;
+let globalHue;
+let stutterPending; // bool: next beat is stutter (doubled wait)
+let stutterGlow;    // 0..1 for telegraph glow
+let warnFlash;      // 0..1 for mismatch tint
+let perfectFlash;   // 0..1 for perfect tint
+let lastBeatX;      // world X of last beat pulse (for ripple)
+
+// Segment/node world x position (world scrolls left)
+let worldX; // how far the world has scrolled
+
+// ─── Segment structure ────────────────────────────────────────────────────────
+// segment: { wx: number, len: number, phases: [phase0, phase1], type: 'normal'|'split'|'switch' }
+// lane 0 = top, lane 1 = bottom
+// for non-split: phases[0] == phases[1]
+// switch node: { wx, active }
+
+function initGame() {
+  score = 0; distance = 0; combo = 0; bestCombo = 0;
+  perfects = 0; totalTaps = 0; goodTaps = 0;
+  strikes = 0;
+  speed = 200;
+  bpm = 80;
+  beatInterval = 60000 / bpm;
+  beatTimer = beatInterval;
+  elapsedTime = 0;
+  phaseCount = 2;
+  runnerPhase = 0;
+  runnerLane = 0;
+  particles = [];
+  segments = [];
+  switchNodes = [];
+  worldX = 0;
+  shakeTimer = 0; shakeAmp = 0;
+  hitStopTimer = 0;
+  globalHue = 200;
+  stutterPending = false;
+  stutterGlow = 0;
+  warnFlash = 0;
+  perfectFlash = 0;
+  lastBeatX = RUNNER_X;
+
+  // seed initial segments
+  for (let i = 0; i < 8; i++) generateSegment();
+}
+
+function generateSegment() {
+  const lastSeg = segments[segments.length - 1];
+  const wx = lastSeg ? lastSeg.wx + lastSeg.len : -RUNNER_X;
+  const len = GW * (0.9 + Math.random() * 0.6);
+
+  // split probability increases with time
+  const splitProb = Math.min(0.05 + elapsedTime * 0.003, 0.45);
+  const isSwitch = Math.random() < 0.18 && segments.length > 2;
+  const isSplit   = !isSwitch && Math.random() < splitProb && segments.length > 3;
+
+  let phases;
+  if (isSplit) {
+    const p0 = Math.floor(Math.random() * phaseCount);
+    let p1 = Math.floor(Math.random() * (phaseCount - 1));
+    if (p1 >= p0) p1++;
+    phases = [p0, p1];
+  } else {
+    const p = Math.floor(Math.random() * phaseCount);
+    phases = [p, p];
+  }
+
+  const type = isSwitch ? 'switch' : (isSplit ? 'split' : 'normal');
+  segments.push({ wx, len, phases, type });
+
+  if (isSwitch) {
+    switchNodes.push({ wx: wx + len * 0.5, active: true });
+  }
+}
+
+// ─── Input ────────────────────────────────────────────────────────────────────
+let inputDown = false;
+
+function onInput(e) {
+  e.preventDefault();
+  if (!inputDown) {
+    inputDown = true;
+    handleTap();
+  }
+}
+function onInputUp() { inputDown = false; }
+
+canvas.addEventListener('pointerdown', onInput, { passive: false });
+canvas.addEventListener('pointerup',   onInputUp);
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    if (!inputDown) { inputDown = true; handleTap(); }
+  }
+});
+document.addEventListener('keyup', (e) => {
+  if (e.code === 'Space' || e.code === 'Enter') inputDown = false;
+});
+
+function handleTap() {
+  if (state === 'start') {
+    state = 'playing';
+    initGame();
+    return;
+  }
+  if (state === 'gameover') {
+    state = 'start';
+    return;
+  }
+  if (state === 'playing') {
+    if (hitStopTimer > 0) return;
+    totalTaps++;
+
+    // Check if near a switch node
+    const nearSwitch = switchNodes.find(n =>
+      n.active && Math.abs((n.wx - worldX) - RUNNER_X) < 60
+    );
+
+    if (nearSwitch) {
+      // Lane swap
+      nearSwitch.active = false;
+      runnerLane = 1 - runnerLane;
+      spawnParticles(RUNNER_X, LANE_Y[runnerLane], 'switch', 10);
+      return;
+    }
+
+    // Cycle phase
+    runnerPhase = (runnerPhase + 1) % phaseCount;
+
+    // Check match
+    const seg = getSegmentAt(worldX + RUNNER_X);
+    if (!seg) return;
+
+    const required = seg.phases[runnerLane];
+    const isPerfect = Math.abs(beatTimer - beatInterval * 0.5) < getPerfectWindow();
+
+    if (runnerPhase === required) {
+      goodTaps++;
+      combo++;
+      if (combo > bestCombo) bestCombo = combo;
+      if (isPerfect) {
+        perfects++;
+        hitStopTimer = HIT_STOP_DUR;
+        perfectFlash = 1;
+        spawnParticles(RUNNER_X, LANE_Y[runnerLane], 'perfect', 18);
+        score += 50 * (1 + combo * 0.1);
+      } else {
+        spawnParticles(RUNNER_X, LANE_Y[runnerLane], 'match', 8);
+        score += 10 * (1 + combo * 0.1);
+      }
+    } else {
+      // Mismatch
+      strikes++;
+      combo = 0;
+      warnFlash = 1;
+      shakeTimer = SHAKE_DUR * (strikes >= 2 ? 1.5 : 0.8);
+      shakeAmp   = SHAKE_AMP * (strikes >= 2 ? 1.5 : 0.8);
+      spawnParticles(RUNNER_X, LANE_Y[runnerLane], 'mismatch', 12);
+
+      if (strikes >= 2) {
+        endGame();
+      }
+    }
+  }
+}
+
+function getPerfectWindow() {
+  // shrinks with speed
+  return Math.max(50, 120 - elapsedTime * 0.4);
+}
+
+function getSegmentAt(wx) {
+  for (const s of segments) {
+    if (wx >= s.wx && wx < s.wx + s.len) return s;
+  }
+  return null;
+}
+
+function endGame() {
+  state = 'gameover';
+  if (score > highScore) {
+    highScore = Math.floor(score);
+    localStorage.setItem(LS_KEY, highScore);
+  }
+  shakeTimer = SHAKE_DUR * 2;
+  shakeAmp   = SHAKE_AMP * 2.5;
+}
+
+// ─── Particles ────────────────────────────────────────────────────────────────
+function spawnParticles(x, y, type, count) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const spd   = 60 + Math.random() * 140;
+    const life  = 0.4 + Math.random() * 0.5;
+    let color;
+    if (type === 'perfect')  color = `hsl(50,100%,80%)`;
+    else if (type === 'match')    color = `hsl(200,100%,70%)`;
+    else if (type === 'mismatch') color = `hsl(0,100%,65%)`;
+    else if (type === 'switch')   color = `hsl(140,100%,65%)`;
+    else if (type === 'trail')    color = `hsl(${globalHue},90%,65%)`;
+    else if (type === 'ripple')   color = `hsl(${globalHue},100%,70%)`;
+    else color = '#fff';
+
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * spd,
+      vy: Math.sin(angle) * spd,
+      life, maxLife: life,
+      color, type,
+      size: type === 'perfect' ? 4 + Math.random() * 3 : 2 + Math.random() * 2,
+    });
+  }
+}
+
+// ─── Difficulty scaling ───────────────────────────────────────────────────────
+function updateDifficulty(dt) {
+  elapsedTime += dt;
+  // speed: 200 -> 480 over 90s
+  speed = 200 + Math.min(elapsedTime / 90, 1) * 280;
+  // bpm: 80 -> 160 over 90s
+  bpm = 80 + Math.min(elapsedTime / 90, 1) * 80;
+  beatInterval = 60000 / bpm;
+  // phase count
+  if (elapsedTime > 60) phaseCount = Math.min(MAX_PHASES, 4);
+  else if (elapsedTime > 30) phaseCount = Math.min(MAX_PHASES, 3);
+  else phaseCount = 2;
+  // stutter beats after 45s
+  if (elapsedTime > 45) {
+    stutterGlow = Math.min(stutterGlow + dt * 0.5, 1);
+  }
+}
+
+// ─── Main loop ────────────────────────────────────────────────────────────────
+let lastTime = 0;
+
+function loop(ts) {
+  requestAnimationFrame(loop);
+  const raw_dt = Math.min((ts - lastTime) / 1000, 0.05);
+  lastTime = ts;
+  if (!raw_dt) return;
+
+  // Hit-stop pauses game logic
+  if (hitStopTimer > 0) {
+    hitStopTimer -= raw_dt * 1000;
+    render(0);
+    return;
+  }
+
+  const dt = raw_dt;
+
+  if (state === 'playing') {
+    updateDifficulty(dt);
+
+    // Beat timer
+    beatTimer -= dt * 1000;
+    if (beatTimer <= 0) {
+      if (stutterPending) {
+        stutterPending = false;
+        beatTimer += beatInterval * 2;
+      } else {
+        if (elapsedTime > 45 && Math.random() < 0.12) {
+          stutterPending = true;
+        }
+        beatTimer += beatInterval;
+      }
+      onBeat();
+    }
+
+    // Scroll world
+    worldX += speed * dt;
+    distance += speed * dt / 100;
+    score += dt * (1 + combo * 0.05);
+
+    // Generate more segments
+    while (segments.length < 12) generateSegment();
+
+    // Cleanup old segments / nodes
+    segments  = segments.filter(s => s.wx + s.len > worldX - GW * 0.5);
+    switchNodes = switchNodes.filter(n => n.wx > worldX - GW * 0.5);
+
+    // Trail particles
+    if (Math.random() < 0.4) {
+      spawnParticles(RUNNER_X, LANE_Y[runnerLane], 'trail', 1);
+    }
+  }
+
+  // Update particles
+  for (const p of particles) {
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vx *= 0.92;
+    p.vy *= 0.92;
+    p.life -= dt;
+  }
+  particles = particles.filter(p => p.life > 0);
+
+  // Fade flashes
+  warnFlash    = Math.max(0, warnFlash    - dt * 3);
+  perfectFlash = Math.max(0, perfectFlash - dt * 4);
+  stutterGlow  = Math.max(0, stutterGlow  - dt * 0.3);
+
+  // Shake
+  if (shakeTimer > 0) shakeTimer -= dt * 1000;
+
+  globalHue = (globalHue + dt * 20) % 360;
+
+  render(dt);
+}
+
+function onBeat() {
+  // Ripple at runner position
+  lastBeatX = RUNNER_X;
+  spawnParticles(RUNNER_X, LANE_Y[runnerLane], 'ripple', 3);
+
+  // Check auto-mismatch if no tap since last beat (only after a grace period)
+  // Not punishing for no-tap — phase cycling is tap-driven
+}
+
+// ─── Rendering ────────────────────────────────────────────────────────────────
+function phaseColor(p, alpha) {
+  const c = PHASE_COLORS[p % PHASE_COLORS.length];
+  return `hsla(${c.h},${c.s}%,${c.l}%,${alpha})`;
+}
+
+function render(dt) {
+  const shake = (shakeTimer > 0)
+    ? { x: (Math.random() - 0.5) * shakeAmp, y: (Math.random() - 0.5) * shakeAmp }
+    : { x: 0, y: 0 };
+
+  ctx.save();
+  ctx.translate(shake.x, shake.y);
+
+  // Background
+  const bg = ctx.createLinearGradient(0, 0, 0, GH);
+  bg.addColorStop(0, '#0b0f1a');
+  bg.addColorStop(1, '#141926');
+  ctx.fillStyle = bg;
+  ctx.fillRect(-shake.x, -shake.y, GW, GH);
+
+  // Warn flash overlay
+  if (warnFlash > 0) {
+    ctx.fillStyle = `rgba(255,30,30,${warnFlash * 0.18})`;
+    ctx.fillRect(0, 0, GW, GH);
+  }
+  if (perfectFlash > 0) {
+    ctx.fillStyle = `rgba(255,220,80,${perfectFlash * 0.15})`;
+    ctx.fillRect(0, 0, GW, GH);
+  }
+
+  if (state === 'start') {
+    drawStart();
+  } else if (state === 'playing') {
+    drawGame();
+    drawHUD();
+  } else if (state === 'gameover') {
+    drawGame();
+    drawGameOver();
+  }
+
+  // Particles
+  drawParticles();
+
+  ctx.restore();
+}
+
+function drawBeam(lane) {
+  const y = LANE_Y[lane];
+  const seg = getSegmentAt(worldX + RUNNER_X);
+  const phase = seg ? seg.phases[lane] : 0;
+  const c = PHASE_COLORS[phase % PHASE_COLORS.length];
+  const pulse = 0.7 + 0.3 * Math.sin(Date.now() * 0.004 * (bpm / 80));
+
+  // Draw all visible segments for this lane
+  for (const s of segments) {
+    const sx = s.wx - worldX;
+    const sw = s.len;
+    if (sx + sw < -GW * 0.1 || sx > GW * 1.1) continue;
+
+    const sp = s.phases[lane];
+    const sc = PHASE_COLORS[sp % PHASE_COLORS.length];
+    const alpha = 0.5 + 0.5 * pulse;
+
+    // Glow layers
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    for (let g = 3; g >= 1; g--) {
+      ctx.strokeStyle = `hsla(${sc.h},${sc.s}%,${sc.l}%,${alpha / (g * 1.5)})`;
+      ctx.lineWidth   = BEAM_H + g * 6;
+      ctx.shadowColor = `hsl(${sc.h},100%,70%)`;
+      ctx.shadowBlur  = 10 * g;
+      ctx.beginPath();
+      ctx.moveTo(sx, y);
+      ctx.lineTo(sx + sw, y);
+      ctx.stroke();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.strokeStyle = `hsla(${sc.h},${sc.s}%,90%,${alpha})`;
+    ctx.lineWidth   = BEAM_H * 0.4;
+    ctx.shadowColor = `hsl(${sc.h},100%,85%)`;
+    ctx.shadowBlur  = 6;
+    ctx.beginPath();
+    ctx.moveTo(sx, y);
+    ctx.lineTo(sx + sw, y);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Draw switch nodes
+  for (const n of switchNodes) {
+    if (!n.active) continue;
+    const nx = n.wx - worldX;
+    if (nx < -40 || nx > GW + 40) continue;
+    const t = Date.now() * 0.003;
+    const glow = 0.6 + 0.4 * Math.sin(t);
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.fillStyle = `rgba(100,255,180,${glow})`;
+    ctx.shadowColor = '#44ffaa';
+    ctx.shadowBlur = 20;
+    ctx.beginPath();
+    ctx.arc(nx, LANE_Y[0] + (LANE_Y[1] - LANE_Y[0]) * 0.5, 10, 0, Math.PI * 2);
+    ctx.fill();
+    // vertical connector
+    ctx.strokeStyle = `rgba(100,255,180,${glow * 0.5})`;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(nx, LANE_Y[0]);
+    ctx.lineTo(nx, LANE_Y[1]);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function drawRunner() {
+  const x = RUNNER_X;
+  const y = LANE_Y[runnerLane];
+  const c = PHASE_COLORS[runnerPhase % PHASE_COLORS.length];
+  const t = Date.now() * 0.005;
+  const bob = Math.sin(t) * 3;
+
+  ctx.save();
+
+  // Halo for beat
+  const beatPhase = 1 - Math.max(0, Math.min(1, beatTimer / beatInterval));
+  const haloR = 22 + beatPhase * 18;
+  const haloAlpha = 0.15 + beatPhase * 0.25;
+  const grad = ctx.createRadialGradient(x, y + bob, 2, x, y + bob, haloR);
+  grad.addColorStop(0, `hsla(${c.h},${c.s}%,${c.l}%,${haloAlpha})`);
+  grad.addColorStop(1, `hsla(${c.h},${c.s}%,${c.l}%,0)`);
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(x, y + bob, haloR, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Body glow
+  ctx.globalCompositeOperation = 'screen';
+  ctx.shadowColor = `hsl(${c.h},100%,70%)`;
+  ctx.shadowBlur  = 20;
+
+  // Runner shape: diamond
+  ctx.fillStyle = `hsl(${c.h},${c.s}%,75%)`;
+  ctx.beginPath();
+  ctx.moveTo(x,     y + bob - 14);
+  ctx.lineTo(x + 9, y + bob);
+  ctx.lineTo(x,     y + bob + 14);
+  ctx.lineTo(x - 9, y + bob);
+  ctx.closePath();
+  ctx.fill();
+
+  // Inner highlight
+  ctx.fillStyle = `hsla(${c.h},100%,92%,0.7)`;
+  ctx.beginPath();
+  ctx.moveTo(x,     y + bob - 8);
+  ctx.lineTo(x + 4, y + bob);
+  ctx.lineTo(x,     y + bob + 8);
+  ctx.lineTo(x - 4, y + bob);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.restore();
+
+  // Strike indicators (small red dots near runner)
+  for (let i = 0; i < strikes; i++) {
+    ctx.save();
+    ctx.fillStyle = '#ff4444';
+    ctx.shadowColor = '#ff0000';
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.arc(x - 18 + i * 12, y + bob - 18, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawGame() {
+  drawBeam(0);
+  drawBeam(1);
+  drawRunner();
+}
+
+function drawParticles() {
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+  for (const p of particles) {
+    const a = p.life / p.maxLife;
+    ctx.globalAlpha = a;
+    ctx.fillStyle = p.color;
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur  = 8;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size * a, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+function drawHUD() {
+  const pad = 16;
+
+  // Score
+  ctx.save();
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 28px "Segoe UI", system-ui, sans-serif';
+  ctx.shadowColor = `hsl(${globalHue},100%,70%)`;
+  ctx.shadowBlur = 10;
+  ctx.fillText(Math.floor(score).toLocaleString(), pad, pad + 26);
+
+  // Best
+  ctx.font = '13px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = '#8899bb';
+  ctx.shadowBlur = 0;
+  ctx.fillText(`Best: ${highScore.toLocaleString()}`, pad, pad + 48);
+
+  // Combo
+  if (combo > 1) {
+    ctx.textAlign = 'right';
+    ctx.font = 'bold 22px "Segoe UI", system-ui, sans-serif';
+    const comboHue = (globalHue + 60) % 360;
+    ctx.fillStyle = `hsl(${comboHue},100%,70%)`;
+    ctx.shadowColor = `hsl(${comboHue},100%,60%)`;
+    ctx.shadowBlur = 12;
+    ctx.fillText(`x${combo}`, GW - pad, pad + 28);
+  }
+
+  // Distance
+  ctx.textAlign = 'right';
+  ctx.font = '13px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = '#667799';
+  ctx.shadowBlur = 0;
+  ctx.fillText(`${Math.floor(distance)}m`, GW - pad, pad + 50);
+
+  // Phase indicators
+  const piy = GH * 0.88;
+  const piCenterX = GW * 0.5;
+  const spacing = 22;
+  for (let i = 0; i < phaseCount; i++) {
+    const px = piCenterX + (i - (phaseCount - 1) / 2) * spacing;
+    const c = PHASE_COLORS[i];
+    ctx.beginPath();
+    ctx.arc(px, piy, 6, 0, Math.PI * 2);
+    if (i === runnerPhase) {
+      ctx.fillStyle = `hsl(${c.h},${c.s}%,${c.l}%)`;
+      ctx.shadowColor = `hsl(${c.h},100%,70%)`;
+      ctx.shadowBlur = 12;
+    } else {
+      ctx.fillStyle = `hsla(${c.h},${c.s}%,${c.l}%,0.3)`;
+      ctx.shadowBlur = 0;
+    }
+    ctx.fill();
+  }
+
+  // Beat ring
+  const beatRingR = 16;
+  const beatFrac = 1 - beatTimer / beatInterval;
+  ctx.beginPath();
+  ctx.arc(piCenterX, piy + 30, beatRingR, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * beatFrac);
+  ctx.strokeStyle = stutterPending
+    ? `hsla(50,100%,70%,${0.5 + stutterGlow * 0.5})`
+    : `hsla(${globalHue},100%,70%,0.7)`;
+  ctx.lineWidth = 3;
+  ctx.shadowColor = stutterPending ? '#ffcc00' : `hsl(${globalHue},100%,70%)`;
+  ctx.shadowBlur  = stutterPending ? 20 + stutterGlow * 15 : 8;
+  ctx.stroke();
+
+  // Stutter warning label
+  if (stutterPending) {
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 11px "Segoe UI", system-ui, sans-serif';
+    ctx.fillStyle = `rgba(255,200,0,${0.7 + stutterGlow * 0.3})`;
+    ctx.fillText('STUTTER!', piCenterX, piy + 55);
+  }
+
+  ctx.restore();
+}
+
+function drawStart() {
+  ctx.save();
+
+  // Title
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 52px "Segoe UI", system-ui, sans-serif';
+  const tg = ctx.createLinearGradient(GW * 0.2, 0, GW * 0.8, 0);
+  tg.addColorStop(0, '#00d4ff');
+  tg.addColorStop(0.5, '#cc44ff');
+  tg.addColorStop(1, '#ffcc00');
+  ctx.fillStyle = tg;
+  ctx.shadowColor = '#00d4ff';
+  ctx.shadowBlur = 20;
+  ctx.fillText('BEAM', GW / 2, GH * 0.3);
+  ctx.shadowColor = '#cc44ff';
+  ctx.fillText('SHIFT', GW / 2, GH * 0.3 + 56);
+
+  // Subtitle
+  ctx.font = '16px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = '#8899cc';
+  ctx.shadowBlur = 0;
+  ctx.fillText('Phase Runner', GW / 2, GH * 0.3 + 90);
+
+  // Instructions
+  const iy = GH * 0.58;
+  const lines = [
+    'TAP to cycle your phase',
+    'Match the beam\'s phase to score',
+    'Tap at SWITCH NODES to swap lanes',
+    '● Two mismatches = FALL',
+    '★ Tap on the beat for PERFECT bonus',
+  ];
+  ctx.font = '15px "Segoe UI", system-ui, sans-serif';
+  for (let i = 0; i < lines.length; i++) {
+    ctx.fillStyle = i === 3 ? '#ff7766' : (i === 4 ? '#ffcc44' : '#99aabb');
+    ctx.fillText(lines[i], GW / 2, iy + i * 26);
+  }
+
+  // Best
+  if (highScore > 0) {
+    ctx.font = '14px "Segoe UI", system-ui, sans-serif';
+    ctx.fillStyle = '#556688';
+    ctx.fillText(`Best: ${highScore.toLocaleString()}`, GW / 2, GH * 0.85 - 10);
+  }
+
+  // Tap to start pulse
+  const tp = 0.5 + 0.5 * Math.sin(Date.now() * 0.003);
+  ctx.font = 'bold 18px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = `rgba(150,200,255,${tp})`;
+  ctx.shadowColor = '#66aaff';
+  ctx.shadowBlur  = 12 * tp;
+  ctx.fillText('TAP TO START', GW / 2, GH * 0.85 + 18);
+
+  ctx.restore();
+}
+
+function drawGameOver() {
+  ctx.save();
+
+  // Dim overlay
+  ctx.fillStyle = 'rgba(5,8,18,0.82)';
+  ctx.fillRect(0, 0, GW, GH);
+
+  const cx = GW / 2;
+
+  // "GAME OVER"
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 44px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = '#ff4455';
+  ctx.shadowColor = '#ff2244';
+  ctx.shadowBlur = 20;
+  ctx.fillText('GAME OVER', cx, GH * 0.22);
+
+  // Score
+  ctx.font = 'bold 36px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = '#ffffff';
+  ctx.shadowColor = `hsl(${globalHue},100%,70%)`;
+  ctx.shadowBlur = 14;
+  ctx.fillText(Math.floor(score).toLocaleString(), cx, GH * 0.36);
+
+  const isNew = Math.floor(score) >= highScore && highScore > 0;
+  ctx.font = '15px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = isNew ? '#ffcc00' : '#8899bb';
+  ctx.shadowBlur = isNew ? 8 : 0;
+  ctx.fillText(isNew ? `★ NEW BEST! ★` : `Best: ${highScore.toLocaleString()}`, cx, GH * 0.44);
+
+  // Stats
+  const stats = [
+    ['Distance', `${Math.floor(distance)}m`],
+    ['Best Combo', `x${bestCombo}`],
+    ['Perfects',   `${perfects}`],
+    ['Accuracy',   totalTaps > 0 ? `${Math.round(goodTaps / totalTaps * 100)}%` : 'N/A'],
+  ];
+  ctx.font = '15px "Segoe UI", system-ui, sans-serif';
+  ctx.shadowBlur = 0;
+  const sy = GH * 0.54;
+  for (let i = 0; i < stats.length; i++) {
+    const y = sy + i * 28;
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#667799';
+    ctx.fillText(stats[i][0], cx - 90, y);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#ccd8ee';
+    ctx.fillText(stats[i][1], cx + 90, y);
+  }
+
+  // Tap to retry
+  const tp = 0.5 + 0.5 * Math.sin(Date.now() * 0.003);
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 18px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = `rgba(150,200,255,${tp})`;
+  ctx.shadowColor = '#66aaff';
+  ctx.shadowBlur  = 12 * tp;
+  ctx.fillText('TAP TO RETRY', cx, GH * 0.88);
+
+  ctx.restore();
+}
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+window.addEventListener('resize', resize);
+resize();
+requestAnimationFrame(function boot(ts) {
+  lastTime = ts;
+  requestAnimationFrame(loop);
+});
+
+})();
+</script>
+</body>
+</html>

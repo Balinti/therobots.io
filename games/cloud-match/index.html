@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Cloud Match - Free HTML5 Game</title>
+<meta name="description" content="Play Cloud Match - Tap to match colors on floating clouds before powerups change the rules.">
+<meta name="theme-color" content="#1a1a2e">
+<meta property="og:title" content="Cloud Match - Free HTML5 Game">
+<meta property="og:description" content="Play Cloud Match - Tap to match colors on floating clouds before powerups change the rules.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://balinti.github.io/cloud-match/">
+<meta property="og:image" content="https://balinti.github.io/cloud-match/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Cloud Match - Free HTML5 Game">
+<meta name="twitter:description" content="Play Cloud Match - Tap to match colors on floating clouds before powerups change the rules.">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{width:100%;height:100%;overflow:hidden;background:#0a0a1a;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;touch-action:none;user-select:none;-webkit-user-select:none;}
+#wrap{display:flex;justify-content:center;align-items:center;width:100%;height:100vh;height:100dvh;}
+#container{position:relative;width:100%;max-width:420px;height:100vh;height:100dvh;max-height:750px;}
+canvas{display:block;width:100%;height:100%;border-radius:8px;cursor:pointer;}
+</style>
+</head>
+<body>
+<div id="wrap">
+<div id="container">
+<canvas id="gc"></canvas>
+</div>
+</div>
+<script>
+'use strict';
+(()=>{
+const canvas=document.getElementById('gc');
+const ctx=canvas.getContext('2d');
+const container=document.getElementById('container');
+
+let W,H,dpr;
+function resize(){
+const r=container.getBoundingClientRect();
+dpr=Math.min(window.devicePixelRatio||1,3);
+W=r.width;H=r.height;
+canvas.width=W*dpr;canvas.height=H*dpr;
+ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+resize();
+window.addEventListener('resize',resize);
+
+// --- Constants & Config ---
+const LANE_X=()=>W/2;
+const DART_Y=()=>H*0.82;
+const GATE_W=()=>W*0.55;
+const GATE_H=38;
+const MODES=[
+{color:'hsl(200,85%,55%)',icon:'circle',pattern:'solid',label:'●'},
+{color:'hsl(140,75%,45%)',icon:'triangle',pattern:'stripe',label:'▲'},
+{color:'hsl(35,90%,55%)',icon:'square',pattern:'dots',label:'■'},
+{color:'hsl(320,80%,55%)',icon:'diamond',pattern:'cross',label:'◆'}
+];
+
+// --- State ---
+let state='start';
+let score=0;
+let bestScore=parseInt(localStorage.getItem('cloudmatch_best'))||0;
+let streak=0;
+let dartMode=0;
+let gates=[];
+let particles=[];
+let juiceTexts=[];
+let shakeAmount=0;
+let shakeDur=0;
+let flashAlpha=0;
+let flashColor='rgba(255,0,0,';
+let bgHue=220;
+let speed=1;
+let distTraveled=0;
+let nextGateDist=0;
+let activeModes=3;
+let lastTime=0;
+let dartTrail=[];
+let comboTimer=0;
+let startPulse=0;
+let gameTime=0;
+let perfectZone=12;
+
+// --- Helpers ---
+function lerp(a,b,t){return a+(b-a)*t;}
+function rand(a,b){return Math.random()*(b-a)+a;}
+function clamp(v,lo,hi){return Math.max(lo,Math.min(hi,v));}
+
+// --- Particles ---
+function spawnParticles(x,y,color,count,spread,life){
+for(let i=0;i<count;i++){
+const angle=rand(0,Math.PI*2);
+const spd=rand(30,spread);
+particles.push({x,y,vx:Math.cos(angle)*spd,vy:Math.sin(angle)*spd-rand(20,60),life:rand(life*0.5,life),maxLife:life,r:rand(2,5),color,alpha:1});
+}
+}
+
+function spawnCloudPuffs(x,y,count){
+for(let i=0;i<count;i++){
+const angle=rand(0,Math.PI*2);
+const spd=rand(10,40);
+particles.push({x:x+rand(-20,20),y:y+rand(-10,10),vx:Math.cos(angle)*spd,vy:Math.sin(angle)*spd-rand(10,30),life:rand(0.4,0.8),maxLife:0.8,r:rand(6,14),color:'rgba(255,255,255,',alpha:0.5,cloud:true});
+}
+}
+
+function spawnJuice(x,y,text,color){
+juiceTexts.push({x,y,text,color,life:1,maxLife:1,vy:-60});
+}
+
+// --- Gate spawning ---
+function getGateSpeed(){
+if(score<10) return lerp(120,160,score/10);
+if(score<25) return lerp(160,220,(score-10)/15);
+if(score<50) return lerp(220,280,(score-25)/25);
+if(score<80) return lerp(280,340,(score-50)/30);
+return Math.min(340+((score-80)*0.5),420);
+}
+
+function getGateSpacing(){
+if(score<10) return rand(180,240);
+if(score<25) return rand(150,210);
+if(score<50) return rand(130,190);
+if(score<80) return rand(110,170);
+return rand(95,155);
+}
+
+function getGateWidth(){
+if(score<50) return GATE_W();
+if(score<80) return GATE_W()*0.9;
+return GATE_W()*0.82;
+}
+
+function spawnGate(){
+let modeIdx;
+const useFakeout=score>=80&&Math.random()<0.15;
+if(useFakeout){
+// Same color different icon
+const baseMode=Math.floor(rand(0,activeModes));
+let fakeIdx;
+do{fakeIdx=Math.floor(rand(0,activeModes));}while(fakeIdx===baseMode);
+modeIdx=baseMode;
+gates.push({
+y:-GATE_H,
+mode:baseMode,
+fakeIcon:MODES[fakeIdx].icon,
+fakePattern:MODES[fakeIdx].pattern,
+fakeLabel:MODES[fakeIdx].label,
+w:getGateWidth(),
+passed:false,
+scored:false
+});
+}else{
+modeIdx=Math.floor(rand(0,activeModes));
+gates.push({
+y:-GATE_H,
+mode:modeIdx,
+fakeIcon:null,
+fakePattern:null,
+fakeLabel:null,
+w:getGateWidth(),
+passed:false,
+scored:false
+});
+}
+
+// Double gate
+if(score>=25&&Math.random()<(score>=50?0.35:0.2)){
+const spacing=rand(55,80);
+let m2;
+do{m2=Math.floor(rand(0,activeModes));}while(m2===modeIdx);
+gates.push({
+y:-GATE_H-spacing,
+mode:m2,
+fakeIcon:null,
+fakePattern:null,
+fakeLabel:null,
+w:getGateWidth(),
+passed:false,
+scored:false
+});
+nextGateDist-=spacing;
+}
+}
+
+// --- Draw helpers ---
+function drawCloudGate(gate){
+const gateMode=MODES[gate.mode];
+const icon=gate.fakeIcon||gateMode.icon;
+const pattern=gate.fakePattern||gateMode.pattern;
+const label=gate.fakeLabel||gateMode.label;
+const cx=LANE_X();
+const cy=gate.y;
+const hw=gate.w/2;
+const hh=GATE_H/2;
+
+// Cloud shape
+ctx.save();
+ctx.beginPath();
+// Rounded rectangle for gate
+const r=hh;
+ctx.moveTo(cx-hw+r,cy-hh);
+ctx.lineTo(cx+hw-r,cy-hh);
+ctx.arcTo(cx+hw,cy-hh,cx+hw,cy-hh+r,r);
+ctx.lineTo(cx+hw,cy+hh-r);
+ctx.arcTo(cx+hw,cy+hh,cx+hw-r,cy+hh,r);
+ctx.lineTo(cx-hw+r,cy+hh);
+ctx.arcTo(cx-hw,cy+hh,cx-hw,cy+hh-r,r);
+ctx.lineTo(cx-hw,cy-hh+r);
+ctx.arcTo(cx-hw,cy-hh,cx-hw+r,cy-hh,r);
+ctx.closePath();
+
+// Fill with pattern
+ctx.fillStyle=gateMode.color;
+ctx.globalAlpha=0.25;
+ctx.fill();
+ctx.globalAlpha=1;
+
+// Pattern overlay
+if(pattern==='stripe'){
+ctx.save();ctx.clip();
+ctx.strokeStyle=gateMode.color;ctx.lineWidth=2;ctx.globalAlpha=0.4;
+for(let sx=cx-hw;sx<cx+hw;sx+=8){
+ctx.beginPath();ctx.moveTo(sx,cy-hh);ctx.lineTo(sx+hh,cy+hh);ctx.stroke();
+}
+ctx.restore();
+// re-create path
+ctx.beginPath();
+ctx.moveTo(cx-hw+r,cy-hh);ctx.lineTo(cx+hw-r,cy-hh);
+ctx.arcTo(cx+hw,cy-hh,cx+hw,cy-hh+r,r);ctx.lineTo(cx+hw,cy+hh-r);
+ctx.arcTo(cx+hw,cy+hh,cx+hw-r,cy+hh,r);ctx.lineTo(cx-hw+r,cy+hh);
+ctx.arcTo(cx-hw,cy+hh,cx-hw,cy+hh-r,r);ctx.lineTo(cx-hw,cy-hh+r);
+ctx.arcTo(cx-hw,cy-hh,cx-hw+r,cy-hh,r);ctx.closePath();
+}else if(pattern==='dots'){
+ctx.save();ctx.clip();
+ctx.fillStyle=gateMode.color;ctx.globalAlpha=0.35;
+for(let dx=cx-hw+6;dx<cx+hw;dx+=12){
+for(let dy=cy-hh+6;dy<cy+hh;dy+=12){
+ctx.beginPath();ctx.arc(dx,dy,2,0,Math.PI*2);ctx.fill();
+}
+}
+ctx.restore();
+ctx.beginPath();
+ctx.moveTo(cx-hw+r,cy-hh);ctx.lineTo(cx+hw-r,cy-hh);
+ctx.arcTo(cx+hw,cy-hh,cx+hw,cy-hh+r,r);ctx.lineTo(cx+hw,cy+hh-r);
+ctx.arcTo(cx+hw,cy+hh,cx+hw-r,cy+hh,r);ctx.lineTo(cx-hw+r,cy+hh);
+ctx.arcTo(cx-hw,cy+hh,cx-hw,cy+hh-r,r);ctx.lineTo(cx-hw,cy-hh+r);
+ctx.arcTo(cx-hw,cy-hh,cx-hw+r,cy-hh,r);ctx.closePath();
+}else if(pattern==='cross'){
+ctx.save();ctx.clip();
+ctx.strokeStyle=gateMode.color;ctx.lineWidth=2;ctx.globalAlpha=0.35;
+for(let sx=cx-hw;sx<cx+hw;sx+=10){
+ctx.beginPath();ctx.moveTo(sx,cy-hh);ctx.lineTo(sx+hh,cy+hh);ctx.stroke();
+ctx.beginPath();ctx.moveTo(sx+hh,cy-hh);ctx.lineTo(sx,cy+hh);ctx.stroke();
+}
+ctx.restore();
+ctx.beginPath();
+ctx.moveTo(cx-hw+r,cy-hh);ctx.lineTo(cx+hw-r,cy-hh);
+ctx.arcTo(cx+hw,cy-hh,cx+hw,cy-hh+r,r);ctx.lineTo(cx+hw,cy+hh-r);
+ctx.arcTo(cx+hw,cy+hh,cx+hw-r,cy+hh,r);ctx.lineTo(cx-hw+r,cy+hh);
+ctx.arcTo(cx-hw,cy+hh,cx-hw,cy+hh-r,r);ctx.lineTo(cx-hw,cy-hh+r);
+ctx.arcTo(cx-hw,cy-hh,cx-hw+r,cy-hh,r);ctx.closePath();
+}
+
+// Border
+ctx.strokeStyle=gateMode.color;
+ctx.lineWidth=3.5;
+ctx.stroke();
+
+// Icon on left
+const iconX=cx-hw+24;
+drawIcon(icon,iconX,cy,10,gateMode.color);
+
+// Label on right
+ctx.fillStyle=gateMode.color;
+ctx.font='bold 18px sans-serif';
+ctx.textAlign='center';
+ctx.textBaseline='middle';
+ctx.fillText(label,cx+hw-24,cy);
+
+// Center icon
+drawIcon(icon,cx,cy,14,gateMode.color);
+
+ctx.restore();
+}
+
+function drawIcon(icon,x,y,size,color){
+ctx.fillStyle=color;
+ctx.strokeStyle=color;
+ctx.lineWidth=2;
+if(icon==='circle'){
+ctx.beginPath();ctx.arc(x,y,size,0,Math.PI*2);ctx.fill();
+}else if(icon==='triangle'){
+ctx.beginPath();
+ctx.moveTo(x,y-size);
+ctx.lineTo(x+size,y+size*0.7);
+ctx.lineTo(x-size,y+size*0.7);
+ctx.closePath();ctx.fill();
+}else if(icon==='square'){
+ctx.fillRect(x-size*0.8,y-size*0.8,size*1.6,size*1.6);
+}else if(icon==='diamond'){
+ctx.beginPath();
+ctx.moveTo(x,y-size);
+ctx.lineTo(x+size*0.7,y);
+ctx.lineTo(x,y+size);
+ctx.lineTo(x-size*0.7,y);
+ctx.closePath();ctx.fill();
+}
+}
+
+function drawDart(x,y){
+const mode=MODES[dartMode];
+// Trail
+ctx.save();
+for(let i=0;i<dartTrail.length;i++){
+const t=dartTrail[i];
+const a=(i/dartTrail.length)*0.3;
+ctx.fillStyle=mode.color;
+ctx.globalAlpha=a;
+ctx.beginPath();
+ctx.arc(t.x,t.y,3+i*0.1,0,Math.PI*2);
+ctx.fill();
+}
+ctx.globalAlpha=1;
+ctx.restore();
+
+// Glow
+ctx.save();
+const grad=ctx.createRadialGradient(x,y,2,x,y,18);
+grad.addColorStop(0,mode.color);
+grad.addColorStop(1,'transparent');
+ctx.fillStyle=grad;
+ctx.beginPath();ctx.arc(x,y,18,0,Math.PI*2);ctx.fill();
+ctx.restore();
+
+// Main dart
+ctx.fillStyle=mode.color;
+ctx.beginPath();ctx.arc(x,y,7,0,Math.PI*2);ctx.fill();
+ctx.fillStyle='#fff';
+ctx.beginPath();ctx.arc(x,y,3.5,0,Math.PI*2);ctx.fill();
+
+// Icon indicator
+drawIcon(mode.icon,x,y-18,5,'#fff');
+}
+
+function drawModeIndicator(){
+const startX=W/2-(activeModes*30)/2+15;
+const y=H*0.92;
+for(let i=0;i<activeModes;i++){
+const m=MODES[i];
+const x=startX+i*30;
+ctx.globalAlpha=i===dartMode?1:0.35;
+ctx.fillStyle=m.color;
+ctx.beginPath();ctx.arc(x,y,10,0,Math.PI*2);ctx.fill();
+drawIcon(m.icon,x,y,5,i===dartMode?'#fff':m.color);
+if(i===dartMode){
+ctx.strokeStyle='#fff';ctx.lineWidth=2;
+ctx.beginPath();ctx.arc(x,y,12,0,Math.PI*2);ctx.stroke();
+}
+}
+ctx.globalAlpha=1;
+}
+
+function drawBackground(dt){
+bgHue=lerp(bgHue,220+speed*8,dt*0.5);
+const grad=ctx.createLinearGradient(0,0,0,H);
+grad.addColorStop(0,`hsl(${bgHue},30%,8%)`);
+grad.addColorStop(0.5,`hsl(${bgHue+20},25%,12%)`);
+grad.addColorStop(1,`hsl(${bgHue+40},20%,6%)`);
+ctx.fillStyle=grad;
+ctx.fillRect(0,0,W,H);
+
+// Floating bg clouds
+ctx.globalAlpha=0.04;
+ctx.fillStyle='#fff';
+const t=gameTime*0.3;
+for(let i=0;i<5;i++){
+const bx=W*0.5+Math.sin(t+i*1.3)*W*0.3;
+const by=(H*0.2+i*H*0.15+gameTime*15*((i%3)+1))%H;
+ctx.beginPath();ctx.arc(bx,by,30+i*10,0,Math.PI*2);ctx.fill();
+ctx.beginPath();ctx.arc(bx+20,by-5,20+i*8,0,Math.PI*2);ctx.fill();
+}
+ctx.globalAlpha=1;
+}
+
+// --- Input ---
+function cycleMode(){
+if(state==='start'){
+startGame();return;
+}
+if(state==='gameover'){
+startGame();return;
+}
+dartMode=(dartMode+1)%activeModes;
+}
+
+canvas.addEventListener('pointerdown',(e)=>{
+e.preventDefault();
+cycleMode();
+});
+document.addEventListener('keydown',(e)=>{
+if(e.code==='Space'||e.code==='Enter'){
+e.preventDefault();
+cycleMode();
+}
+});
+
+// --- Game logic ---
+function startGame(){
+state='playing';
+score=0;streak=0;dartMode=0;
+gates=[];particles=[];juiceTexts=[];dartTrail=[];
+shakeAmount=0;shakeDur=0;flashAlpha=0;
+speed=1;distTraveled=0;
+nextGateDist=200;
+activeModes=3;gameTime=0;
+}
+
+function gameOver(){
+state='gameover';
+if(score>bestScore){
+bestScore=score;
+localStorage.setItem('cloudmatch_best',bestScore);
+}
+shakeAmount=12;shakeDur=0.5;
+flashAlpha=0.6;flashColor='rgba(255,60,60,';
+}
+
+function update(dt){
+gameTime+=dt;
+
+if(state==='start'){
+startPulse+=dt;
+return;
+}
+if(state==='gameover'){
+// Update particles
+updateParticles(dt);
+updateJuice(dt);
+shakeDur=Math.max(0,shakeDur-dt);
+flashAlpha=Math.max(0,flashAlpha-dt*1.5);
+return;
+}
+
+// Difficulty
+if(score>=50&&activeModes<4) activeModes=4;
+
+speed=getGateSpeed();
+
+const moveDist=speed*dt;
+distTraveled+=moveDist;
+
+// Move gates
+for(let i=gates.length-1;i>=0;i--){
+gates[i].y+=moveDist;
+if(gates[i].y>H+50){
+// Missed gate - if not passed, game over
+if(!gates[i].passed){
+gameOver();
+spawnParticles(LANE_X(),DART_Y(),'hsl(0,80%,60%)',25,150,0.8);
+return;
+}
+gates.splice(i,1);
+}
+}
+
+// Check collision with gates
+const dx=LANE_X();
+const dy=DART_Y();
+for(let g of gates){
+if(g.scored) continue;
+const gateTop=g.y-GATE_H/2;
+const gateBot=g.y+GATE_H/2;
+if(dy+7>gateTop&&dy-7<gateBot){
+// Dart is in the gate zone
+const inHorizontal=Math.abs(dx-LANE_X())<g.w/2;
+if(inHorizontal){
+// Check if correct mode
+const gateIcon=g.fakeIcon||MODES[g.mode].icon;
+const gatePattern=g.fakePattern||MODES[g.mode].pattern;
+const dartIcon=MODES[dartMode].icon;
+const dartPattern=MODES[dartMode].pattern;
+
+if(dartIcon===gateIcon&&dartPattern===gatePattern){
+// Correct!
+g.scored=true;g.passed=true;
+score++;streak++;
+comboTimer=2;
+
+// Perfect check
+const centerDist=Math.abs(dy-g.y);
+let bonus=false;
+if(centerDist<perfectZone){
+score++;bonus=true;
+shakeAmount=3;shakeDur=0.15;
+spawnJuice(dx,dy-30,'PERFECT!','#fff');
+}
+
+spawnParticles(dx,dy,MODES[g.mode].color,15,100,0.6);
+spawnCloudPuffs(dx,dy,6);
+
+if(streak>1){
+spawnJuice(dx+rand(-20,20),dy-50,`${streak}x STREAK`,'hsl(50,100%,70%)');
+}
+
+if(bonus){
+spawnJuice(dx+rand(-15,15),dy-70,'+2',MODES[g.mode].color);
+}else{
+spawnJuice(dx+rand(-15,15),dy-55,'+1',MODES[g.mode].color);
+}
+}else{
+// Wrong mode!
+g.scored=true;
+gameOver();
+spawnParticles(dx,dy,'hsl(0,80%,60%)',30,180,1);
+return;
+}
+}
+}
+}
+
+// Spawn gates
+if(distTraveled>=nextGateDist){
+spawnGate();
+nextGateDist=distTraveled+getGateSpacing();
+}
+
+// Dart trail
+dartTrail.push({x:dx+rand(-1,1),y:dy+rand(-1,1)});
+if(dartTrail.length>15) dartTrail.shift();
+
+// Update particles
+updateParticles(dt);
+updateJuice(dt);
+
+// Shake
+shakeDur=Math.max(0,shakeDur-dt);
+flashAlpha=Math.max(0,flashAlpha-dt*2);
+comboTimer=Math.max(0,comboTimer-dt);
+}
+
+function updateParticles(dt){
+for(let i=particles.length-1;i>=0;i--){
+const p=particles[i];
+p.x+=p.vx*dt;
+p.y+=p.vy*dt;
+p.vy+=120*dt;
+p.life-=dt;
+p.alpha=clamp(p.life/p.maxLife,0,1);
+if(p.cloud) p.r+=dt*8;
+if(p.life<=0) particles.splice(i,1);
+}
+}
+
+function updateJuice(dt){
+for(let i=juiceTexts.length-1;i>=0;i--){
+const j=juiceTexts[i];
+j.y+=j.vy*dt;
+j.life-=dt;
+if(j.life<=0) juiceTexts.splice(i,1);
+}
+}
+
+// --- Draw ---
+function draw(){
+ctx.save();
+drawBackground(1/60);
+
+// Shake
+let sx=0,sy=0;
+if(shakeDur>0){
+sx=rand(-shakeAmount,shakeAmount);
+sy=rand(-shakeAmount,shakeAmount);
+ctx.translate(sx,sy);
+}
+
+if(state==='start'){
+drawStartScreen();
+}else if(state==='playing'){
+drawGame();
+}else if(state==='gameover'){
+drawGameOver();
+}
+
+// Flash overlay
+if(flashAlpha>0){
+ctx.fillStyle=flashColor+flashAlpha+')';
+ctx.fillRect(-10,-10,W+20,H+20);
+}
+
+ctx.restore();
+}
+
+function drawStartScreen(){
+const cx=W/2;
+
+// Title
+ctx.fillStyle='#fff';
+ctx.font='bold 36px sans-serif';
+ctx.textAlign='center';
+ctx.textBaseline='middle';
+ctx.fillText('Cloud Match',cx,H*0.3);
+
+// Cloud decoration
+ctx.globalAlpha=0.15;
+ctx.fillStyle='#fff';
+ctx.beginPath();ctx.arc(cx-30,H*0.22,25,0,Math.PI*2);ctx.fill();
+ctx.beginPath();ctx.arc(cx+20,H*0.22,20,0,Math.PI*2);ctx.fill();
+ctx.beginPath();ctx.arc(cx-5,H*0.19,22,0,Math.PI*2);ctx.fill();
+ctx.globalAlpha=1;
+
+// Mode preview
+for(let i=0;i<3;i++){
+const m=MODES[i];
+const x=cx-40+i*40;
+const y=H*0.42;
+ctx.fillStyle=m.color;
+ctx.beginPath();ctx.arc(x,y,12,0,Math.PI*2);ctx.fill();
+drawIcon(m.icon,x,y,6,'#fff');
+}
+
+// Instructions
+ctx.fillStyle='rgba(255,255,255,0.7)';
+ctx.font='14px sans-serif';
+ctx.fillText('Tap to cycle your mode',cx,H*0.5);
+ctx.fillText('Match the gate icon to pass through',cx,H*0.55);
+
+// Tap to start
+const pulse=Math.sin(startPulse*3)*0.15+0.85;
+ctx.globalAlpha=pulse;
+ctx.fillStyle='#fff';
+ctx.font='bold 20px sans-serif';
+ctx.fillText('Tap to Start',cx,H*0.7);
+ctx.globalAlpha=1;
+
+// Best score
+if(bestScore>0){
+ctx.fillStyle='rgba(255,255,255,0.5)';
+ctx.font='14px sans-serif';
+ctx.fillText(`Best: ${bestScore}`,cx,H*0.78);
+}
+}
+
+function drawGame(){
+// Gates
+for(const g of gates){
+drawCloudGate(g);
+}
+
+// Dart
+drawDart(LANE_X(),DART_Y());
+
+// Mode indicator
+drawModeIndicator();
+
+// Score
+ctx.fillStyle='#fff';
+ctx.font='bold 28px sans-serif';
+ctx.textAlign='center';
+ctx.textBaseline='top';
+ctx.fillText(score,W/2,16);
+
+// Streak
+if(streak>1&&comboTimer>0){
+ctx.globalAlpha=clamp(comboTimer,0,1);
+ctx.fillStyle='hsl(50,100%,70%)';
+ctx.font='bold 14px sans-serif';
+ctx.fillText(`${streak}x combo`,W/2,48);
+ctx.globalAlpha=1;
+}
+
+// Particles
+drawParticles();
+drawJuiceTexts();
+}
+
+function drawGameOver(){
+// Draw remaining gates faded
+ctx.globalAlpha=0.3;
+for(const g of gates) drawCloudGate(g);
+ctx.globalAlpha=1;
+
+// Draw dart faded
+ctx.globalAlpha=0.4;
+drawDart(LANE_X(),DART_Y());
+ctx.globalAlpha=1;
+
+drawParticles();
+drawJuiceTexts();
+
+const cx=W/2;
+
+// Overlay
+ctx.fillStyle='rgba(0,0,0,0.5)';
+ctx.fillRect(0,0,W,H);
+
+ctx.fillStyle='#fff';
+ctx.font='bold 30px sans-serif';
+ctx.textAlign='center';
+ctx.textBaseline='middle';
+ctx.fillText('Game Over',cx,H*0.3);
+
+ctx.font='bold 48px sans-serif';
+ctx.fillText(score,cx,H*0.42);
+
+ctx.fillStyle='rgba(255,255,255,0.6)';
+ctx.font='16px sans-serif';
+ctx.fillText('Score',cx,H*0.35);
+
+if(score>=bestScore&&score>0){
+ctx.fillStyle='hsl(50,100%,65%)';
+ctx.font='bold 16px sans-serif';
+ctx.fillText('★ NEW BEST! ★',cx,H*0.5);
+}
+
+ctx.fillStyle='rgba(255,255,255,0.5)';
+ctx.font='14px sans-serif';
+ctx.fillText(`Best: ${bestScore}`,cx,H*0.56);
+
+const pulse=Math.sin(gameTime*3)*0.15+0.85;
+ctx.globalAlpha=pulse;
+ctx.fillStyle='#fff';
+ctx.font='bold 20px sans-serif';
+ctx.fillText('Tap to Retry',cx,H*0.68);
+ctx.globalAlpha=1;
+}
+
+function drawParticles(){
+for(const p of particles){
+ctx.globalAlpha=p.alpha*(p.cloud?0.5:1);
+if(p.cloud){
+ctx.fillStyle=p.color+p.alpha*0.3+')';
+}else{
+ctx.fillStyle=p.color;
+}
+ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill();
+}
+ctx.globalAlpha=1;
+}
+
+function drawJuiceTexts(){
+for(const j of juiceTexts){
+const a=clamp(j.life/j.maxLife,0,1);
+ctx.globalAlpha=a;
+ctx.fillStyle=j.color;
+ctx.font='bold 16px sans-serif';
+ctx.textAlign='center';
+ctx.textBaseline='middle';
+ctx.fillText(j.text,j.x,j.y);
+}
+ctx.globalAlpha=1;
+}
+
+// --- Main loop ---
+function loop(ts){
+const now=ts/1000;
+if(!lastTime) lastTime=now;
+let dt=now-lastTime;
+lastTime=now;
+dt=clamp(dt,0,0.05); // Clamp dt
+
+update(dt);
+draw();
+requestAnimationFrame(loop);
+}
+
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

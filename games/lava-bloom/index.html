@@ -1,0 +1,953 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Lava Bloom - Free HTML5 Game</title>
+  <meta name="description" content="Play Lava Bloom - Tap to grow your volcanic plant while the screen rotates unpredictably.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#1a0a00">
+  <link rel="canonical" href="https://balinti.github.io/lava-bloom/">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Lava Bloom - Free HTML5 Game">
+  <meta property="og:description" content="Play Lava Bloom - Tap to grow your volcanic plant while the screen rotates unpredictably.">
+  <meta property="og:url" content="https://balinti.github.io/lava-bloom/">
+  <meta property="og:image" content="https://balinti.github.io/lava-bloom/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Lava Bloom - Free HTML5 Game">
+  <meta name="twitter:description" content="Play Lava Bloom - Tap to grow your volcanic plant while the screen rotates unpredictably.">
+  <meta name="twitter:image" content="https://balinti.github.io/lava-bloom/og-image.png">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #0d0500;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      overflow-x: hidden;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+    #wrap {
+      position: relative;
+      width: min(420px, 100vw);
+      height: min(750px, 100vh);
+      flex-shrink: 0;
+      overflow: hidden;
+      background: radial-gradient(ellipse at 50% 110%, #3d1200 0%, #1a0800 45%, #0d0300 100%);
+      border-radius: 0;
+    }
+    canvas {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      display: block;
+    }
+    #overlay {
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      z-index: 10;
+    }
+    #overlay .panel {
+      text-align: center;
+      pointer-events: none;
+    }
+    .game-title {
+      font-size: 3rem;
+      font-weight: 900;
+      letter-spacing: 2px;
+      background: linear-gradient(180deg, #ffdd55 0%, #ff6600 50%, #cc2200 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      text-shadow: none;
+      line-height: 1.1;
+      margin-bottom: 8px;
+    }
+    .game-subtitle {
+      font-size: 0.85rem;
+      color: #ff9944;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      margin-bottom: 36px;
+    }
+    .tap-prompt {
+      font-size: 1.1rem;
+      color: #ffcc77;
+      animation: pulseText 1.4s ease-in-out infinite;
+      letter-spacing: 1px;
+    }
+    @keyframes pulseText {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.97); }
+    }
+    .score-big {
+      font-size: 4.5rem;
+      font-weight: 900;
+      color: #ffdd55;
+      line-height: 1;
+      text-shadow: 0 0 30px #ff6600aa;
+    }
+    .score-label {
+      font-size: 0.75rem;
+      color: #ff9944;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    .best-row {
+      font-size: 1rem;
+      color: #ff8833;
+      margin-top: 10px;
+      margin-bottom: 8px;
+    }
+    .blooms-row {
+      font-size: 0.9rem;
+      color: #ffaa55;
+      margin-bottom: 28px;
+    }
+    .retry-prompt {
+      font-size: 1rem;
+      color: #ffcc77;
+      animation: pulseText 1.4s ease-in-out infinite;
+      margin-bottom: 16px;
+    }
+    #shareBtn {
+      pointer-events: all;
+      background: linear-gradient(135deg, #ff6600, #cc2200);
+      border: none;
+      color: #fff;
+      font-size: 0.9rem;
+      font-weight: 700;
+      letter-spacing: 1px;
+      padding: 10px 28px;
+      border-radius: 24px;
+      cursor: pointer;
+      box-shadow: 0 4px 18px #ff440066;
+      transition: transform 0.1s, box-shadow 0.1s;
+      margin-top: 4px;
+    }
+    #shareBtn:active { transform: scale(0.95); box-shadow: 0 2px 8px #ff440044; }
+    #shareMsg {
+      font-size: 0.78rem;
+      color: #ffaa77;
+      margin-top: 8px;
+      min-height: 18px;
+    }
+    #hud {
+      position: absolute;
+      top: 14px;
+      left: 0; right: 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding: 0 18px;
+      pointer-events: none;
+      z-index: 5;
+    }
+    .hud-block {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .hud-val {
+      font-size: 1.5rem;
+      font-weight: 800;
+      color: #ffdd55;
+      line-height: 1.1;
+      text-shadow: 0 2px 8px #ff660088;
+    }
+    .hud-lbl {
+      font-size: 0.6rem;
+      color: #ff9944;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+    #comboHud {
+      font-size: 1rem;
+      font-weight: 800;
+      color: #ff4400;
+      text-shadow: 0 0 12px #ff6600;
+      transition: opacity 0.3s;
+      opacity: 0;
+    }
+    #seoSection {
+      width: min(420px, 100vw);
+      padding: 0 12px;
+      margin-top: 8px;
+    }
+    #seoSection details {
+      border: 1px solid #3d1200;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    #seoSection summary {
+      background: #1a0800;
+      color: #ff9944;
+      padding: 8px 14px;
+      font-size: 0.78rem;
+      cursor: pointer;
+      list-style: none;
+      user-select: none;
+    }
+    #seoSection summary::-webkit-details-marker { display: none; }
+    #seoSection .seo-body {
+      background: #120600;
+      padding: 12px 14px;
+      color: #cc7733;
+      font-size: 0.75rem;
+      line-height: 1.6;
+    }
+    #seoSection .seo-body h2 {
+      font-size: 0.85rem;
+      color: #ff9944;
+      margin-bottom: 6px;
+    }
+    #seoSection .seo-body p { margin-bottom: 6px; }
+  </style>
+</head>
+<body>
+  <div id="wrap">
+    <canvas id="gc"></canvas>
+
+    <div id="hud">
+      <div class="hud-block">
+        <span class="hud-lbl">Score</span>
+        <span class="hud-val" id="hudScore">0</span>
+      </div>
+      <div class="hud-block" style="align-items:center;">
+        <span id="comboHud">x1</span>
+      </div>
+      <div class="hud-block" style="align-items:flex-end;">
+        <span class="hud-lbl">Best</span>
+        <span class="hud-val" id="hudBest">0</span>
+      </div>
+    </div>
+
+    <div id="overlay">
+      <!-- Start panel -->
+      <div class="panel" id="startPanel">
+        <div class="game-title">LAVA<br>BLOOM</div>
+        <div class="game-subtitle">Pulse &amp; Bloom</div>
+        <div class="tap-prompt">Tap to Start</div>
+      </div>
+
+      <!-- Gameover panel -->
+      <div class="panel" id="gameoverPanel" style="display:none;">
+        <div class="score-label">Your Score</div>
+        <div class="score-big" id="goScore">0</div>
+        <div class="best-row" id="goBest">Best: 0</div>
+        <div class="blooms-row" id="goBlooms">Blooms: 0</div>
+        <div class="retry-prompt">Tap anywhere to retry</div>
+        <button id="shareBtn">&#127381; Share Score</button>
+        <div id="shareMsg"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="seoSection">
+    <details>
+      <summary>About Lava Bloom &#9660;</summary>
+      <div class="seo-body">
+        <h2>What is Lava Bloom?</h2>
+        <p>Lava Bloom is a free hyper-casual HTML5 browser game. Grow your volcanic plant by tapping at precisely the right moment — avoid the sweeping lava bands and hit the Bloom Rings for huge combo bonuses.</p>
+        <h2>How to Play</h2>
+        <p>Tap (or press Space/Enter) to pulse your stem upward one segment. Each segment placed safely scores +1 point. Land your stem tip inside a glowing Bloom Ring for big bonus points and a combo multiplier. Miss a ring and your combo resets. Hit a lava band and it's game over.</p>
+        <h2>Tips</h2>
+        <p>Watch the rhythm of the lava waves — they become faster and wider as your score climbs. Consecutive Bloom hits stack your combo multiplier up to 5x. Aim for Bloom Rings to maximize your score!</p>
+      </div>
+    </details>
+  </div>
+
+<script>
+(function() {
+'use strict';
+
+// ── Constants ──────────────────────────────────────────────────────────────
+const BEST_KEY      = 'lavabloom_best';
+const SEG_STEP      = 18;   // px per segment
+const SEG_W         = 14;   // segment width
+const SEG_R         = 5;    // corner radius
+const BASE_MARGIN   = 72;   // bottom safe margin
+const MIN_TAP_DT    = 0.14; // anti-spam interval (s)
+const DT_CAP        = 0.033;
+const HIT_STOP_DUR  = 0.075;
+const SHAKE_BLOOM   = { amp: 6,  dur: 0.12 };
+const SHAKE_DEATH   = { amp: 12, dur: 0.18 };
+const GRAV          = 420;   // particle gravity px/s²
+
+// ── Canvas setup ──────────────────────────────────────────────────────────
+const wrap   = document.getElementById('wrap');
+const canvas = document.getElementById('gc');
+const ctx    = canvas.getContext('2d');
+
+let W, H, DPR;
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W   = wrap.clientWidth;
+  H   = wrap.clientHeight;
+  canvas.width  = W * DPR;
+  canvas.height = H * DPR;
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ── State ──────────────────────────────────────────────────────────────────
+let state = 'start'; // 'start' | 'playing' | 'gameover'
+
+// game vars
+let score, best, combo, blooms;
+let stem;       // [{x,y,hue}]
+let tipY;
+let baseY;
+
+// lava bands
+let bands;      // [{y, thickness, omega, phase, amp, sway}]
+let bandCount;
+
+// bloom ring
+let ring;       // null or {y, radius, window, hue, alive}
+
+// segments since last ring spawn
+let segsSinceRing;
+let nextRingIn;
+
+// particles
+let particles; // [{x,y,vx,vy,life,maxLife,hue,sat,lig,r,type}]
+
+// timing
+let lastTime = null;
+let timePlaying = 0;
+let tapTimer = 0;
+
+// screen shake
+let shake = { amp: 0, dur: 0, t: 0 };
+
+// hit-stop
+let hitStop = 0;
+
+// hue cycling
+let hueBase = 0;
+
+// DOM refs
+const startPanel    = document.getElementById('startPanel');
+const gameoverPanel = document.getElementById('gameoverPanel');
+const hudScore      = document.getElementById('hudScore');
+const hudBest       = document.getElementById('hudBest');
+const comboHud      = document.getElementById('comboHud');
+const goScore       = document.getElementById('goScore');
+const goBest        = document.getElementById('goBest');
+const goBlooms      = document.getElementById('goBlooms');
+const shareBtn      = document.getElementById('shareBtn');
+const shareMsg      = document.getElementById('shareMsg');
+
+// Load best
+best = parseInt(localStorage.getItem(BEST_KEY) || '0', 10);
+
+// ── Difficulty helpers ─────────────────────────────────────────────────────
+function getDifficulty(s, t) {
+  return {
+    omega:     1.2 + 0.02 * s + 0.015 * t,
+    thickness: Math.max(22, 46 - 0.35 * s),
+    ringWin:   Math.max(5,  10 - 0.05 * s),
+    ringRad:   Math.max(22, 44 - 0.25 * s),
+  };
+}
+function comboMult(c) {
+  return Math.min(5, 1 + Math.floor(c / 3));
+}
+function ringInterval(s) {
+  if (s >= 28) return 5;
+  if (s >= 12) return 6;
+  return 7;
+}
+
+// ── Init / Reset ───────────────────────────────────────────────────────────
+function initGame() {
+  score         = 0;
+  combo         = 0;
+  blooms        = 0;
+  timePlaying   = 0;
+  tapTimer      = 0;
+  hitStop       = 0;
+  shake         = { amp: 0, dur: 0, t: 0 };
+  hueBase       = 0;
+  particles     = [];
+  ring          = null;
+  segsSinceRing = 0;
+  nextRingIn    = ringInterval(0);
+
+  baseY = H - BASE_MARGIN;
+
+  // Build initial stem (3 segments)
+  stem = [];
+  const cx = W / 2;
+  for (let i = 0; i < 3; i++) {
+    stem.push({ x: cx, y: baseY - i * SEG_STEP, hue: 100 + i * 15 });
+  }
+  tipY = stem[stem.length - 1].y;
+
+  // Bands
+  bandCount = 1;
+  const diff = getDifficulty(0, 0);
+  bands = buildBands(diff);
+
+  updateHUD();
+}
+
+function buildBands(diff) {
+  const positions = [
+    clamp(baseY - 140, 80, baseY - 120),
+    clamp(baseY - 260, 80, baseY - 120),
+    clamp(baseY - 380, 80, baseY - 120),
+  ];
+  return positions.map((y, i) => ({
+    y,
+    thickness: diff.thickness,
+    omega: diff.omega * (1 + i * 0.15),
+    phase: i * 2.1,
+    amp: 28 + i * 12,
+    sway: 0,
+  }));
+}
+
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+// ── Tap / Input ────────────────────────────────────────────────────────────
+let tappedShare = false;
+
+function handleTap(e) {
+  if (e && e.target === shareBtn) return; // let shareBtn handle itself
+  tappedShare = false;
+
+  if (state === 'start') {
+    state = 'playing';
+    initGame();
+    showPanel(null);
+    return;
+  }
+  if (state === 'gameover') {
+    state = 'playing';
+    initGame();
+    showPanel(null);
+    return;
+  }
+  if (state === 'playing') {
+    if (tapTimer < MIN_TAP_DT) return; // anti-spam
+    tapTimer = 0;
+    doGrow();
+  }
+}
+
+document.addEventListener('pointerdown', handleTap);
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    handleTap(null);
+  }
+});
+
+shareBtn.addEventListener('pointerdown', (e) => {
+  e.stopPropagation();
+  tappedShare = true;
+  doShare();
+});
+
+// ── Grow logic ─────────────────────────────────────────────────────────────
+function doGrow() {
+  const newY   = tipY - SEG_STEP;
+  const diff   = getDifficulty(score, timePlaying);
+
+  // Refresh band difficulty
+  for (let b of bands) {
+    b.thickness = diff.thickness;
+    b.omega     = diff.omega;
+  }
+
+  // Collision check at tap time
+  const visibleBandCount = score >= 28 ? 3 : score >= 12 ? 2 : 1;
+  for (let i = 0; i < visibleBandCount; i++) {
+    const b    = bands[i];
+    const bTop = b.y - b.thickness / 2;
+    const bBot = b.y + b.thickness / 2;
+    const sTop = newY - SEG_W / 2;
+    const sBot = newY + SEG_W / 2;
+    if (sBot >= bTop && sTop <= bBot) {
+      // DEATH
+      triggerDeath(newY);
+      return;
+    }
+  }
+
+  // Safe — add segment
+  score += 1;
+  segsSinceRing += 1;
+  hueBase += 8;
+  const segHue = hueBase % 360;
+
+  stem.push({ x: W / 2, y: newY, hue: segHue });
+  tipY = newY;
+
+  // Particles: ash puffs
+  spawnParticles('grow', W / 2, newY, segHue);
+
+  // Hit stop (just a tiny freeze)
+  // no hit-stop on normal grow; reserved for bloom
+
+  // Ring logic
+  if (ring && ring.alive) {
+    const dist = Math.abs(newY - ring.y);
+    if (dist <= ring.window) {
+      // BLOOM!
+      triggerBloom(newY, ring);
+    } else if (newY < ring.y - ring.radius) {
+      // Passed ring without hitting
+      ring.alive = false;
+      combo = 0;
+    }
+  }
+
+  // Spawn new ring?
+  if (!ring || !ring.alive) {
+    if (segsSinceRing >= nextRingIn) {
+      spawnRing(diff);
+      segsSinceRing = 0;
+      nextRingIn = ringInterval(score);
+    }
+  }
+
+  // Scroll stem if getting too high (keep tip away from top)
+  const minTipY = 130;
+  if (tipY < minTipY) {
+    const shift = minTipY - tipY;
+    for (let s of stem) s.y += shift;
+    tipY += shift;
+    if (ring && ring.alive) ring.y += shift;
+    for (let b of bands) b.y += shift;
+    baseY += shift;
+  }
+
+  updateHUD();
+}
+
+function triggerBloom(y, r) {
+  blooms += 1;
+  combo  += 1;
+  const mult    = comboMult(combo);
+  const bonus   = 5 * mult;
+  score += bonus;
+
+  r.alive = false;
+
+  // Hit stop
+  hitStop = HIT_STOP_DUR;
+
+  // Shake
+  shake.amp = SHAKE_BLOOM.amp;
+  shake.dur = SHAKE_BLOOM.dur;
+  shake.t   = 0;
+
+  // Particles: bloom sparks
+  spawnParticles('bloom', W / 2, y, hueBase % 360);
+
+  updateHUD();
+}
+
+function triggerDeath(deathY) {
+  // Particles: death burst
+  spawnParticles('death', W / 2, tipY, hueBase % 360);
+
+  // Shake
+  shake.amp = SHAKE_DEATH.amp;
+  shake.dur = SHAKE_DEATH.dur;
+  shake.t   = 0;
+
+  // Update best
+  if (score > best) {
+    best = score;
+    localStorage.setItem(BEST_KEY, best);
+  }
+
+  state = 'gameover';
+  showPanel('gameover');
+  updateHUD();
+}
+
+function spawnRing(diff) {
+  ring = {
+    y:      clamp(tipY - SEG_STEP * 3, 90, baseY - 90),
+    radius: diff.ringRad,
+    window: diff.ringWin,
+    hue:    (hueBase + 60) % 360,
+    alive:  true,
+  };
+}
+
+// ── Particles ──────────────────────────────────────────────────────────────
+function spawnParticles(type, x, y, hue) {
+  if (type === 'grow') {
+    for (let i = 0; i < 10; i++) {
+      const angle = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 0.7;
+      const speed = 60 + Math.random() * 80;
+      particles.push({
+        x, y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 0.4 + Math.random() * 0.2,
+        maxLife: 0.6,
+        hue: hue + (Math.random() - 0.5) * 30,
+        sat: 60, lig: 60,
+        r: 2 + Math.random() * 2,
+        type: 'ash',
+      });
+    }
+  } else if (type === 'bloom') {
+    for (let i = 0; i < 42; i++) {
+      const angle = (i / 42) * Math.PI * 2 + Math.random() * 0.3;
+      const speed = 100 + Math.random() * 160;
+      particles.push({
+        x, y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 0.6 + Math.random() * 0.4,
+        maxLife: 1.0,
+        hue: (hue + i * 8) % 360,
+        sat: 90, lig: 65,
+        r: 3 + Math.random() * 3,
+        type: 'spark',
+      });
+    }
+  } else if (type === 'death') {
+    for (let i = 0; i < 60; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 80 + Math.random() * 200;
+      const falling = Math.random() > 0.5;
+      particles.push({
+        x, y,
+        vx: Math.cos(angle) * speed,
+        vy: falling
+          ? Math.abs(Math.sin(angle) * speed) + 40
+          : Math.sin(angle) * speed,
+        life: 0.7 + Math.random() * 0.6,
+        maxLife: 1.3,
+        hue: 10 + Math.random() * 40,
+        sat: 90, lig: 55,
+        r: 3 + Math.random() * 4,
+        type: 'ember',
+      });
+    }
+  }
+}
+
+// ── Rendering ──────────────────────────────────────────────────────────────
+function drawRoundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.arcTo(x + w, y, x + w, y + r, r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h);
+  ctx.arcTo(x, y + h, x, y + h - r, r);
+  ctx.lineTo(x, y + r);
+  ctx.arcTo(x, y, x + r, y, r);
+  ctx.closePath();
+}
+
+function renderFrame(time) {
+  // Background
+  ctx.clearRect(0, 0, W, H);
+
+  // Ground glow
+  const grd = ctx.createRadialGradient(W / 2, H, 0, W / 2, H, W);
+  grd.addColorStop(0, '#5c1500cc');
+  grd.addColorStop(1, '#00000000');
+  ctx.fillStyle = grd;
+  ctx.fillRect(0, 0, W, H);
+
+  const visibleBandCount = state === 'playing' ? (score >= 28 ? 3 : score >= 12 ? 2 : 1) : 1;
+
+  // Lava bands (visual)
+  for (let i = 0; i < visibleBandCount; i++) {
+    const b = bands[i];
+    const sway = Math.sin(time * b.omega + b.phase) * b.amp;
+    const cx2   = W / 2 + sway;
+    const halfT = b.thickness / 2 + 6;
+
+    // Glow
+    const lg = ctx.createLinearGradient(0, b.y - halfT - 8, 0, b.y + halfT + 8);
+    lg.addColorStop(0, '#ff220000');
+    lg.addColorStop(0.3, '#ff440088');
+    lg.addColorStop(0.5, '#ff6600cc');
+    lg.addColorStop(0.7, '#ff440088');
+    lg.addColorStop(1, '#ff220000');
+    ctx.fillStyle = lg;
+    ctx.fillRect(0, b.y - halfT - 8, W, halfT * 2 + 16);
+
+    // Core lava
+    const lg2 = ctx.createLinearGradient(0, b.y - halfT, 0, b.y + halfT);
+    lg2.addColorStop(0, '#ff8800');
+    lg2.addColorStop(0.4, '#ff4400');
+    lg2.addColorStop(0.6, '#ff2200');
+    lg2.addColorStop(1, '#cc1100');
+    ctx.fillStyle = lg2;
+    ctx.fillRect(0, b.y - halfT + 6, W, halfT * 2 - 12);
+
+    // Lava surface shimmer
+    ctx.globalAlpha = 0.5 + 0.3 * Math.sin(time * 3.5 + i);
+    ctx.fillStyle = '#ffaa44';
+    ctx.fillRect(0, b.y - halfT + 6, W, 3);
+    ctx.globalAlpha = 1;
+  }
+
+  // Ring
+  if (ring && ring.alive) {
+    const ringAlpha = 0.5 + 0.5 * Math.sin(time * 6);
+    ctx.save();
+    ctx.globalAlpha = ringAlpha;
+
+    // Outer ring
+    ctx.beginPath();
+    ctx.arc(W / 2, ring.y, ring.radius, 0, Math.PI * 2);
+    ctx.strokeStyle = `hsl(${ring.hue}, 100%, 65%)`;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    // Inner window marker
+    ctx.beginPath();
+    ctx.arc(W / 2, ring.y, ring.window * 2, 0, Math.PI * 2);
+    ctx.strokeStyle = `hsl(${ring.hue}, 100%, 80%)`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Glow fill
+    const rg = ctx.createRadialGradient(W / 2, ring.y, 0, W / 2, ring.y, ring.radius);
+    rg.addColorStop(0, `hsla(${ring.hue}, 100%, 70%, 0.15)`);
+    rg.addColorStop(1, `hsla(${ring.hue}, 100%, 60%, 0)`);
+    ctx.fillStyle = rg;
+    ctx.beginPath();
+    ctx.arc(W / 2, ring.y, ring.radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  // Stem
+  for (let i = 0; i < stem.length; i++) {
+    const seg = stem[i];
+    const x   = seg.x - SEG_W / 2;
+    const y   = seg.y - SEG_W / 2;
+
+    // Glow
+    ctx.shadowColor = `hsl(${seg.hue}, 80%, 50%)`;
+    ctx.shadowBlur  = 10;
+
+    const c1 = `hsl(${seg.hue}, 75%, 55%)`;
+    const c2 = `hsl(${(seg.hue + 30) % 360}, 80%, 40%)`;
+    const sg  = ctx.createLinearGradient(seg.x - SEG_W / 2, 0, seg.x + SEG_W / 2, 0);
+    sg.addColorStop(0, c2);
+    sg.addColorStop(0.5, c1);
+    sg.addColorStop(1, c2);
+    ctx.fillStyle = sg;
+    drawRoundRect(x, y, SEG_W, SEG_W, SEG_R);
+    ctx.fill();
+  }
+  ctx.shadowBlur = 0;
+  ctx.shadowColor = 'transparent';
+
+  // Tip pulse
+  if (stem.length > 0) {
+    const tip   = stem[stem.length - 1];
+    const pulse = 0.5 + 0.5 * Math.sin(time * 5);
+    ctx.beginPath();
+    ctx.arc(tip.x, tip.y, SEG_W / 2 + 4 + pulse * 4, 0, Math.PI * 2);
+    ctx.strokeStyle = `hsla(${tip.hue}, 100%, 70%, ${0.4 + 0.4 * pulse})`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  // Base / root
+  {
+    const bx = W / 2;
+    const by = baseY + 8;
+    const rg  = ctx.createRadialGradient(bx, by, 0, bx, by, 28);
+    rg.addColorStop(0, '#ff6600cc');
+    rg.addColorStop(0.5, '#cc220066');
+    rg.addColorStop(1, '#00000000');
+    ctx.fillStyle = rg;
+    ctx.beginPath();
+    ctx.ellipse(bx, by, 28, 12, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Particles
+  for (const p of particles) {
+    const alpha = Math.max(0, p.life / p.maxLife);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = `hsl(${p.hue}, ${p.sat}%, ${p.lig}%)`;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r * alpha, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ── HUD update ─────────────────────────────────────────────────────────────
+function updateHUD() {
+  hudScore.textContent = score;
+  hudBest.textContent  = best;
+  if (combo > 0) {
+    comboHud.textContent = 'x' + comboMult(combo);
+    comboHud.style.opacity = '1';
+  } else {
+    comboHud.style.opacity = '0';
+  }
+}
+
+// ── Panel management ───────────────────────────────────────────────────────
+function showPanel(which) {
+  startPanel.style.display    = (which === 'start')    ? '' : 'none';
+  gameoverPanel.style.display = (which === 'gameover') ? '' : 'none';
+  shareMsg.textContent = '';
+
+  if (which === 'gameover') {
+    goScore.textContent = score;
+    goBest.textContent  = 'Best: ' + best;
+    goBlooms.textContent = 'Blooms: ' + blooms;
+  }
+}
+showPanel('start');
+hudBest.textContent = best;
+
+// ── Share ──────────────────────────────────────────────────────────────────
+function doShare() {
+  const text = `🌋 Lava Bloom - Score: ${score} | Blooms: ${blooms}\nPlay free at https://balinti.github.io/lava-bloom/`;
+  if (navigator.share) {
+    navigator.share({ title: 'Lava Bloom', text, url: 'https://balinti.github.io/lava-bloom/' })
+      .then(() => { shareMsg.textContent = 'Shared!'; })
+      .catch(() => {});
+  } else {
+    navigator.clipboard.writeText(text).then(() => {
+      shareMsg.textContent = 'Link copied!';
+      setTimeout(() => { shareMsg.textContent = ''; }, 2000);
+    }).catch(() => {
+      shareMsg.textContent = 'https://balinti.github.io/lava-bloom/';
+    });
+  }
+}
+
+// ── Main loop ──────────────────────────────────────────────────────────────
+function loop(ts) {
+  requestAnimationFrame(loop);
+
+  const now = ts / 1000;
+  let dt = lastTime === null ? 0 : now - lastTime;
+  lastTime = now;
+  dt = Math.min(dt, DT_CAP);
+
+  // Hit stop
+  if (hitStop > 0) {
+    hitStop -= dt;
+    // Still draw, just don't update simulation
+    const sx = shake.t < shake.dur
+      ? (Math.random() - 0.5) * shake.amp * (1 - shake.t / shake.dur)
+      : 0;
+    const sy = shake.t < shake.dur
+      ? (Math.random() - 0.5) * shake.amp * (1 - shake.t / shake.dur)
+      : 0;
+    ctx.save();
+    ctx.translate(sx, sy);
+    renderFrame(now);
+    ctx.restore();
+    return;
+  }
+
+  if (state === 'playing') {
+    tapTimer    += dt;
+    timePlaying += dt;
+
+    // Update bands (visual sway only — collision is tap-time)
+    // bands already hold their fixed y positions; omega/phase used in render
+
+    // Update particles
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.vy  += GRAV * dt;
+      p.x   += p.vx * dt;
+      p.y   += p.vy * dt;
+      p.life -= dt;
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+
+    // Screen shake
+    if (shake.t < shake.dur) shake.t += dt;
+  } else {
+    // Still animate particles in gameover
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.vy  += GRAV * dt;
+      p.x   += p.vx * dt;
+      p.y   += p.vy * dt;
+      p.life -= dt;
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+    if (shake.t < shake.dur) shake.t += dt;
+  }
+
+  // Screen shake transform
+  let sx = 0, sy = 0;
+  if (shake.t < shake.dur) {
+    const frac = 1 - shake.t / shake.dur;
+    sx = (Math.random() - 0.5) * shake.amp * frac;
+    sy = (Math.random() - 0.5) * shake.amp * frac;
+  }
+
+  ctx.save();
+  ctx.translate(sx, sy);
+  renderFrame(now);
+  ctx.restore();
+}
+
+// Init bands for start screen
+baseY = 1; // will be set properly in initGame
+// For start screen pre-render, create placeholder
+{
+  baseY = (wrap.clientHeight || 750) - BASE_MARGIN;
+  const d = getDifficulty(0, 0);
+  bands = buildBands(d);
+  stem  = [{ x: (wrap.clientWidth || 420) / 2, y: baseY, hue: 120 }];
+  for (let i = 1; i < 4; i++) {
+    stem.push({ x: stem[0].x, y: baseY - i * SEG_STEP, hue: 120 + i * 15 });
+  }
+  tipY = stem[stem.length - 1].y;
+  particles = [];
+  score = 0; combo = 0; blooms = 0;
+  ring  = null;
+}
+
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

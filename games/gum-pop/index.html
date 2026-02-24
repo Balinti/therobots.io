@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Gum Pop - Free HTML5 Game</title>
+  <meta name="description" content="Play Gum Pop - Bounce a gum ball to dodge falling candy and activate combo multipliers.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#1a0a2e">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Gum Pop - Free HTML5 Game">
+  <meta property="og:description" content="Play Gum Pop - Bounce a gum ball to dodge falling candy and activate combo multipliers.">
+  <meta property="og:url" content="https://balinti.github.io/gum-pop/">
+  <meta property="og:image" content="https://balinti.github.io/gum-pop/preview.png">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Gum Pop - Free HTML5 Game">
+  <meta name="twitter:description" content="Play Gum Pop - Bounce a gum ball to dodge falling candy and activate combo multipliers.">
+  <meta name="twitter:image" content="https://balinti.github.io/gum-pop/preview.png">
+
+  <!-- Canonical -->
+  <link rel="canonical" href="https://balinti.github.io/gum-pop/">
+
+  <!-- JSON-LD -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "VideoGame",
+    "name": "Gum Pop",
+    "description": "Bounce a gum ball to dodge falling candy and activate combo multipliers.",
+    "url": "https://balinti.github.io/gum-pop/",
+    "genre": "Hyper-casual",
+    "playMode": "SinglePlayer",
+    "applicationCategory": "Game"
+  }
+  </script>
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      display: flex; align-items: center; justify-content: center;
+      touch-action: none;
+      user-select: none;
+      background: #07020f;
+    }
+    body {
+      background: radial-gradient(ellipse at 50% 30%, #2a0a4a 0%, #0d0520 60%, #050210 100%);
+    }
+    #wrap {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      height: 100vh;
+      max-height: 750px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: pointer;
+      touch-action: none;
+    }
+  </style>
+</head>
+<body>
+<div id="wrap"><canvas id="c"></canvas></div>
+<script>
+'use strict';
+// ── Virtual resolution ───────────────────────────────────────────────────────
+const VW = 420, VH = 750;
+const JAR_CX = 210, JAR_CY = 390;
+const JAR_R   = 170;       // inner radius
+const WALL_T  = 14;        // wall thickness
+const PLAYER_R = 14;
+const ORBIT_R  = JAR_R - PLAYER_R - 2;  // orbit radius of player center
+const BASE_OMEGA = 1.4;    // rad/s clockwise base speed
+const SNAP_BOOST = 4.2;    // extra rad/s on snap
+const SNAP_DECAY = 9;      // how fast snap impulse fades
+const BAR_H     = 18;
+const NM_INNER  = PLAYER_R + 4;   // near-miss inner edge distance
+const NM_OUTER  = PLAYER_R + 24;  // near-miss outer edge distance
+const LS_KEY    = 'gumPopBest';
+
+// ── Canvas setup ────────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+const wrap   = document.getElementById('wrap');
+let scale = 1, dpr = 1;
+
+function resize() {
+  const r = wrap.getBoundingClientRect();
+  scale = Math.min(r.width / VW, r.height / VH);
+  dpr   = Math.min(window.devicePixelRatio || 1, 2.5);
+  canvas.width  = Math.round(VW * scale * dpr);
+  canvas.height = Math.round(VH * scale * dpr);
+  canvas.style.width  = Math.round(VW * scale) + 'px';
+  canvas.style.height = Math.round(VH * scale) + 'px';
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ── Game state ───────────────────────────────────────────────────────────────
+const S = { START:0, PLAY:1, OVER:2 };
+let gs = S.START;           // game state
+
+// Player
+let angle  = -Math.PI/2;   // position on orbit (radians)
+let omega  = BASE_OMEGA;   // current angular velocity
+let snap   = 0;            // snap impulse (decays)
+let stuck  = false;        // is player stuck to wall?
+let stuckA = 0;            // angle when stuck
+
+// Scoring
+let score  = 0;
+let best   = parseInt(localStorage.getItem(LS_KEY))||0;
+let combo  = 1;            // x1..x4 flavor combo
+let nmCount= 0;            // near-miss streak within level
+
+// Hazards
+let hazards   = [];
+let waveIdx   = 0;
+let waveTimer = 0;
+let waveInt   = 2.2;       // seconds between waves
+const MIN_INT = 0.95;
+
+// Particles
+let parts = [];
+
+// Shake
+let shAmp=0, shDur=0, shT=0;
+
+// Effects
+let hue       = 200;       // HSL hue cycles over time
+let hitFlash  = 0;         // red flash on death
+let tetherT   = 0;         // tether stretch 0..1
+let slowMo    = 1;         // time scale for first-tap drama
+let slowTimer = 0;
+
+// Game-over
+let overTimer = 0;
+const OVER_LOCK = 0.6;
+
+// Share / challenge
+let shareToast = 0;
+let shareBtn   = {x:0,y:0,w:0,h:0};
+let challengeN = 0;
+try {
+  const u = new URL(location.href);
+  const c = parseInt(u.searchParams.get('challenge'));
+  if (c > 0) challengeN = c;
+} catch(_){}
+
+// Start-screen demo orbit angle
+let demoA = -Math.PI/2;
+
+// ── Particles ───────────────────────────────────────────────────────────────
+function burst(x, y, n, o) {
+  for (let i=0; i<n; i++) {
+    const a = (o.arc !== undefined)
+      ? o.arc + (Math.random()-.5)*(o.spread||Math.PI*2)
+      : Math.random()*Math.PI*2;
+    const sp = o.minSpd + Math.random()*(o.maxSpd - o.minSpd);
+    parts.push({
+      x, y,
+      vx: Math.cos(a)*sp, vy: Math.sin(a)*sp,
+      life:1,
+      decay: o.decay||(0.022+Math.random()*0.028),
+      r:    o.r||(2.5+Math.random()*4),
+      hue:  o.hue!==undefined ? o.hue : Math.random()*360,
+      sat:  o.sat||80, lit: o.lit||65,
+      grav: o.grav||0,
+    });
+  }
+}
+
+function tickParts(dt) {
+  for (let i=parts.length-1; i>=0; i--) {
+    const p=parts[i];
+    p.x  += p.vx*dt*60; p.y += p.vy*dt*60;
+    p.vy += p.grav*dt*60;
+    p.life -= p.decay*dt*60;
+    if (p.life<=0) parts.splice(i,1);
+  }
+}
+
+function drawParts() {
+  for (const p of parts) {
+    ctx.save();
+    ctx.globalAlpha = Math.max(0,p.life);
+    ctx.fillStyle = `hsl(${p.hue},${p.sat}%,${p.lit}%)`;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r*p.life, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+// ── Screen shake ─────────────────────────────────────────────────────────────
+function shake(amp, dur) { if(amp>shAmp){shAmp=amp;shDur=dur;shT=0;} }
+function shakeOff() {
+  if (shT>=shDur) return {x:0,y:0};
+  const i = shAmp*(1-shT/shDur);
+  return { x:(Math.random()*2-1)*i, y:(Math.random()*2-1)*i };
+}
+
+// ── Hazard factories ─────────────────────────────────────────────────────────
+function gapFrac(wi) { return Math.max(0.22, 0.44-wi*0.011); }
+
+function makeBar(yOff, gf, velScale, delayY) {
+  const hfl = Math.sqrt(Math.max(0, JAR_R*JAR_R - yOff*yOff))*0.95;
+  const tw  = hfl*2;
+  const gw  = tw*gf;
+  const gp  = (tw-gw)*Math.random();
+  const spd = (160 + Math.min(waveIdx,22)*3.5)*( velScale||1);
+  return {
+    type:'bar',
+    x: JAR_CX-hfl, y: (delayY||0)-BAR_H,
+    w:tw, h:BAR_H, hfl,
+    gp, gw,
+    yTarget: JAR_CY+yOff,
+    vy: spd,
+    hue: (hue+Math.random()*60)%360,
+    alive:true, nmDone:false,
+  };
+}
+
+function makeSprinkle(wi) {
+  const arc = Math.PI*(0.44+Math.random()*0.35);
+  const rot = (Math.random()>.5?1:-1)*(0.55+Math.random()*0.85);
+  return {
+    type:'sprinkle',
+    cx:JAR_CX, cy:JAR_CY,
+    r: JAR_R*(0.52+Math.random()*0.38),
+    arcLen:arc,
+    a: -Math.PI/2 - arc/2,
+    rot, thick:17,
+    alive:true,
+    life:3.2+wi*0.08, age:0,
+    hue:(hue+55+Math.random()*60)%360,
+    nmDone:false,
+  };
+}
+
+function spawnWave(wi) {
+  waveIdx = wi;
+  waveInt = Math.max(MIN_INT, 2.2-wi*0.044);
+
+  // Complexity ramp
+  if (wi===0) { hazards.push(makeBar(0, 0.42, 0.55)); return; }
+
+  const c = Math.min(wi, 22);
+  const r = Math.random();
+
+  if (c<3) {
+    hazards.push(makeBar((Math.random()-.5)*80, gapFrac(wi)));
+  } else if (c<6) {
+    hazards.push(makeBar(-45, gapFrac(wi)), makeBar(35, gapFrac(wi), 1, -55));
+  } else if (c<10) {
+    if      (r<0.35) hazards.push(makeSprinkle(wi));
+    else if (r<0.65) hazards.push(makeBar((Math.random()-.5)*60, gapFrac(wi)), makeSprinkle(wi));
+    else             hazards.push(...fakeGap(wi));
+  } else if (c<15) {
+    if      (r<0.3)  hazards.push(makeSprinkle(wi), makeSprinkle(wi));
+    else if (r<0.6)  hazards.push(...sugarStorm(wi));
+    else             hazards.push(makeBar(-50, gapFrac(wi)), makeBar(40, gapFrac(wi), 1, -60));
+  } else {
+    if      (r<0.4)  hazards.push(...sugarStorm(wi));
+    else if (r<0.7)  hazards.push(makeSprinkle(wi), makeSprinkle(wi), makeBar(0, gapFrac(wi)-0.04));
+    else             hazards.push(...fakeGap(wi));
+  }
+}
+
+function fakeGap(wi) {
+  const yo = (Math.random()-.5)*60;
+  const hfl = Math.sqrt(Math.max(0, JAR_R*JAR_R-yo*yo))*0.95;
+  const tw = hfl*2;
+  const gf1 = gapFrac(wi)*0.45, gf2 = gapFrac(wi);
+  return [
+    { type:'bar', x:JAR_CX-hfl, y:-BAR_H, w:tw, h:BAR_H, hfl,
+      gp:(tw-tw*gf1)*0.5, gw:tw*gf1,
+      yTarget:JAR_CY+yo, vy:148+wi*3,
+      hue:(hue+120)%360, alive:true, nmDone:false },
+    { type:'bar', x:JAR_CX-hfl, y:-BAR_H-55, w:tw, h:BAR_H, hfl,
+      gp:(tw-tw*gf2)*Math.random(), gw:tw*gf2,
+      yTarget:JAR_CY+yo-55, vy:152+wi*3,
+      hue:(hue+180)%360, alive:true, nmDone:false },
+  ];
+}
+
+function sugarStorm(wi) {
+  const out=[];
+  for (let i=0;i<4;i++) {
+    const yo=(i-1.5)*28;
+    const hfl=Math.sqrt(Math.max(0,JAR_R*JAR_R-yo*yo))*0.95;
+    const tw=hfl*2;
+    const gf=gapFrac(wi)*(i===1?1.35:1);
+    const gw=tw*gf;
+    out.push({ type:'bar', x:JAR_CX-hfl, y:-BAR_H-i*65, w:tw, h:BAR_H, hfl,
+      gp:(tw-gw)*Math.random(), gw,
+      yTarget:JAR_CY+yo, vy:155+wi*4,
+      hue:(hue+i*45)%360, alive:true, nmDone:false });
+  }
+  return out;
+}
+
+// ── Collision helpers ────────────────────────────────────────────────────────
+function px() { return JAR_CX + Math.cos(angle)*ORBIT_R; }
+function py() { return JAR_CY + Math.sin(angle)*ORBIT_R; }
+
+function hitBar(plx, ply, b) {
+  const segs=[];
+  if (b.gp > 0.5)
+    segs.push({x:b.x, y:b.y, w:b.gp, h:b.h});
+  const rs=b.gp+b.gw;
+  if (b.w-rs > 0.5)
+    segs.push({x:b.x+rs, y:b.y, w:b.w-rs, h:b.h});
+  for (const s of segs) {
+    const cx=Math.max(s.x,Math.min(plx,s.x+s.w));
+    const cy=Math.max(s.y,Math.min(ply,s.y+s.h));
+    const dx=plx-cx, dy=ply-cy;
+    if (dx*dx+dy*dy < PLAYER_R*PLAYER_R) return true;
+  }
+  return false;
+}
+
+function hitSprinkle(plx, ply, sp) {
+  const steps=14;
+  for (let i=0;i<steps;i++) {
+    const a0=sp.a+i/steps*sp.arcLen, a1=sp.a+(i+1)/steps*sp.arcLen;
+    const ax=sp.cx+Math.cos(a0)*sp.r, ay=sp.cy+Math.sin(a0)*sp.r;
+    const bx=sp.cx+Math.cos(a1)*sp.r, by=sp.cy+Math.sin(a1)*sp.r;
+    const abx=bx-ax, aby=by-ay;
+    const t=Math.max(0,Math.min(1,(plx-ax)*abx+(ply-ay)*aby)/(abx*abx+aby*aby||1));
+    const dx=plx-(ax+t*abx), dy=ply-(ay+t*aby);
+    if (dx*dx+dy*dy < (PLAYER_R+sp.thick/2)*(PLAYER_R+sp.thick/2)) return true;
+  }
+  return false;
+}
+
+function nearBar(plx, ply, b) {
+  const cx=Math.max(b.x,Math.min(plx,b.x+b.w));
+  const cy=Math.max(b.y,Math.min(ply,b.y+b.h));
+  const d=Math.hypot(plx-cx,ply-cy);
+  return d>=NM_INNER && d<=NM_OUTER;
+}
+
+function nearSprinkle(plx, ply, sp) {
+  const steps=14;
+  let min=Infinity;
+  for (let i=0;i<steps;i++) {
+    const a0=sp.a+i/steps*sp.arcLen, a1=sp.a+(i+1)/steps*sp.arcLen;
+    const ax=sp.cx+Math.cos(a0)*sp.r, ay=sp.cy+Math.sin(a0)*sp.r;
+    const bx=sp.cx+Math.cos(a1)*sp.r, by=sp.cy+Math.sin(a1)*sp.r;
+    const abx=bx-ax, aby=by-ay;
+    const t=Math.max(0,Math.min(1,((plx-ax)*abx+(ply-ay)*aby)/(abx*abx+aby*aby||1)));
+    min=Math.min(min,Math.hypot(plx-(ax+t*abx),ply-(ay+t*aby)));
+  }
+  const r=sp.thick/2;
+  return min-r>=NM_INNER && min-r<=NM_OUTER;
+}
+
+// ── Combo ────────────────────────────────────────────────────────────────────
+function addNM(plx, ply) {
+  nmCount++;
+  burst(plx, ply-10, 7, {
+    arc:-Math.PI/2, spread:1.1,
+    minSpd:1.2, maxSpd:2.8,
+    decay:0.03, r:3,
+    hue:55, sat:100, lit:72, grav:0.03,
+  });
+  if (nmCount>=2 && combo<4) {
+    combo++; nmCount=0;
+    burst(JAR_CX, JAR_CY-JAR_R, 14, {
+      arc:-Math.PI/2, spread:1.3,
+      minSpd:1.8, maxSpd:3.5,
+      decay:0.025, r:5,
+      hue:55, sat:100, lit:72, grav:0.04,
+    });
+  }
+}
+
+// ── Input ────────────────────────────────────────────────────────────────────
+function onTap(vx, vy) {
+  if (gs===S.START) { startGame(); return; }
+  if (gs===S.OVER) {
+    // check share button first
+    if (vx>=shareBtn.x && vx<=shareBtn.x+shareBtn.w &&
+        vy>=shareBtn.y && vy<=shareBtn.y+shareBtn.h) {
+      doShare(); return;
+    }
+    if (overTimer>=OVER_LOCK) restartGame();
+    return;
+  }
+  // PLAYING
+  if (stuck) {
+    // SNAP
+    stuck=false; snap=SNAP_BOOST; omega=BASE_OMEGA;
+    shake(3,0.10);
+    slowMo=1; slowTimer=0;
+    burst(px(),py(),14,{
+      arc:angle+Math.PI/2, spread:Math.PI*0.85,
+      minSpd:2, maxSpd:5,
+      decay:0.03, r:4,
+      hue, sat:90, lit:65, grav:0.03,
+    });
+  } else {
+    // STICK
+    stuck=true; stuckA=angle; snap=0;
+    // first tap slow-mo
+    if (waveIdx<=0 && overTimer===0) { slowMo=0.25; slowTimer=1.0; }
+  }
+}
+
+canvas.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  const r=canvas.getBoundingClientRect();
+  const vx=(e.clientX-r.left)*(VW/r.width);
+  const vy=(e.clientY-r.top )*(VH/r.height);
+  onTap(vx,vy);
+}, {passive:false});
+
+document.addEventListener('keydown', e => {
+  if (e.code==='Space'||e.code==='Enter') { e.preventDefault(); onTap(-1,-1); }
+});
+
+// ── Lifecycle ────────────────────────────────────────────────────────────────
+function startGame() {
+  gs=S.PLAY; score=0; combo=1; nmCount=0;
+  waveIdx=0; waveTimer=0; waveInt=2.2;
+  hazards=[]; parts=[];
+  angle=-Math.PI/2; omega=BASE_OMEGA; snap=0;
+  stuck=false; hitFlash=0;
+  shAmp=0; shDur=0; shT=0;
+  slowMo=1; slowTimer=0;
+  overTimer=0;
+  spawnWave(0);
+  waveTimer=waveInt; // trigger next wave naturally
+}
+
+function restartGame() { startGame(); }
+
+function die() {
+  if (gs!==S.PLAY) return;
+  gs=S.OVER; overTimer=0;
+  if (score>best){ best=score; localStorage.setItem(LS_KEY,best); }
+  hitFlash=1;
+  shake(6,0.18);
+  const x=px(),y=py();
+  burst(x,y,28,{minSpd:2,maxSpd:7,decay:0.015,r:6,hue,sat:90,lit:60,grav:0.08});
+  burst(x,y,14,{minSpd:1,maxSpd:4,decay:0.02,r:3,hue:(hue+180)%360,sat:80,lit:70,grav:0.05});
+}
+
+function doShare() {
+  const url=`https://balinti.github.io/gum-pop/?challenge=${score}`;
+  const text=`I scored ${score} in Gum Pop! Can you beat me? 🍬`;
+  if (navigator.share) {
+    navigator.share({title:'Gum Pop',text,url}).catch(()=>{});
+  } else {
+    navigator.clipboard.writeText(`${text}\n${url}`).then(()=>{ shareToast=2; }).catch(()=>{});
+  }
+}
+
+// ── Update ───────────────────────────────────────────────────────────────────
+let last=0;
+function update(rawDt) {
+  hue=(hue+rawDt*24)%360;
+  const dt=rawDt*(gs===S.PLAY ? slowMo : 1);
+
+  if (shT<shDur) shT+=rawDt;
+  if (hitFlash>0) hitFlash=Math.max(0,hitFlash-rawDt*(gs===S.OVER?3:5));
+  if (shareToast>0) shareToast=Math.max(0,shareToast-rawDt);
+
+  if (gs===S.OVER) { overTimer+=rawDt; tickParts(dt); return; }
+  if (gs===S.START) { demoA+=rawDt*BASE_OMEGA; return; }
+
+  // Slow-mo timer
+  if (slowMo<1) {
+    slowTimer-=rawDt;
+    if (slowTimer<=0){slowMo=1;slowTimer=0;}
+  }
+
+  // Player movement
+  if (!stuck) {
+    snap=Math.max(0, snap-SNAP_DECAY*dt);
+    angle+=(omega+snap)*dt;
+  }
+  tetherT = stuck
+    ? Math.min(1, tetherT+dt*6)
+    : Math.max(0, tetherT-dt*8);
+
+  // Wave spawn
+  waveTimer+=dt;
+  if (waveTimer>=waveInt) {
+    waveTimer=0;
+    score+=combo;
+    spawnWave(waveIdx+1);
+  }
+
+  // Hazard update + collision
+  const plx=px(), ply=py();
+  for (let i=hazards.length-1;i>=0;i--) {
+    const h=hazards[i];
+    if (!h.alive){hazards.splice(i,1);continue;}
+    if (h.type==='bar') {
+      h.y+=h.vy*dt;
+      // near-miss while sliding
+      if (!stuck && !h.nmDone && nearBar(plx,ply,h)) {
+        h.nmDone=true; addNM(plx,ply);
+      }
+      if (hitBar(plx,ply,h)){ die(); return; }
+      if (h.y>VH+40) h.alive=false;
+    } else {
+      h.a+=h.rot*dt; h.age+=dt;
+      if (h.age>=h.life){h.alive=false;continue;}
+      if (!stuck && !h.nmDone && nearSprinkle(plx,ply,h)) {
+        h.nmDone=true; addNM(plx,ply);
+      }
+      if (hitSprinkle(plx,ply,h)){ die(); return; }
+    }
+  }
+
+  tickParts(dt);
+}
+
+// ── Draw helpers ──────────────────────────────────────────────────────────────
+function rr(x,y,w,h,r) { // rounded rect path
+  r=Math.min(r,w/2,h/2);
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.lineTo(x+w-r,y);  ctx.arcTo(x+w,y,x+w,y+r,r);
+  ctx.lineTo(x+w,y+h-r);ctx.arcTo(x+w,y+h,x+w-r,y+h,r);
+  ctx.lineTo(x+r,y+h);  ctx.arcTo(x,y+h,x,y+h-r,r);
+  ctx.lineTo(x,y+r);    ctx.arcTo(x,y,x+r,y,r);
+  ctx.closePath();
+}
+
+function clipJar() {
+  ctx.beginPath();
+  ctx.arc(JAR_CX,JAR_CY,JAR_R-WALL_T/2,0,Math.PI*2);
+  ctx.clip();
+}
+
+function drawJar() {
+  // Outer glow ring
+  const g=ctx.createRadialGradient(JAR_CX,JAR_CY,JAR_R-WALL_T,JAR_CX,JAR_CY,JAR_R+WALL_T+14);
+  g.addColorStop(0,`hsla(${hue},70%,55%,0.22)`);
+  g.addColorStop(1,'transparent');
+  ctx.beginPath();
+  ctx.arc(JAR_CX,JAR_CY,JAR_R+WALL_T+14,0,Math.PI*2);
+  ctx.fillStyle=g; ctx.fill();
+
+  // Wall ring
+  ctx.beginPath();
+  ctx.arc(JAR_CX,JAR_CY,JAR_R+WALL_T/2,0,Math.PI*2);
+  ctx.arc(JAR_CX,JAR_CY,JAR_R-WALL_T/2,0,Math.PI*2,true);
+  ctx.fillStyle=`hsla(${hue},52%,28%,0.88)`; ctx.fill();
+
+  // Inner rim shine
+  ctx.beginPath();
+  ctx.arc(JAR_CX,JAR_CY,JAR_R-WALL_T/2,-Math.PI*0.88,-Math.PI*0.12);
+  ctx.strokeStyle=`hsla(${hue},80%,78%,0.48)`;
+  ctx.lineWidth=2.5; ctx.stroke();
+}
+
+function drawBarObj(b, ghost) {
+  ctx.save(); clipJar();
+  const bh=b.hue||hue;
+  const alpha=ghost?0.32:0.93;
+  const segFill=ghost?`hsla(${bh},58%,52%,${alpha})`:`hsla(${bh},75%,58%,${alpha})`;
+  const shineFill=ghost?`hsla(${bh},60%,75%,0.18)`:`hsla(${bh},90%,80%,0.55)`;
+  const drawSeg=(sx,sw)=>{
+    if(sw<1)return;
+    rr(sx,b.y,sw,b.h,9);
+    ctx.fillStyle=segFill; ctx.fill();
+    rr(sx+2,b.y+2,sw-4,b.h*0.32,5);
+    ctx.fillStyle=shineFill; ctx.fill();
+  };
+  if(b.gp>0.5) drawSeg(b.x, b.gp);
+  const rs=b.gp+b.gw;
+  if(b.w-rs>0.5) drawSeg(b.x+rs, b.w-rs);
+  ctx.restore();
+}
+
+function drawSprinkleObj(sp) {
+  const fade=1-sp.age/sp.life;
+  ctx.save(); clipJar();
+  ctx.beginPath();
+  ctx.arc(sp.cx,sp.cy,sp.r,sp.a,sp.a+sp.arcLen);
+  ctx.strokeStyle=`hsla(${sp.hue},85%,62%,${0.9*fade})`;
+  ctx.lineWidth=sp.thick; ctx.lineCap='round'; ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(sp.cx,sp.cy,sp.r,sp.a,sp.a+sp.arcLen);
+  ctx.strokeStyle=`hsla(${sp.hue},100%,88%,${0.42*fade})`;
+  ctx.lineWidth=sp.thick*0.35; ctx.stroke();
+  ctx.restore();
+}
+
+function drawBall(bx, by, r) {
+  const g=ctx.createRadialGradient(bx-r*.32,by-r*.32,r*.08,bx,by,r);
+  g.addColorStop(0,`hsl(${hue},90%,86%)`);
+  g.addColorStop(0.6,`hsl(${hue},80%,60%)`);
+  g.addColorStop(1,`hsl(${hue},68%,38%)`);
+  // glow
+  const gl=ctx.createRadialGradient(bx,by,0,bx,by,r*2.6);
+  gl.addColorStop(0,`hsla(${hue},100%,80%,0.48)`);
+  gl.addColorStop(1,'transparent');
+  ctx.beginPath(); ctx.arc(bx,by,r*2.6,0,Math.PI*2);
+  ctx.fillStyle=gl; ctx.fill();
+  // body
+  ctx.beginPath(); ctx.arc(bx,by,r,0,Math.PI*2);
+  ctx.fillStyle=g; ctx.fill();
+  // specular
+  ctx.beginPath(); ctx.arc(bx-r*.28,by-r*.28,r*.3,0,Math.PI*2);
+  ctx.fillStyle='rgba(255,255,255,0.56)'; ctx.fill();
+}
+
+function drawTether() {
+  if(tetherT<0.01)return;
+  const bx=px(), by=py();
+  const wx=JAR_CX+Math.cos(stuckA)*JAR_R;
+  const wy=JAR_CY+Math.sin(stuckA)*JAR_R;
+  const mx=(bx+wx)/2+Math.sin(Date.now()*.006)*6*tetherT;
+  const my=(by+wy)/2;
+  ctx.save();
+  ctx.globalAlpha=tetherT*.78;
+  ctx.beginPath(); ctx.moveTo(bx,by);
+  ctx.quadraticCurveTo(mx,my,wx,wy);
+  ctx.strokeStyle=`hsla(${hue},92%,76%,0.95)`;
+  ctx.lineWidth=2.5+tetherT*2; ctx.lineCap='round'; ctx.stroke();
+  ctx.beginPath(); ctx.arc(wx,wy,5,0,Math.PI*2);
+  ctx.fillStyle=`hsl(${hue},88%,78%)`; ctx.fill();
+  ctx.restore();
+}
+
+function text(str,x,y,font,col,align) {
+  ctx.font=font||'16px sans-serif';
+  ctx.fillStyle=col||'#fff';
+  ctx.textAlign=align||'center';
+  ctx.fillText(str,x,y);
+}
+
+// ── Draw ─────────────────────────────────────────────────────────────────────
+function draw(ts) {
+  ctx.save();
+  ctx.scale(scale*dpr,scale*dpr);
+
+  // BG
+  const bg=ctx.createRadialGradient(VW/2,VH*.35,0,VW/2,VH*.35,VH*.75);
+  bg.addColorStop(0,'#1e0b3a'); bg.addColorStop(1,'#07020f');
+  ctx.fillStyle=bg; ctx.fillRect(0,0,VW,VH);
+
+  // Hit flash
+  if(hitFlash>0){
+    ctx.fillStyle=`rgba(255,50,50,${hitFlash*0.38})`;
+    ctx.fillRect(0,0,VW,VH);
+  }
+
+  // Shake
+  const sh=shakeOff();
+  ctx.save(); ctx.translate(sh.x,sh.y);
+
+  drawJar();
+
+  if(gs===S.START) {
+    // demo ball
+    const sx=JAR_CX+Math.cos(demoA)*ORBIT_R;
+    const sy=JAR_CY+Math.sin(demoA)*ORBIT_R;
+    drawBall(sx,sy,PLAYER_R);
+    drawStartScreen(ts);
+  } else {
+    // ghost hazards (telegraph)
+    for(const h of hazards) if(h.alive&&h.type==='bar') {
+      ctx.save(); ctx.globalAlpha=0.3; drawBarObj(h,true); ctx.restore();
+      // ghost shifted up
+      const orig=h.y; h.y-=52; ctx.save(); ctx.globalAlpha=0.22; drawBarObj(h,true); ctx.restore(); h.y=orig;
+    }
+    // real hazards
+    for(const h of hazards) if(h.alive) {
+      if(h.type==='bar') drawBarObj(h,false);
+      else drawSprinkleObj(h);
+    }
+    // near-miss hint ring
+    if(!stuck && gs===S.PLAY) {
+      const bx=px(),by=py();
+      ctx.save();
+      ctx.beginPath(); ctx.arc(bx,by,NM_OUTER,0,Math.PI*2);
+      ctx.strokeStyle='rgba(255,230,60,0.1)'; ctx.lineWidth=1.5; ctx.stroke();
+      ctx.restore();
+    }
+    drawTether();
+    // player
+    const pulse=stuck?(1+Math.sin(ts*.007)*.1):1;
+    drawBall(px(),py(),PLAYER_R*pulse);
+    drawParts();
+    drawHUD(ts);
+    if(gs===S.OVER) drawOverScreen(ts);
+  }
+
+  ctx.restore(); // shake
+  ctx.restore(); // scale
+}
+
+// ── Screen: HUD ──────────────────────────────────────────────────────────────
+function drawHUD(ts) {
+  ctx.save();
+  // Score
+  ctx.shadowColor=`hsl(${hue},80%,55%)`; ctx.shadowBlur=9;
+  text(`${score}`,22,44,'bold 28px "Segoe UI",system-ui,sans-serif','#fff','left');
+  ctx.shadowBlur=0;
+  text(`Best ${best}`,22,64,'15px "Segoe UI",system-ui,sans-serif','rgba(255,255,255,0.52)','left');
+  // Combo
+  if(combo>1){
+    ctx.shadowColor='rgba(255,220,0,0.7)'; ctx.shadowBlur=12;
+    text(`x${combo} Flavor`,VW-22,44,'bold 20px "Segoe UI",system-ui,sans-serif',`hsl(55,100%,68%)`,'right');
+    ctx.shadowBlur=0;
+  }
+  // Challenge
+  if(challengeN>0 && gs===S.PLAY){
+    text(`Beat ${challengeN}`,VW/2,28,'14px "Segoe UI",system-ui,sans-serif',`hsla(${hue},80%,72%,0.72)`,'center');
+  }
+  // Share toast
+  if(shareToast>0){
+    ctx.globalAlpha=Math.min(1,shareToast);
+    text('Copied! Send to a friend 🍬',VW/2,VH-72,'14px "Segoe UI",system-ui,sans-serif','#7fff7f','center');
+    ctx.globalAlpha=1;
+  }
+  ctx.restore();
+}
+
+// ── Screen: Start ─────────────────────────────────────────────────────────────
+function drawStartScreen(ts) {
+  ctx.save();
+  // Title
+  ctx.shadowColor=`hsl(${hue},80%,55%)`; ctx.shadowBlur=28;
+  text('🍬 Gum Pop',VW/2,VH*.28,'bold 54px "Segoe UI",system-ui,sans-serif',`hsl(${hue},90%,80%)`);
+  ctx.shadowBlur=0;
+  text('Stick  •  Snap  •  Survive',VW/2,VH*.28+48,'17px "Segoe UI",system-ui,sans-serif','rgba(255,255,255,0.68)');
+
+  // Instructions
+  const lines=['Tap to STICK to the jar wall','Tap again to SNAP through gaps','Near-miss candy builds Flavor Combo!'];
+  lines.forEach((l,i)=>text(l,VW/2,VH*.50+i*30,'15px "Segoe UI",system-ui,sans-serif','rgba(255,255,255,0.55)'));
+
+  if(challengeN>0){
+    ctx.shadowColor=`hsl(55,100%,55%)`; ctx.shadowBlur=10;
+    text(`Challenge: beat ${challengeN}!`,VW/2,VH*.50+lines.length*30+14,'bold 17px "Segoe UI",system-ui,sans-serif','hsl(55,100%,72%)');
+    ctx.shadowBlur=0;
+  }
+
+  // Pulsing tap prompt
+  const p=0.65+0.35*Math.sin(ts*.003);
+  ctx.globalAlpha=p;
+  text('Tap to Start',VW/2,VH*.73,'bold 22px "Segoe UI",system-ui,sans-serif','#fff');
+  ctx.globalAlpha=1;
+
+  if(best>0) text(`Best: ${best}`,VW/2,VH*.81,'15px "Segoe UI",system-ui,sans-serif','rgba(255,255,255,0.4)');
+
+  ctx.restore();
+}
+
+// ── Screen: Game Over ────────────────────────────────────────────────────────
+function drawOverScreen(ts) {
+  ctx.save();
+  // dim overlay
+  ctx.fillStyle='rgba(5,2,16,0.74)'; ctx.fillRect(0,0,VW,VH);
+
+  ctx.shadowColor='rgba(255,60,60,0.75)'; ctx.shadowBlur=22;
+  text('Popped! 💥',VW/2,VH*.30,'bold 42px "Segoe UI",system-ui,sans-serif','#ff6b6b');
+  ctx.shadowBlur=0;
+
+  text(`${score}`,VW/2,VH*.43,'bold 68px "Segoe UI",system-ui,sans-serif','#fff');
+  text(`Best: ${best}`,VW/2,VH*.505,'17px "Segoe UI",system-ui,sans-serif','rgba(255,255,255,0.52)');
+
+  if(challengeN>0){
+    const beat=score>challengeN;
+    text(beat?`You beat ${challengeN}! 🎉`:`Target was ${challengeN} — almost!`,
+      VW/2,VH*.555,'15px "Segoe UI",system-ui,sans-serif', beat?'#7cfc00':'#ff9966');
+  }
+
+  // Share button
+  const sbx=VW/2-105, sby=VH*.595, sbw=210, sbh=48;
+  shareBtn={x:sbx,y:sby,w:sbw,h:sbh};
+  rr(sbx,sby,sbw,sbh,14);
+  ctx.fillStyle=`hsl(${hue},70%,42%)`; ctx.fill();
+  ctx.strokeStyle=`hsl(${hue},90%,68%)`; ctx.lineWidth=2; ctx.stroke();
+  text('Challenge a Friend 🔗',VW/2,sby+30,'bold 16px "Segoe UI",system-ui,sans-serif','#fff');
+
+  // Retry
+  if(overTimer>=OVER_LOCK) {
+    const p=0.65+0.35*Math.sin(ts*.004);
+    ctx.globalAlpha=p;
+    text('Tap to Retry',VW/2,VH*.77,'bold 21px "Segoe UI",system-ui,sans-serif','#fff');
+    ctx.globalAlpha=1;
+  }
+
+  ctx.restore();
+}
+
+// ── RAF loop ─────────────────────────────────────────────────────────────────
+function loop(ts) {
+  requestAnimationFrame(loop);
+  const dt=Math.min((ts-last)/1000,0.05);
+  last=ts;
+  update(dt);
+  draw(ts);
+}
+requestAnimationFrame(ts=>{last=ts; requestAnimationFrame(loop);});
+</script>
+</body>
+</html>

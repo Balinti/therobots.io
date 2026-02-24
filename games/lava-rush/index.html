@@ -1,0 +1,1240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Lava Rush - Free HTML5 Game</title>
+  <meta name="description" content="Play Lava Rush - Tap to collect glowing crystals before the lava flow reaches you.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#1a0a00">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Lava Rush - Free HTML5 Game">
+  <meta property="og:description" content="Play Lava Rush - Tap to collect glowing crystals before the lava flow reaches you.">
+  <meta property="og:url" content="https://balinti.github.io/lava-rush/">
+  <meta property="og:image" content="https://balinti.github.io/lava-rush/og-image.png">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Lava Rush - Free HTML5 Game">
+  <meta name="twitter:description" content="Play Lava Rush - Tap to collect glowing crystals before the lava flow reaches you.">
+  <meta name="twitter:image" content="https://balinti.github.io/lava-rush/og-image.png">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      height: 100%;
+      background: #0d0400;
+      color: #e0c090;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      overflow-x: hidden;
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100svh;
+      background: radial-gradient(ellipse at top, #1a0800 0%, #0d0400 60%, #050100 100%);
+    }
+    header {
+      width: 100%;
+      max-width: 420px;
+      padding: 8px 16px 4px;
+      text-align: center;
+    }
+    header h1 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      letter-spacing: 2px;
+      color: #ff6a00;
+      text-shadow: 0 0 12px #ff4400aa;
+      text-transform: uppercase;
+    }
+    #game-wrap {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      max-width: 420px;
+      max-height: 750px;
+      touch-action: none;
+      cursor: pointer;
+      border-radius: 8px;
+      box-shadow: 0 0 40px #ff330044, 0 0 80px #ff110022;
+    }
+    footer {
+      width: 100%;
+      max-width: 420px;
+      padding: 8px 16px 12px;
+      text-align: center;
+      font-size: 0.75rem;
+      color: #a07040;
+    }
+    footer a { color: #ff6a00; cursor: pointer; text-decoration: underline; }
+
+    /* Content below canvas */
+    #page-content {
+      width: 100%;
+      max-width: 560px;
+      padding: 24px 20px 40px;
+      color: #c09050;
+    }
+    #page-content h2 {
+      font-size: 1rem;
+      color: #ff8040;
+      margin-bottom: 8px;
+      margin-top: 20px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    #page-content p, #page-content li {
+      font-size: 0.85rem;
+      line-height: 1.6;
+      color: #a08060;
+    }
+    #page-content ul { padding-left: 18px; }
+    #page-content li { margin-bottom: 4px; }
+    #page-content details { margin-top: 8px; }
+    #page-content summary {
+      cursor: pointer;
+      color: #ff8040;
+      font-size: 0.85rem;
+      margin-bottom: 6px;
+    }
+    #privacy-modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.85);
+      z-index: 999;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    #privacy-modal.show { display: flex; }
+    #privacy-box {
+      background: #1a0a00;
+      border: 1px solid #ff4400aa;
+      border-radius: 10px;
+      max-width: 420px;
+      width: 100%;
+      padding: 24px;
+      max-height: 80vh;
+      overflow-y: auto;
+      font-size: 0.8rem;
+      color: #a08060;
+      line-height: 1.6;
+    }
+    #privacy-box h3 { color: #ff8040; margin-bottom: 12px; }
+    #privacy-close {
+      margin-top: 16px;
+      background: #ff4400;
+      color: #fff;
+      border: none;
+      padding: 8px 20px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>&#x1F525; Lava Rush</h1>
+  </header>
+
+  <div id="game-wrap">
+    <canvas id="c"></canvas>
+  </div>
+
+  <footer>
+    <span>&#169; 2026 Lava Rush &nbsp;|&nbsp; <a onclick="openPrivacy()">Privacy Policy</a></span>
+  </footer>
+
+  <!-- Below-canvas SEO content -->
+  <section id="page-content">
+    <h2>How to Play</h2>
+    <p>You are a runner moving upward through two lanes. The lava is rising from below — collect glowing crystals to push it back! Tap the screen or press Space/Enter to instantly switch lanes.</p>
+
+    <h2>Tips</h2>
+    <ul>
+      <li>Build your streak multiplier by collecting consecutive crystals — don't miss!</li>
+      <li>Near-miss pickups (lava close to you) give extra cooling bonus.</li>
+      <li>Watch for cracked tiles — they erupt and spike your heat!</li>
+      <li>At high heat the lava moves faster. Keep collecting!</li>
+      <li>Streak x5 gives massive score — try to hold it as long as possible.</li>
+    </ul>
+
+    <h2>FAQ</h2>
+
+    <details>
+      <summary>How do I score more points?</summary>
+      <p>Collect crystals without missing any to build your streak multiplier up to x5. Higher streaks multiply every crystal pickup. Near-miss bonuses also add extra score when you grab a crystal while the lava is close.</p>
+    </details>
+
+    <details>
+      <summary>What are cracked tiles?</summary>
+      <p>Cracked tiles appear in a lane and pulse red as a warning, then erupt — spiking your heat if you're in that lane. Switch lanes quickly to avoid them!</p>
+    </details>
+
+    <details>
+      <summary>Does the game get harder over time?</summary>
+      <p>Yes! The scroll speed and lava rise rate increase the longer you survive. Crystals become more challenging to reach, and eruptions become more frequent. How long can you last?</p>
+    </details>
+  </section>
+
+  <!-- Privacy Modal -->
+  <div id="privacy-modal">
+    <div id="privacy-box">
+      <h3>Privacy Policy</h3>
+      <p><strong>Last updated: February 2026</strong></p>
+      <p>Lava Rush is a free browser-based game. We do not collect personal information. Your high score is stored locally on your device using <code>localStorage</code> and never transmitted.</p>
+      <p><strong>Advertising:</strong> This site uses Google AdSense to display advertisements. Google may use cookies to serve ads based on your prior visits to this website or other websites. You can opt out at <a href="https://www.google.com/settings/ads" target="_blank" rel="noopener">google.com/settings/ads</a>.</p>
+      <p><strong>Analytics:</strong> We do not use any analytics tracking on this site.</p>
+      <p><strong>Cookies:</strong> We do not set any first-party cookies. Third-party cookies from Google AdSense may be set.</p>
+      <p><strong>Contact:</strong> For questions, contact the site owner via GitHub.</p>
+      <button id="privacy-close" onclick="closePrivacy()">Close</button>
+    </div>
+  </div>
+
+  <script>
+  // ─── Privacy Modal ───────────────────────────────────────────────
+  function openPrivacy() {
+    document.getElementById('privacy-modal').classList.add('show');
+  }
+  function closePrivacy() {
+    document.getElementById('privacy-modal').classList.remove('show');
+  }
+  document.getElementById('privacy-modal').addEventListener('pointerdown', function(e) {
+    if (e.target === this) closePrivacy();
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  //  LAVA RUSH — Cooldown Lanes
+  //  Single-file HTML5 Canvas game
+  // ═══════════════════════════════════════════════════════════════
+
+  // ─── SETUP ──────────────────────────────────────────────────────
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+
+  const VW = 420, VH = 750;   // virtual resolution
+  let scale = 1;
+
+  function resizeCanvas() {
+    const wrap = document.getElementById('game-wrap');
+    const ww = wrap.clientWidth;
+    const wh = Math.min(wrap.clientHeight, window.innerHeight);
+    const s = Math.min(ww / VW, wh / VH);
+    scale = s;
+    canvas.width  = Math.round(VW * devicePixelRatio * s);
+    canvas.height = Math.round(VH * devicePixelRatio * s);
+    canvas.style.width  = Math.round(VW * s) + 'px';
+    canvas.style.height = Math.round(VH * s) + 'px';
+    ctx.setTransform(devicePixelRatio * s, 0, 0, devicePixelRatio * s, 0, 0);
+  }
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
+
+  // ─── CONSTANTS ──────────────────────────────────────────────────
+  const LANE_X   = [VW * 0.28, VW * 0.72];  // centre x of each lane
+  const LANE_W   = VW * 0.36;
+  const PLAYER_Y = VH * 0.72;
+  const PLAYER_R = 22;
+
+  const CRYSTAL_W = 28, CRYSTAL_H = 36;
+  const CRACK_W   = LANE_W * 0.8, CRACK_H = 20;
+
+  const LAVA_INIT_Y = VH + 60;   // starts off-screen bottom
+  const LAVA_WIN_Y  = PLAYER_Y + PLAYER_R + 4;  // lose when lava >= this
+
+  const STREAK_THRESHOLDS = [1, 2, 3, 5];  // multiplier per streak tier
+  const STREAK_LEVELS      = [0, 3, 6, 10]; // consecutive hits needed
+
+  // ─── STATE ──────────────────────────────────────────────────────
+  let state = 'start';  // 'start' | 'playing' | 'gameover'
+  let highScore = parseInt(localStorage.getItem('lavaRushHS') || '0', 10);
+
+  // Game vars (reset each run)
+  let score, streak, streakMult, heat;
+  let lavaY, scrollSpeed, spawnDist, spawnAcc;
+  let playerLane, playerX, playerTargetX, playerHue;
+  let crystals, cracks, particles, embers, bubbles;
+  let shakeX, shakeY, shakeTimer;
+  let hueShift;
+  let gameTime;
+  let nearMissCount;
+  let prevScore;
+  let goTimer;   // gameover animation timer
+
+  function resetGame() {
+    score = 0;
+    streak = 0;
+    streakMult = 1;
+    heat = 0;
+    lavaY = LAVA_INIT_Y;
+    scrollSpeed = 90;   // px per second
+    spawnDist = 180;
+    spawnAcc  = 0;
+    playerLane = 0;
+    playerX = LANE_X[0];
+    playerTargetX = LANE_X[0];
+    playerHue = 180;
+    crystals = [];
+    cracks   = [];
+    particles = [];
+    embers  = [];
+    bubbles = [];
+    shakeX = shakeY = shakeTimer = 0;
+    hueShift = 0;
+    gameTime = 0;
+    nearMissCount = 0;
+    prevScore = 0;
+
+    // Immediately spawn first crystal in player lane (easy first)
+    crystals.push(makeCrystal(0, PLAYER_Y - 120));
+  }
+
+  // ─── INPUT ──────────────────────────────────────────────────────
+  function handleTap() {
+    if (state === 'start') {
+      state = 'playing';
+      resetGame();
+      return;
+    }
+    if (state === 'gameover') {
+      state = 'playing';
+      resetGame();
+      return;
+    }
+    if (state === 'playing') {
+      switchLane();
+    }
+  }
+
+  canvas.addEventListener('pointerdown', function(e) {
+    e.preventDefault();
+    // Don't fire if privacy modal is open
+    if (document.getElementById('privacy-modal').classList.contains('show')) return;
+    handleTap();
+  });
+
+  document.addEventListener('keydown', function(e) {
+    if (e.code === 'Space' || e.code === 'Enter') {
+      e.preventDefault();
+      handleTap();
+    }
+  });
+
+  function switchLane() {
+    playerLane = 1 - playerLane;
+    playerTargetX = LANE_X[playerLane];
+    spawnMicroShake(1.5);
+  }
+
+  // ─── HELPERS ────────────────────────────────────────────────────
+  function makeCrystal(lane, y) {
+    return {
+      lane, y,
+      x: LANE_X[lane],
+      collected: false,
+      hue: (hueShift + 190 + lane * 60) % 360,
+      pulse: Math.random() * Math.PI * 2,
+      scale: 1,
+    };
+  }
+
+  function makeCrack(lane, y) {
+    return {
+      lane, y,
+      x: LANE_X[lane],
+      timer: 0,
+      duration: 2.2,  // warning phase
+      erupted: false,
+      eruptTimer: 0,
+    };
+  }
+
+  function streakMultiplier(s) {
+    if (s >= STREAK_LEVELS[3]) return STREAK_THRESHOLDS[3];
+    if (s >= STREAK_LEVELS[2]) return STREAK_THRESHOLDS[2];
+    if (s >= STREAK_LEVELS[1]) return STREAK_THRESHOLDS[1];
+    return STREAK_THRESHOLDS[0];
+  }
+
+  function spawnParticle(x, y, hue, count, speed, life) {
+    for (let i = 0; i < count; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const v = (0.5 + Math.random() * 0.5) * speed;
+      particles.push({
+        x, y,
+        vx: Math.cos(a) * v,
+        vy: Math.sin(a) * v - Math.random() * speed * 0.5,
+        life, maxLife: life,
+        r: 3 + Math.random() * 4,
+        hue: hue + (Math.random() - 0.5) * 40,
+      });
+    }
+  }
+
+  function spawnSteam(x, y) {
+    for (let i = 0; i < 10; i++) {
+      particles.push({
+        x: x + (Math.random() - 0.5) * 30,
+        y,
+        vx: (Math.random() - 0.5) * 30,
+        vy: -40 - Math.random() * 60,
+        life: 0.8 + Math.random() * 0.5,
+        maxLife: 1.3,
+        r: 6 + Math.random() * 8,
+        hue: 200,
+        steam: true,
+      });
+    }
+  }
+
+  function spawnEmber(x, y) {
+    embers.push({
+      x, y,
+      vx: (Math.random() - 0.5) * 50,
+      vy: -20 - Math.random() * 60,
+      life: 0.5 + Math.random() * 1.2,
+      maxLife: 1.7,
+      r: 1.5 + Math.random() * 2.5,
+      hue: 20 + Math.random() * 40,
+    });
+  }
+
+  function spawnBubble(x, y) {
+    bubbles.push({
+      x: x + (Math.random() - 0.5) * LANE_W * 0.8,
+      y,
+      vy: -15 - Math.random() * 25,
+      r: 3 + Math.random() * 7,
+      life: 0.6 + Math.random() * 0.8,
+      maxLife: 1.4,
+    });
+  }
+
+  function spawnMicroShake(mag) {
+    shakeTimer = Math.max(shakeTimer, 0.12);
+    shakeX = (Math.random() - 0.5) * mag * 2;
+    shakeY = (Math.random() - 0.5) * mag * 2;
+  }
+
+  function bigShake() {
+    shakeTimer = 0.45;
+  }
+
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+  function lerp(a, b, t)    { return a + (b - a) * t; }
+
+  // ─── UPDATE ─────────────────────────────────────────────────────
+  let lastTime = 0;
+  function update(ts) {
+    const dt = Math.min((ts - lastTime) / 1000, 0.05);
+    lastTime = ts;
+
+    if (state !== 'playing') return;
+
+    gameTime += dt;
+    hueShift = (hueShift + 20 * dt) % 360;
+
+    // Difficulty ramp
+    scrollSpeed = 90 + gameTime * 4.5;
+    spawnDist   = Math.max(110, 180 - gameTime * 2);
+
+    // Player slide
+    playerX = lerp(playerX, playerTargetX, 1 - Math.pow(0.001, dt));
+
+    // Screen shake decay
+    if (shakeTimer > 0) {
+      shakeTimer -= dt;
+      shakeX = (Math.random() - 0.5) * 4 * (shakeTimer > 0 ? 1 : 0);
+      shakeY = (Math.random() - 0.5) * 4 * (shakeTimer > 0 ? 1 : 0);
+    } else {
+      shakeX = shakeY = 0;
+    }
+
+    // Scroll world (move crystals/cracks DOWN)
+    const scroll = scrollSpeed * dt;
+
+    // Spawn accumulator
+    spawnAcc += scroll;
+    while (spawnAcc >= spawnDist) {
+      spawnAcc -= spawnDist;
+      // Decide: crystal or crack (crack chance rises with time)
+      const crackChance = Math.min(0.18, 0.03 + gameTime * 0.004);
+      if (Math.random() < crackChance && cracks.length < 3) {
+        const lane = Math.floor(Math.random() * 2);
+        cracks.push(makeCrack(lane, -40));
+      } else {
+        // Prefer lane player isn't in for variety, but sometimes same lane
+        let lane = Math.random() < 0.55 ? playerLane : 1 - playerLane;
+        crystals.push(makeCrystal(lane, -40));
+      }
+    }
+
+    // Move crystals
+    for (let i = crystals.length - 1; i >= 0; i--) {
+      const c = crystals[i];
+      c.y    += scroll;
+      c.pulse += dt * 3;
+      c.scale = lerp(c.scale, 1, 0.2);
+
+      // Collect check
+      if (!c.collected && c.y >= PLAYER_Y - 50 && c.y <= PLAYER_Y + 50 && c.lane === playerLane) {
+        collectCrystal(c);
+      }
+
+      // Miss check (passed player)
+      if (!c.collected && c.y > PLAYER_Y + 60) {
+        missCrystal();
+        crystals.splice(i, 1);
+      } else if (c.collected && c.scale < 0.05) {
+        crystals.splice(i, 1);
+      } else if (c.y > VH + 40 && !c.collected) {
+        crystals.splice(i, 1);
+      }
+    }
+
+    // Move cracks
+    for (let i = cracks.length - 1; i >= 0; i--) {
+      const cr = cracks[i];
+      cr.y += scroll;
+      cr.timer += dt;
+
+      // Eruption
+      if (!cr.erupted && cr.timer >= cr.duration) {
+        cr.erupted = true;
+        cr.eruptTimer = 0;
+        // Spike heat if player in lane
+        if (cr.lane === playerLane) {
+          heat = Math.min(1, heat + 0.25);
+          bigShake();
+          spawnParticle(cr.x, cr.y, 20, 18, 160, 0.8);
+        } else {
+          spawnParticle(cr.x, cr.y, 20, 8, 80, 0.5);
+        }
+      }
+      if (cr.erupted) {
+        cr.eruptTimer += dt;
+        if (cr.eruptTimer > 0.6) {
+          cracks.splice(i, 1);
+        }
+      }
+      if (cr.y > VH + 40) cracks.splice(i, 1);
+    }
+
+    // Lava movement
+    const heatMult = 1 + heat * 3;
+    const lavaRise = (12 + gameTime * 0.8) * heatMult * dt;
+    lavaY -= lavaRise;
+
+    // Heat passive decay
+    heat = Math.max(0, heat - 0.008 * dt);
+
+    // Ember / bubble spawn
+    if (Math.random() < 0.3) spawnEmber(lerp(LANE_X[0], LANE_X[1], Math.random()), lavaY - Math.random() * 20);
+    if (Math.random() < 0.06) spawnBubble(lerp(0, VW, Math.random()), lavaY + 10);
+
+    // Update particles
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x  += p.vx * dt;
+      p.y  += p.vy * dt;
+      p.vy += 180 * dt;
+      p.life -= dt;
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+    for (let i = embers.length - 1; i >= 0; i--) {
+      const e = embers[i];
+      e.x += e.vx * dt;
+      e.y += e.vy * dt;
+      e.vy += 40 * dt;
+      e.life -= dt;
+      if (e.life <= 0) embers.splice(i, 1);
+    }
+    for (let i = bubbles.length - 1; i >= 0; i--) {
+      const b = bubbles[i];
+      b.y += b.vy * dt;
+      b.life -= dt;
+      if (b.life <= 0) bubbles.splice(i, 1);
+    }
+
+    // Lose condition
+    if (lavaY <= LAVA_WIN_Y) {
+      endGame();
+    }
+  }
+
+  function collectCrystal(c) {
+    c.collected = true;
+    c.scale = 1.6;
+    streak++;
+    streakMult = streakMultiplier(streak);
+
+    // Near miss bonus
+    const lavaDist = lavaY - LAVA_WIN_Y;
+    const isNearMiss = lavaDist < 80;
+    if (isNearMiss) nearMissCount++;
+
+    const bonus = isNearMiss ? 2 : 1;
+    const pts = 10 * streakMult * bonus;
+    score += pts;
+
+    // Lava pushback
+    const pushback = (18 + streakMult * 8) * (isNearMiss ? 1.5 : 1);
+    lavaY = Math.min(LAVA_INIT_Y, lavaY + pushback);
+
+    // Steam on big pushbacks
+    if (pushback > 30) spawnSteam(c.x, lavaY);
+
+    // Heat reduction
+    heat = Math.max(0, heat - 0.04 * streakMult);
+
+    // Particles
+    spawnParticle(c.x, c.y, c.hue, 16 + streakMult * 4, 140, 0.7);
+
+    // Shake milestone
+    if (streak === STREAK_LEVELS[1] || streak === STREAK_LEVELS[2] || streak === STREAK_LEVELS[3]) {
+      bigShake();
+    } else {
+      spawnMicroShake(streak > 5 ? 2 : 1);
+    }
+  }
+
+  function missCrystal() {
+    streak = 0;
+    streakMult = 1;
+    heat = Math.min(1, heat + 0.08);
+  }
+
+  function endGame() {
+    state = 'gameover';
+    if (score > highScore) {
+      highScore = score;
+      localStorage.setItem('lavaRushHS', highScore);
+    }
+    bigShake();
+    shakeTimer = 0.6;
+    spawnParticle(VW / 2, VH * 0.7, 10, 40, 200, 1.2);
+  }
+
+  // ─── RENDER ─────────────────────────────────────────────────────
+  function render(ts) {
+    ctx.clearRect(0, 0, VW, VH);
+
+    ctx.save();
+    ctx.translate(shakeX, shakeY);
+
+    if (state === 'start') {
+      drawStart();
+    } else if (state === 'playing') {
+      drawGame();
+    } else if (state === 'gameover') {
+      drawGame();
+      drawGameOver();
+    }
+
+    ctx.restore();
+  }
+
+  function drawGame() {
+    // Background
+    const bgGrad = ctx.createLinearGradient(0, 0, 0, VH);
+    bgGrad.addColorStop(0, '#060200');
+    bgGrad.addColorStop(1, '#1a0500');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, VW, VH);
+
+    // Lane tracks
+    drawLanes();
+
+    // Cracks
+    cracks.forEach(drawCrack);
+
+    // Crystals
+    crystals.forEach(c => { if (!c.collected) drawCrystal(c); });
+
+    // Player
+    drawPlayer();
+
+    // Lava
+    drawLava();
+
+    // Particles
+    drawParticles();
+
+    // HUD
+    drawHUD();
+
+    // Heat overlay
+    if (heat > 0.3) {
+      const alpha = (heat - 0.3) / 0.7 * 0.35;
+      ctx.fillStyle = `rgba(255,60,0,${alpha})`;
+      ctx.fillRect(0, 0, VW, VH);
+      // Vignette
+      const vig = ctx.createRadialGradient(VW/2, VH/2, VH*0.3, VW/2, VH/2, VH*0.7);
+      vig.addColorStop(0, 'rgba(0,0,0,0)');
+      vig.addColorStop(1, `rgba(150,20,0,${alpha * 1.5})`);
+      ctx.fillStyle = vig;
+      ctx.fillRect(0, 0, VW, VH);
+    }
+  }
+
+  function drawLanes() {
+    for (let l = 0; l < 2; l++) {
+      const cx = LANE_X[l];
+      // Lane column
+      ctx.strokeStyle = `rgba(255,100,30,0.12)`;
+      ctx.lineWidth = LANE_W;
+      ctx.beginPath();
+      ctx.moveTo(cx, 0);
+      ctx.lineTo(cx, VH);
+      ctx.stroke();
+
+      // Dashed centre line
+      ctx.setLineDash([12, 16]);
+      ctx.strokeStyle = `rgba(255,120,40,0.18)`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(cx, 0);
+      ctx.lineTo(cx, VH);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // Lane divider centre
+    ctx.strokeStyle = `rgba(200,80,20,0.22)`;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8, 14]);
+    ctx.beginPath();
+    ctx.moveTo(VW / 2, 0);
+    ctx.lineTo(VW / 2, VH);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  function drawPlayer() {
+    const x = playerX, y = PLAYER_Y;
+    const r = PLAYER_R;
+    playerHue = (hueShift + 160) % 360;
+
+    // Shadow
+    ctx.save();
+    ctx.globalAlpha = 0.3;
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.ellipse(x, y + r * 0.7, r * 0.9, r * 0.25, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Glow rings
+    for (let i = 3; i >= 1; i--) {
+      ctx.save();
+      ctx.globalAlpha = 0.08 * i;
+      ctx.fillStyle = `hsl(${playerHue},100%,70%)`;
+      ctx.beginPath();
+      ctx.arc(x, y, r + i * 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Body
+    const bodyGrad = ctx.createRadialGradient(x - r*0.3, y - r*0.3, r*0.1, x, y, r);
+    bodyGrad.addColorStop(0, `hsl(${playerHue},100%,85%)`);
+    bodyGrad.addColorStop(0.6, `hsl(${playerHue},90%,60%)`);
+    bodyGrad.addColorStop(1,   `hsl(${playerHue+20},80%,30%)`);
+    ctx.fillStyle = bodyGrad;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Highlight
+    ctx.save();
+    ctx.globalAlpha = 0.5;
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.ellipse(x - r*0.25, y - r*0.3, r*0.28, r*0.18, -0.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Lane indicator arrow
+    ctx.save();
+    ctx.globalAlpha = 0.7;
+    ctx.fillStyle = `hsl(${playerHue},100%,80%)`;
+    ctx.beginPath();
+    ctx.moveTo(x, y - r - 10);
+    ctx.lineTo(x - 6, y - r - 20);
+    ctx.lineTo(x + 6, y - r - 20);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawCrystal(c) {
+    const x = c.x, y = c.y;
+    const glow = Math.sin(c.pulse) * 0.3 + 0.7;
+    const sc = c.scale;
+    const cw = CRYSTAL_W * sc, ch = CRYSTAL_H * sc;
+
+    ctx.save();
+    ctx.translate(x, y);
+
+    // Outer glow
+    for (let i = 3; i >= 1; i--) {
+      ctx.globalAlpha = 0.07 * i * glow;
+      ctx.fillStyle = `hsl(${c.hue},100%,70%)`;
+      ctx.beginPath();
+      ctx.arc(0, 0, cw * 0.8 + i * 10, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Crystal diamond shape
+    ctx.globalAlpha = 0.9;
+    const grad = ctx.createLinearGradient(-cw/2, -ch/2, cw/2, ch/2);
+    grad.addColorStop(0, `hsl(${c.hue},100%,90%)`);
+    grad.addColorStop(0.4, `hsl(${c.hue},100%,65%)`);
+    grad.addColorStop(1,   `hsl(${c.hue+30},80%,35%)`);
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.moveTo(0, -ch/2);
+    ctx.lineTo(cw/2, 0);
+    ctx.lineTo(0, ch/2);
+    ctx.lineTo(-cw/2, 0);
+    ctx.closePath();
+    ctx.fill();
+
+    // Inner face highlight
+    ctx.globalAlpha = 0.4;
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.moveTo(0, -ch/2);
+    ctx.lineTo(cw/2, 0);
+    ctx.lineTo(0, -ch/8);
+    ctx.closePath();
+    ctx.fill();
+
+    // Shimmer line
+    ctx.globalAlpha = 0.6 * glow;
+    ctx.strokeStyle = `hsl(${c.hue},100%,95%)`;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(-cw * 0.15, -ch * 0.3);
+    ctx.lineTo(cw * 0.05, -ch * 0.1);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  function drawCrack(cr) {
+    const x = cr.x, y = cr.y;
+    const progress = cr.timer / cr.duration;
+
+    ctx.save();
+    ctx.translate(x, y);
+
+    if (!cr.erupted) {
+      // Warning pulse
+      const pulse = Math.sin(cr.timer * Math.PI * 8) * 0.5 + 0.5;
+      const alpha = 0.4 + pulse * 0.5;
+
+      // Crack shape
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = `hsl(${20 + pulse * 20},100%,${40 + pulse * 20}%)`;
+      ctx.beginPath();
+      const hw = CRACK_W / 2, hh = CRACK_H / 2;
+      // Jagged crack polygon
+      ctx.moveTo(-hw, -hh);
+      ctx.lineTo(-hw * 0.5, hh * 0.3);
+      ctx.lineTo(-hw * 0.1, -hh * 0.4);
+      ctx.lineTo(hw * 0.2, hh);
+      ctx.lineTo(hw * 0.6, -hh * 0.2);
+      ctx.lineTo(hw, hh * 0.5);
+      ctx.lineTo(hw * 0.3, -hh);
+      ctx.closePath();
+      ctx.fill();
+
+      // Warning ring
+      ctx.globalAlpha = 0.3 * pulse;
+      ctx.strokeStyle = '#ff4400';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, CRACK_W * 0.8 * (0.5 + progress * 0.5), 0, Math.PI * 2);
+      ctx.stroke();
+
+      // !!! warning text
+      if (progress > 0.6) {
+        ctx.globalAlpha = pulse * 0.9;
+        ctx.fillStyle = '#ffaa00';
+        ctx.font = `bold ${14 * (0.8 + progress * 0.4)}px monospace`;
+        ctx.textAlign = 'center';
+        ctx.fillText('!!!', 0, -CRACK_H - 8);
+      }
+    } else {
+      // Eruption burst
+      const ep = cr.eruptTimer / 0.6;
+      ctx.globalAlpha = 1 - ep;
+      ctx.fillStyle = '#ff6600';
+      ctx.beginPath();
+      ctx.arc(0, 0, CRACK_W * (0.5 + ep * 1.5), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = (1 - ep) * 0.8;
+      ctx.fillStyle = '#ffdd00';
+      ctx.beginPath();
+      ctx.arc(0, 0, CRACK_W * 0.5 * (1 - ep), 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  function drawLava() {
+    const t = performance.now() / 1000;
+    const lTop = lavaY;
+
+    // Draw animated lava body
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(0, lTop);
+
+    // Wobble top edge
+    const segs = 24;
+    for (let i = 0; i <= segs; i++) {
+      const px = (i / segs) * VW;
+      const wob = Math.sin(i * 0.8 + t * 3.2) * 6
+               + Math.sin(i * 1.5 + t * 2.1) * 3
+               + Math.sin(i * 0.3 + t * 1.4) * 9;
+      ctx.lineTo(px, lTop + wob);
+    }
+    ctx.lineTo(VW, VH + 10);
+    ctx.lineTo(0, VH + 10);
+    ctx.closePath();
+
+    const lavaGrad = ctx.createLinearGradient(0, lTop - 20, 0, VH);
+    lavaGrad.addColorStop(0, '#ff6600');
+    lavaGrad.addColorStop(0.05, '#e04400');
+    lavaGrad.addColorStop(0.2, '#cc2200');
+    lavaGrad.addColorStop(0.5, '#880000');
+    lavaGrad.addColorStop(1,   '#440000');
+    ctx.fillStyle = lavaGrad;
+    ctx.fill();
+
+    // Bright glow strip at top
+    ctx.globalAlpha = 0.7;
+    ctx.beginPath();
+    ctx.moveTo(0, lTop - 2);
+    for (let i = 0; i <= segs; i++) {
+      const px = (i / segs) * VW;
+      const wob = Math.sin(i * 0.8 + t * 3.2) * 6
+               + Math.sin(i * 1.5 + t * 2.1) * 3
+               + Math.sin(i * 0.3 + t * 1.4) * 9;
+      ctx.lineTo(px, lTop + wob);
+    }
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#ffaa00';
+    ctx.stroke();
+    ctx.restore();
+
+    // Embers
+    for (const e of embers) {
+      const a = e.life / e.maxLife;
+      ctx.save();
+      ctx.globalAlpha = a;
+      ctx.fillStyle = `hsl(${e.hue},100%,${50 + a * 30}%)`;
+      ctx.beginPath();
+      ctx.arc(e.x, e.y, e.r * a, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Bubbles
+    for (const b of bubbles) {
+      const a = b.life / b.maxLife;
+      ctx.save();
+      ctx.globalAlpha = a * 0.7;
+      ctx.strokeStyle = '#ffaa44';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Distance warning bar (bottom strip glow when lava is close)
+    const closeness = clamp(1 - (lavaY - LAVA_WIN_Y) / (VH * 0.4), 0, 1);
+    if (closeness > 0) {
+      ctx.save();
+      ctx.globalAlpha = closeness * 0.5;
+      const warnGrad = ctx.createLinearGradient(0, VH - 30, 0, VH);
+      warnGrad.addColorStop(0, 'rgba(255,60,0,0)');
+      warnGrad.addColorStop(1, `rgba(255,60,0,${closeness})`);
+      ctx.fillStyle = warnGrad;
+      ctx.fillRect(0, VH - 80, VW, 80);
+      ctx.restore();
+    }
+  }
+
+  function drawParticles() {
+    for (const p of particles) {
+      const a = p.life / p.maxLife;
+      ctx.save();
+      if (p.steam) {
+        ctx.globalAlpha = a * 0.35;
+        ctx.fillStyle = `rgba(180,180,220,1)`;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r * (2 - a), 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.globalAlpha = a;
+        const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r);
+        grad.addColorStop(0, `hsl(${p.hue},100%,95%)`);
+        grad.addColorStop(1, `hsla(${p.hue},100%,60%,0)`);
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+  }
+
+  function drawHUD() {
+    // Score
+    ctx.save();
+    ctx.font = 'bold 28px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#fff';
+    ctx.shadowColor = '#ff6600';
+    ctx.shadowBlur = 12;
+    ctx.fillText(score, VW / 2, 44);
+    ctx.restore();
+
+    // High score
+    ctx.save();
+    ctx.font = '13px monospace';
+    ctx.textAlign = 'right';
+    ctx.fillStyle = 'rgba(255,200,100,0.65)';
+    ctx.fillText('BEST ' + highScore, VW - 14, 20);
+    ctx.restore();
+
+    // Streak
+    if (streak > 0) {
+      const sc = ['', 'x2', 'x3', 'x5'][Math.min(3, [0,3,6,10].findLastIndex(v => streak >= v))];
+      const col = streak >= 10 ? '#ff4' : streak >= 6 ? '#f84' : streak >= 3 ? '#fa0' : '#fff';
+      ctx.save();
+      ctx.font = `bold 16px monospace`;
+      ctx.textAlign = 'left';
+      ctx.fillStyle = col;
+      ctx.shadowColor = col;
+      ctx.shadowBlur = 8;
+      ctx.fillText(`STREAK ${streak}${streakMult > 1 ? ' ' + sc : ''}`, 14, 20);
+      ctx.restore();
+    }
+
+    // Heat bar
+    const barW = VW * 0.5, barH = 7;
+    const bx = (VW - barW) / 2, by = 52;
+    ctx.save();
+    // Background
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.beginPath();
+    ctx.roundRect(bx, by, barW, barH, 4);
+    ctx.fill();
+    // Fill
+    if (heat > 0) {
+      const heatColor = `hsl(${30 - heat * 30},100%,${50 + heat * 10}%)`;
+      ctx.fillStyle = heatColor;
+      ctx.beginPath();
+      ctx.roundRect(bx, by, barW * heat, barH, 4);
+      ctx.fill();
+      // Glow
+      ctx.shadowColor = '#ff4400';
+      ctx.shadowBlur = heat * 16;
+      ctx.fillStyle = heatColor;
+      ctx.beginPath();
+      ctx.roundRect(bx, by, barW * heat, barH, 4);
+      ctx.fill();
+    }
+    // Label
+    ctx.font = '9px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = 'rgba(255,200,100,0.7)';
+    ctx.fillText('HEAT', bx, by - 2);
+    ctx.restore();
+  }
+
+  function drawStart() {
+    // Background
+    const bgGrad = ctx.createLinearGradient(0, 0, 0, VH);
+    bgGrad.addColorStop(0, '#060200');
+    bgGrad.addColorStop(1, '#1a0500');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, VW, VH);
+
+    drawLanes();
+
+    // Animated lava at bottom
+    const fakeLava = VH * 0.72 + Math.sin(performance.now() / 600) * 8;
+    const t = performance.now() / 1000;
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(0, fakeLava);
+    const segs = 24;
+    for (let i = 0; i <= segs; i++) {
+      const px = (i / segs) * VW;
+      const wob = Math.sin(i * 0.8 + t * 3.2) * 5 + Math.sin(i * 1.5 + t * 1.8) * 3;
+      ctx.lineTo(px, fakeLava + wob);
+    }
+    ctx.lineTo(VW, VH);
+    ctx.lineTo(0, VH);
+    ctx.closePath();
+    const lg = ctx.createLinearGradient(0, fakeLava, 0, VH);
+    lg.addColorStop(0, '#ff6600');
+    lg.addColorStop(0.1, '#cc2200');
+    lg.addColorStop(1, '#440000');
+    ctx.fillStyle = lg;
+    ctx.fill();
+    ctx.restore();
+
+    // Title
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 52px monospace';
+    ctx.shadowColor = '#ff4400';
+    ctx.shadowBlur = 30;
+    ctx.fillStyle = '#ff7700';
+    ctx.fillText('LAVA', VW / 2, VH * 0.32);
+    ctx.fillStyle = '#ffcc00';
+    ctx.shadowColor = '#ffaa00';
+    ctx.fillText('RUSH', VW / 2, VH * 0.32 + 58);
+    ctx.restore();
+
+    // Subtitle
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.font = '16px monospace';
+    ctx.fillStyle = 'rgba(255,200,100,0.8)';
+    ctx.fillText('COOLDOWN LANES', VW / 2, VH * 0.32 + 92);
+    ctx.restore();
+
+    // Tap prompt
+    const pulse = Math.sin(performance.now() / 400) * 0.3 + 0.7;
+    ctx.save();
+    ctx.globalAlpha = pulse;
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 18px monospace';
+    ctx.fillStyle = '#fff';
+    ctx.shadowColor = '#ff8800';
+    ctx.shadowBlur = 12;
+    ctx.fillText('TAP TO START', VW / 2, VH * 0.58);
+    ctx.restore();
+
+    // Best score
+    if (highScore > 0) {
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.font = '14px monospace';
+      ctx.fillStyle = 'rgba(255,200,80,0.7)';
+      ctx.fillText('BEST: ' + highScore, VW / 2, VH * 0.64);
+      ctx.restore();
+    }
+
+    // Mini how-to
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.font = '13px sans-serif';
+    ctx.fillStyle = 'rgba(255,160,80,0.65)';
+    ctx.fillText('Tap / Space = switch lane', VW/2, VH * 0.70);
+    ctx.fillText('Collect crystals  •  Survive the lava!', VW/2, VH * 0.70 + 18);
+    ctx.restore();
+  }
+
+  function drawGameOver() {
+    // Semi-transparent overlay
+    ctx.save();
+    ctx.fillStyle = 'rgba(10,2,0,0.78)';
+    ctx.fillRect(0, 0, VW, VH);
+    ctx.restore();
+
+    ctx.save();
+    ctx.textAlign = 'center';
+
+    // Game Over text
+    ctx.font = 'bold 44px monospace';
+    ctx.shadowColor = '#ff2200';
+    ctx.shadowBlur = 28;
+    ctx.fillStyle = '#ff5500';
+    ctx.fillText('GAME OVER', VW / 2, VH * 0.28);
+
+    // Score
+    ctx.shadowBlur = 0;
+    ctx.font = 'bold 56px monospace';
+    ctx.fillStyle = '#ffcc00';
+    ctx.shadowColor = '#ffaa00';
+    ctx.shadowBlur = 20;
+    ctx.fillText(score, VW / 2, VH * 0.42);
+
+    // New best?
+    if (score >= highScore && score > 0) {
+      ctx.font = 'bold 18px monospace';
+      ctx.fillStyle = '#fff';
+      ctx.shadowColor = '#ffee00';
+      ctx.shadowBlur = 16;
+      ctx.fillText('NEW BEST!', VW / 2, VH * 0.50);
+    } else {
+      ctx.font = '14px monospace';
+      ctx.fillStyle = 'rgba(255,200,80,0.7)';
+      ctx.shadowBlur = 0;
+      ctx.fillText('BEST: ' + highScore, VW / 2, VH * 0.50);
+    }
+
+    // Stats
+    ctx.font = '13px monospace';
+    ctx.fillStyle = 'rgba(255,160,80,0.8)';
+    ctx.shadowBlur = 0;
+    ctx.fillText(`Peak streak: ${streak}   Near misses: ${nearMissCount}`, VW / 2, VH * 0.57);
+
+    // Tap to retry
+    const pulse = Math.sin(performance.now() / 380) * 0.3 + 0.7;
+    ctx.globalAlpha = pulse;
+    ctx.font = 'bold 17px monospace';
+    ctx.fillStyle = '#fff';
+    ctx.shadowColor = '#ff8800';
+    ctx.shadowBlur = 10;
+    ctx.fillText('TAP TO RETRY', VW / 2, VH * 0.66);
+
+    ctx.restore();
+  }
+
+  // ─── MAIN LOOP ───────────────────────────────────────────────────
+  function loop(ts) {
+    if (lastTime === 0) lastTime = ts;
+    update(ts);
+    render(ts);
+    requestAnimationFrame(loop);
+  }
+
+  requestAnimationFrame(function(ts) {
+    lastTime = ts;
+    requestAnimationFrame(loop);
+  });
+
+  // Prevent context menu and touch scroll
+  canvas.addEventListener('contextmenu', e => e.preventDefault());
+  document.addEventListener('touchmove', e => { if (e.target === canvas) e.preventDefault(); }, { passive: false });
+
+  </script>
+</body>
+</html>

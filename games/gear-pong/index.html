@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Gear Pong - Free HTML5 Game</title>
+<meta name="description" content="Play Gear Pong - Tap to rotate your paddle around a gear as colors shift from rust to emerald.">
+<meta name="theme-color" content="#1a1a2e">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Gear Pong - Free HTML5 Game">
+<meta property="og:description" content="Play Gear Pong - Tap to rotate your paddle around a gear as colors shift from rust to emerald.">
+<meta property="og:url" content="https://balinti.github.io/gear-pong/">
+<meta property="og:image" content="https://balinti.github.io/gear-pong/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Gear Pong - Free HTML5 Game">
+<meta name="twitter:description" content="Play Gear Pong - Tap to rotate your paddle around a gear as colors shift from rust to emerald.">
+<meta name="twitter:image" content="https://balinti.github.io/gear-pong/og-image.png">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "VideoGame",
+  "name": "Gear Pong",
+  "description": "Tap to rotate your shield tooth around a gear to block incoming bolts. Match colors for combos!",
+  "genre": "Casual",
+  "gamePlatform": "Web Browser",
+  "applicationCategory": "Game",
+  "operatingSystem": "Any",
+  "url": "https://balinti.github.io/gear-pong/",
+  "playMode": "SinglePlayer",
+  "numberOfPlayers": { "@type": "QuantitativeValue", "value": 1 }
+}
+</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#0d0d1a;font-family:'Segoe UI',system-ui,sans-serif;touch-action:none;user-select:none;-webkit-user-select:none}
+#gc{display:flex;align-items:center;justify-content:center;width:100%;height:100dvh;height:100vh}
+canvas{display:block;max-width:420px;max-height:750px;width:100%;height:100%;border-radius:8px}
+</style>
+</head>
+<body>
+<div id="gc"><canvas id="c"></canvas></div>
+<script>
+'use strict';
+(()=>{
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+const container=document.getElementById('gc');
+
+// --- High-DPI scaling ---
+const dpr=Math.min(window.devicePixelRatio||1,3);
+let W,H;
+function resize(){
+  const rect=container.getBoundingClientRect();
+  const w=Math.min(rect.width,420);
+  const h=Math.min(rect.height,750);
+  canvas.style.width=w+'px';
+  canvas.style.height=h+'px';
+  canvas.width=w*dpr;
+  canvas.height=h*dpr;
+  W=canvas.width;H=canvas.height;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+resize();
+window.addEventListener('resize',resize);
+
+// --- Constants ---
+const RUST_HUE=12;
+const EMERALD_HUE=150;
+const COLOR_RUST=`hsl(${RUST_HUE},75%,52%)`;
+const COLOR_EMERALD=`hsl(${EMERALD_HUE},65%,45%)`;
+const COLOR_RUST_LIGHT=`hsl(${RUST_HUE},80%,65%)`;
+const COLOR_EMERALD_LIGHT=`hsl(${EMERALD_HUE},70%,60%)`;
+
+// --- Game state ---
+let state='start';
+let score=0;
+let bestScore=parseInt(localStorage.getItem('gearPongBest'))||0;
+let hp=0;
+let maxHp=5;
+let combo=0;
+let maxCombo=0;
+let comboRing=0;
+let elapsed=0;
+let shieldIndex=0;
+let shieldColor=0; // 0=rust,1=emerald
+let numLanes=10;
+let gearAngle=0;
+let gearSpin=0;
+let bolts=[];
+let particles=[];
+let shakeX=0,shakeY=0,shakeMag=0;
+let bgHue=RUST_HUE;
+let bgTargetHue=RUST_HUE;
+let flashAlpha=0;
+let flashColor=COLOR_RUST;
+let overheatTimer=0;
+let tapTimes=[];
+let shieldShrink=0;
+let lastTime=0;
+let titlePulse=0;
+
+// --- Gear geometry ---
+const CX=()=>W/(2*dpr);
+const CY=()=>H/(2*dpr);
+const GEAR_R=55;
+const TOOTH_H=18;
+const SHIELD_EXTRA=12;
+const BOLT_R=7;
+const SPAWN_MARGIN=40;
+
+function laneAngle(i){return(Math.PI*2/numLanes)*i-Math.PI/2}
+function toothAngleWidth(){return(Math.PI*2/numLanes)*0.6}
+
+// --- localStorage ---
+function saveBest(){localStorage.setItem('gearPongBest',bestScore)}
+
+// --- Particles ---
+function spawnParticles(x,y,color,count,speed){
+  for(let i=0;i<count;i++){
+    const a=Math.random()*Math.PI*2;
+    const s=speed*(0.4+Math.random()*0.6);
+    particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:1,decay:0.015+Math.random()*0.02,r:2+Math.random()*3,color});
+  }
+}
+
+function spawnSparks(x,y,color){spawnParticles(x,y,color,12,3.5)}
+function spawnDamage(x,y){spawnParticles(x,y,'#ff4444',20,4.5)}
+
+// --- Screen shake ---
+function addShake(mag){shakeMag=Math.max(shakeMag,mag)}
+
+// --- Bolts ---
+function spawnBolt(){
+  const lane=Math.floor(Math.random()*numLanes);
+  const angle=laneAngle(lane);
+  const cx=CX(),cy=CY();
+  const dist=Math.max(cx,cy)+SPAWN_MARGIN;
+  const boltColor=Math.random()<0.5?0:1;
+  const baseSpeed=1.2+elapsed*0.015;
+  const speed=Math.min(baseSpeed,4.5);
+  // Fake-out: after 10s, small chance bolt swaps lane mid-flight
+  const canFake=elapsed>10&&Math.random()<0.15;
+  bolts.push({
+    lane,angle,
+    x:cx+Math.cos(angle)*dist,
+    y:cy+Math.sin(angle)*dist,
+    vx:-Math.cos(angle)*speed,
+    vy:-Math.sin(angle)*speed,
+    color:boltColor,
+    r:BOLT_R,
+    alive:true,
+    fake:canFake,
+    fakeTriggered:false,
+    fakeDist:dist*0.45,
+    trail:[]
+  });
+}
+
+function resetGame(){
+  score=0;combo=0;maxCombo=0;comboRing=0;
+  hp=maxHp;elapsed=0;
+  shieldIndex=0;shieldColor=0;
+  numLanes=10;gearAngle=0;gearSpin=0.002;
+  bolts=[];particles=[];
+  shakeX=0;shakeY=0;shakeMag=0;
+  bgHue=RUST_HUE;bgTargetHue=RUST_HUE;
+  flashAlpha=0;overheatTimer=0;tapTimes=[];shieldShrink=0;
+  // Schedule first bolt quickly
+  nextBoltTime=0.8;boltTimer=0;
+}
+
+// --- Input ---
+let inputDown=false;
+function handleTap(){
+  if(state==='start'){
+    state='playing';
+    resetGame();
+    return;
+  }
+  if(state==='gameover'){
+    state='playing';
+    resetGame();
+    return;
+  }
+  if(state==='playing'){
+    // Overheat check
+    const now=performance.now();
+    tapTimes.push(now);
+    tapTimes=tapTimes.filter(t=>now-t<500);
+    if(tapTimes.length>6){
+      overheatTimer=1.5;
+      shieldShrink=0.4;
+    }
+    // Rotate shield
+    shieldIndex=(shieldIndex+1)%numLanes;
+    // Alternate color
+    shieldColor=1-shieldColor;
+    // Add torque feel
+    gearSpin+=0.003;
+  }
+}
+
+canvas.addEventListener('pointerdown',e=>{e.preventDefault();handleTap()});
+document.addEventListener('keydown',e=>{
+  if(e.code==='Space'||e.code==='Enter'){e.preventDefault();handleTap()}
+});
+
+// --- Bolt spawning ---
+let boltTimer=0;
+let nextBoltTime=1;
+function getBoltInterval(){
+  if(elapsed<10)return 1.8-elapsed*0.06;
+  if(elapsed<25)return 1.1-((elapsed-10)/15)*0.3;
+  if(elapsed<45)return 0.7;
+  return 0.55;
+}
+
+// --- Update ---
+function update(dt){
+  if(state!=='playing')return;
+  elapsed+=dt;
+
+  // Difficulty: increase lanes
+  if(elapsed>45)numLanes=Math.min(16,10+Math.floor((elapsed-45)/10));
+  else numLanes=10;
+
+  // Gear spin decay
+  gearAngle+=gearSpin;
+  gearSpin*=0.998;
+  if(gearSpin<0.002)gearSpin=0.002;
+
+  // Overheat
+  if(overheatTimer>0){overheatTimer-=dt;if(overheatTimer<0)overheatTimer=0}
+  if(shieldShrink>0){shieldShrink-=dt*0.5;if(shieldShrink<0)shieldShrink=0}
+
+  // Spawn bolts
+  boltTimer+=dt;
+  if(boltTimer>=nextBoltTime){
+    boltTimer=0;
+    nextBoltTime=getBoltInterval();
+    spawnBolt();
+    // Double bolt waves after 25s
+    if(elapsed>25&&Math.random()<0.3){
+      setTimeout(()=>{if(state==='playing')spawnBolt()},200);
+    }
+  }
+
+  // Combo ring
+  const targetRing=Math.min(combo/8,1);
+  comboRing+=(targetRing-comboRing)*0.08;
+
+  // Background hue shift
+  bgTargetHue=combo>0?RUST_HUE+(EMERALD_HUE-RUST_HUE)*Math.min(combo/10,1):RUST_HUE;
+  bgHue+=(bgTargetHue-bgHue)*0.03;
+
+  // Flash decay
+  if(flashAlpha>0)flashAlpha-=dt*3;
+  if(flashAlpha<0)flashAlpha=0;
+
+  const cx=CX(),cy=CY();
+
+  // Update bolts
+  for(const b of bolts){
+    if(!b.alive)continue;
+    // Trail
+    b.trail.push({x:b.x,y:b.y,a:1});
+    if(b.trail.length>8)b.trail.shift();
+    for(const t of b.trail)t.a*=0.85;
+
+    b.x+=b.vx;
+    b.y+=b.vy;
+
+    // Fake-out: swap lane
+    if(b.fake&&!b.fakeTriggered){
+      const dx=b.x-cx,dy=b.y-cy;
+      const dist=Math.sqrt(dx*dx+dy*dy);
+      if(dist<b.fakeDist){
+        b.fakeTriggered=true;
+        const newLane=(b.lane+(Math.random()<0.5?1:-1)+numLanes)%numLanes;
+        b.lane=newLane;
+        const na=laneAngle(newLane);
+        const speed=Math.sqrt(b.vx*b.vx+b.vy*b.vy);
+        // Re-aim toward center from current position
+        const adx=cx-b.x,ady=cy-b.y;
+        const ad=Math.sqrt(adx*adx+ady*ady);
+        b.vx=(adx/ad)*speed;
+        b.vy=(ady/ad)*speed;
+      }
+    }
+
+    // Check collision with gear center area
+    const dx=b.x-cx,dy=b.y-cy;
+    const dist=Math.sqrt(dx*dx+dy*dy);
+    const hitRadius=GEAR_R+TOOTH_H+SHIELD_EXTRA;
+    const innerRadius=GEAR_R-5;
+
+    if(dist<=hitRadius&&dist>innerRadius){
+      // Check if bolt is in the shield tooth's lane
+      const boltAngle=Math.atan2(dy,dx);
+      const sAngle=laneAngle(shieldIndex);
+      let angleDiff=boltAngle-sAngle;
+      while(angleDiff>Math.PI)angleDiff-=Math.PI*2;
+      while(angleDiff<-Math.PI)angleDiff+=Math.PI*2;
+
+      const toothW=toothAngleWidth()*(1-shieldShrink*0.5);
+      if(Math.abs(angleDiff)<toothW){
+        // Blocked!
+        b.alive=false;
+        const hitX=cx+Math.cos(sAngle)*(GEAR_R+TOOTH_H);
+        const hitY=cy+Math.sin(sAngle)*(GEAR_R+TOOTH_H);
+        const bColor=b.color===0?COLOR_RUST:COLOR_EMERALD;
+
+        // Perfect vs near-miss
+        const perfectThresh=toothW*0.45;
+        const isPerfect=Math.abs(angleDiff)<perfectThresh;
+        const colorMatch=b.color===shieldColor;
+
+        if(colorMatch){
+          if(isPerfect){
+            combo++;
+            if(combo>maxCombo)maxCombo=combo;
+            const mult=Math.min(1+Math.floor(combo/3),4);
+            score+=10*mult;
+            spawnSparks(hitX,hitY,bColor);
+          } else {
+            // Near-miss: still blocks, breaks combo, small shake
+            combo=0;
+            score+=5;
+            addShake(3);
+            spawnParticles(hitX,hitY,bColor,6,2);
+          }
+        } else {
+          // Wrong color block
+          combo=0;
+          score+=3;
+          addShake(6);
+          flashAlpha=0.5;
+          flashColor=b.color===0?COLOR_RUST_LIGHT:COLOR_EMERALD_LIGHT;
+          spawnParticles(hitX,hitY,'#ffffff',10,3);
+        }
+
+        gearSpin+=0.005;
+      }
+    }
+
+    // Bolt passed through to center = damage
+    if(dist<=innerRadius){
+      b.alive=false;
+      hp--;
+      combo=0;
+      addShake(hp<=0?18:10);
+      spawnDamage(b.x,b.y);
+      flashAlpha=0.7;
+      flashColor='#ff2222';
+      if(hp<=0){
+        state='gameover';
+        if(score>bestScore){bestScore=score;saveBest()}
+        addShake(22);
+      }
+    }
+  }
+
+  // Remove dead bolts
+  bolts=bolts.filter(b=>b.alive);
+
+  // Update particles
+  for(const p of particles){
+    p.x+=p.vx;p.y+=p.vy;
+    p.vx*=0.96;p.vy*=0.96;
+    p.life-=p.decay;
+  }
+  particles=particles.filter(p=>p.life>0);
+
+  // Shake decay
+  if(shakeMag>0){
+    shakeX=(Math.random()-0.5)*shakeMag*2;
+    shakeY=(Math.random()-0.5)*shakeMag*2;
+    shakeMag*=0.88;
+    if(shakeMag<0.3){shakeMag=0;shakeX=0;shakeY=0}
+  }
+}
+
+// --- Drawing ---
+function drawGear(cx,cy){
+  // Gear body
+  ctx.save();
+  ctx.translate(cx,cy);
+  ctx.rotate(gearAngle);
+
+  // Main gear circle
+  const grad=ctx.createRadialGradient(0,0,GEAR_R*0.3,0,0,GEAR_R);
+  grad.addColorStop(0,'#3a3a52');
+  grad.addColorStop(1,'#25253a');
+  ctx.beginPath();
+  ctx.arc(0,0,GEAR_R,0,Math.PI*2);
+  ctx.fillStyle=grad;
+  ctx.fill();
+  ctx.strokeStyle='#4a4a65';
+  ctx.lineWidth=2;
+  ctx.stroke();
+
+  // Teeth
+  for(let i=0;i<numLanes;i++){
+    const a=laneAngle(i)-gearAngle;
+    const tw=toothAngleWidth()*0.5;
+    ctx.beginPath();
+    ctx.arc(0,0,GEAR_R,-tw+a,tw+a);
+    ctx.arc(0,0,GEAR_R+TOOTH_H,tw+a,-tw+a,true);
+    ctx.closePath();
+    ctx.fillStyle='#35354d';
+    ctx.fill();
+    ctx.strokeStyle='#4a4a65';
+    ctx.lineWidth=1;
+    ctx.stroke();
+  }
+
+  // Center hub
+  ctx.beginPath();
+  ctx.arc(0,0,12,0,Math.PI*2);
+  ctx.fillStyle='#4a4a65';
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(0,0,5,0,Math.PI*2);
+  ctx.fillStyle='#2a2a3e';
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawShield(cx,cy){
+  const sAngle=laneAngle(shieldIndex);
+  const tw=(toothAngleWidth()*(1-shieldShrink*0.5));
+  const color=shieldColor===0?COLOR_RUST:COLOR_EMERALD;
+  const lightColor=shieldColor===0?COLOR_RUST_LIGHT:COLOR_EMERALD_LIGHT;
+
+  ctx.save();
+  ctx.translate(cx,cy);
+
+  // Shield tooth (larger than normal teeth)
+  ctx.beginPath();
+  ctx.arc(0,0,GEAR_R+2,sAngle-tw,sAngle+tw);
+  ctx.arc(0,0,GEAR_R+TOOTH_H+SHIELD_EXTRA,sAngle+tw,sAngle-tw,true);
+  ctx.closePath();
+
+  const sg=ctx.createRadialGradient(0,0,GEAR_R,0,0,GEAR_R+TOOTH_H+SHIELD_EXTRA);
+  sg.addColorStop(0,color);
+  sg.addColorStop(1,lightColor);
+  ctx.fillStyle=sg;
+  ctx.fill();
+  ctx.strokeStyle='#fff';
+  ctx.lineWidth=2;
+  ctx.globalAlpha=0.7;
+  ctx.stroke();
+  ctx.globalAlpha=1;
+
+  // Shield glow
+  ctx.shadowColor=color;
+  ctx.shadowBlur=15;
+  ctx.beginPath();
+  ctx.arc(0,0,GEAR_R+TOOTH_H+SHIELD_EXTRA-2,sAngle-tw*0.8,sAngle+tw*0.8);
+  ctx.strokeStyle=lightColor;
+  ctx.lineWidth=3;
+  ctx.stroke();
+  ctx.shadowBlur=0;
+
+  ctx.restore();
+}
+
+function drawComboRing(cx,cy){
+  if(comboRing<0.01)return;
+  ctx.save();
+  ctx.translate(cx,cy);
+  const ringR=GEAR_R+TOOTH_H+SHIELD_EXTRA+14;
+  const pulse=1+Math.sin(elapsed*5)*0.03*comboRing;
+
+  ctx.beginPath();
+  ctx.arc(0,0,ringR*pulse,-Math.PI/2,-Math.PI/2+Math.PI*2*comboRing);
+  const rH=bgHue;
+  ctx.strokeStyle=`hsla(${rH},70%,55%,${0.3+comboRing*0.5})`;
+  ctx.lineWidth=4;
+  ctx.lineCap='round';
+  ctx.stroke();
+
+  // Combo text
+  if(combo>=3){
+    const mult=Math.min(1+Math.floor(combo/3),4);
+    ctx.fillStyle=`hsla(${rH},70%,65%,0.9)`;
+    ctx.font='bold 14px system-ui';
+    ctx.textAlign='center';
+    ctx.fillText(`x${mult}`,0,-ringR-10);
+  }
+
+  ctx.restore();
+}
+
+function drawBolts(cx,cy){
+  for(const b of bolts){
+    // Trail
+    for(const t of b.trail){
+      if(t.a<0.05)continue;
+      ctx.beginPath();
+      ctx.arc(t.x,t.y,b.r*0.5,0,Math.PI*2);
+      const bc=b.color===0?RUST_HUE:EMERALD_HUE;
+      ctx.fillStyle=`hsla(${bc},70%,55%,${t.a*0.3})`;
+      ctx.fill();
+    }
+
+    // Bolt body
+    const bc=b.color===0?COLOR_RUST:COLOR_EMERALD;
+    ctx.beginPath();
+    ctx.arc(b.x,b.y,b.r,0,Math.PI*2);
+    ctx.fillStyle=bc;
+    ctx.fill();
+
+    // Bolt highlight
+    ctx.beginPath();
+    ctx.arc(b.x-2,b.y-2,b.r*0.4,0,Math.PI*2);
+    ctx.fillStyle='rgba(255,255,255,0.4)';
+    ctx.fill();
+
+    // Fake-out telegraph: blink when about to swap
+    if(b.fake&&!b.fakeTriggered){
+      const dx=b.x-cx,dy=b.y-cy;
+      const dist=Math.sqrt(dx*dx+dy*dy);
+      if(dist<b.fakeDist*1.3&&Math.sin(elapsed*25)>0){
+        ctx.beginPath();
+        ctx.arc(b.x,b.y,b.r+4,0,Math.PI*2);
+        ctx.strokeStyle='rgba(255,255,100,0.6)';
+        ctx.lineWidth=2;
+        ctx.stroke();
+      }
+    }
+  }
+}
+
+function drawLaneGuides(cx,cy){
+  ctx.save();
+  ctx.globalAlpha=0.08;
+  for(let i=0;i<numLanes;i++){
+    const a=laneAngle(i);
+    const far=Math.max(CX(),CY())+50;
+    ctx.beginPath();
+    ctx.moveTo(cx+Math.cos(a)*(GEAR_R+TOOTH_H+SHIELD_EXTRA+5),cy+Math.sin(a)*(GEAR_R+TOOTH_H+SHIELD_EXTRA+5));
+    ctx.lineTo(cx+Math.cos(a)*far,cy+Math.sin(a)*far);
+    ctx.strokeStyle='#aaa';
+    ctx.lineWidth=1;
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawParticles(){
+  for(const p of particles){
+    ctx.beginPath();
+    ctx.arc(p.x,p.y,p.r*p.life,0,Math.PI*2);
+    ctx.globalAlpha=p.life;
+    ctx.fillStyle=p.color;
+    ctx.fill();
+    ctx.globalAlpha=1;
+  }
+}
+
+function drawHP(cx,cy){
+  const w=W/dpr;
+  const startX=w/2-(maxHp*16)/2;
+  const y=30;
+  for(let i=0;i<maxHp;i++){
+    ctx.beginPath();
+    // Small gear tooth icon for HP
+    const px=startX+i*16+8;
+    ctx.arc(px,y,5,0,Math.PI*2);
+    ctx.fillStyle=i<hp?COLOR_EMERALD:'#333';
+    ctx.fill();
+    ctx.strokeStyle=i<hp?'#aaffaa':'#555';
+    ctx.lineWidth=1;
+    ctx.stroke();
+  }
+}
+
+function drawScore(){
+  const w=W/dpr;
+  ctx.fillStyle='#e0e0e0';
+  ctx.font='bold 22px system-ui';
+  ctx.textAlign='center';
+  ctx.fillText(score,w/2,62);
+}
+
+function drawBackground(){
+  const w=W/dpr,h=H/dpr;
+  const bg=ctx.createLinearGradient(0,0,0,h);
+  bg.addColorStop(0,`hsl(${bgHue+200},25%,8%)`);
+  bg.addColorStop(0.5,`hsl(${bgHue+210},20%,10%)`);
+  bg.addColorStop(1,`hsl(${bgHue+220},25%,6%)`);
+  ctx.fillStyle=bg;
+  ctx.fillRect(0,0,w,h);
+}
+
+function drawFlash(){
+  if(flashAlpha>0){
+    const w=W/dpr,h=H/dpr;
+    ctx.globalAlpha=flashAlpha*0.3;
+    ctx.fillStyle=flashColor;
+    ctx.fillRect(0,0,w,h);
+    ctx.globalAlpha=1;
+  }
+}
+
+function drawStartScreen(){
+  const w=W/dpr,h=H/dpr;
+  drawBackground();
+
+  const cx=w/2,cy=h/2;
+  titlePulse+=0.03;
+
+  // Decorative gear
+  ctx.save();
+  ctx.translate(cx,cy-40);
+  ctx.rotate(titlePulse*0.5);
+  const tGrad=ctx.createRadialGradient(0,0,20,0,0,60);
+  tGrad.addColorStop(0,'#3a3a52');
+  tGrad.addColorStop(1,'#25253a');
+  ctx.beginPath();
+  ctx.arc(0,0,50,0,Math.PI*2);
+  ctx.fillStyle=tGrad;
+  ctx.fill();
+  ctx.strokeStyle='#4a4a65';
+  ctx.lineWidth=2;
+  ctx.stroke();
+  for(let i=0;i<10;i++){
+    const a=(Math.PI*2/10)*i;
+    const tw=0.2;
+    ctx.beginPath();
+    ctx.arc(0,0,50,a-tw,a+tw);
+    ctx.arc(0,0,65,a+tw,a-tw,true);
+    ctx.closePath();
+    ctx.fillStyle=i%2===0?COLOR_RUST:COLOR_EMERALD;
+    ctx.globalAlpha=0.7;
+    ctx.fill();
+    ctx.globalAlpha=1;
+  }
+  ctx.beginPath();
+  ctx.arc(0,0,12,0,Math.PI*2);
+  ctx.fillStyle='#4a4a65';
+  ctx.fill();
+  ctx.restore();
+
+  // Title
+  ctx.fillStyle='#e8e8f0';
+  ctx.font='bold 36px system-ui';
+  ctx.textAlign='center';
+  ctx.fillText('GEAR PONG',cx,cy+50);
+
+  // Subtitle
+  ctx.fillStyle='#888';
+  ctx.font='15px system-ui';
+  ctx.fillText('Rotate \u2022 Block \u2022 Match Colors',cx,cy+75);
+
+  // Tap to start
+  const tapAlpha=0.5+Math.sin(titlePulse*2)*0.3;
+  ctx.globalAlpha=tapAlpha;
+  ctx.fillStyle='#bbb';
+  ctx.font='16px system-ui';
+  ctx.fillText('Tap to Start',cx,cy+120);
+  ctx.globalAlpha=1;
+
+  // Best score
+  if(bestScore>0){
+    ctx.fillStyle='#666';
+    ctx.font='13px system-ui';
+    ctx.fillText(`Best: ${bestScore}`,cx,cy+150);
+  }
+}
+
+function drawGameOverScreen(){
+  const w=W/dpr,h=H/dpr;
+  drawBackground();
+
+  const cx=w/2,cy=h/2;
+
+  // Broken gear
+  ctx.save();
+  ctx.translate(cx,cy-50);
+  ctx.beginPath();
+  ctx.arc(0,0,40,0,Math.PI*2);
+  ctx.fillStyle='#222';
+  ctx.fill();
+  ctx.strokeStyle='#ff4444';
+  ctx.lineWidth=2;
+  ctx.setLineDash([4,4]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+
+  // Game Over text
+  ctx.fillStyle='#e44';
+  ctx.font='bold 32px system-ui';
+  ctx.textAlign='center';
+  ctx.fillText('GAME OVER',cx,cy+20);
+
+  // Score
+  ctx.fillStyle='#e0e0e0';
+  ctx.font='bold 24px system-ui';
+  ctx.fillText(`Score: ${score}`,cx,cy+58);
+
+  // Best score
+  const isNewBest=score>=bestScore&&score>0;
+  ctx.fillStyle=isNewBest?COLOR_EMERALD:'#888';
+  ctx.font='16px system-ui';
+  ctx.fillText(isNewBest?`New Best! ${bestScore}`:`Best: ${bestScore}`,cx,cy+85);
+
+  // Combo stat
+  if(maxCombo>0){
+    ctx.fillStyle='#777';
+    ctx.font='13px system-ui';
+    ctx.fillText(`Max Combo: ${maxCombo}`,cx,cy+108);
+  }
+
+  // Tap to retry
+  titlePulse+=0.03;
+  const tapAlpha=0.5+Math.sin(titlePulse*2)*0.3;
+  ctx.globalAlpha=tapAlpha;
+  ctx.fillStyle='#bbb';
+  ctx.font='16px system-ui';
+  ctx.fillText('Tap to Retry',cx,cy+145);
+  ctx.globalAlpha=1;
+}
+
+function drawPlaying(){
+  const w=W/dpr,h=H/dpr;
+  const cx=CX(),cy=CY();
+
+  drawBackground();
+
+  ctx.save();
+  ctx.translate(shakeX,shakeY);
+
+  drawLaneGuides(cx,cy);
+  drawGear(cx,cy);
+  drawShield(cx,cy);
+  drawComboRing(cx,cy);
+  drawBolts(cx,cy);
+  drawParticles();
+  drawHP(cx,cy);
+  drawScore();
+
+  // Overheat indicator
+  if(overheatTimer>0){
+    ctx.fillStyle=`rgba(255,100,0,${overheatTimer*0.3})`;
+    ctx.font='bold 12px system-ui';
+    ctx.textAlign='center';
+    ctx.fillText('OVERHEAT!',w/2,82);
+  }
+
+  ctx.restore();
+
+  drawFlash();
+}
+
+// --- Main loop ---
+function frame(ts){
+  if(!lastTime)lastTime=ts;
+  const dt=Math.min((ts-lastTime)/1000,0.05);
+  lastTime=ts;
+
+  update(dt);
+
+  // Clear
+  const w=W/dpr,h=H/dpr;
+  ctx.clearRect(0,0,w,h);
+
+  if(state==='start')drawStartScreen();
+  else if(state==='playing')drawPlaying();
+  else if(state==='gameover'){
+    drawGameOverScreen();
+    // Still update particles/shake for gameover effects
+    for(const p of particles){
+      p.x+=p.vx;p.y+=p.vy;p.vx*=0.96;p.vy*=0.96;p.life-=p.decay;
+    }
+    particles=particles.filter(p=>p.life>0);
+    if(shakeMag>0){
+      shakeX=(Math.random()-0.5)*shakeMag*2;
+      shakeY=(Math.random()-0.5)*shakeMag*2;
+      shakeMag*=0.88;
+      if(shakeMag<0.3){shakeMag=0;shakeX=0;shakeY=0}
+    }
+  }
+
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

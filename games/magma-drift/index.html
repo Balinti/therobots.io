@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Magma Drift - Free HTML5 Game</title>
+<meta name="description" content="Play Magma Drift - Swipe to weave through lava flows while grabbing randomly spawning power boosts.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#1a0a0a">
+<link rel="canonical" href="https://balinti.github.io/magma-drift/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Magma Drift - Free HTML5 Game">
+<meta property="og:description" content="Play Magma Drift - Swipe to weave through lava flows while grabbing randomly spawning power boosts.">
+<meta property="og:url" content="https://balinti.github.io/magma-drift/">
+<meta property="og:image" content="https://balinti.github.io/magma-drift/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Magma Drift - Free HTML5 Game">
+<meta name="twitter:description" content="Play Magma Drift - Swipe to weave through lava flows while grabbing randomly spawning power boosts.">
+<meta name="twitter:image" content="https://balinti.github.io/magma-drift/og-image.png">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{
+  width:100%;height:100%;overflow:hidden;
+  background:#080404;
+  touch-action:none;
+  -webkit-tap-highlight-color:transparent;
+  user-select:none;-webkit-user-select:none;
+}
+#wrap{
+  position:absolute;
+  top:50%;left:50%;
+  transform:translate(-50%,-50%);
+  width:min(100vw,420px);
+  height:min(100vh,750px);
+}
+canvas{display:block;width:100%;height:100%;}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="c"></canvas></div>
+<script>
+"use strict";
+(() => {
+// ============================================================
+//  MAGMA DRIFT  —  Switch-Skid
+//  Hyper-casual HTML5 canvas game
+// ============================================================
+
+const CV = document.getElementById('c');
+const ctx = CV.getContext('2d');
+const wrap = document.getElementById('wrap');
+
+// ── Canvas / DPR ─────────────────────────────────────────────
+let W, H, DPR;
+function resize() {
+  const r = wrap.getBoundingClientRect();
+  W = r.width; H = r.height;
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  CV.width  = Math.round(W * DPR);
+  CV.height = Math.round(H * DPR);
+  CV.style.width  = W + 'px';
+  CV.style.height = H + 'px';
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ── Constants ────────────────────────────────────────────────
+const LS_KEY         = 'magmaDrift_v4';
+const GAME_URL       = 'https://balinti.github.io/magma-drift/';
+const PLAYER_R       = 11;
+const ARC_AMP        = 0.40;   // arc amplitude as fraction of W
+const PLAYER_Y_FRAC  = 0.70;   // player fixed Y fraction
+const NEAR_MARGIN    = 16;     // px: within this of gap edge → near-miss
+const HEAT_TO_SHIELD = 5;      // near-misses required for shield
+const GATE_THICK     = 18;
+const TRAIL_LEN      = 22;
+const CRASH_DUR      = 0.22;
+
+// ── Daily deterministic seed ──────────────────────────────────
+const DAILY_SEED = (() => {
+  const d = new Date();
+  const s = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h;
+})();
+
+function lcg(seed)      { return (Math.imul(seed >>> 0, 1664525) + 1013904223) >>> 0; }
+function lcgFl(seed)    { return (lcg(seed) >>> 0) / 0x100000000; }
+
+// ── Gate templates ────────────────────────────────────────────
+// Each template: array of gaps {c: center (0..1 of W)}
+// Width is overridden by difficulty gapW at spawn time.
+const TMPLS = [
+  [{ c: 0.50 }],              // 0 centre
+  [{ c: 0.30 }],              // 1 left
+  [{ c: 0.70 }],              // 2 right
+  [{ c: 0.50 }],              // 3 centre (weight)
+  [{ c: 0.40 }],              // 4 left-centre
+  [{ c: 0.60 }],              // 5 right-centre
+  [{ c: 0.35 }],              // 6 left-mid
+  [{ c: 0.65 }],              // 7 right-mid
+  [{ c: 0.28 }, { c: 0.72 }],// 8 twin-gap wide
+  [{ c: 0.35 }, { c: 0.65 }],// 9 twin-gap close
+];
+const POOL_EARLY = [0,3,4,5];
+const POOL_MID   = [0,1,2,3,4,5,6,7];
+const POOL_LATE  = [0,1,2,3,4,5,6,7,8,9];
+
+function pickTemplate(gi, t) {
+  const seed = lcg(DAILY_SEED ^ ((gi * 2654435761) >>> 0));
+  const pool = t < 10 ? POOL_EARLY : t < 25 ? POOL_MID : POOL_LATE;
+  return TMPLS[pool[seed % pool.length]];
+}
+
+// ── Difficulty ────────────────────────────────────────────────
+let heatWaveActive = false; // referenced in getDiff
+
+function getDiff(t) {
+  const hw = heatWaveActive;
+  return {
+    scroll:   Math.min(340, 160 + t * 2.5),
+    arcSpd:   (Math.min(2.0, 1.30 + t * 0.013)) * (hw ? 1.28 : 1),
+    gapW:     Math.max(0.18, 0.42 - t * 0.003),
+    spacing:  Math.max(148, 268 - t * 1.7),
+  };
+}
+
+// ── State ─────────────────────────────────────────────────────
+let state       = 'start';   // 'start' | 'playing' | 'gameover'
+let gameTime    = 0;
+let meters      = 0;
+let totalNM     = 0;   // total near-misses
+let nmStreak    = 0;   // current near-miss streak
+let maxStreak   = 0;
+let heatCount   = 0;   // 0..HEAT_TO_SHIELD
+let hasShield   = false;
+let arcPhase    = 0;
+let driftDir    = 1;
+let playerX     = 0;
+let gates       = [];
+let gateIdx     = 0;
+let trail       = [];
+let particles   = [];
+let shakeAmt    = 0;
+let crashZoom   = 1;
+let crashTimer  = 0;
+let hueShift    = 0;
+let heatWaveTimer  = 0;
+let heatWaveCycle  = 0;
+let pulsePhase     = 0;
+let finalScore     = 0;
+let bestScore      = parseInt(localStorage.getItem(LS_KEY)) || 0;
+let isNewBest      = false;
+let challengeScore = 0;
+let challengeStreak= 0;
+let shareToast     = 0;
+let shareBox       = null;
+let bgBubbles      = makeBubbles();
+
+// ── URL params ────────────────────────────────────────────────
+(function readParams() {
+  try {
+    const p = new URLSearchParams(location.search);
+    challengeScore  = parseInt(p.get('challengeScore')) || 0;
+    challengeStreak = parseInt(p.get('streak')) || 0;
+  } catch(e) {}
+})();
+
+// ── Background bubbles ────────────────────────────────────────
+function makeBubbles() {
+  const a = [];
+  for (let i = 0; i < 22; i++) {
+    a.push({
+      x: Math.random() * 420, y: Math.random() * 750,
+      r: 1.5 + Math.random() * 3.5,
+      spd: 10 + Math.random() * 22,
+      ph: Math.random() * 6.28,
+      al: 0.09 + Math.random() * 0.18,
+      hue: 8 + Math.random() * 28,
+    });
+  }
+  return a;
+}
+function updateBubbles(dt) {
+  for (const b of bgBubbles) {
+    b.y -= b.spd * dt;
+    if (b.y < -8) { b.y = H + 8; b.x = Math.random() * W; }
+  }
+}
+
+// ── Particles ─────────────────────────────────────────────────
+function burst(x, y, count, hue, blue) {
+  for (let i = 0; i < count; i++) {
+    const ang = Math.random() * 6.28;
+    const spd = 40 + Math.random() * 130;
+    particles.push({
+      x, y,
+      vx: Math.cos(ang) * spd,
+      vy: Math.sin(ang) * spd - 40,
+      r:  2.5 + Math.random() * 4,
+      hue: blue ? 200 : hue + (Math.random() - .5) * 20,
+      sat: blue ? 80 : 88,
+      lit: 60,
+      life: 0.4 + Math.random() * 0.5,
+      maxL: 0.9,
+      grav: 200,
+    });
+  }
+}
+function updatePart(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x  += p.vx * dt;
+    p.y  += p.vy * dt;
+    p.vy += p.grav * dt;
+    p.life -= dt;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+// ── Screen shake ──────────────────────────────────────────────
+function shake(amt) { shakeAmt = Math.max(shakeAmt, amt); }
+
+// ── Init game ─────────────────────────────────────────────────
+function initGame() {
+  gameTime = 0; meters = 0;
+  totalNM = 0; nmStreak = 0; maxStreak = 0;
+  heatCount = 0; hasShield = false;
+  arcPhase = 0; driftDir = 1;
+  gates = []; gateIdx = 0;
+  trail = []; particles = [];
+  shakeAmt = 0; crashZoom = 1; crashTimer = 0;
+  hueShift = 0; heatWaveActive = false;
+  heatWaveTimer = 0; heatWaveCycle = 0;
+  pulsePhase = 0;
+  finalScore = 0; isNewBest = false;
+  shareToast = 0; shareBox = null;
+  // Pre-fill gate queue
+  let y = H + 70;
+  for (let i = 0; i < 5; i++) { spawnGate(y); y += getDiff(0).spacing; }
+}
+
+// ── Gate spawn ────────────────────────────────────────────────
+function spawnGate(y) {
+  const diff   = getDiff(gameTime);
+  const tmpl   = pickTemplate(gateIdx, gameTime);
+  const seed   = lcg(DAILY_SEED ^ gateIdx);
+  const isPulse= gameTime >= 45 && (gateIdx % 3 === 2);
+  gates.push({
+    y,
+    gaps: tmpl.map(g => ({ c: g.c, w: diff.gapW })),
+    isPulse,
+    pOff: isPulse ? lcgFl(seed) * 6.28 : 0,
+    done: false,
+  });
+  gateIdx++;
+}
+
+// ── Get actual gap rects for a gate ───────────────────────────
+function gapRects(gate) {
+  return gate.gaps.map(g => {
+    let cx = g.c;
+    if (gate.isPulse) {
+      cx += 0.10 * Math.sin(pulsePhase * 2.6 + gate.pOff);
+      const hw = g.w * 0.5 + 0.04;
+      cx = Math.max(hw, Math.min(1 - hw, cx));
+    }
+    const hw = g.w * W * 0.5;
+    return { l: cx * W - hw, r: cx * W + hw };
+  });
+}
+
+// ── Collision ─────────────────────────────────────────────────
+function checkCol(gate, px) {
+  for (const r of gapRects(gate)) {
+    if (px + PLAYER_R > r.l && px - PLAYER_R < r.r) {
+      const dl = (px - PLAYER_R) - r.l;
+      const dr = r.r - (px + PLAYER_R);
+      return Math.min(dl, dr) < NEAR_MARGIN ? 'near' : 'pass';
+    }
+  }
+  return 'hit';
+}
+
+// ── Die ───────────────────────────────────────────────────────
+function die() {
+  finalScore = Math.round(meters) + totalNM * 12 + maxStreak * 25;
+  isNewBest  = finalScore > bestScore;
+  if (isNewBest) { bestScore = finalScore; localStorage.setItem(LS_KEY, bestScore); }
+  shake(9); crashTimer = CRASH_DUR;
+  burst(playerX, H * PLAYER_Y_FRAC, 28, 15, false);
+  state = 'gameover';
+}
+
+// ── Update ────────────────────────────────────────────────────
+function update(dt) {
+  if (state !== 'playing') return;
+
+  gameTime += dt;
+  hueShift  = (hueShift + 38 * dt) % 360;
+  pulsePhase += dt * 1.4;
+
+  const diff = getDiff(gameTime);
+
+  // Heat wave (45s+, every 14s, lasts 3s)
+  if (gameTime > 45) {
+    heatWaveCycle += dt;
+    if (!heatWaveActive && heatWaveCycle >= 14) {
+      heatWaveActive = true; heatWaveTimer = 3; heatWaveCycle = 0;
+    }
+    if (heatWaveActive) { heatWaveTimer -= dt; if (heatWaveTimer <= 0) heatWaveActive = false; }
+  }
+
+  // Player arc
+  arcPhase += driftDir * diff.arcSpd * dt;
+  playerX   = W * 0.5 + Math.sin(arcPhase) * W * ARC_AMP;
+  playerX   = Math.max(PLAYER_R + 2, Math.min(W - PLAYER_R - 2, playerX));
+
+  const playerY = H * PLAYER_Y_FRAC;
+
+  // Meters
+  meters += diff.scroll * dt / 80;
+
+  // Trail
+  trail.push({ x: playerX, y: playerY });
+  if (trail.length > TRAIL_LEN) trail.shift();
+
+  // Scroll gates & collision
+  for (let i = gates.length - 1; i >= 0; i--) {
+    const g = gates[i];
+    g.y -= diff.scroll * dt;
+
+    if (!g.done && g.y <= playerY && g.y + GATE_THICK >= playerY - PLAYER_R) {
+      g.done = true;
+      const res = checkCol(g, playerX);
+      if (res === 'hit') {
+        if (hasShield) {
+          hasShield = false; nmStreak = 0;
+          shake(5); burst(playerX, playerY, 16, 200, true);
+        } else { die(); return; }
+      } else if (res === 'near') {
+        totalNM++; nmStreak++;
+        if (nmStreak > maxStreak) maxStreak = nmStreak;
+        heatCount++;
+        if (heatCount >= HEAT_TO_SHIELD) {
+          heatCount = 0; hasShield = true;
+          burst(playerX, playerY - 22, 14, 200, true);
+        }
+        shake(1.8);
+        burst(playerX, playerY, 7, 25, false);
+      } else {
+        nmStreak = 0; // clean pass resets streak
+      }
+    }
+    if (g.y + GATE_THICK < -30) gates.splice(i, 1);
+  }
+
+  // Spawn gates to keep queue filled (2 screens ahead)
+  while (gates.length === 0 || gates[gates.length - 1].y < H + diff.spacing) {
+    const prevY = gates.length > 0 ? gates[gates.length - 1].y : H + 70;
+    spawnGate(prevY + diff.spacing);
+  }
+
+  // Particles & effects
+  updatePart(dt);
+  shakeAmt  = Math.max(0, shakeAmt - dt * 11);
+  if (crashTimer > 0) {
+    crashTimer -= dt;
+    crashZoom  = 1 + 0.12 * Math.max(0, crashTimer / CRASH_DUR);
+  } else { crashZoom = 1; }
+  if (shareToast > 0) shareToast -= dt;
+}
+
+// ── Helpers ───────────────────────────────────────────────────
+function hsl(h, s, l, a) {
+  return a !== undefined
+    ? `hsla(${h|0},${s}%,${l}%,${a})`
+    : `hsl(${h|0},${s}%,${l}%)`;
+}
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+// ── Draw: background ─────────────────────────────────────────
+function drawBG() {
+  const hw = heatWaveActive;
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0,   hsl(hw ? 18 : 8,  35, 7));
+  g.addColorStop(0.6, hsl(hw ? 14 : 12, 28, 5));
+  g.addColorStop(1,   hsl(hw ? 6  : 4,  45, 10));
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+
+  if (hw) {
+    ctx.fillStyle = `rgba(255,55,0,${0.04 + 0.025 * Math.sin(gameTime * 9)})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // Bubbles
+  for (const b of bgBubbles) {
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, b.r, 0, 6.28);
+    ctx.fillStyle = hsl(b.hue, 88, 55, b.al + 0.08 * Math.sin(b.ph + gameTime * 2));
+    ctx.fill();
+  }
+
+  // Speed lines on playing
+  if (state === 'playing') {
+    const spd = getDiff(gameTime).scroll;
+    const intensity = Math.min(1, (spd - 160) / 180);
+    if (intensity > 0) {
+      ctx.save();
+      ctx.globalAlpha = 0.07 * intensity;
+      ctx.strokeStyle = hsl(hueShift, 70, 60);
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 8; i++) {
+        const lx = (i / 8) * W + (gameTime * 40 * (i % 2 === 0 ? 1 : -1)) % 60;
+        const len = 20 + intensity * 30;
+        ctx.beginPath();
+        ctx.moveTo(lx % W, 0);
+        ctx.lineTo(lx % W, len);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+}
+
+// ── Draw: gates ───────────────────────────────────────────────
+function drawGates() {
+  for (const gate of gates) {
+    const isPulse = gate.isPulse;
+    const rects   = gapRects(gate);
+    const baseHue = isPulse ? 42 : 14;
+    const gateHue = heatWaveActive ? baseHue - 8 : baseHue;
+
+    // Build wall segments: full row minus gaps
+    const sorted = [...rects].sort((a, b) => a.l - b.l);
+    let wx = 0;
+    const walls = [];
+    for (const r of sorted) {
+      if (r.l > wx) walls.push({ x1: wx, x2: r.l });
+      wx = r.r;
+    }
+    if (wx < W) walls.push({ x1: wx, x2: W });
+
+    // Draw walls
+    for (const w of walls) {
+      const wg = ctx.createLinearGradient(0, gate.y, 0, gate.y + GATE_THICK);
+      wg.addColorStop(0,   hsl(gateHue + 15, 95, isPulse ? 60 : 50));
+      wg.addColorStop(0.5, hsl(gateHue,      90, isPulse ? 66 : 56));
+      wg.addColorStop(1,   hsl(gateHue - 5,  85, isPulse ? 48 : 38));
+      ctx.fillStyle = wg;
+      ctx.fillRect(w.x1, gate.y, w.x2 - w.x1, GATE_THICK);
+      // top edge highlight
+      ctx.fillStyle = hsl(gateHue + 25, 80, 80, 0.45);
+      ctx.fillRect(w.x1, gate.y, w.x2 - w.x1, 2);
+    }
+
+    // Edge glows on gaps
+    for (const r of sorted) {
+      drawEdgeGlow(r.l, gate.y, gateHue);
+      drawEdgeGlow(r.r, gate.y, gateHue);
+    }
+
+    // Pulse telegraph shimmer inside gaps
+    if (isPulse) {
+      const pulse = 0.12 + 0.10 * Math.sin(pulsePhase * 4 + gate.pOff);
+      for (const r of sorted) {
+        ctx.fillStyle = hsl(52, 95, 70, pulse);
+        ctx.fillRect(r.l, gate.y - 3, r.r - r.l, GATE_THICK + 6);
+      }
+    }
+  }
+}
+
+function drawEdgeGlow(ex, gy, hue) {
+  const gw  = 14;
+  const eg  = ctx.createLinearGradient(ex - gw, 0, ex + gw, 0);
+  eg.addColorStop(0,   hsl(hue, 95, 60, 0));
+  eg.addColorStop(0.5, hsl(hue + 12, 100, 72, 0.55));
+  eg.addColorStop(1,   hsl(hue, 95, 60, 0));
+  ctx.fillStyle = eg;
+  ctx.fillRect(ex - gw, gy - 4, gw * 2, GATE_THICK + 8);
+}
+
+// ── Draw: player trail (speed smear) ─────────────────────────
+function drawTrail() {
+  if (trail.length < 3) return;
+  for (let i = 1; i < trail.length; i++) {
+    const t0 = trail[i - 1], t1 = trail[i];
+    const a  = (i / trail.length) * 0.38;
+    const rw = PLAYER_R * 0.55 * (i / trail.length);
+    ctx.beginPath();
+    ctx.moveTo(t0.x, t0.y);
+    ctx.lineTo(t1.x, t1.y);
+    ctx.strokeStyle = hsl(hueShift, 82, 62, a);
+    ctx.lineWidth   = rw;
+    ctx.lineCap     = 'round';
+    ctx.stroke();
+  }
+}
+
+// ── Draw: player ─────────────────────────────────────────────
+function drawPlayer() {
+  const px = playerX, py = H * PLAYER_Y_FRAC;
+
+  drawTrail();
+
+  // Shield aura
+  if (hasShield) {
+    const pulse = 0.35 + 0.15 * Math.sin(gameTime * 5.5);
+    ctx.beginPath(); ctx.arc(px, py, PLAYER_R + 7, 0, 6.28);
+    ctx.strokeStyle = hsl(200, 88, 72, pulse);
+    ctx.lineWidth   = 3; ctx.stroke();
+    ctx.fillStyle   = hsl(200, 70, 55, 0.08); ctx.fill();
+  }
+
+  // Body
+  const ph  = (hueShift + 20) % 360;
+  const pgr = ctx.createRadialGradient(px - 3, py - 3, 2, px, py, PLAYER_R);
+  pgr.addColorStop(0, hsl(ph, 70, 76));
+  pgr.addColorStop(1, hsl(ph, 85, 48));
+  ctx.beginPath(); ctx.arc(px, py, PLAYER_R, 0, 6.28);
+  ctx.fillStyle   = pgr; ctx.fill();
+  ctx.strokeStyle = hsl(ph, 62, 86, 0.65);
+  ctx.lineWidth   = 1.5; ctx.stroke();
+
+  // Glow
+  ctx.beginPath(); ctx.arc(px, py, PLAYER_R + 4, 0, 6.28);
+  ctx.fillStyle = hsl(ph, 90, 62, 0.10); ctx.fill();
+}
+
+// ── Draw: particles ───────────────────────────────────────────
+function drawPart() {
+  for (const p of particles) {
+    const a = Math.max(0, p.life / p.maxL);
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, Math.max(0.3, p.r * a), 0, 6.28);
+    ctx.fillStyle = hsl(p.hue, p.sat, p.lit, a * 0.9);
+    ctx.fill();
+  }
+}
+
+// ── Draw: HUD ─────────────────────────────────────────────────
+function drawHUD() {
+  // Meters
+  ctx.font = 'bold 22px system-ui,sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillStyle = '#ecdccc';
+  ctx.fillText(Math.floor(meters) + 'm', W * 0.5, 15);
+
+  // Streak
+  if (nmStreak > 0) {
+    ctx.font = 'bold 14px system-ui,sans-serif';
+    ctx.fillStyle = hsl(50, 92, 66);
+    ctx.fillText('x' + nmStreak + ' STREAK', W * 0.5, 43);
+  }
+
+  // HEAT bar
+  const bw = 92, bh = 7, bx = W * 0.5 - 46, by = 63;
+  ctx.fillStyle = 'rgba(15,8,4,0.55)';
+  ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
+  if (heatCount > 0) {
+    const frac = heatCount / HEAT_TO_SHIELD;
+    const hg = ctx.createLinearGradient(bx, 0, bx + bw, 0);
+    hg.addColorStop(0, hsl(22, 92, 52));
+    hg.addColorStop(1, hsl(50, 96, 68));
+    ctx.fillStyle = hg;
+    ctx.fillRect(bx, by, bw * frac, bh);
+  }
+  ctx.font = '9px system-ui,sans-serif';
+  ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(195,145,95,0.58)';
+  ctx.fillText('HEAT', W * 0.5, by + bh + 3);
+
+  // Shield label
+  if (hasShield) {
+    ctx.font = 'bold 11px system-ui,sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = hsl(200, 82, 72, 0.85 + 0.15 * Math.sin(gameTime * 4.5));
+    ctx.fillText('COOL COAT', 10, 17);
+  }
+
+  // Heat wave label
+  if (heatWaveActive) {
+    ctx.font = 'bold 12px system-ui,sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillStyle = hsl(5, 92, 62, 0.72 + 0.28 * Math.sin(gameTime * 9));
+    ctx.fillText('HEAT WAVE', W - 10, 17);
+  }
+}
+
+// ── Draw: share button ────────────────────────────────────────
+function drawShareBtn() {
+  const bw = 118, bh = 38;
+  const bx = W * 0.5 - bw * 0.5, by = H * 0.80;
+  shareBox = { x: bx, y: by, w: bw, h: bh };
+
+  ctx.fillStyle = 'rgba(195,98,38,0.88)';
+  if (ctx.roundRect) {
+    ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 19); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,158,78,0.55)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 19); ctx.stroke();
+  } else {
+    ctx.fillRect(bx, by, bw, bh);
+  }
+  ctx.font = 'bold 14px system-ui,sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#fff';
+  ctx.fillText('Share Score', W * 0.5, by + bh * 0.5);
+}
+
+function doShare() {
+  const seed = (DAILY_SEED & 0xFFFF).toString(16);
+  const url  = `${GAME_URL}?challengeScore=${finalScore}&streak=${maxStreak}&seed=${seed}`;
+  const txt  = `I scored ${finalScore} in Magma Drift! (x${maxStreak} streak)\nCan you beat me? ${url}`;
+  if (navigator.share) {
+    navigator.share({ title: 'Magma Drift', text: txt, url }).catch(() => {});
+  } else {
+    navigator.clipboard.writeText(txt)
+      .then(() => { shareToast = 2; })
+      .catch(() => { shareToast = -1; });
+  }
+}
+
+// ── Draw: start screen ────────────────────────────────────────
+function drawStart() {
+  const t = performance.now() * 0.001;
+  drawBG();
+
+  ctx.save();
+  const sc = 1 + 0.028 * Math.sin(t * 1.6);
+  ctx.translate(W * 0.5, H * 0.27); ctx.scale(sc, sc);
+  ctx.shadowColor = hsl(20, 100, 52, 0.6); ctx.shadowBlur = 26;
+  ctx.font = 'bold 44px system-ui,sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = hsl(30, 92, 68); ctx.fillText('MAGMA', 0, -24);
+  ctx.fillStyle = hsl(14, 86, 55); ctx.fillText('DRIFT', 0, 24);
+  ctx.shadowBlur = 0; ctx.restore();
+
+  ctx.font = '13px system-ui,sans-serif';
+  ctx.textAlign = 'center'; ctx.fillStyle = hsl(24, 40, 52, 0.72);
+  ctx.fillText('Switch-Skid', W * 0.5, H * 0.27 + 58);
+
+  if (challengeScore > 0) {
+    ctx.font = 'bold 14px system-ui,sans-serif';
+    ctx.fillStyle = hsl(50, 82, 64);
+    ctx.fillText(`Beat: ${challengeScore}  (x${challengeStreak})`, W * 0.5, H * 0.45);
+  }
+
+  if (bestScore > 0) {
+    ctx.font = '13px system-ui,sans-serif';
+    ctx.fillStyle = hsl(30, 28, 52, 0.68);
+    ctx.fillText('Best: ' + bestScore, W * 0.5, H * 0.51);
+  }
+
+  const ta = 0.52 + 0.40 * Math.sin(t * 2.3);
+  ctx.font = '17px system-ui,sans-serif';
+  ctx.fillStyle = hsl(30, 55, 68, ta);
+  ctx.fillText('Tap to Start', W * 0.5, H * 0.66);
+
+  ctx.font = '11px system-ui,sans-serif';
+  ctx.fillStyle = hsl(20, 18, 46, 0.50);
+  ctx.fillText('Tap to flip arc  ·  Pass gaps  ·  Near-miss fills HEAT', W * 0.5, H * 0.73);
+}
+
+// ── Draw: gameover screen ─────────────────────────────────────
+function drawGameOver() {
+  const t = performance.now() * 0.001;
+
+  ctx.fillStyle = 'rgba(7,3,2,0.74)';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.font = 'bold 30px system-ui,sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = hsl(10, 80, 62);
+  ctx.fillText('GAME OVER', W * 0.5, H * 0.215);
+
+  ctx.font = 'bold 50px system-ui,sans-serif';
+  ctx.fillStyle = hsl(36, 86, 68);
+  ctx.fillText(finalScore.toString(), W * 0.5, H * 0.325);
+
+  ctx.font = '12px system-ui,sans-serif';
+  ctx.fillStyle = hsl(30, 24, 50, 0.68);
+  ctx.fillText('SCORE', W * 0.5, H * 0.38);
+
+  ctx.font = '15px system-ui,sans-serif';
+  ctx.fillStyle = hsl(50, 60, 58);
+  ctx.fillText('Best: ' + bestScore, W * 0.5, H * 0.425);
+
+  if (isNewBest) {
+    ctx.font = 'bold 14px system-ui,sans-serif';
+    ctx.fillStyle = hsl(52, 92, 64, 0.82 + 0.18 * Math.sin(t * 4.5));
+    ctx.fillText('NEW BEST!', W * 0.5, H * 0.468);
+  } else if (bestScore > 0) {
+    const diff = bestScore - finalScore;
+    ctx.font = '11px system-ui,sans-serif';
+    ctx.fillStyle = hsl(28, 22, 46, 0.55);
+    ctx.fillText('PB: ' + diff + ' away', W * 0.5, H * 0.468);
+  }
+
+  // Stats
+  ctx.font = '12px system-ui,sans-serif';
+  ctx.fillStyle = hsl(24, 34, 52, 0.74);
+  ctx.fillText(`${Math.floor(meters)}m · ${totalNM} near-miss · x${maxStreak} streak`, W * 0.5, H * 0.514);
+
+  ctx.font = '10px system-ui,sans-serif';
+  ctx.fillStyle = hsl(20, 18, 42, 0.50);
+  ctx.fillText(
+    `${Math.floor(meters)} + ${totalNM}×12 + ${maxStreak}×25`,
+    W * 0.5, H * 0.544
+  );
+
+  drawShareBtn();
+
+  if (shareToast > 0) {
+    ctx.font = 'bold 12px system-ui,sans-serif';
+    ctx.fillStyle = '#88ff88';
+    ctx.fillText('Copied to clipboard!', W * 0.5, H * 0.875);
+  }
+
+  const ta = 0.50 + 0.40 * Math.sin(t * 2.3);
+  ctx.font = '15px system-ui,sans-serif';
+  ctx.fillStyle = hsl(30, 50, 62, ta);
+  ctx.fillText('Tap to Retry', W * 0.5, H * 0.925);
+}
+
+// ── Render ────────────────────────────────────────────────────
+function render() {
+  ctx.save();
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+
+  if (state === 'start') {
+    drawStart();
+    ctx.restore(); return;
+  }
+
+  // Apply crash zoom
+  if (crashZoom !== 1) {
+    ctx.translate(W * 0.5, H * 0.5);
+    ctx.scale(crashZoom, crashZoom);
+    ctx.translate(-W * 0.5, -H * 0.5);
+  }
+
+  // Apply shake
+  const sx = shakeAmt > 0 ? (Math.random() - 0.5) * shakeAmt * 6 : 0;
+  const sy = shakeAmt > 0 ? (Math.random() - 0.5) * shakeAmt * 6 : 0;
+  ctx.translate(sx, sy);
+
+  drawBG();
+  drawGates();
+  drawPlayer();
+  drawPart();
+  drawHUD();
+
+  ctx.restore();
+
+  if (state === 'gameover') {
+    ctx.save();
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    drawGameOver();
+    ctx.restore();
+  }
+}
+
+// ── Game loop ─────────────────────────────────────────────────
+let lastTS = 0;
+function loop(ts) {
+  const dt = Math.min(0.05, (ts - lastTS) / 1000);
+  lastTS = ts;
+  updateBubbles(dt);
+  update(dt);
+  render();
+  requestAnimationFrame(loop);
+}
+
+// ── Input ─────────────────────────────────────────────────────
+function handleInput(e) {
+  if (e) e.preventDefault();
+
+  if (state === 'start') {
+    initGame(); state = 'playing'; return;
+  }
+
+  if (state === 'playing') {
+    driftDir = -driftDir; return;
+  }
+
+  if (state === 'gameover') {
+    // Check share button hit
+    if (e && shareBox) {
+      const rect = CV.getBoundingClientRect();
+      const sx2 = W / rect.width, sy2 = H / rect.height;
+      let cx2, cy2;
+      if (e.touches && e.touches[0]) {
+        cx2 = (e.touches[0].clientX - rect.left) * sx2;
+        cy2 = (e.touches[0].clientY - rect.top) * sy2;
+      } else {
+        cx2 = ((e.clientX ?? 0) - rect.left) * sx2;
+        cy2 = ((e.clientY ?? 0) - rect.top) * sy2;
+      }
+      const b = shareBox;
+      if (cx2 >= b.x && cx2 <= b.x + b.w && cy2 >= b.y && cy2 <= b.y + b.h) {
+        doShare(); return;
+      }
+    }
+    state = 'start';
+  }
+}
+
+CV.addEventListener('pointerdown', handleInput, { passive: false });
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); handleInput(null); }
+});
+document.addEventListener('touchstart', e => e.preventDefault(), { passive: false });
+
+// ── Go ────────────────────────────────────────────────────────
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

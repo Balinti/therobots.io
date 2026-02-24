@@ -1,0 +1,1044 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Tide Loop - Free HTML5 Game</title>
+<meta name="description" content="Play Tide Loop - Bounce a pearl in orbit around sea anemones to create combo chains and earn points.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="robots" content="index,follow,max-image-preview:large">
+<meta name="theme-color" content="#06233a">
+<link rel="canonical" href="https://balinti.github.io/tide-loop/">
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="Tide Loop - Free HTML5 Game">
+<meta property="og:description" content="Play Tide Loop - Bounce a pearl in orbit around sea anemones to create combo chains and earn points.">
+<meta property="og:url" content="https://balinti.github.io/tide-loop/">
+<meta property="og:image" content="https://balinti.github.io/tide-loop/og-image.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Tide Loop - Free HTML5 Game">
+<meta name="twitter:description" content="Play Tide Loop - Bounce a pearl in orbit around sea anemones to create combo chains and earn points.">
+<meta name="twitter:image" content="https://balinti.github.io/tide-loop/og-image.jpg">
+<!-- AdSense -->
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<!-- JSON-LD -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "VideoGame",
+  "name": "Tide Loop",
+  "description": "Bounce a pearl in orbit around sea anemones to create combo chains and earn points.",
+  "url": "https://balinti.github.io/tide-loop/",
+  "genre": "Hyper-casual",
+  "playMode": "SinglePlayer",
+  "applicationCategory": "Game"
+}
+</script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{
+  width:100%;height:100%;
+  background:#02111f;
+  display:flex;align-items:center;justify-content:center;
+  overflow:hidden;
+  font-family:'Segoe UI',system-ui,sans-serif;
+}
+#wrap{
+  position:relative;
+  width:min(420px,100vw);
+  height:min(750px,100vh);
+  aspect-ratio:420/750;
+  border-radius:18px;
+  box-shadow:0 0 60px #0af3;
+  overflow:hidden;
+  background:#06233a;
+}
+canvas{
+  display:block;
+  width:100%;height:100%;
+  touch-action:manipulation;
+  user-select:none;
+  -webkit-user-select:none;
+}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="c"></canvas></div>
+<script>
+(function(){
+'use strict';
+
+// ── Constants ──────────────────────────────────────────────────────────────
+const HS_KEY='tideloop_highscore';
+const MAX_PARTICLES=260;
+const ORBIT_R=68;
+const DPR=Math.min(window.devicePixelRatio||1,2);
+
+// ── Canvas setup ───────────────────────────────────────────────────────────
+const wrap=document.getElementById('wrap');
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+
+let W,H;
+function resize(){
+  W=wrap.clientWidth;
+  H=wrap.clientHeight;
+  canvas.width=W*DPR;
+  canvas.height=H*DPR;
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+resize();
+window.addEventListener('resize',resize);
+
+// ── State ──────────────────────────────────────────────────────────────────
+let state='start'; // start | playing | gameover
+let score,streak,surge,bestSurge,timeAlive;
+let highScore=parseInt(localStorage.getItem(HS_KEY)||'0',10);
+
+// Tide
+let tide={level:0.18};
+
+// Anemones
+let anemones=[];
+let currentIdx=0;
+let targetIdx=1;
+
+// Pearl
+let pearl={angle:0,speed:1.8,x:0,y:0};
+
+// Difficulty
+let T=0; // seconds elapsed
+function D(){return 1-Math.exp(-T/25);}
+
+// Particles
+let particles=[];
+let particlePool=[];
+function getParticle(){
+  return particlePool.length?particlePool.pop():{};
+}
+function releaseParticle(p){
+  if(particlePool.length<MAX_PARTICLES)particlePool.push(p);
+}
+
+// Shake
+let shake={x:0,y:0,t:0,dur:0,mag:0};
+function addShake(mag,dur){
+  shake.mag=Math.max(shake.mag,mag);
+  shake.dur=Math.max(shake.dur,dur);
+  shake.t=0;
+}
+
+// Input lock (predator)
+let locked=false;
+let lockTimer=0;
+let lockedDisplay=0;
+// Predator sweep
+let predator={active:false,x:-200,phase:0,nextTime:0,teleR:0};
+// Current
+let currentEffect={active:false,amp:0,freq:0,phase:0,nextTime:0};
+
+// Color hue cycling
+let hue=190;
+
+// Spent anemones
+// Anemone: {x,y,spentUntil,id,hue,tentPhase}
+
+// Ring flash
+let ringFlash=0;
+
+// ── Anemone Helpers ─────────────────────────────────────────────────────────
+let anemoId=0;
+function makeAnemone(x,y){
+  return {x,y,id:anemoId++,spentUntil:0,hue:(hue+Math.random()*60-30+360)%360,tentPhase:Math.random()*Math.PI*2};
+}
+
+function isSpent(a){return a.spentUntil>T;}
+
+function spawnTarget(){
+  const margin=70;
+  const d=D();
+  const minDist=140-20*d;
+  const cur=anemones[currentIdx];
+  const last2=anemones.slice(-3).map(a=>a.id);
+
+  let best=null,bestScore=-Infinity;
+
+  for(let attempt=0;attempt<30;attempt++){
+    const relax=attempt>20?1.4:attempt>12?1.15:1;
+    const x=margin+Math.random()*(W-margin*2);
+    const y=(margin+40)+Math.random()*(H-margin-60-(margin+40));
+
+    // check distance from current
+    const dCur=Math.hypot(x-cur.x,y-cur.y);
+    if(dCur<minDist*relax)continue;
+    if(dCur>300)continue;
+
+    // check last 2
+    let tooClose=false;
+    for(const a of anemones.slice(-3)){
+      if(a.id===cur.id)continue;
+      if(Math.hypot(x-a.x,y-a.y)<110*relax){tooClose=true;break;}
+    }
+    if(tooClose)continue;
+
+    // on screen
+    if(x<margin||x>W-margin||y<margin+40||y>H-margin-40)continue;
+
+    // prefer not spent
+    const score2=Math.random()*100+(dCur>150?20:0);
+    if(score2>bestScore){bestScore=score2;best={x,y};}
+    if(attempt>5&&best)break;
+  }
+  if(!best){
+    // fallback
+    best={
+      x:margin+Math.random()*(W-margin*2),
+      y:(margin+60)+Math.random()*(H-margin*2-100)
+    };
+  }
+  const a=makeAnemone(best.x,best.y);
+  anemones.push(a);
+  return anemones.length-1;
+}
+
+// ── Init Game ────────────────────────────────────────────────────────────────
+function initGame(){
+  score=0;streak=0;surge=0;bestSurge=0;timeAlive=0;
+  T=0;
+  tide.level=0.18;
+  hue=190;
+  particles=[];
+  locked=false;lockTimer=0;lockedDisplay=0;
+  predator={active:false,x:-200,phase:0,nextTime:65+Math.random()*5,teleR:0};
+  currentEffect={active:false,amp:0,freq:0,phase:0,nextTime:32+Math.random()*8};
+  ringFlash=0;
+  shake={x:0,y:0,t:0,dur:0,mag:0};
+
+  anemones=[];
+  // place first two
+  const ax=W*0.35,ay=H*0.5;
+  anemones.push(makeAnemone(ax,ay));
+  currentIdx=0;
+  targetIdx=spawnTarget();
+
+  // init pearl angle
+  pearl.angle=Math.random()*Math.PI*2;
+  pearl.speed=1.8;
+  updatePearlPos();
+}
+
+function updatePearlPos(){
+  const a=anemones[currentIdx];
+  pearl.x=a.x+Math.cos(pearl.angle)*ORBIT_R;
+  pearl.y=a.y+Math.sin(pearl.angle)*ORBIT_R;
+}
+
+// ── Attempt Transfer ─────────────────────────────────────────────────────────
+function attemptTransfer(){
+  if(state!=='playing')return;
+  if(locked){
+    lockedDisplay=1.0;
+    return;
+  }
+
+  const target=anemones[targetIdx];
+  const dist=Math.hypot(pearl.x-target.x,pearl.y-target.y);
+  const d=D();
+  const captureR=34-8*d;
+  const captureW=10-2*d;
+  const perfectW=2.5;
+
+  const innerR=captureR-captureW;
+  const outerR=captureR+captureW;
+  const perfectInner=captureR-perfectW;
+  const perfectOuter=captureR+perfectW;
+
+  if(dist<innerR||dist>outerR){
+    // FAIL
+    doFail();
+    return;
+  }
+
+  const isPerfect=(dist>=perfectInner&&dist<=perfectOuter);
+  doSuccess(isPerfect);
+}
+
+function doSuccess(isPerfect){
+  const d=D();
+  // Mark current as spent
+  anemones[currentIdx].spentUntil=T+(1.2+2.0*d);
+
+  // Transfer orbit
+  const target=anemones[targetIdx];
+  // compute angle from target center to pearl
+  pearl.angle=Math.atan2(pearl.y-target.y,pearl.x-target.x);
+  currentIdx=targetIdx;
+
+  streak++;
+  if(isPerfect){
+    surge=Math.min(surge+1,12);
+  } else {
+    surge=Math.max(0,surge-1);
+  }
+  bestSurge=Math.max(bestSurge,surge);
+
+  const base=isPerfect?120:70;
+  const pts=base+8*streak+22*surge;
+  score+=pts;
+  if(score>highScore){highScore=score;localStorage.setItem(HS_KEY,highScore);}
+
+  // Tide push
+  tide.level=Math.max(0,tide.level-(isPerfect?0.20:0.12));
+
+  // Particles
+  spawnSuccessParticles(target.x,target.y,isPerfect);
+  if(isPerfect){
+    spawnShockwave(target.x,target.y);
+    addShake(4,0.25);
+  }
+  ringFlash=1.0;
+
+  // Spawn next target
+  targetIdx=spawnTarget();
+
+  // Hue shift
+  hue=(hue+15)%360;
+}
+
+function doFail(){
+  state='gameover';
+  spawnFailParticles(pearl.x,pearl.y);
+  spawnCrackRipple(pearl.x,pearl.y);
+  addShake(16,0.5);
+  if(score>highScore){highScore=score;localStorage.setItem(HS_KEY,highScore);}
+}
+
+// ── Particles ─────────────────────────────────────────────────────────────────
+// types: bubble, sparkle, fail, shockwave, crack
+function spawnSuccessParticles(x,y,perfect){
+  const count=perfect?22:12;
+  for(let i=0;i<count;i++){
+    const p=getParticle();
+    const ang=Math.random()*Math.PI*2;
+    const spd=1.5+Math.random()*3.5*(perfect?1.6:1);
+    p.type=perfect?'sparkle':'bubble';
+    p.x=x;p.y=y;
+    p.vx=Math.cos(ang)*spd;p.vy=Math.sin(ang)*spd;
+    p.life=1;p.decay=0.018+Math.random()*0.02;
+    p.r=perfect?(3+Math.random()*4):(4+Math.random()*5);
+    p.hue=(hue+Math.random()*40-20+360)%360;
+    p.alpha=1;
+    particles.push(p);
+    if(particles.length>MAX_PARTICLES){releaseParticle(particles.shift());}
+  }
+}
+
+function spawnFailParticles(x,y){
+  for(let i=0;i<30;i++){
+    const p=getParticle();
+    const ang=Math.random()*Math.PI*2;
+    const spd=2+Math.random()*5;
+    p.type='fail';
+    p.x=x;p.y=y;
+    p.vx=Math.cos(ang)*spd;p.vy=Math.sin(ang)*spd-1;
+    p.life=1;p.decay=0.014+Math.random()*0.015;
+    p.r=3+Math.random()*5;
+    p.hue=0;p.alpha=1;
+    particles.push(p);
+    if(particles.length>MAX_PARTICLES){releaseParticle(particles.shift());}
+  }
+}
+
+let shockwaves=[];
+function spawnShockwave(x,y){
+  shockwaves.push({x,y,r:0,life:1,hue});
+}
+
+let cracks=[];
+function spawnCrackRipple(x,y){
+  cracks.push({x,y,r:0,life:1});
+  // also big shockwave
+  shockwaves.push({x,y,r:0,life:1,hue:0,fail:true});
+}
+
+// ── Update ───────────────────────────────────────────────────────────────────
+let lastTime=0;
+function update(ts){
+  const dtRaw=(ts-lastTime)/1000;
+  lastTime=ts;
+  const dt=Math.min(dtRaw,0.05);
+
+  if(state==='playing'){
+    T+=dt;
+    timeAlive+=dt;
+
+    // Difficulty
+    const d=D();
+
+    // Tide rise
+    const tideRate=0.060+0.090*d;
+    tide.level=Math.min(1,tide.level+tideRate*dt);
+    if(tide.level>=1){doFail();return;}
+
+    // Pearl orbit speed
+    let orbitSpeed=(1.8+1.4*d);
+    // Current effect
+    if(T>=30){
+      if(!currentEffect.active&&T>=currentEffect.nextTime){
+        currentEffect.active=true;
+        currentEffect.amp=0.6+Math.random()*0.4;
+        currentEffect.freq=0.7+Math.random()*0.5;
+        currentEffect.phase=Math.random()*Math.PI*2;
+        currentEffect.dur=4+Math.random()*3;
+        currentEffect.startT=T;
+      }
+      if(currentEffect.active){
+        const elapsed=T-currentEffect.startT;
+        if(elapsed>currentEffect.dur){
+          currentEffect.active=false;
+          currentEffect.nextTime=T+8+Math.random()*6;
+        } else {
+          orbitSpeed+=currentEffect.amp*Math.sin(currentEffect.freq*T+currentEffect.phase);
+        }
+      }
+    }
+
+    pearl.angle+=orbitSpeed*dt;
+    updatePearlPos();
+
+    // Predator sweep
+    if(T>=60){
+      if(!predator.active&&T>=predator.nextTime){
+        predator.active=true;
+        predator.phase=0;
+        predator.x=-80;
+        predator.width=100;
+        predator.speed=W/1.2; // cross in 1.2s
+        predator.duration=1.2;
+        predator.startT=T;
+        predator.didLock=false;
+      }
+      if(predator.active){
+        const elapsed=T-predator.startT;
+        predator.x=-80+predator.speed*elapsed;
+        const lockStart=predator.duration*0.3;
+        const lockEnd=predator.duration*0.7;
+        const inLockWindow=(elapsed>=lockStart&&elapsed<=lockEnd);
+        // Check if pearl inside spotlight
+        const px2=predator.x+predator.width/2;
+        const pearlInSpot=Math.abs(pearl.x-px2)<predator.width/2;
+        if(inLockWindow&&pearlInSpot&&!predator.didLock){
+          predator.didLock=true;
+          locked=true;
+          lockTimer=0.5;
+        }
+        if(elapsed>predator.duration){
+          predator.active=false;
+          predator.nextTime=T+10+Math.random()*6;
+        }
+      }
+    }
+
+    // Lock timer
+    if(locked){
+      lockTimer-=dt;
+      if(lockTimer<=0){locked=false;}
+    }
+    if(lockedDisplay>0)lockedDisplay-=dt*3;
+
+    // Ring flash
+    if(ringFlash>0)ringFlash-=dt*4;
+
+    // Shake
+    if(shake.t<shake.dur){
+      shake.t+=dt;
+      const prog=shake.t/shake.dur;
+      const mag=shake.mag*(1-prog);
+      shake.x=(Math.random()-0.5)*2*mag;
+      shake.y=(Math.random()-0.5)*2*mag;
+    } else {
+      shake.x=0;shake.y=0;
+    }
+
+    // Update particles
+    for(let i=particles.length-1;i>=0;i--){
+      const p=particles[i];
+      p.x+=p.vx;p.y+=p.vy;
+      p.vy+=0.06;
+      p.vx*=0.97;
+      p.life-=p.decay;
+      if(p.life<=0){releaseParticle(particles.splice(i,1)[0]);}
+    }
+
+    // Shockwaves
+    for(let i=shockwaves.length-1;i>=0;i--){
+      shockwaves[i].r+=4;
+      shockwaves[i].life-=0.045;
+      if(shockwaves[i].life<=0)shockwaves.splice(i,1);
+    }
+
+    // Cracks
+    for(let i=cracks.length-1;i>=0;i--){
+      cracks[i].r+=5;
+      cracks[i].life-=0.04;
+      if(cracks[i].life<=0)cracks.splice(i,1);
+    }
+  }
+}
+
+// ── Draw Helpers ─────────────────────────────────────────────────────────────
+function drawBackground(){
+  const d=D();
+  const tideInfluence=tide.level;
+  const s1=Math.min(85,30+tideInfluence*55);
+  const l1=Math.max(5,12-tideInfluence*7);
+  const h1=(200+tideInfluence*(-40)+hue*0.1)%360;
+
+  const grad=ctx.createLinearGradient(0,0,0,H);
+  grad.addColorStop(0,`hsl(${h1},${s1}%,${l1+4}%)`);
+  grad.addColorStop(1,`hsl(${(h1+20)%360},${s1+10}%,${l1}%)`);
+  ctx.fillStyle=grad;
+  ctx.fillRect(0,0,W,H);
+
+  // subtle caustic lines
+  ctx.save();
+  ctx.globalAlpha=0.06+0.04*Math.sin(T*0.5);
+  for(let i=0;i<6;i++){
+    const x=((i/6)*W+T*8*(i%2===0?1:-1))%(W+40)-20;
+    ctx.beginPath();
+    ctx.moveTo(x,0);
+    ctx.lineTo(x-30,H);
+    ctx.strokeStyle=`hsl(${hue+40},80%,70%)`;
+    ctx.lineWidth=1;
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawTideBar(){
+  const bw=12;
+  const bx=W-bw-6;
+  const by=20;
+  const bh=H-40;
+
+  // track
+  ctx.save();
+  ctx.globalAlpha=0.3;
+  ctx.fillStyle='#0af';
+  ctx.roundRect(bx,by,bw,bh,6);
+  ctx.fill();
+  ctx.restore();
+
+  // fill
+  const fillH=bh*tide.level;
+  const fillY=by+bh-fillH;
+  const urgency=Math.max(0,(tide.level-0.6)/0.4);
+  const tideColor=`hsl(${200-urgency*160},${70+urgency*30}%,${55+urgency*10}%)`;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(bx,fillY,bw,fillH,6);
+  ctx.clip();
+
+  const tg=ctx.createLinearGradient(0,fillY,0,fillY+fillH);
+  tg.addColorStop(0,tideColor);
+  tg.addColorStop(1,`hsl(${200-urgency*160},${80+urgency*20}%,${45}%)`);
+  ctx.fillStyle=tg;
+  ctx.fillRect(bx,fillY,bw,fillH);
+
+  // wave wobble on top
+  ctx.beginPath();
+  const wy=fillY+Math.sin(T*3)*3;
+  ctx.moveTo(bx,wy);
+  for(let i=0;i<=bw;i++){
+    ctx.lineTo(bx+i,wy+Math.sin(T*4+i*0.8)*2.5);
+  }
+  ctx.lineTo(bx+bw,by+bh);ctx.lineTo(bx,by+bh);ctx.closePath();
+  ctx.fillStyle=tideColor;
+  ctx.globalAlpha=0.5;
+  ctx.fill();
+  ctx.restore();
+
+  // border
+  ctx.save();
+  ctx.globalAlpha=0.5;
+  ctx.strokeStyle='#0af';
+  ctx.lineWidth=1.5;
+  ctx.beginPath();
+  ctx.roundRect(bx,by,bw,bh,6);
+  ctx.stroke();
+  ctx.restore();
+
+  // label
+  ctx.save();
+  ctx.fillStyle=`rgba(100,200,255,${0.6+urgency*0.4})`;
+  ctx.font='bold 9px monospace';
+  ctx.textAlign='center';
+  ctx.fillText('TIDE',bx+bw/2,by-5);
+  ctx.restore();
+}
+
+function drawAnemone(a,isTarget,isCurrent){
+  const d=D();
+  const pulse=0.85+0.15*Math.sin(T*2+a.tentPhase);
+  const spent=isSpent(a);
+  const alpha=spent?0.25:1;
+  const ax=a.x,ay=a.y;
+
+  ctx.save();
+  ctx.globalAlpha=alpha;
+
+  // body
+  const bodyR=18*pulse;
+  const ah=a.hue;
+
+  // glow
+  if(!spent){
+    const grd=ctx.createRadialGradient(ax,ay,0,ax,ay,bodyR*2.2);
+    grd.addColorStop(0,`hsla(${ah},70%,70%,0.18)`);
+    grd.addColorStop(1,`hsla(${ah},70%,70%,0)`);
+    ctx.beginPath();ctx.arc(ax,ay,bodyR*2.2,0,Math.PI*2);
+    ctx.fillStyle=grd;ctx.fill();
+  }
+
+  // tentacles
+  const numT=7;
+  for(let i=0;i<numT;i++){
+    const ta=(i/numT)*Math.PI*2+a.tentPhase+T*0.3;
+    const tLen=20+8*Math.sin(T*1.5+i);
+    const tx1=ax+Math.cos(ta)*bodyR*0.7;
+    const ty1=ay+Math.sin(ta)*bodyR*0.7;
+    const tx2=ax+Math.cos(ta)*tLen;
+    const ty2=ay+Math.sin(ta)*tLen;
+    const cpx=ax+Math.cos(ta+0.4)*(tLen*0.6);
+    const cpy=ay+Math.sin(ta+0.4)*(tLen*0.6);
+    ctx.beginPath();
+    ctx.moveTo(tx1,ty1);
+    ctx.quadraticCurveTo(cpx,cpy,tx2,ty2);
+    ctx.strokeStyle=`hsla(${ah},60%,${spent?30:65}%,${spent?0.2:0.6})`;
+    ctx.lineWidth=2;
+    ctx.stroke();
+  }
+
+  // body circle
+  const bg=ctx.createRadialGradient(ax,ay-3,0,ax,ay,bodyR);
+  bg.addColorStop(0,`hsla(${ah},60%,75%,0.9)`);
+  bg.addColorStop(0.5,`hsla(${ah},55%,50%,0.8)`);
+  bg.addColorStop(1,`hsla(${ah},50%,30%,0.7)`);
+  ctx.beginPath();ctx.arc(ax,ay,bodyR,0,Math.PI*2);
+  ctx.fillStyle=bg;ctx.fill();
+
+  // center dot
+  ctx.beginPath();ctx.arc(ax,ay,4,0,Math.PI*2);
+  ctx.fillStyle=`hsla(${ah},80%,90%,0.8)`;
+  ctx.fill();
+
+  ctx.restore();
+
+  // Target capture ring
+  if(isTarget){
+    const captureR=34-8*d;
+    const captureW=10-2*d;
+    const perfectW=2.5;
+    const flash=ringFlash;
+
+    ctx.save();
+    ctx.globalAlpha=0.18+flash*0.3;
+    // outer glow
+    const rg=ctx.createRadialGradient(ax,ay,captureR-captureW-4,ax,ay,captureR+captureW+8);
+    rg.addColorStop(0,`hsla(${ah},80%,80%,0)`);
+    rg.addColorStop(0.5,`hsla(${ah},80%,80%,0.5)`);
+    rg.addColorStop(1,`hsla(${ah},80%,80%,0)`);
+    ctx.beginPath();ctx.arc(ax,ay,captureR+captureW+8,0,Math.PI*2);
+    ctx.fillStyle=rg;ctx.fill();
+    ctx.restore();
+
+    // main ring
+    ctx.save();
+    ctx.globalAlpha=0.65+flash*0.35;
+    ctx.beginPath();ctx.arc(ax,ay,captureR,0,Math.PI*2);
+    ctx.strokeStyle=`hsl(${ah},85%,${65+flash*20}%)`;
+    ctx.lineWidth=captureW*2;
+    ctx.stroke();
+
+    // perfect band
+    ctx.beginPath();ctx.arc(ax,ay,captureR,0,Math.PI*2);
+    ctx.strokeStyle=`hsl(60,100%,80%)`;
+    ctx.lineWidth=perfectW*2;
+    ctx.stroke();
+    ctx.restore();
+
+    // rotating dashes
+    ctx.save();
+    ctx.globalAlpha=0.35+flash*0.2;
+    ctx.setLineDash([8,8]);
+    ctx.lineDashOffset=-T*15;
+    ctx.beginPath();ctx.arc(ax,ay,captureR+captureW+10,0,Math.PI*2);
+    ctx.strokeStyle=`hsl(${ah},70%,65%)`;
+    ctx.lineWidth=1.5;ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function drawPearl(){
+  const px=pearl.x,py=pearl.y;
+  const s=surge;
+
+  ctx.save();
+
+  // Trail when surge > 0
+  if(s>0){
+    const trailLen=Math.min(s*6,30);
+    const a=anemones[currentIdx];
+    for(let i=trailLen;i>0;i-=2){
+      const ang=pearl.angle-i*0.04;
+      const tx=a.x+Math.cos(ang)*ORBIT_R;
+      const ty=a.y+Math.sin(ang)*ORBIT_R;
+      ctx.globalAlpha=(i/trailLen)*0.3*(s/8);
+      ctx.beginPath();ctx.arc(tx,ty,5*(i/trailLen),0,Math.PI*2);
+      ctx.fillStyle=`hsl(${hue+180},80%,70%)`;
+      ctx.fill();
+    }
+  }
+
+  // Glow layers
+  for(let i=3;i>=0;i--){
+    const r=8+i*5;
+    const a=0.06+i*0.04;
+    ctx.globalAlpha=a*(1+s*0.1);
+    ctx.beginPath();ctx.arc(px,py,r,0,Math.PI*2);
+    ctx.fillStyle=`hsl(${hue+200},70%,80%)`;
+    ctx.fill();
+  }
+
+  // Core
+  ctx.globalAlpha=1;
+  const pg=ctx.createRadialGradient(px-2,py-2,0,px,py,9);
+  pg.addColorStop(0,'#fff');
+  pg.addColorStop(0.3,`hsl(${hue+200},60%,85%)`);
+  pg.addColorStop(1,`hsl(${hue+200},50%,55%)`);
+  ctx.beginPath();ctx.arc(px,py,9,0,Math.PI*2);
+  ctx.fillStyle=pg;ctx.fill();
+
+  // Highlight
+  ctx.globalAlpha=0.7;
+  ctx.beginPath();ctx.arc(px-2.5,py-2.5,3,0,Math.PI*2);
+  ctx.fillStyle='#fff';ctx.fill();
+
+  ctx.restore();
+}
+
+function drawParticles(){
+  for(const p of particles){
+    ctx.save();
+    ctx.globalAlpha=p.life*p.alpha;
+    if(p.type==='sparkle'){
+      ctx.translate(p.x,p.y);
+      ctx.rotate(p.life*Math.PI);
+      ctx.beginPath();
+      const r=p.r*p.life;
+      ctx.moveTo(0,-r);ctx.lineTo(r*0.3,-r*0.3);
+      ctx.lineTo(r,0);ctx.lineTo(r*0.3,r*0.3);
+      ctx.lineTo(0,r);ctx.lineTo(-r*0.3,r*0.3);
+      ctx.lineTo(-r,0);ctx.lineTo(-r*0.3,-r*0.3);
+      ctx.closePath();
+      ctx.fillStyle=`hsl(${p.hue},90%,70%)`;
+      ctx.fill();
+    } else if(p.type==='bubble'){
+      ctx.beginPath();ctx.arc(p.x,p.y,p.r*p.life*0.7,0,Math.PI*2);
+      ctx.strokeStyle=`hsl(${p.hue},70%,70%)`;
+      ctx.lineWidth=2;ctx.stroke();
+    } else if(p.type==='fail'){
+      ctx.beginPath();ctx.arc(p.x,p.y,p.r*p.life,0,Math.PI*2);
+      ctx.fillStyle=`hsl(${0+p.life*20},80%,${50+p.life*20}%)`;
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // Shockwaves
+  for(const sw of shockwaves){
+    ctx.save();
+    ctx.globalAlpha=sw.life*0.7;
+    ctx.beginPath();ctx.arc(sw.x,sw.y,sw.r,0,Math.PI*2);
+    ctx.strokeStyle=sw.fail?`rgba(255,80,80,${sw.life})`:`hsl(${sw.hue},90%,75%)`;
+    ctx.lineWidth=3*(1-sw.r/200);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Cracks
+  for(const cr of cracks){
+    ctx.save();
+    ctx.globalAlpha=cr.life*0.5;
+    for(let i=0;i<6;i++){
+      const ang=(i/6)*Math.PI*2+cr.r*0.02;
+      ctx.beginPath();
+      ctx.moveTo(cr.x,cr.y);
+      ctx.lineTo(cr.x+Math.cos(ang)*cr.r,cr.y+Math.sin(ang)*cr.r);
+      ctx.strokeStyle=`rgba(255,120,80,${cr.life})`;
+      ctx.lineWidth=2;ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
+function drawPredator(){
+  if(!predator.active)return;
+  const elapsed=T-predator.startT;
+  const lockStart=predator.duration*0.3;
+  const lockEnd=predator.duration*0.7;
+  const inLock=(elapsed>=lockStart&&elapsed<=lockEnd);
+  const alpha=inLock?0.35:0.12;
+  const cx=predator.x+predator.width/2;
+
+  ctx.save();
+  const pg=ctx.createLinearGradient(predator.x,0,predator.x+predator.width,0);
+  pg.addColorStop(0,'rgba(255,220,80,0)');
+  pg.addColorStop(0.5,`rgba(255,220,80,${alpha})`);
+  pg.addColorStop(1,'rgba(255,220,80,0)');
+  ctx.fillStyle=pg;
+  ctx.fillRect(predator.x,0,predator.width,H);
+  ctx.restore();
+
+  // Eye symbol
+  ctx.save();
+  ctx.globalAlpha=inLock?0.8:0.3;
+  ctx.font='bold 18px sans-serif';
+  ctx.textAlign='center';
+  ctx.fillStyle='#ffd850';
+  ctx.fillText('👁',cx,H*0.15);
+  ctx.restore();
+}
+
+function drawCurrentIndicator(){
+  if(!currentEffect.active)return;
+  const d=D();
+  ctx.save();
+  ctx.globalAlpha=0.25;
+  const elapsed=T-currentEffect.startT;
+  const x=20+Math.sin(T*2)*8;
+  ctx.beginPath();
+  ctx.moveTo(x,H*0.3);
+  for(let i=0;i<30;i++){
+    const y=H*0.3+i*(H*0.4/30);
+    ctx.lineTo(x+Math.sin(y*0.05+T*currentEffect.freq)*15,y);
+  }
+  ctx.strokeStyle=`hsl(${hue+180},80%,60%)`;
+  ctx.lineWidth=3;ctx.stroke();
+  ctx.restore();
+}
+
+function drawHUD(){
+  const pad=16;
+
+  // Score
+  ctx.save();
+  ctx.textAlign='left';
+  ctx.font='bold 28px monospace';
+  ctx.fillStyle='rgba(255,255,255,0.92)';
+  ctx.fillText(score,pad,pad+24);
+  ctx.font='12px monospace';
+  ctx.fillStyle='rgba(180,220,255,0.7)';
+  ctx.fillText(`STREAK ${streak}  SURGE ${surge}`,pad,pad+44);
+  ctx.restore();
+
+  // Best
+  ctx.save();
+  ctx.textAlign='right';
+  ctx.font='12px monospace';
+  ctx.fillStyle='rgba(180,220,255,0.55)';
+  ctx.fillText(`BEST ${highScore}`,W-26,pad+16);
+  ctx.restore();
+
+  // Locked feedback
+  if(lockedDisplay>0){
+    ctx.save();
+    ctx.globalAlpha=lockedDisplay;
+    ctx.textAlign='center';
+    ctx.font='bold 16px monospace';
+    ctx.fillStyle='#ffd850';
+    ctx.fillText('LOCKED',W/2,H*0.12);
+    ctx.restore();
+  }
+
+  // Current warning
+  if(T>=28&&T<32&&!currentEffect.active){
+    const alpha=Math.sin((T-28)*Math.PI/4)*0.9;
+    ctx.save();
+    ctx.globalAlpha=Math.max(0,alpha);
+    ctx.textAlign='center';
+    ctx.font='11px monospace';
+    ctx.fillStyle='#5ff';
+    ctx.fillText('~ CURRENT INCOMING ~',W/2,H-24);
+    ctx.restore();
+  }
+
+  // Surge indicator
+  if(surge>0){
+    ctx.save();
+    ctx.textAlign='left';
+    ctx.font='bold 11px monospace';
+    ctx.fillStyle=`hsl(${hue+180},90%,70%)`;
+    ctx.fillText('⚡'.repeat(Math.min(surge,8)),pad,pad+62);
+    ctx.restore();
+  }
+}
+
+function drawStartScreen(){
+  ctx.save();
+  ctx.fillStyle='rgba(0,0,0,0.55)';
+  ctx.fillRect(0,0,W,H);
+
+  const cy=H*0.42;
+  // Title glow
+  ctx.textAlign='center';
+  ctx.shadowColor=`hsl(${hue},80%,60%)`;
+  ctx.shadowBlur=30;
+  ctx.font='bold 52px monospace';
+  ctx.fillStyle='#fff';
+  ctx.fillText('TIDE',W/2,cy-20);
+  ctx.font='bold 52px monospace';
+  ctx.fillStyle=`hsl(${hue+40},90%,65%)`;
+  ctx.fillText('LOOP',W/2,cy+34);
+  ctx.shadowBlur=0;
+
+  ctx.font='13px monospace';
+  ctx.fillStyle='rgba(180,220,255,0.7)';
+  ctx.fillText('Snap & Surge',W/2,cy+60);
+
+  // tap prompt pulse
+  const pulse=0.6+0.4*Math.sin(T*3);
+  ctx.globalAlpha=pulse;
+  ctx.font='bold 15px monospace';
+  ctx.fillStyle='#aef';
+  ctx.fillText('TAP TO START',W/2,cy+110);
+  ctx.restore();
+
+  // instructions
+  ctx.save();
+  ctx.globalAlpha=0.5;
+  ctx.textAlign='center';
+  ctx.font='11px monospace';
+  ctx.fillStyle='#8cf';
+  ctx.fillText('Tap inside the ring to transfer orbit',W/2,cy+140);
+  ctx.fillText('Hit the gold band for a PERFECT snap',W/2,cy+158);
+  ctx.restore();
+}
+
+function drawGameOverScreen(){
+  ctx.save();
+  ctx.fillStyle='rgba(0,0,0,0.7)';
+  ctx.fillRect(0,0,W,H);
+
+  const cy=H*0.38;
+  ctx.textAlign='center';
+
+  ctx.font='bold 26px monospace';
+  ctx.fillStyle='rgba(255,100,100,0.9)';
+  ctx.fillText('TIDE REACHED',W/2,cy-10);
+
+  ctx.font='bold 52px monospace';
+  ctx.fillStyle='#fff';
+  ctx.shadowColor='rgba(0,150,255,0.6)';
+  ctx.shadowBlur=20;
+  ctx.fillText(score,W/2,cy+48);
+  ctx.shadowBlur=0;
+
+  ctx.font='12px monospace';
+  ctx.fillStyle='rgba(180,220,255,0.6)';
+  ctx.fillText(`BEST ${highScore}`,W/2,cy+72);
+
+  const mins=Math.floor(timeAlive/60);
+  const secs=Math.floor(timeAlive%60);
+  const timeStr=mins>0?`${mins}m ${secs}s`:`${secs}s`;
+  ctx.fillText(`TIME ${timeStr}   BEST SURGE ${bestSurge}`,W/2,cy+92);
+
+  // Tip
+  ctx.font='italic 11px monospace';
+  ctx.fillStyle='rgba(150,200,255,0.55)';
+  ctx.fillText('Tip: Perfect snaps slow the tide more.',W/2,cy+118);
+
+  // Retry
+  const pulse=0.65+0.35*Math.sin(T*3);
+  ctx.globalAlpha=pulse;
+  ctx.font='bold 16px monospace';
+  ctx.fillStyle='#aef';
+  ctx.fillText('TAP TO RETRY',W/2,cy+158);
+  ctx.restore();
+}
+
+// ── Main Loop ─────────────────────────────────────────────────────────────────
+function draw(){
+  ctx.save();
+  ctx.translate(shake.x,shake.y);
+
+  drawBackground();
+
+  if(state==='playing'||state==='gameover'){
+    drawCurrentIndicator();
+    drawPredator();
+
+    // Draw all anemones
+    for(let i=0;i<anemones.length;i++){
+      const isCur=i===currentIdx;
+      const isTgt=i===targetIdx;
+      if(isCur||isTgt||T<2){
+        drawAnemone(anemones[i],isTgt,isCur);
+      }
+    }
+
+    drawParticles();
+    if(state==='playing')drawPearl();
+    drawTideBar();
+    drawHUD();
+  }
+
+  if(state==='start')drawStartScreen();
+  if(state==='gameover')drawGameOverScreen();
+
+  ctx.restore();
+}
+
+function loop(ts){
+  update(ts);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// ── Input ─────────────────────────────────────────────────────────────────────
+function handleInput(){
+  if(state==='start'){
+    state='playing';
+    initGame();
+  } else if(state==='playing'){
+    attemptTransfer();
+  } else if(state==='gameover'){
+    state='playing';
+    initGame();
+  }
+}
+
+canvas.addEventListener('pointerdown',function(e){
+  e.preventDefault();
+  handleInput();
+},{passive:false});
+
+document.addEventListener('keydown',function(e){
+  if(e.code==='Space'||e.code==='Enter'){
+    e.preventDefault();
+    handleInput();
+  }
+});
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+// Start loop without game running (just show start screen)
+hue=190;T=0;
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

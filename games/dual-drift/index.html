@@ -1,0 +1,1061 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Dual Drift - Free HTML5 Game</title>
+  <meta name="description" content="Play Dual Drift - Tap to split into two and flip gravity, balancing both halves through surreal vaporwave lanes.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <link rel="canonical" href="https://balinti.github.io/dual-drift/">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Dual Drift - Free HTML5 Game">
+  <meta property="og:description" content="Play Dual Drift - Tap to split into two and flip gravity, balancing both halves through surreal vaporwave lanes.">
+  <meta property="og:url" content="https://balinti.github.io/dual-drift/">
+  <meta property="og:image" content="https://balinti.github.io/dual-drift/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Dual Drift - Free HTML5 Game">
+  <meta name="twitter:description" content="Play Dual Drift - Tap to split into two and flip gravity, balancing both halves through surreal vaporwave lanes.">
+  <meta name="twitter:image" content="https://balinti.github.io/dual-drift/og.png">
+  <meta name="theme-color" content="#0d0d1a">
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    html,body{
+      width:100%;height:100%;
+      background:#0d0d1a;
+      display:flex;flex-direction:column;
+      align-items:center;justify-content:center;
+      font-family:'Segoe UI',Arial,sans-serif;
+      overflow:hidden;
+      user-select:none;-webkit-user-select:none;
+      touch-action:none;
+    }
+    #game-header{
+      width:100%;max-width:420px;
+      text-align:center;
+      padding:6px 0 4px;
+      color:#c8a0ff;
+      font-size:11px;
+      letter-spacing:2px;
+      text-transform:uppercase;
+      opacity:.7;
+      flex-shrink:0;
+    }
+    #game-shell{
+      position:relative;
+      width:100%;
+      max-width:420px;
+      max-height:750px;
+      aspect-ratio:420/750;
+      flex:1 1 auto;
+      display:flex;
+      flex-direction:column;
+    }
+    canvas{
+      display:block;
+      width:100%;
+      height:100%;
+      image-rendering:pixelated;
+      image-rendering:crisp-edges;
+    }
+    #game-footer{
+      width:100%;max-width:420px;
+      text-align:center;
+      padding:4px 0 6px;
+      color:#6040a0;
+      font-size:10px;
+      letter-spacing:1px;
+      flex-shrink:0;
+    }
+  </style>
+</head>
+<body>
+  <div id="game-header">DUAL DRIFT &nbsp;|&nbsp; ANCHOR SWAP</div>
+  <div id="game-shell">
+    <canvas id="c"></canvas>
+  </div>
+  <div id="game-footer">tap &bull; space &bull; enter &mdash; swap the anchor</div>
+
+<script>
+(function(){
+'use strict';
+
+// --- Virtual resolution ---
+const VW=420, VH=750;
+const LS_KEY='dualdrift_highscore_v1';
+
+// --- Canvas setup ---
+const shell=document.getElementById('game-shell');
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+
+let DPR=Math.min(window.devicePixelRatio||1,2);
+function resizeCanvas(){
+  const rect=shell.getBoundingClientRect();
+  canvas.width=Math.round(rect.width*DPR);
+  canvas.height=Math.round(rect.height*DPR);
+  canvas.style.width=rect.width+'px';
+  canvas.style.height=rect.height+'px';
+}
+resizeCanvas();
+window.addEventListener('resize',()=>{resizeCanvas();});
+
+// --- Scale helpers ---
+function scaleX(x){return x*(canvas.width/VW);}
+function scaleY(y){return y*(canvas.height/VH);}
+function scale(v){return v*(canvas.width/VW);}
+
+// ctx wrapper that draws in virtual coords
+function vctx(){
+  const sx=canvas.width/VW, sy=canvas.height/VH;
+  ctx.save();
+  ctx.scale(sx,sy);
+}
+function vrestore(){ctx.restore();}
+
+// --- URL params ---
+const urlParams=new URLSearchParams(window.location.search);
+const challengeScore=parseInt(urlParams.get('challenge'))||0;
+
+// --- Persistent high score ---
+let highScore=parseInt(localStorage.getItem(LS_KEY))||0;
+
+// --- Game state ---
+let state='start'; // 'start'|'playing'|'gameover'
+let score=0;
+let multiplier=1;
+let multiplierDecay=0;
+let elapsed=0; // seconds since game start
+let scrollSpeed=0;
+let distance=0;
+
+// --- Player ---
+const PLAYER_R=14;
+const SHADOW_OFFSET_BASE=120;
+let playerX=VW/2;
+let playerY=VH*0.65;
+let playerVX=0;
+let shadowAnchor='above'; // 'above'|'below'
+let shadowX=VW/2;
+let shadowY=VH*0.65-SHADOW_OFFSET_BASE;
+let shadowVX=0;
+let tetherOffset=SHADOW_OFFSET_BASE;
+let pulseZoneActive=false;
+let pulseZoneTimer=0;
+let pulseZoneTetherMult=1;
+
+// --- Drift wave ---
+let driftPhase=0;
+const DRIFT_AMP=55;
+const DRIFT_FREQ=0.0012;
+
+// --- Obstacles ---
+let obstacles=[];
+let syncGates=[];
+let riskOrbs=[];
+let particles=[];
+let nearMissParticles=[];
+let spawnTimer=0;
+let gateSpawnTimer=0;
+let orbSpawnTimer=0;
+let pulseSpawnTimer=0;
+
+// --- Screen shake ---
+let shakeAmt=0;
+let shakeDecay=0;
+
+// --- Freeze frame ---
+let freezeTimer=0;
+
+// --- Hue cycling ---
+let bgHue=260;
+
+// --- VHS noise ---
+let noiseAlpha=0.06;
+
+// --- Random ---
+function rand(a,b){return a+(b-a)*Math.random();}
+function randInt(a,b){return Math.floor(rand(a,b+1));}
+function choice(arr){return arr[Math.floor(Math.random()*arr.length)];}
+
+// --- Particle system ---
+function spawnParticles(x,y,count,color,speed,life,size){
+  for(let i=0;i<count;i++){
+    const angle=Math.random()*Math.PI*2;
+    const spd=rand(0.5,1)*speed;
+    particles.push({
+      x,y,
+      vx:Math.cos(angle)*spd,
+      vy:Math.sin(angle)*spd,
+      life:rand(0.6,1)*life,
+      maxLife:life,
+      color,
+      size:rand(0.5,1)*size
+    });
+  }
+}
+
+function spawnRing(x,y,color){
+  particles.push({x,y,ring:true,r:0,maxR:40,life:1,maxLife:1,color});
+}
+
+function spawnTrail(x,y,color){
+  particles.push({
+    x,y,
+    vx:rand(-0.5,0.5),
+    vy:rand(0.5,2),
+    life:0.4,maxLife:0.4,
+    color,size:rand(2,5),
+    trail:true
+  });
+}
+
+// --- Reset game ---
+function resetGame(){
+  score=0;
+  multiplier=1;
+  multiplierDecay=0;
+  elapsed=0;
+  scrollSpeed=80;
+  distance=0;
+  playerX=VW/2;
+  playerY=VH*0.65;
+  playerVX=0;
+  shadowX=VW/2;
+  shadowY=VH*0.65-SHADOW_OFFSET_BASE;
+  shadowVX=0;
+  shadowAnchor='above';
+  tetherOffset=SHADOW_OFFSET_BASE;
+  pulseZoneActive=false;
+  pulseZoneTimer=0;
+  pulseZoneTetherMult=1;
+  driftPhase=0;
+  obstacles=[];
+  syncGates=[];
+  riskOrbs=[];
+  particles=[];
+  nearMissParticles=[];
+  spawnTimer=0;
+  gateSpawnTimer=0;
+  orbSpawnTimer=0;
+  pulseSpawnTimer=0;
+  shakeAmt=0;
+  freezeTimer=0;
+  bgHue=260;
+  noiseAlpha=0.06;
+}
+
+// --- Input ---
+function handleInput(){
+  if(state==='start'){
+    state='playing';
+    resetGame();
+    return;
+  }
+  if(state==='gameover'){
+    state='playing';
+    resetGame();
+    return;
+  }
+  if(state==='playing'){
+    swapAnchor();
+  }
+}
+
+canvas.addEventListener('pointerdown',e=>{e.preventDefault();handleInput();});
+document.addEventListener('keydown',e=>{
+  if(e.code==='Space'||e.code==='Enter'){e.preventDefault();handleInput();}
+});
+
+function swapAnchor(){
+  shadowAnchor=shadowAnchor==='above'?'below':'above';
+  // Tiny swap particle burst
+  spawnParticles(shadowX,shadowY,6,'hsl(280,100%,80%)',3,0.3,4);
+  shakeAmt=1.5;shakeDecay=0.85;
+}
+
+// --- Difficulty ---
+function getDifficulty(){
+  const t=elapsed;
+  if(t<5) return{speed:80,blockerW:60,gap:220,phase:0};
+  if(t<15) return{speed:110,blockerW:55,gap:200,phase:1};
+  if(t<30) return{speed:145,blockerW:50,gap:185,phase:2};
+  if(t<60) return{speed:185,blockerW:45,gap:170,phase:3};
+  return{speed:220+Math.min((t-60)*0.5,80),blockerW:40,gap:160,phase:4};
+}
+
+// --- Obstacle spawning ---
+function spawnObstacle(){
+  const d=getDifficulty();
+  const phase=d.phase;
+  const gap=d.gap;
+  const bw=d.blockerW;
+  const type=Math.random();
+
+  if(phase===0){
+    // Single blocker top or bottom
+    if(Math.random()<0.5){
+      // Top blocker
+      const h=rand(60,100);
+      obstacles.push({x:rand(30,VW-30-bw),y:-h,w:bw,h,kind:'solid'});
+    } else {
+      // Bottom blocker
+      const h=rand(60,100);
+      obstacles.push({x:rand(30,VW-30-bw),y:VH,w:bw,h,kind:'solid',fromBottom:true});
+    }
+    return;
+  }
+
+  if(phase===1){
+    if(type<0.5){
+      // Paired top+bottom
+      const topH=rand(80,130);
+      const botH=rand(80,130);
+      const cx=rand(bw,VW-bw*2);
+      obstacles.push({x:cx,y:-topH,w:bw,h:topH,kind:'solid'});
+      obstacles.push({x:cx,y:VH,w:bw,h:botH,kind:'solid',fromBottom:true});
+    } else {
+      // Horizontal wall with gap
+      const gapY=rand(VH*0.2,VH*0.8);
+      const h=rand(25,40);
+      // Left piece
+      if(gapY>h) obstacles.push({x:-10,y:gapY-gap/2-h,w:VW/2-rand(50,80),h,kind:'solid'});
+      // Right piece
+      if(gapY+gap/2<VH) obstacles.push({x:VW/2+rand(50,80),y:gapY+gap/2,w:VW/2,h,kind:'solid'});
+    }
+    return;
+  }
+
+  if(phase>=2){
+    if(type<0.35){
+      // Paired offset blockers
+      const topH=rand(70,120);
+      const botH=rand(70,120);
+      const cx1=rand(20,VW/2-bw);
+      const cx2=rand(VW/2,VW-bw*2);
+      obstacles.push({x:cx1,y:-topH,w:bw,h:topH,kind:'solid'});
+      obstacles.push({x:cx2,y:VH,w:bw,h:botH,kind:'solid',fromBottom:true});
+    } else if(type<0.65){
+      // Tunnel pair (left wall, right wall with gap)
+      const wallW=rand(30,50);
+      const gapW=gap;
+      const lx=rand(0,VW/3);
+      const h=rand(20,35);
+      obstacles.push({x:lx,y:-h*2,w:wallW,h:VH*0.5+rand(0,50),kind:'solid'});
+      obstacles.push({x:lx+wallW+gapW,y:-h*2,w:VW-(lx+wallW+gapW),h:VH*0.5+rand(0,50),kind:'solid'});
+    } else {
+      // Stagger set
+      for(let i=0;i<2;i++){
+        const h=rand(50,90);
+        const xOff=rand(20,VW-bw-20);
+        obstacles.push({x:xOff,y:i%2===0?-h:VH,w:bw,h,kind:'solid',fromBottom:i%2!==0,staggerDelay:i*0.3});
+      }
+    }
+  }
+}
+
+function spawnSyncGate(){
+  const d=getDifficulty();
+  if(d.phase<1) return;
+  const gateW=rand(55,80);
+  const gateX=rand(20,VW-gateW-20);
+  syncGates.push({x:gateX,y:-30,w:gateW,h:28,passed:false,bothPassed:0});
+}
+
+function spawnRiskOrb(){
+  const d=getDifficulty();
+  if(d.phase<3) return;
+  riskOrbs.push({
+    x:choice([rand(5,40),rand(VW-40,VW-5)]),
+    y:-15,
+    r:12,
+    collected:false,
+    hue:rand(0,360)
+  });
+}
+
+// --- Pulse zone ---
+function spawnPulseZone(){
+  if(elapsed<30) return;
+  pulseZoneActive=true;
+  pulseZoneTimer=4+rand(0,2);
+  pulseZoneTetherMult=1.6;
+}
+
+// --- Stagger delay helper ---
+let staggerAccum=0;
+
+// --- Obstacle update ---
+function updateObstacles(dt){
+  const d=getDifficulty();
+  scrollSpeed=d.speed;
+
+  // spawn obstacles
+  spawnTimer-=dt;
+  const spawnInterval=Math.max(0.6,1.8-elapsed*0.015);
+  if(spawnTimer<=0){
+    spawnTimer=spawnInterval;
+    spawnObstacle();
+  }
+
+  // spawn sync gates
+  gateSpawnTimer-=dt;
+  const gateInterval=Math.max(2.5,6-elapsed*0.05);
+  if(gateSpawnTimer<=0){
+    gateSpawnTimer=gateInterval;
+    spawnSyncGate();
+  }
+
+  // spawn risk orbs
+  orbSpawnTimer-=dt;
+  if(orbSpawnTimer<=0){
+    orbSpawnTimer=rand(4,8);
+    spawnRiskOrb();
+  }
+
+  // spawn pulse zones
+  pulseSpawnTimer-=dt;
+  if(pulseSpawnTimer<=0){
+    pulseSpawnTimer=rand(15,25);
+    spawnPulseZone();
+  }
+
+  // move obstacles
+  const dy=scrollSpeed*dt;
+  for(let o of obstacles){
+    if(o.fromBottom) o.y-=dy; else o.y+=dy;
+  }
+  for(let g of syncGates) g.y+=dy;
+  for(let o of riskOrbs) o.y+=dy;
+
+  // cleanup
+  obstacles=obstacles.filter(o=>o.fromBottom?o.y>-o.h-20:o.y<VH+o.h+20);
+  syncGates=syncGates.filter(g=>g.y<VH+50);
+  riskOrbs=riskOrbs.filter(o=>o.y<VH+20);
+}
+
+// --- Collision ---
+function rectCircle(rx,ry,rw,rh,cx,cy,cr){
+  const nearX=Math.max(rx,Math.min(cx,rx+rw));
+  const nearY=Math.max(ry,Math.min(cy,ry+rh));
+  const dx=cx-nearX, dy=cy-nearY;
+  return dx*dx+dy*dy<cr*cr;
+}
+
+function circleCircle(ax,ay,ar,bx,by,br){
+  const dx=ax-bx,dy=ay-by;
+  return dx*dx+dy*dy<(ar+br)*(ar+br);
+}
+
+function distRectCircle(rx,ry,rw,rh,cx,cy){
+  const nearX=Math.max(rx,Math.min(cx,rx+rw));
+  const nearY=Math.max(ry,Math.min(cy,ry+rh));
+  const dx=cx-nearX,dy=cy-nearY;
+  return Math.sqrt(dx*dx+dy*dy);
+}
+
+// --- Main update ---
+let prevTime=null;
+let gameOver=false;
+let gameOverTimer=0;
+
+function update(now){
+  if(prevTime===null){prevTime=now;}
+  let rawDt=(now-prevTime)/1000;
+  prevTime=now;
+  rawDt=Math.min(rawDt,0.05); // clamp dt
+
+  if(freezeTimer>0){
+    freezeTimer-=rawDt;
+    requestAnimationFrame(update);
+    draw();
+    return;
+  }
+
+  const dt=rawDt;
+
+  if(state==='playing'){
+    elapsed+=dt;
+    distance+=scrollSpeed*dt;
+    score=Math.floor(distance/10);
+
+    // Pulse zone
+    if(pulseZoneActive){
+      pulseZoneTimer-=dt;
+      if(pulseZoneTimer<=0){
+        pulseZoneActive=false;
+        pulseZoneTetherMult=1;
+      }
+    }
+    tetherOffset=SHADOW_OFFSET_BASE*(pulseZoneActive?pulseZoneTetherMult:1);
+
+    // Drift wave for player
+    driftPhase+=dt;
+    const targetX=VW/2+Math.sin(driftPhase*Math.PI*2*DRIFT_FREQ*scrollSpeed)*DRIFT_AMP;
+
+    // Smooth player X toward drift wave
+    const lerpSpeed=2.5;
+    playerVX+=(targetX-playerX)*lerpSpeed*dt;
+    playerVX*=Math.pow(0.85,dt*60);
+    playerX+=playerVX;
+    playerX=Math.max(PLAYER_R,Math.min(VW-PLAYER_R,playerX));
+
+    // Shadow follows player X with slight lag
+    shadowVX+=(playerX-shadowX)*3.5*dt;
+    shadowVX*=Math.pow(0.80,dt*60);
+    shadowX+=shadowVX;
+    shadowX=Math.max(PLAYER_R,Math.min(VW-PLAYER_R,shadowX));
+
+    // Shadow Y based on anchor
+    const targetShadowY=shadowAnchor==='above'?playerY-tetherOffset:playerY+tetherOffset;
+    shadowY+=(targetShadowY-shadowY)*8*dt;
+    shadowY=Math.max(PLAYER_R,Math.min(VH-PLAYER_R,shadowY));
+
+    // Multiplier decay
+    if(multiplierDecay>0){
+      multiplierDecay-=dt;
+      if(multiplierDecay<=0){
+        multiplier=Math.max(1,multiplier-1);
+        if(multiplier>1) multiplierDecay=3;
+      }
+    }
+
+    // Update obstacles
+    updateObstacles(dt);
+
+    // Check collisions with obstacles
+    let crashed=false;
+    for(let o of obstacles){
+      const oy=o.fromBottom?o.y-o.h:o.y;
+      if(rectCircle(o.x,oy,o.w,o.h,playerX,playerY,PLAYER_R)){crashed=true;break;}
+      if(rectCircle(o.x,oy,o.w,o.h,shadowX,shadowY,PLAYER_R)){crashed=true;break;}
+    }
+
+    if(crashed){
+      triggerGameOver();
+    }
+
+    // Near miss check
+    for(let o of obstacles){
+      const oy=o.fromBottom?o.y-o.h:o.y;
+      const dpDist=distRectCircle(o.x,oy,o.w,o.h,playerX,playerY);
+      const dsDist=distRectCircle(o.x,oy,o.w,o.h,shadowX,shadowY);
+      const nearThresh=PLAYER_R+6;
+      if((dpDist<nearThresh&&dpDist>PLAYER_R)||(dsDist<nearThresh&&dsDist>PLAYER_R)){
+        score+=2;
+        shakeAmt=Math.max(shakeAmt,1.2);shakeDecay=0.88;
+        spawnParticles(playerX,playerY,3,'hsl(60,100%,70%)',2,0.3,3);
+      }
+    }
+
+    // Sync gates
+    for(let g of syncGates){
+      if(g.passed) continue;
+      // Check if both pass through gate
+      const inGateX=(cx,cy)=>cx>g.x&&cx<g.x+g.w&&cy>g.y&&cy<g.y+g.h;
+      const pIn=inGateX(playerX,playerY);
+      const sIn=inGateX(shadowX,shadowY);
+      if(pIn&&sIn){
+        g.passed=true;
+        const bonus=50*multiplier;
+        score+=bonus;
+        multiplier=Math.min(multiplier+1,8);
+        multiplierDecay=4;
+        shakeAmt=1.8;shakeDecay=0.85;
+        spawnRing(g.x+g.w/2,g.y+g.h/2,'hsl(180,100%,70%)');
+        spawnParticles(g.x+g.w/2,g.y+g.h/2,18,'hsl(160,100%,70%)',5,0.6,6);
+        spawnParticles(g.x+g.w/2,g.y+g.h/2,10,'hsl(200,100%,80%)',3,0.5,4);
+      }
+    }
+
+    // Risk orbs
+    for(let o of riskOrbs){
+      if(o.collected) continue;
+      if(circleCircle(playerX,playerY,PLAYER_R,o.x,o.y,o.r)||
+         circleCircle(shadowX,shadowY,PLAYER_R,o.x,o.y,o.r)){
+        o.collected=true;
+        const bonus=30*multiplier;
+        score+=bonus;
+        spawnParticles(o.x,o.y,12,`hsl(${o.hue},100%,70%)`,4,0.5,5);
+      }
+    }
+
+    // Trail particles
+    if(Math.random()<0.4){
+      spawnTrail(playerX,playerY,'hsl('+(bgHue+20)+',80%,60%)');
+      spawnTrail(shadowX,shadowY,'hsl('+(bgHue+60)+',80%,70%)');
+    }
+
+    // Update particles
+    for(let p of particles){
+      p.life-=dt;
+      if(p.ring){
+        p.r=p.maxR*(1-p.life/p.maxLife);
+        continue;
+      }
+      p.x+=p.vx;
+      p.y+=p.vy;
+      if(p.trail) p.vy+=scrollSpeed*dt*0.05;
+    }
+    particles=particles.filter(p=>p.life>0);
+
+    // Screen shake
+    if(shakeAmt>0.1){
+      shakeAmt*=shakeDecay;
+    } else {
+      shakeAmt=0;
+    }
+
+    // BG hue
+    bgHue=(bgHue+dt*4)%360;
+
+    // VHS noise reduces at high speed
+    noiseAlpha=Math.max(0.01,0.06-scrollSpeed*0.0001);
+
+    // Update high score
+    if(score>highScore){
+      highScore=score;
+      localStorage.setItem(LS_KEY,highScore);
+    }
+
+    // Boundary check
+    if(playerY<PLAYER_R||playerY>VH-PLAYER_R||shadowY<PLAYER_R||shadowY>VH-PLAYER_R){
+      // Soft clamp (don't crash on boundary)
+      playerY=Math.max(PLAYER_R,Math.min(VH-PLAYER_R,playerY));
+      shadowY=Math.max(PLAYER_R,Math.min(VH-PLAYER_R,shadowY));
+    }
+  }
+
+  draw();
+  requestAnimationFrame(update);
+}
+
+function triggerGameOver(){
+  state='gameover';
+  freezeTimer=0.1;
+  shakeAmt=12;shakeDecay=0.75;
+  spawnParticles(playerX,playerY,25,'hsl(0,100%,70%)',7,1,8);
+  spawnParticles(shadowX,shadowY,25,'hsl(280,100%,70%)',7,1,8);
+  spawnRing(playerX,playerY,'hsl(0,100%,70%)');
+  spawnRing(shadowX,shadowY,'hsl(280,100%,70%)');
+}
+
+// --- Draw ---
+function draw(){
+  const W=canvas.width, H=canvas.height;
+
+  ctx.save();
+
+  // Shake
+  if(shakeAmt>0.1){
+    const sx=(Math.random()-0.5)*shakeAmt*2;
+    const sy=(Math.random()-0.5)*shakeAmt*2;
+    ctx.translate(scaleX(sx),scaleY(sy));
+  }
+
+  // Background gradient
+  const grad=ctx.createLinearGradient(0,0,0,H);
+  grad.addColorStop(0,`hsl(${bgHue},50%,6%)`);
+  grad.addColorStop(0.5,`hsl(${(bgHue+30)%360},45%,9%)`);
+  grad.addColorStop(1,`hsl(${(bgHue+60)%360},50%,6%)`);
+  ctx.fillStyle=grad;
+  ctx.fillRect(0,0,W,H);
+
+  // Grid lines (vaporwave)
+  ctx.save();
+  ctx.globalAlpha=0.07;
+  ctx.strokeStyle=`hsl(${bgHue},80%,60%)`;
+  ctx.lineWidth=1;
+  const gridSpacing=scaleX(40);
+  for(let x=0;x<W;x+=gridSpacing){
+    ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();
+  }
+  const gridY=scaleY(60);
+  for(let y=0;y<H;y+=gridY){
+    ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();
+  }
+  ctx.restore();
+
+  if(state==='start'){
+    drawStartScreen();
+    ctx.restore();
+    return;
+  }
+
+  // Draw particles
+  vctx();
+  for(let p of particles){
+    const alpha=p.life/p.maxLife;
+    if(p.ring){
+      ctx.save();
+      ctx.globalAlpha=alpha*0.7;
+      ctx.strokeStyle=p.color;
+      ctx.lineWidth=3;
+      ctx.beginPath();
+      ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+      ctx.stroke();
+      ctx.restore();
+      continue;
+    }
+    ctx.save();
+    ctx.globalAlpha=alpha*(p.trail?0.5:0.85);
+    ctx.fillStyle=p.color;
+    ctx.beginPath();
+    ctx.arc(p.x,p.y,p.size*(p.trail?alpha:1),0,Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  }
+  vrestore();
+
+  // Draw obstacles
+  vctx();
+  for(let o of obstacles){
+    const oy=o.fromBottom?o.y-o.h:o.y;
+    // Shadow fill
+    ctx.fillStyle=`rgba(5,3,15,0.95)`;
+    ctx.fillRect(o.x,oy,o.w,o.h);
+    // Neon outline
+    ctx.save();
+    ctx.shadowColor=`hsl(${bgHue+180},100%,70%)`;
+    ctx.shadowBlur=10;
+    ctx.strokeStyle=`hsl(${bgHue+180},100%,70%)`;
+    ctx.lineWidth=2;
+    ctx.strokeRect(o.x+1,oy+1,o.w-2,o.h-2);
+    ctx.restore();
+  }
+  vrestore();
+
+  // Draw sync gates
+  vctx();
+  for(let g of syncGates){
+    if(g.passed) continue;
+    ctx.save();
+    const gGrad=ctx.createLinearGradient(g.x,g.y,g.x+g.w,g.y);
+    gGrad.addColorStop(0,'hsla(160,100%,60%,0)');
+    gGrad.addColorStop(0.3,'hsla(160,100%,60%,0.3)');
+    gGrad.addColorStop(0.7,'hsla(160,100%,60%,0.3)');
+    gGrad.addColorStop(1,'hsla(160,100%,60%,0)');
+    ctx.fillStyle=gGrad;
+    ctx.fillRect(g.x,g.y,g.w,g.h);
+    // Gate outlines
+    ctx.strokeStyle='hsl(160,100%,60%)';
+    ctx.lineWidth=2;
+    ctx.shadowColor='hsl(160,100%,60%)';
+    ctx.shadowBlur=8;
+    ctx.beginPath();ctx.moveTo(g.x,g.y);ctx.lineTo(g.x,g.y+g.h);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(g.x+g.w,g.y);ctx.lineTo(g.x+g.w,g.y+g.h);ctx.stroke();
+    // SYNC label
+    ctx.globalAlpha=0.8;
+    ctx.font='bold 9px monospace';
+    ctx.fillStyle='hsl(160,100%,80%)';
+    ctx.textAlign='center';
+    ctx.shadowBlur=4;
+    ctx.fillText('SYNC',g.x+g.w/2,g.y+g.h/2+3);
+    ctx.restore();
+  }
+  vrestore();
+
+  // Draw risk orbs
+  vctx();
+  for(let o of riskOrbs){
+    if(o.collected) continue;
+    ctx.save();
+    ctx.shadowColor=`hsl(${o.hue},100%,60%)`;
+    ctx.shadowBlur=15;
+    const orbGrad=ctx.createRadialGradient(o.x-o.r*0.3,o.y-o.r*0.3,1,o.x,o.y,o.r);
+    orbGrad.addColorStop(0,`hsl(${o.hue},100%,90%)`);
+    orbGrad.addColorStop(1,`hsl(${o.hue},100%,40%)`);
+    ctx.fillStyle=orbGrad;
+    ctx.beginPath();
+    ctx.arc(o.x,o.y,o.r,0,Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  }
+  vrestore();
+
+  // Draw tether line
+  vctx();
+  ctx.save();
+  ctx.globalAlpha=0.5;
+  ctx.setLineDash([5,6]);
+  ctx.strokeStyle=`hsl(${bgHue+100},80%,70%)`;
+  ctx.lineWidth=1.5;
+  ctx.beginPath();
+  ctx.moveTo(playerX,playerY);
+  ctx.lineTo(shadowX,shadowY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+  vrestore();
+
+  // Draw pulse zone indicator
+  if(pulseZoneActive){
+    vctx();
+    ctx.save();
+    ctx.globalAlpha=0.15+0.05*Math.sin(elapsed*8);
+    ctx.fillStyle=`hsl(30,100%,60%)`;
+    ctx.fillRect(0,0,VW,VH);
+    ctx.restore();
+    // PULSE ZONE text
+    ctx.save();
+    ctx.globalAlpha=0.9;
+    ctx.font='bold 13px monospace';
+    ctx.fillStyle='hsl(30,100%,80%)';
+    ctx.textAlign='center';
+    ctx.shadowColor='hsl(30,100%,60%)';
+    ctx.shadowBlur=8;
+    ctx.fillText('PULSE ZONE',VW/2,30);
+    ctx.restore();
+    vrestore();
+  }
+
+  // Draw player
+  vctx();
+  drawBody(playerX,playerY,PLAYER_R,`hsl(${bgHue+20},90%,65%)`,'player');
+  drawBody(shadowX,shadowY,PLAYER_R,`hsl(${bgHue+80},90%,70%)`,'shadow');
+  vrestore();
+
+  // VHS noise
+  drawNoise(W,H);
+
+  // HUD
+  drawHUD(W,H);
+
+  if(state==='gameover'){
+    drawGameOverScreen();
+  }
+
+  ctx.restore();
+}
+
+function drawBody(x,y,r,color,type){
+  ctx.save();
+  // Glow
+  ctx.shadowColor=color;
+  ctx.shadowBlur=18;
+  // Body
+  const grad=ctx.createRadialGradient(x-r*0.3,y-r*0.3,1,x,y,r);
+  grad.addColorStop(0,'rgba(255,255,255,0.9)');
+  grad.addColorStop(0.4,color);
+  grad.addColorStop(1,color.replace('65%','20%').replace('70%','20%'));
+  ctx.fillStyle=grad;
+  ctx.beginPath();
+  ctx.arc(x,y,r,0,Math.PI*2);
+  ctx.fill();
+
+  // Inner highlight
+  ctx.globalAlpha=0.4;
+  ctx.fillStyle='white';
+  ctx.beginPath();
+  ctx.arc(x-r*0.25,y-r*0.25,r*0.35,0,Math.PI*2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawNoise(W,H){
+  if(noiseAlpha<0.01) return;
+  ctx.save();
+  ctx.globalAlpha=noiseAlpha;
+  // Scanlines
+  ctx.fillStyle='rgba(0,0,0,0.5)';
+  const step=4;
+  for(let y=0;y<H;y+=step*2){
+    ctx.fillRect(0,y,W,step);
+  }
+  ctx.restore();
+}
+
+function drawHUD(W,H){
+  const sx=W/VW, sy=H/VH;
+  ctx.save();
+  ctx.globalAlpha=0.9;
+
+  // Score
+  ctx.font=`bold ${Math.round(22*sx)}px monospace`;
+  ctx.fillStyle='white';
+  ctx.textAlign='left';
+  ctx.shadowColor='rgba(200,150,255,0.8)';
+  ctx.shadowBlur=10;
+  ctx.fillText(score,Math.round(12*sx),Math.round(32*sy));
+
+  // Multiplier
+  if(multiplier>1){
+    ctx.font=`bold ${Math.round(14*sx)}px monospace`;
+    ctx.fillStyle=`hsl(50,100%,70%)`;
+    ctx.shadowColor='hsl(50,100%,60%)';
+    ctx.fillText(`x${multiplier}`,Math.round(12*sx),Math.round(50*sy));
+  }
+
+  // High score
+  ctx.font=`${Math.round(11*sx)}px monospace`;
+  ctx.fillStyle='rgba(180,140,255,0.7)';
+  ctx.textAlign='right';
+  ctx.shadowBlur=4;
+  ctx.fillText(`BEST:${highScore}`,W-Math.round(12*sx),Math.round(22*sy));
+
+  ctx.restore();
+}
+
+function drawStartScreen(){
+  const W=canvas.width,H=canvas.height;
+  const sx=W/VW,sy=H/VH;
+
+  ctx.save();
+  ctx.globalAlpha=0.85;
+  ctx.fillStyle='rgba(8,4,20,0.7)';
+  ctx.fillRect(0,0,W,H);
+  ctx.restore();
+
+  ctx.save();
+  // Title
+  ctx.textAlign='center';
+  ctx.shadowColor='hsl(280,100%,70%)';
+  ctx.shadowBlur=30;
+  ctx.font=`bold ${Math.round(48*sx)}px monospace`;
+  ctx.fillStyle='white';
+  ctx.fillText('DUAL',W/2,H*0.28);
+  ctx.fillText('DRIFT',W/2,H*0.28+Math.round(52*sy));
+
+  ctx.shadowBlur=12;
+  ctx.font=`${Math.round(13*sx)}px monospace`;
+  ctx.fillStyle='hsl(280,80%,75%)';
+  ctx.fillText('ANCHOR SWAP',W/2,H*0.28+Math.round(80*sy));
+
+  // Instructions
+  ctx.shadowColor='hsl(180,100%,60%)';
+  ctx.shadowBlur=8;
+  ctx.font=`${Math.round(11*sx)}px monospace`;
+  ctx.fillStyle='rgba(200,220,255,0.8)';
+  const lines=[
+    'Tap / Space to swap anchor',
+    'Both bodies must survive',
+    'Hit SYNC gates for multiplier',
+    'Grab Risk Orbs for bonus'
+  ];
+  lines.forEach((l,i)=>{
+    ctx.fillText(l,W/2,H*0.52+i*Math.round(20*sy));
+  });
+
+  // Challenge banner
+  if(challengeScore>0){
+    ctx.shadowColor='hsl(50,100%,60%)';
+    ctx.shadowBlur=10;
+    ctx.font=`bold ${Math.round(13*sx)}px monospace`;
+    ctx.fillStyle='hsl(50,100%,70%)';
+    ctx.fillText(`BEAT ${challengeScore} TO WIN!`,W/2,H*0.72);
+  }
+
+  // Tap to start
+  ctx.shadowColor='hsl(160,100%,60%)';
+  ctx.shadowBlur=15;
+  const pulse=0.7+0.3*Math.sin(Date.now()*0.003);
+  ctx.globalAlpha=pulse;
+  ctx.font=`bold ${Math.round(16*sx)}px monospace`;
+  ctx.fillStyle='hsl(160,100%,70%)';
+  ctx.fillText('TAP TO START',W/2,H*0.82);
+
+  ctx.restore();
+}
+
+function drawGameOverScreen(){
+  const W=canvas.width,H=canvas.height;
+  const sx=W/VW,sy=H/VH;
+
+  ctx.save();
+  ctx.globalAlpha=0.8;
+  ctx.fillStyle='rgba(5,2,15,0.75)';
+  ctx.fillRect(0,0,W,H);
+  ctx.restore();
+
+  ctx.save();
+  ctx.textAlign='center';
+
+  ctx.shadowColor='hsl(0,100%,60%)';
+  ctx.shadowBlur=25;
+  ctx.font=`bold ${Math.round(36*sx)}px monospace`;
+  ctx.fillStyle='white';
+  ctx.fillText('GAME OVER',W/2,H*0.3);
+
+  ctx.shadowBlur=10;
+  ctx.font=`${Math.round(22*sx)}px monospace`;
+  ctx.fillStyle='hsl(280,80%,80%)';
+  ctx.fillText(`SCORE: ${score}`,W/2,H*0.43);
+
+  ctx.font=`${Math.round(15*sx)}px monospace`;
+  ctx.fillStyle='rgba(180,140,255,0.8)';
+  ctx.fillText(`BEST: ${highScore}`,W/2,H*0.52);
+
+  if(challengeScore>0){
+    const won=score>challengeScore;
+    ctx.shadowColor=won?'hsl(120,100%,60%)':'hsl(0,100%,60%)';
+    ctx.shadowBlur=12;
+    ctx.font=`bold ${Math.round(14*sx)}px monospace`;
+    ctx.fillStyle=won?'hsl(120,100%,70%)':'hsl(0,100%,70%)';
+    ctx.fillText(won?`YOU WIN! Beat ${challengeScore}`:`You lost to ${challengeScore}`,W/2,H*0.6);
+  }
+
+  // Tap to retry
+  const pulse=0.7+0.3*Math.sin(Date.now()*0.004);
+  ctx.globalAlpha=pulse;
+  ctx.shadowColor='hsl(160,100%,60%)';
+  ctx.shadowBlur=15;
+  ctx.font=`bold ${Math.round(16*sx)}px monospace`;
+  ctx.fillStyle='hsl(160,100%,70%)';
+  ctx.fillText('TAP TO RETRY',W/2,H*0.72);
+  ctx.restore();
+
+  // Share button (DOM, only add once)
+  if(!document.getElementById('share-btn')){
+    const btn=document.createElement('button');
+    btn.id='share-btn';
+    btn.textContent='Challenge a Friend';
+    btn.style.cssText=`
+      position:absolute;
+      bottom:${Math.round(H*0.12)}px;
+      left:50%;transform:translateX(-50%);
+      background:linear-gradient(135deg,hsl(280,80%,40%),hsl(200,80%,40%));
+      color:white;border:2px solid hsl(280,100%,70%);
+      border-radius:24px;padding:10px 28px;
+      font-size:14px;font-family:monospace;
+      cursor:pointer;letter-spacing:1px;
+      box-shadow:0 0 20px hsl(280,80%,40%);
+    `;
+    btn.addEventListener('click',shareGame);
+    shell.appendChild(btn);
+  } else {
+    document.getElementById('share-btn').style.display='block';
+  }
+}
+
+function shareGame(){
+  const url=`https://balinti.github.io/dual-drift/?challenge=${score}`;
+  const text=`I scored ${score} in Dual Drift! Can you beat me? Play here:`;
+  if(navigator.share){
+    navigator.share({title:'Dual Drift',text,url}).catch(()=>{});
+  } else {
+    navigator.clipboard.writeText(`${text} ${url}`).then(()=>{
+      alert('Link copied! Share it with a friend.');
+    }).catch(()=>{
+      prompt('Copy this link:',url);
+    });
+  }
+}
+
+// Hide share btn when not gameover
+function manageShareBtn(){
+  const btn=document.getElementById('share-btn');
+  if(btn) btn.style.display=state==='gameover'?'block':'none';
+}
+
+// --- Main loop ---
+function loop(now){
+  manageShareBtn();
+  update(now);
+}
+
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

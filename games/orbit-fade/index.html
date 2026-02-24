@@ -1,0 +1,1240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Orbit Fade - Free HTML5 Game</title>
+  <meta name="description" content="Play Orbit Fade - Tap to alternate colors and shrink orbiting planets, avoiding mismatched color explosions in a vibrant galaxy.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0d0d2b">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Orbit Fade - Free HTML5 Game">
+  <meta property="og:description" content="Play Orbit Fade - Tap to toggle IN/OUT polarity and destroy incoming asteroids before they pass the ring. Beat your high score!">
+  <meta property="og:url" content="https://balinti.github.io/orbit-fade/">
+  <meta property="og:image" content="https://balinti.github.io/orbit-fade/og-card.jpg">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Orbit Fade - Free HTML5 Game">
+  <meta name="twitter:description" content="Tap to toggle IN/OUT polarity and destroy incoming asteroids. How long can you survive?">
+  <meta name="twitter:image" content="https://balinti.github.io/orbit-fade/og-card.jpg">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <!-- Structured Data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "VideoGame",
+    "name": "Orbit Fade",
+    "description": "Tap to toggle IN/OUT polarity and destroy incoming asteroids before they pass the ring.",
+    "url": "https://balinti.github.io/orbit-fade/",
+    "image": "https://balinti.github.io/orbit-fade/og-card.jpg",
+    "genre": "Hyper-Casual",
+    "gamePlatform": "Web Browser",
+    "applicationCategory": "Game",
+    "operatingSystem": "Any"
+  }
+  </script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%; height: 100%;
+      background: #08081a;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      color: #fff;
+      overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+    }
+
+    /* Ad rails */
+    #ad-top {
+      width: 100%; height: 50px;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(0,0,0,0.4);
+      font-size: 11px; color: #555;
+      letter-spacing: 1px;
+      flex-shrink: 0;
+    }
+    #ad-bottom {
+      width: 100%; height: 50px;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(0,0,0,0.4);
+      font-size: 11px; color: #555;
+      letter-spacing: 1px;
+      flex-shrink: 0;
+    }
+
+    #root {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      align-items: center;
+    }
+
+    #game-wrap {
+      flex: 1;
+      width: 100%;
+      max-width: 420px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Overlay screens */
+    .overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: rgba(8,8,26,0.88);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      z-index: 10;
+      padding: 24px 20px;
+      text-align: center;
+    }
+    .overlay.hidden { display: none; }
+
+    .game-title {
+      font-size: clamp(2rem, 10vw, 2.8rem);
+      font-weight: 900;
+      letter-spacing: 2px;
+      background: linear-gradient(135deg, #a78bfa, #38bdf8, #f472b6);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 6px;
+      line-height: 1.1;
+    }
+    .game-subtitle {
+      font-size: 0.85rem;
+      color: #a0aec0;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      margin-bottom: 28px;
+    }
+    .rules-box {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      padding: 14px 18px;
+      margin-bottom: 28px;
+      max-width: 320px;
+    }
+    .rules-box p {
+      font-size: 0.82rem;
+      color: #c4c4e0;
+      line-height: 1.7;
+    }
+    .rules-box strong { color: #f0f0ff; }
+
+    .challenge-banner {
+      background: linear-gradient(135deg, rgba(167,139,250,0.2), rgba(56,189,248,0.2));
+      border: 1px solid rgba(167,139,250,0.4);
+      border-radius: 10px;
+      padding: 10px 18px;
+      margin-bottom: 18px;
+      font-size: 0.9rem;
+      color: #e0d4ff;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #7c3aed, #2563eb);
+      border: none;
+      border-radius: 50px;
+      color: #fff;
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      padding: 14px 40px;
+      cursor: pointer;
+      margin: 6px;
+      transition: transform 0.1s, box-shadow 0.1s;
+      box-shadow: 0 4px 20px rgba(124,58,237,0.4);
+    }
+    .btn-primary:active { transform: scale(0.96); }
+    .btn-secondary {
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 50px;
+      color: #fff;
+      font-size: 0.9rem;
+      font-weight: 600;
+      letter-spacing: 1px;
+      padding: 12px 30px;
+      cursor: pointer;
+      margin: 6px;
+      transition: transform 0.1s;
+    }
+    .btn-secondary:active { transform: scale(0.96); }
+
+    .tap-hint {
+      font-size: 1rem;
+      color: #a78bfa;
+      animation: pulse-hint 1.5s ease-in-out infinite;
+      margin-top: 10px;
+      letter-spacing: 1px;
+    }
+    @keyframes pulse-hint {
+      0%,100%{ opacity:0.5; transform:scale(1); }
+      50%{ opacity:1; transform:scale(1.04); }
+    }
+
+    .best-display {
+      font-size: 0.85rem;
+      color: #718096;
+      margin-top: 10px;
+    }
+    .best-display span { color: #a78bfa; font-weight: 700; }
+
+    /* Gameover styles */
+    .go-score-main {
+      font-size: clamp(2.5rem,14vw,4rem);
+      font-weight: 900;
+      line-height: 1;
+      background: linear-gradient(135deg, #f472b6, #fb923c);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin: 8px 0;
+    }
+    .go-label { font-size: 0.75rem; color: #718096; letter-spacing: 2px; text-transform: uppercase; }
+    .go-stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin: 16px 0;
+      width: 100%;
+      max-width: 280px;
+    }
+    .go-stat {
+      background: rgba(255,255,255,0.05);
+      border-radius: 10px;
+      padding: 10px;
+    }
+    .go-stat-val { font-size: 1.2rem; font-weight: 700; color: #e2e8f0; }
+    .go-stat-label { font-size: 0.7rem; color: #718096; letter-spacing: 1px; margin-top: 2px; }
+    .go-cause { font-size: 0.9rem; color: #f87171; margin-bottom: 12px; }
+
+    /* HUD */
+    #hud {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      padding: 10px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      pointer-events: none;
+      z-index: 5;
+    }
+    #hud.hidden { display: none; }
+    .hud-score {
+      font-size: 1.6rem;
+      font-weight: 900;
+      color: #fff;
+      text-shadow: 0 0 20px rgba(167,139,250,0.8);
+    }
+    .hud-combo {
+      font-size: 0.7rem;
+      color: #a78bfa;
+      letter-spacing: 1px;
+    }
+    .hud-right {
+      text-align: right;
+    }
+    .hud-mult {
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: #f472b6;
+    }
+    .hud-closecalls {
+      font-size: 0.7rem;
+      color: #38bdf8;
+    }
+    #lock-indicator {
+      position: absolute;
+      bottom: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(251,113,133,0.25);
+      border: 1px solid rgba(251,113,133,0.6);
+      border-radius: 20px;
+      padding: 4px 14px;
+      font-size: 0.75rem;
+      color: #fca5a5;
+      letter-spacing: 1px;
+      pointer-events: none;
+      z-index: 5;
+      animation: lock-pulse 0.25s ease-in-out infinite alternate;
+    }
+    @keyframes lock-pulse {
+      from { opacity: 0.7; }
+      to   { opacity: 1; }
+    }
+    #lock-indicator.hidden { display: none; }
+
+    .share-toast {
+      position: absolute;
+      bottom: 60px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(56,189,248,0.15);
+      border: 1px solid rgba(56,189,248,0.4);
+      border-radius: 8px;
+      padding: 8px 18px;
+      font-size: 0.8rem;
+      color: #7dd3fc;
+      pointer-events: none;
+      z-index: 20;
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+<div id="root">
+  <div id="ad-top">ADVERTISEMENT</div>
+  <div id="game-wrap">
+    <canvas id="c"></canvas>
+
+    <!-- HUD -->
+    <div id="hud" class="hidden">
+      <div>
+        <div class="hud-score" id="hud-score">0</div>
+        <div class="hud-combo" id="hud-combo">COMBO x1</div>
+      </div>
+      <div class="hud-right">
+        <div class="hud-mult" id="hud-mult">×1</div>
+        <div class="hud-closecalls" id="hud-cc">CLOSE: 0</div>
+      </div>
+    </div>
+
+    <!-- Lock indicator -->
+    <div id="lock-indicator" class="hidden">🔒 LOCKED</div>
+
+    <!-- Start Screen -->
+    <div id="screen-start" class="overlay">
+      <div class="game-title">ORBIT FADE</div>
+      <div class="game-subtitle">Polarity Pulse</div>
+      <div id="challenge-banner" class="challenge-banner hidden"></div>
+      <div class="rules-box">
+        <p>
+          Tap to toggle <strong>IN ◆</strong> / <strong>OUT ◇</strong>.<br>
+          Match polarity at the ring to destroy asteroids.<br>
+          Graze near-misses trigger <strong>Fade Burst</strong> bonuses!
+        </p>
+      </div>
+      <button class="btn-primary" id="btn-start">TAP TO START</button>
+      <div class="best-display">Best: <span id="start-best">0</span></div>
+    </div>
+
+    <!-- Game Over Screen -->
+    <div id="screen-gameover" class="overlay hidden">
+      <div class="go-label">GAME OVER</div>
+      <div class="go-score-main" id="go-score">0</div>
+      <div class="go-cause" id="go-cause">Wrong polarity!</div>
+      <div class="go-stats">
+        <div class="go-stat">
+          <div class="go-stat-val" id="go-best">0</div>
+          <div class="go-stat-label">BEST</div>
+        </div>
+        <div class="go-stat">
+          <div class="go-stat-val" id="go-mult">×1</div>
+          <div class="go-stat-label">MAX MULT</div>
+        </div>
+        <div class="go-stat">
+          <div class="go-stat-val" id="go-cc">0</div>
+          <div class="go-stat-label">CLOSE CALLS</div>
+        </div>
+        <div class="go-stat">
+          <div class="go-stat-val" id="go-hits">0</div>
+          <div class="go-stat-label">HITS</div>
+        </div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;justify-content:center;">
+        <button class="btn-primary" id="btn-retry">RETRY</button>
+        <button class="btn-secondary" id="btn-share">SHARE ↗</button>
+      </div>
+    </div>
+
+    <div id="share-toast" class="share-toast hidden">Copied to clipboard!</div>
+  </div>
+  <div id="ad-bottom">ADVERTISEMENT</div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+// ─── CONSTANTS ──────────────────────────────────────────────────────────────
+const HS_KEY = 'of_highscore_v1';
+const CANONICAL = 'https://balinti.github.io/orbit-fade/';
+
+// ─── DOM ────────────────────────────────────────────────────────────────────
+const canvas        = document.getElementById('c');
+const ctx           = canvas.getContext('2d');
+const hud           = document.getElementById('hud');
+const hudScore      = document.getElementById('hud-score');
+const hudCombo      = document.getElementById('hud-combo');
+const hudMult       = document.getElementById('hud-mult');
+const hudCC         = document.getElementById('hud-cc');
+const lockInd       = document.getElementById('lock-indicator');
+const screenStart   = document.getElementById('screen-start');
+const screenGO      = document.getElementById('screen-gameover');
+const btnStart      = document.getElementById('btn-start');
+const btnRetry      = document.getElementById('btn-retry');
+const btnShare      = document.getElementById('btn-share');
+const challengeBanner = document.getElementById('challenge-banner');
+const startBest     = document.getElementById('start-best');
+const goScore       = document.getElementById('go-score');
+const goCause       = document.getElementById('go-cause');
+const goBest        = document.getElementById('go-best');
+const goMult        = document.getElementById('go-mult');
+const goCC          = document.getElementById('go-cc');
+const goHits        = document.getElementById('go-hits');
+const shareToast    = document.getElementById('share-toast');
+
+// ─── CANVAS SIZING ──────────────────────────────────────────────────────────
+let W, H, DPR, cx, cy;
+function resize() {
+  const wrap = document.getElementById('game-wrap');
+  const rect = wrap.getBoundingClientRect();
+  W = rect.width;
+  H = rect.height;
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width  = W * DPR;
+  canvas.height = H * DPR;
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.scale(DPR, DPR);
+  cx = W * 0.5;
+  cy = H * 0.52;
+}
+resize();
+window.addEventListener('resize', () => { resize(); });
+
+// ─── GAME STATE ─────────────────────────────────────────────────────────────
+const STATES = { START: 'start', PLAYING: 'playing', GAMEOVER: 'gameover' };
+let state = STATES.START;
+
+// Ring
+const POLARITY = { IN: 0, OUT: 1 };
+let rIn, rOut; // computed each frame from W,H
+
+function getRIn()  { return 0.18 * Math.min(W, H); }
+function getROut() { return 0.33 * Math.min(W, H); }
+
+let ring = {
+  polarity: POLARITY.OUT,
+  radius: 0,
+  targetRadius: 0,
+  thickness: 18,
+  minThick: 6,
+  maxThick: 26,
+  hue: 260, // purple for IN
+  locked: false,
+  lockTimer: 0,
+  lockDuration: 400,
+  stutterPhase: 0,
+};
+
+// Asteroids
+let asteroids = [];
+let lastAsteroidAngle = -1;
+
+// Particles
+let particles = [];
+
+// Floating texts
+let floatTexts = [];
+
+// Shockwaves
+let shockwaves = [];
+
+// Score
+let score = 0;
+let combo = 0;
+let maxMult = 1;
+let closeCalls = 0;
+let hits = 0;
+
+// Time
+let elapsed = 0; // seconds
+let lastTime = 0;
+
+// Screen shake
+let shakeTimer = 0;
+let shakeMag = 0;
+let shakeDecay = 0;
+
+// Time-slow
+let timeScale = 1;
+let timeSlowTimer = 0;
+
+// Hue drift
+let bgHue = 220;
+
+// High score
+let highScore = parseInt(localStorage.getItem(HS_KEY) || '0', 10);
+
+// Challenge
+let challengeScore = 0;
+
+// ─── SPAWN LANES ────────────────────────────────────────────────────────────
+const NUM_LANES = 12;
+function laneAngle(i) { return (i / NUM_LANES) * Math.PI * 2; }
+
+function pickLane(count = 1) {
+  const lanes = [];
+  let prev = lastAsteroidAngle;
+  for (let i = 0; i < count; i++) {
+    let l;
+    let attempts = 0;
+    do {
+      l = Math.floor(Math.random() * NUM_LANES);
+      attempts++;
+    } while (l === prev && attempts < 20);
+    lanes.push(l);
+    prev = l;
+  }
+  lastAsteroidAngle = lanes[lanes.length - 1];
+  return lanes;
+}
+
+// ─── DIFFICULTY ─────────────────────────────────────────────────────────────
+function getDifficulty() {
+  const t = elapsed;
+  let speed = 40 + t * 2.2;
+  speed = Math.min(speed, 180);
+  let spawnInterval = Math.max(0.55, 1.8 - t * 0.035);
+  let doubleChance = t > 10 ? Math.min(0.35, (t - 10) * 0.018) : 0;
+  let echoChance   = t > 25 ? Math.min(0.4,  (t - 25) * 0.016) : 0;
+  let lockChance   = t > 45 ? Math.min(0.35, (t - 45) * 0.01)  : 0;
+  return { speed, spawnInterval, doubleChance, echoChance, lockChance };
+}
+
+// ─── ASTEROID CREATION ──────────────────────────────────────────────────────
+let spawnAccum = 0;
+
+function spawnAsteroid(laneIdx, type) {
+  const angle = laneAngle(laneIdx) + (Math.random() - 0.5) * 0.08;
+  const spawnDist = Math.min(W, H) * 0.62;
+  const { speed } = getDifficulty();
+  return {
+    angle,
+    dist: spawnDist,
+    type,       // 0 = IN(◆), 1 = OUT(◇)
+    speed,
+    radius: 10,
+    hue: type === 0 ? 270 : 190,
+    echo: false,
+    echoed: false, // has this asteroid already split?
+    dead: false,
+    graze: false,
+    alpha: 1,
+  };
+}
+
+function trySpawn(dt) {
+  const diff = getDifficulty();
+  spawnAccum += dt;
+  if (spawnAccum < diff.spawnInterval) return;
+  spawnAccum = 0;
+
+  const isDouble = Math.random() < diff.doubleChance;
+  const count = isDouble ? 2 : 1;
+  const lanes = pickLane(count);
+
+  for (const lane of lanes) {
+    const type = Math.random() < 0.5 ? 0 : 1;
+    asteroids.push(spawnAsteroid(lane, type));
+  }
+}
+
+// ─── PARTICLE SYSTEM ────────────────────────────────────────────────────────
+function spawnHitParticles(x, y, hue, count = 14) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 40 + Math.random() * 100;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 1,
+      decay: 0.025 + Math.random() * 0.03,
+      size: 2 + Math.random() * 4,
+      hue: hue + (Math.random() - 0.5) * 30,
+      type: 'dot',
+    });
+  }
+}
+
+function spawnGrazeParticles(x, y) {
+  for (let i = 0; i < 20; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 50 + Math.random() * 120;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 1,
+      decay: 0.02 + Math.random() * 0.025,
+      size: 2 + Math.random() * 5,
+      hue: 200 + Math.random() * 60,
+      type: 'dot',
+    });
+  }
+}
+
+function spawnShockwave(x, y, r, hue, maxR, duration = 0.4) {
+  shockwaves.push({ x, y, r, maxR, hue, duration, elapsed: 0 });
+}
+
+function spawnFloatText(x, y, text, hue) {
+  floatTexts.push({ x, y, text, hue, life: 1, decay: 0.02, vy: -60 });
+}
+
+// ─── RING TOGGLE ────────────────────────────────────────────────────────────
+function toggleRing() {
+  if (state !== STATES.PLAYING) return;
+  if (ring.locked) return;
+
+  ring.polarity = ring.polarity === POLARITY.IN ? POLARITY.OUT : POLARITY.IN;
+  ring.targetRadius = ring.polarity === POLARITY.IN ? getRIn() : getROut();
+
+  // Pulse lock mechanic
+  const diff = getDifficulty();
+  if (Math.random() < diff.lockChance) {
+    ring.locked = true;
+    ring.lockTimer = ring.lockDuration;
+    ring.stutterPhase = 0;
+    lockInd.classList.remove('hidden');
+  }
+
+  // Subtle shake on tap
+  triggerShake(1.5, 0.08, 0.12);
+}
+
+// ─── SHAKE ──────────────────────────────────────────────────────────────────
+function triggerShake(mag, decay, duration) {
+  shakeMag  = Math.max(shakeMag, mag);
+  shakeDecay = decay;
+  shakeTimer = Math.max(shakeTimer, duration);
+}
+
+// ─── COLLISION ──────────────────────────────────────────────────────────────
+const GRAZE_MARGIN = 7;
+
+function checkCollisions() {
+  const ringR  = ring.radius;
+  const halfT  = ring.thickness * 0.5;
+
+  for (const a of asteroids) {
+    if (a.dead) continue;
+
+    const innerEdge = ringR - halfT;
+    const outerEdge = ringR + halfT;
+    const grazeLow  = innerEdge - GRAZE_MARGIN;
+    const grazeHigh = outerEdge + GRAZE_MARGIN;
+
+    // Is asteroid inside the ring band?
+    const inBand = (a.dist >= innerEdge && a.dist <= outerEdge);
+
+    // Graze zone (slightly wider, different polarity)
+    const inGraze = !inBand && (a.dist >= grazeLow && a.dist <= grazeHigh);
+
+    if (inBand) {
+      const correctPol = (a.type === POLARITY.IN && ring.polarity === POLARITY.IN) ||
+                         (a.type === POLARITY.OUT && ring.polarity === POLARITY.OUT);
+      if (correctPol) {
+        // HIT!
+        a.dead = true;
+        hits++;
+        combo++;
+        const mult = 1 + Math.floor(combo / 6);
+        maxMult = Math.max(maxMult, mult);
+        const pts = 10 * mult;
+        score += pts;
+        ring.thickness = Math.max(ring.minThick, ring.thickness - 0.55);
+
+        const ax = cx + Math.cos(a.angle) * a.dist;
+        const ay = cy + Math.sin(a.angle) * a.dist;
+        spawnHitParticles(ax, ay, a.hue);
+        spawnShockwave(cx, cy, ringR - halfT, a.hue, ringR + halfT + 20, 0.35);
+        spawnFloatText(ax, ay - 20, '+' + pts, a.hue);
+        triggerShake(2, 0.1, 0.1);
+        updateHUD();
+      } else {
+        // WRONG POLARITY - DEATH
+        const ax = cx + Math.cos(a.angle) * a.dist;
+        const ay = cy + Math.sin(a.angle) * a.dist;
+        spawnHitParticles(ax, ay, 0, 30);
+        spawnShockwave(cx, cy, 0, 0, Math.max(W, H), 0.5);
+        triggerShake(6, 0.08, 0.25);
+        gameOver('Wrong polarity!');
+        return;
+      }
+    } else if (inGraze && !a.graze) {
+      // GRAZE - close call
+      const wrongPol = (a.type === POLARITY.IN && ring.polarity !== POLARITY.IN) ||
+                       (a.type === POLARITY.OUT && ring.polarity !== POLARITY.OUT);
+      if (wrongPol) {
+        a.graze = true;
+        closeCalls++;
+        const mult = 1 + Math.floor(combo / 6);
+        const pts = 15 + 3 * mult;
+        score += pts;
+        combo = Math.max(0, combo - 2);
+        ring.thickness = Math.min(ring.maxThick, ring.thickness + 6);
+
+        // Time slow
+        timeScale = 0.3;
+        timeSlowTimer = 0.12;
+
+        const ax = cx + Math.cos(a.angle) * a.dist;
+        const ay = cy + Math.sin(a.angle) * a.dist;
+        spawnGrazeParticles(ax, ay);
+        spawnShockwave(cx, cy, ringR - 10, 200, ringR + 30, 0.4);
+        spawnFloatText(ax, ay - 25, 'CLOSE! +' + pts, 190);
+        triggerShake(2.5, 0.1, 0.12);
+        updateHUD();
+      }
+    }
+  }
+}
+
+// ─── ECHO ASTEROIDS ─────────────────────────────────────────────────────────
+function checkEchos() {
+  const midR = (getRIn() + getROut()) * 0.5;
+  for (const a of asteroids) {
+    if (a.dead || a.echoed) continue;
+    if (a.dist <= midR + 10 && a.dist >= midR - 10) {
+      const diff = getDifficulty();
+      if (Math.random() < diff.echoChance) {
+        a.echoed = true;
+        // Spawn opposite type with angle offset
+        const echo = spawnAsteroid(0, 1 - a.type);
+        echo.angle = a.angle + (Math.random() < 0.5 ? 0.18 : -0.18);
+        echo.dist  = a.dist;
+        echo.echo  = true;
+        echo.echoed = true;
+        asteroids.push(echo);
+        spawnFloatText(
+          cx + Math.cos(echo.angle) * echo.dist,
+          cy + Math.sin(echo.angle) * echo.dist - 10,
+          'ECHO!', 50
+        );
+      }
+    }
+  }
+}
+
+// ─── HUD UPDATE ─────────────────────────────────────────────────────────────
+function updateHUD() {
+  const mult = 1 + Math.floor(combo / 6);
+  hudScore.textContent = score;
+  hudCombo.textContent = 'COMBO ' + combo;
+  hudMult.textContent  = '×' + mult;
+  hudCC.textContent    = 'CLOSE: ' + closeCalls;
+}
+
+// ─── GAME INIT ──────────────────────────────────────────────────────────────
+function initGame() {
+  ring.polarity = POLARITY.OUT;
+  ring.radius   = getROut();
+  ring.targetRadius = getROut();
+  ring.thickness = 18;
+  ring.locked   = false;
+  ring.lockTimer = 0;
+  ring.stutterPhase = 0;
+
+  asteroids   = [];
+  particles   = [];
+  floatTexts  = [];
+  shockwaves  = [];
+  score       = 0;
+  combo       = 0;
+  maxMult     = 1;
+  closeCalls  = 0;
+  hits        = 0;
+  elapsed     = 0;
+  spawnAccum  = 0;
+  shakeTimer  = 0;
+  shakeMag    = 0;
+  timeScale   = 1;
+  timeSlowTimer = 0;
+  bgHue       = 220;
+  lastAsteroidAngle = -1;
+
+  lockInd.classList.add('hidden');
+  updateHUD();
+}
+
+// ─── GAME OVER ──────────────────────────────────────────────────────────────
+function gameOver(cause) {
+  state = STATES.GAMEOVER;
+
+  if (score > highScore) {
+    highScore = score;
+    localStorage.setItem(HS_KEY, highScore);
+  }
+
+  goCause.textContent = cause;
+  goScore.textContent = score;
+  goBest.textContent  = highScore;
+  goMult.textContent  = '×' + maxMult;
+  goCC.textContent    = closeCalls;
+  goHits.textContent  = hits;
+
+  screenGO.classList.remove('hidden');
+  hud.classList.add('hidden');
+  lockInd.classList.add('hidden');
+}
+
+// ─── DRAWING ────────────────────────────────────────────────────────────────
+function drawBackground() {
+  // Gradient background with hue drift
+  const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(W, H) * 0.8);
+  grad.addColorStop(0, `hsl(${bgHue}, 40%, 12%)`);
+  grad.addColorStop(1, `hsl(${bgHue + 30}, 60%, 4%)`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Star field
+  ctx.save();
+  ctx.globalAlpha = 0.5;
+  // Static stars (seeded by hash trick using closure)
+  for (let i = 0; i < 60; i++) {
+    const sx = ((i * 137.508 + 17) % W);
+    const sy = ((i * 198.372 + 31) % H);
+    const sr = 0.5 + (i % 3) * 0.4;
+    ctx.beginPath();
+    ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+    ctx.fillStyle = `hsl(${200 + i * 7}, 60%, 80%)`;
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawStar() {
+  // Central star
+  const r = 14;
+  const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 3);
+  glow.addColorStop(0, `hsla(${bgHue + 60}, 100%, 95%, 0.9)`);
+  glow.addColorStop(0.3, `hsla(${bgHue + 60}, 100%, 70%, 0.4)`);
+  glow.addColorStop(1, `hsla(${bgHue + 60}, 100%, 50%, 0)`);
+  ctx.beginPath();
+  ctx.arc(cx, cy, r * 3, 0, Math.PI * 2);
+  ctx.fillStyle = glow;
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = `hsl(${bgHue + 60}, 100%, 90%)`;
+  ctx.fill();
+}
+
+function drawRing() {
+  const r = ring.radius;
+  const polIsIn = ring.polarity === POLARITY.IN;
+  const hue = polIsIn ? 270 : 190;
+
+  // Stutter effect when locked
+  const stutterOff = ring.locked ? Math.sin(ring.stutterPhase) * 2 : 0;
+
+  // Outer glow
+  ctx.save();
+  ctx.globalAlpha = 0.25;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r + stutterOff + ring.thickness, 0, Math.PI * 2);
+  ctx.strokeStyle = `hsl(${hue}, 90%, 70%)`;
+  ctx.lineWidth = ring.thickness * 2.5;
+  ctx.stroke();
+  ctx.restore();
+
+  // Main ring
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, r + stutterOff, 0, Math.PI * 2);
+  ctx.strokeStyle = `hsl(${hue}, 90%, 65%)`;
+  ctx.lineWidth = ring.thickness;
+  ctx.stroke();
+
+  // Inner bright edge
+  ctx.beginPath();
+  ctx.arc(cx, cy, r + stutterOff, 0, Math.PI * 2);
+  ctx.strokeStyle = `hsl(${hue}, 100%, 90%)`;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.restore();
+
+  // Polarity symbol at top
+  ctx.save();
+  ctx.font = `bold ${Math.min(18, ring.thickness + 4)}px system-ui`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = `hsl(${hue}, 100%, 90%)`;
+  ctx.shadowColor = `hsl(${hue}, 100%, 70%)`;
+  ctx.shadowBlur = 10;
+  ctx.fillText(polIsIn ? '◆' : '◇', cx, cy - r - stutterOff);
+  ctx.restore();
+}
+
+function drawAsteroid(a) {
+  const ax = cx + Math.cos(a.angle) * a.dist;
+  const ay = cy + Math.sin(a.angle) * a.dist;
+  const r  = a.radius;
+  const isIn = a.type === POLARITY.IN;
+  const hue  = a.hue;
+
+  ctx.save();
+  ctx.globalAlpha = a.alpha;
+
+  // Glow
+  ctx.shadowColor = `hsl(${hue}, 90%, 70%)`;
+  ctx.shadowBlur  = 14;
+
+  // Body
+  ctx.beginPath();
+  if (isIn) {
+    // Diamond shape (◆)
+    ctx.moveTo(ax, ay - r);
+    ctx.lineTo(ax + r, ay);
+    ctx.lineTo(ax, ay + r);
+    ctx.lineTo(ax - r, ay);
+    ctx.closePath();
+    ctx.fillStyle = `hsl(${hue}, 85%, 55%)`;
+    ctx.fill();
+    ctx.strokeStyle = `hsl(${hue}, 100%, 85%)`;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  } else {
+    // Diamond outline (◇)
+    ctx.moveTo(ax, ay - r);
+    ctx.lineTo(ax + r, ay);
+    ctx.lineTo(ax, ay + r);
+    ctx.lineTo(ax - r, ay);
+    ctx.closePath();
+    ctx.strokeStyle = `hsl(${hue}, 90%, 70%)`;
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    ctx.fillStyle = `hsla(${hue}, 80%, 60%, 0.25)`;
+    ctx.fill();
+  }
+
+  // Symbol text for clarity
+  ctx.shadowBlur = 0;
+  ctx.font = `bold ${r + 2}px system-ui`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#fff';
+  ctx.fillText(isIn ? '◆' : '◇', ax, ay);
+
+  // Echo indicator
+  if (a.echo) {
+    ctx.font = `bold 9px system-ui`;
+    ctx.fillStyle = `hsl(50, 100%, 80%)`;
+    ctx.fillText('E', ax + r + 2, ay - r - 2);
+  }
+
+  ctx.restore();
+}
+
+function drawParticles(dt) {
+  for (const p of particles) {
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vx *= 0.94;
+    p.vy *= 0.94;
+    p.life -= p.decay;
+
+    if (p.life <= 0) continue;
+    ctx.save();
+    ctx.globalAlpha = p.life;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+    ctx.fillStyle = `hsl(${p.hue}, 90%, 65%)`;
+    ctx.fill();
+    ctx.restore();
+  }
+  particles = particles.filter(p => p.life > 0);
+}
+
+function drawShockwaves(dt) {
+  for (const sw of shockwaves) {
+    sw.elapsed += dt;
+    const t = sw.elapsed / sw.duration;
+    if (t >= 1) continue;
+    const r = sw.r + (sw.maxR - sw.r) * t;
+    const alpha = (1 - t) * 0.7;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.beginPath();
+    ctx.arc(sw.x, sw.y, r, 0, Math.PI * 2);
+    ctx.strokeStyle = `hsl(${sw.hue}, 90%, 70%)`;
+    ctx.lineWidth = 3 * (1 - t);
+    ctx.stroke();
+    ctx.restore();
+  }
+  shockwaves = shockwaves.filter(sw => sw.elapsed < sw.duration);
+}
+
+function drawFloatTexts(dt) {
+  for (const ft of floatTexts) {
+    ft.y += ft.vy * dt;
+    ft.life -= ft.decay;
+    if (ft.life <= 0) continue;
+    ctx.save();
+    ctx.globalAlpha = ft.life;
+    ctx.font = `bold 13px system-ui`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = `hsl(${ft.hue}, 90%, 70%)`;
+    ctx.shadowColor = `hsl(${ft.hue}, 90%, 50%)`;
+    ctx.shadowBlur = 8;
+    ctx.fillText(ft.text, ft.x, ft.y);
+    ctx.restore();
+  }
+  floatTexts = floatTexts.filter(ft => ft.life > 0);
+}
+
+function drawUI() {
+  // Guide rings (faint)
+  const rI = getRIn();
+  const rO = getROut();
+  ctx.save();
+  ctx.globalAlpha = 0.12;
+  ctx.setLineDash([4, 6]);
+  ctx.beginPath();
+  ctx.arc(cx, cy, rI, 0, Math.PI * 2);
+  ctx.strokeStyle = '#a78bfa';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(cx, cy, rO, 0, Math.PI * 2);
+  ctx.strokeStyle = '#38bdf8';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+// ─── MAIN LOOP ──────────────────────────────────────────────────────────────
+let rafId = null;
+
+function loop(ts) {
+  rafId = requestAnimationFrame(loop);
+
+  let rawDt = (ts - lastTime) / 1000;
+  lastTime = ts;
+  if (rawDt > 0.1) rawDt = 0.1;
+
+  // Time slow
+  if (timeSlowTimer > 0) {
+    timeSlowTimer -= rawDt;
+    if (timeSlowTimer <= 0) { timeScale = 1; timeSlowTimer = 0; }
+  }
+  const dt = rawDt * timeScale;
+
+  // Background hue drift
+  bgHue += rawDt * 4;
+  if (bgHue > 360) bgHue -= 360;
+
+  // Shake
+  let sx = 0, sy = 0;
+  if (shakeTimer > 0) {
+    shakeTimer -= rawDt;
+    const s = shakeMag * (shakeTimer > 0 ? 1 : 0);
+    sx = (Math.random() - 0.5) * s * 2;
+    sy = (Math.random() - 0.5) * s * 2;
+    shakeMag *= (1 - shakeDecay);
+    if (shakeTimer <= 0) { shakeMag = 0; }
+  }
+
+  ctx.save();
+  ctx.clearRect(0, 0, W, H);
+  ctx.translate(sx, sy);
+
+  drawBackground();
+  drawUI();
+  drawStar();
+
+  if (state === STATES.PLAYING) {
+    elapsed += dt;
+
+    // Ring radius easing
+    ring.radius += (ring.targetRadius - ring.radius) * (1 - Math.pow(0.01, dt * 12));
+
+    // Lock timer
+    if (ring.locked) {
+      ring.lockTimer -= rawDt * 1000;
+      ring.stutterPhase += rawDt * 30;
+      if (ring.lockTimer <= 0) {
+        ring.locked = false;
+        lockInd.classList.add('hidden');
+      }
+    }
+
+    // Spawn
+    trySpawn(dt);
+
+    // Echo check
+    checkEchos();
+
+    // Move asteroids
+    const { speed } = getDifficulty();
+    for (const a of asteroids) {
+      if (!a.dead) {
+        a.dist -= a.speed * dt;
+        if (a.dist < 4) {
+          // Passed center - not a collision, asteroid fizzles out
+          a.dead = true;
+        }
+      } else {
+        a.alpha -= dt * 3;
+      }
+    }
+    asteroids = asteroids.filter(a => a.alpha > 0 || !a.dead);
+
+    // Collisions
+    checkCollisions();
+
+    // Draw asteroids
+    for (const a of asteroids) {
+      if (!a.dead) drawAsteroid(a);
+    }
+  } else {
+    // Draw ring even on other screens for style
+    ring.radius += (ring.targetRadius - ring.radius) * 0.15;
+  }
+
+  drawRing();
+  drawParticles(dt);
+  drawShockwaves(dt);
+  drawFloatTexts(dt);
+
+  ctx.restore();
+}
+
+// ─── INPUT ──────────────────────────────────────────────────────────────────
+function handleInput() {
+  if (state === STATES.START) {
+    startGame();
+  } else if (state === STATES.PLAYING) {
+    toggleRing();
+  } else if (state === STATES.GAMEOVER) {
+    retryGame();
+  }
+}
+
+document.addEventListener('pointerdown', (e) => {
+  // Don't trigger if clicking a button
+  if (e.target.tagName === 'BUTTON') return;
+  if (e.target.closest('.overlay')) {
+    // Only trigger if clicking on the overlay background (not buttons)
+    if (e.target.classList.contains('overlay')) handleInput();
+    return;
+  }
+  handleInput();
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    handleInput();
+  }
+});
+
+canvas.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  handleInput();
+});
+
+// ─── GAME FLOW ───────────────────────────────────────────────────────────────
+function startGame() {
+  state = STATES.PLAYING;
+  screenStart.classList.add('hidden');
+  screenGO.classList.add('hidden');
+  hud.classList.remove('hidden');
+  initGame();
+  ring.targetRadius = getROut();
+  ring.radius = getROut();
+}
+
+function retryGame() {
+  screenGO.classList.add('hidden');
+  hud.classList.remove('hidden');
+  state = STATES.PLAYING;
+  initGame();
+  ring.targetRadius = getROut();
+  ring.radius = getROut();
+}
+
+// ─── BUTTON BINDINGS ────────────────────────────────────────────────────────
+btnStart.addEventListener('pointerdown', (e) => { e.stopPropagation(); startGame(); });
+btnRetry.addEventListener('pointerdown', (e) => { e.stopPropagation(); retryGame(); });
+btnShare.addEventListener('pointerdown', (e) => {
+  e.stopPropagation();
+  shareScore();
+});
+
+// ─── SHARE ───────────────────────────────────────────────────────────────────
+function shareScore() {
+  const url = `${CANONICAL}?challenge=${score}`;
+  const text = `I scored ${score} in Orbit Fade! Can you beat me?\n${url}`;
+
+  if (navigator.share) {
+    navigator.share({ title: 'Orbit Fade', text, url }).catch(() => {});
+  } else {
+    navigator.clipboard.writeText(text).then(() => {
+      showToast('Copied to clipboard!');
+    }).catch(() => {
+      showToast('Share: ' + url);
+    });
+  }
+}
+
+function showToast(msg) {
+  shareToast.textContent = msg;
+  shareToast.classList.remove('hidden');
+  setTimeout(() => shareToast.classList.add('hidden'), 2500);
+}
+
+// ─── CHALLENGE PARAM ────────────────────────────────────────────────────────
+function checkChallenge() {
+  const params = new URLSearchParams(location.search);
+  const chal = parseInt(params.get('challenge') || '0', 10);
+  if (chal > 0) {
+    challengeScore = chal;
+    challengeBanner.textContent = `🎯 Beat ${chal.toLocaleString()}`;
+    challengeBanner.classList.remove('hidden');
+  }
+}
+
+// ─── INIT ────────────────────────────────────────────────────────────────────
+checkChallenge();
+startBest.textContent = highScore;
+ring.radius = getROut();
+ring.targetRadius = getROut();
+
+// Kick off loop
+lastTime = performance.now();
+loop(lastTime);
+
+})();
+</script>
+</body>
+</html>

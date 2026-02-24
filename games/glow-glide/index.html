@@ -1,0 +1,1320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Glow Glide - Free HTML5 Game</title>
+  <meta name="description" content="Play Glow Glide - Tap to glide smoothly through multiplying glowing branches set in a vibrant sunset forest.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#1a0a2e">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Glow Glide - Free HTML5 Game">
+  <meta property="og:description" content="Play Glow Glide - Tap to flip your phase and glide through glowing branch gates in this endless runner.">
+  <meta property="og:url" content="https://balinti.github.io/glow-glide/">
+  <meta property="og:image" content="https://balinti.github.io/glow-glide/og-image.png">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Glow Glide - Free HTML5 Game">
+  <meta name="twitter:description" content="Tap to flip your phase and glide through glowing branch gates in this endless runner.">
+  <meta name="twitter:image" content="https://balinti.github.io/glow-glide/og-image.png">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%; height: 100%;
+      background: #0d0520;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      touch-action: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    #wrapper {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      height: 100vh;
+      max-height: 750px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    #top-bar {
+      height: 56px;
+      min-height: 56px;
+      background: rgba(10,4,28,0.85);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      z-index: 10;
+      border-bottom: 1px solid rgba(180,80,255,0.25);
+    }
+
+    #top-bar .logo {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      background: linear-gradient(90deg, #ff6ec7, #b06fff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    #mute-btn {
+      background: rgba(180,80,255,0.15);
+      border: 1px solid rgba(180,80,255,0.4);
+      color: #e0b0ff;
+      border-radius: 8px;
+      padding: 6px 12px;
+      cursor: pointer;
+      font-size: 18px;
+      line-height: 1;
+      transition: background 0.2s;
+    }
+    #mute-btn:hover { background: rgba(180,80,255,0.3); }
+
+    #canvas-wrap {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+
+    #game-canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+    }
+
+    #bottom-bar {
+      height: 56px;
+      min-height: 56px;
+      background: rgba(10,4,28,0.85);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+      border-top: 1px solid rgba(180,80,255,0.25);
+    }
+
+    #hint-text {
+      font-size: 12px;
+      color: rgba(220,180,255,0.55);
+      letter-spacing: 0.5px;
+    }
+
+    /* SEO text accordion */
+    #seo-section {
+      width: 100%;
+      max-width: 420px;
+      position: absolute;
+      bottom: -9999px;
+      left: -9999px;
+      visibility: hidden;
+    }
+  </style>
+</head>
+<body>
+  <div id="wrapper">
+    <div id="top-bar">
+      <span class="logo">GLOW GLIDE</span>
+      <button id="mute-btn" aria-label="Mute/Unmute sound">🔊</button>
+    </div>
+    <div id="canvas-wrap">
+      <canvas id="game-canvas"></canvas>
+    </div>
+    <div id="bottom-bar">
+      <span id="hint-text">TAP or SPACE to flip phase</span>
+    </div>
+  </div>
+
+  <!-- SEO content (hidden from layout but indexable) -->
+  <section id="seo-section" aria-hidden="true">
+    <h1>Glow Glide - Phase Gate Endless Runner</h1>
+    <p>Glow Glide is a free hyper-casual HTML5 game. Tap to flip your phase color between pink and purple as you glide through neon branch gates in a vibrant sunset forest. Only gates that match your color are solid — phase through the wrong color gates and you crash! Build up near-miss combos to charge your Glow Meter, then unleash Glow Rush for double score bonuses. How far can you glide?</p>
+    <h2>How to Play Glow Glide</h2>
+    <ul>
+      <li>Tap or press Space/Enter to flip your phase color</li>
+      <li>Pass through gates that match your current phase color</li>
+      <li>Ghost (opposite) gates pass right through you</li>
+      <li>Build near-miss streaks to fill the Glow Meter</li>
+      <li>Glow Rush doubles your score for 3 seconds</li>
+      <li>Avoid crashing into solid gate barriers</li>
+    </ul>
+  </section>
+
+  <script>
+  (function() {
+    'use strict';
+
+    // ─── Constants ───────────────────────────────────────────────────────────
+    const PLAYER_R = 14;
+    const GATE_W = 46;
+    const GAP_BASE = 170;
+    const GAP_MIN = 120;
+    const GRAVITY = 1550;
+    const TAP_IMPULSE = -420;
+    const VY_MAX = 700;
+    const NEAR_MISS_MARGIN = 10;
+    const GLOW_INC = 0.22;
+    const GLOW_DECAY = 0.06;
+    const RUSH_DURATION = 3.0;
+    const RUSH_GAP_BONUS = 14;
+    const PARTICLE_CAP = 220;
+    const TRAIL_RATE = 60;
+    const PHASE_PINK = 0;
+    const PHASE_PURPLE = 1;
+    const HS_KEY = 'glowglide_hs';
+
+    // ─── Audio ────────────────────────────────────────────────────────────────
+    let audioCtx = null;
+    let muted = false;
+    let audioReady = false;
+
+    function ensureAudio() {
+      if (audioCtx) {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        return;
+      }
+      try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        audioReady = true;
+      } catch(e) {}
+    }
+
+    function playTone(freq, type, duration, vol, delay) {
+      if (muted || !audioCtx || audioCtx.state !== 'running') return;
+      try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.type = type || 'sine';
+        osc.frequency.value = freq;
+        const t = audioCtx.currentTime + (delay || 0);
+        gain.gain.setValueAtTime(vol || 0.15, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
+        osc.start(t);
+        osc.stop(t + duration + 0.01);
+      } catch(e) {}
+    }
+
+    function sfxFlip() {
+      playTone(520, 'square', 0.06, 0.08);
+      playTone(660, 'square', 0.06, 0.06, 0.04);
+    }
+    function sfxPass() {
+      playTone(880, 'sine', 0.12, 0.1);
+      playTone(1100, 'sine', 0.08, 0.07, 0.06);
+    }
+    function sfxNearMiss() {
+      playTone(440, 'triangle', 0.1, 0.12);
+    }
+    function sfxDeath() {
+      playTone(220, 'sawtooth', 0.25, 0.18);
+      playTone(110, 'sawtooth', 0.3, 0.15, 0.1);
+    }
+    function sfxRush() {
+      for (let i = 0; i < 4; i++) {
+        playTone(550 + i * 120, 'sine', 0.1, 0.08, i * 0.06);
+      }
+    }
+
+    // ─── DOM / Canvas setup ───────────────────────────────────────────────────
+    const canvas = document.getElementById('game-canvas');
+    const ctx = canvas.getContext('2d');
+    const muteBtn = document.getElementById('mute-btn');
+    const hintEl = document.getElementById('hint-text');
+
+    let DPR = Math.min(window.devicePixelRatio || 1, 2.5);
+    let CW, CH; // CSS pixels
+    let PW, PH; // physical pixels
+
+    function resizeCanvas() {
+      const wrap = document.getElementById('canvas-wrap');
+      const rect = wrap.getBoundingClientRect();
+      CW = rect.width;
+      CH = rect.height;
+      DPR = Math.min(window.devicePixelRatio || 1, 2.5);
+      PW = Math.round(CW * DPR);
+      PH = Math.round(CH * DPR);
+      canvas.width = PW;
+      canvas.height = PH;
+      canvas.style.width = CW + 'px';
+      canvas.style.height = CH + 'px';
+      ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    }
+
+    window.addEventListener('resize', () => {
+      resizeCanvas();
+      if (state !== 'playing') drawFrame(0);
+    });
+
+    resizeCanvas();
+
+    // ─── Game state ──────────────────────────────────────────────────────────
+    let state = 'start'; // 'start' | 'playing' | 'gameover'
+    let score = 0;
+    let bestScore = parseInt(localStorage.getItem(HS_KEY) || '0', 10);
+    let deathReason = '';
+
+    // Player
+    let px, py, vy, playerPhase;
+
+    // Gates
+    let gates = [];
+    let spawnAcc = 0;
+
+    // Glow
+    let glowMeter = 0;
+    let rushT = 0;
+    let rushActive = false;
+
+    // Hue
+    let bgHue = 20;
+    let hueDir = 1;
+
+    // Shake
+    let shakeT = 0;
+    let shakeAmt = 0;
+
+    // Vignette pulse
+    let vigT = 0;
+
+    // Particles
+    let particles = [];
+    let trailAcc = 0;
+
+    // Frame timing
+    let lastTime = 0;
+    let slowMoT = 0;
+
+    // Forest layers
+    let forestLayers = [];
+
+    function initForest() {
+      forestLayers = [];
+      // 3 parallax layers of "tree silhouettes"
+      const depths = [0.2, 0.5, 0.85];
+      depths.forEach((d, li) => {
+        const trees = [];
+        const count = 5 + li * 2;
+        for (let i = 0; i < count; i++) {
+          trees.push({
+            x: (i / count) * CW,
+            h: (0.15 + d * 0.25) * CH,
+            w: 20 + d * 30,
+            d: d
+          });
+        }
+        forestLayers.push(trees);
+      });
+    }
+
+    function resetGame() {
+      px = CW * 0.28;
+      py = CH * 0.5;
+      vy = 0;
+      playerPhase = PHASE_PINK;
+      gates = [];
+      spawnAcc = 0;
+      glowMeter = 0;
+      rushT = 0;
+      rushActive = false;
+      shakeT = 0;
+      shakeAmt = 0;
+      vigT = 0;
+      particles = [];
+      trailAcc = 0;
+      score = 0;
+      slowMoT = 0;
+      spawnGate(CW + 80); // pre-seed first gate
+    }
+
+    function getSpeed() {
+      return 240 + 6 * Math.min(score, 80) + 2 * Math.max(0, score - 80);
+    }
+
+    function getSpacing() {
+      return Math.max(180, 260 - 0.6 * Math.min(score, 120));
+    }
+
+    function getGap() {
+      const g = Math.max(GAP_MIN, GAP_BASE - score * 0.35);
+      return rushActive ? g + RUSH_GAP_BONUS : g;
+    }
+
+    // ─── Gate spawning ────────────────────────────────────────────────────────
+    function pickPattern() {
+      // Curated patterns by score
+      if (score < 5) return [{ ph: PHASE_PINK }];
+      if (score < 12) return [{ ph: PHASE_PURPLE }];
+      if (score < 20) return [{ ph: score % 2 === 0 ? PHASE_PINK : PHASE_PURPLE }];
+      // Alternating
+      const r = Math.random();
+      if (score < 35) {
+        return r < 0.5
+          ? [{ ph: PHASE_PINK }]
+          : [{ ph: PHASE_PURPLE }];
+      }
+      if (score < 60) {
+        // Occasional same-phase double
+        if (r < 0.15) return [{ ph: PHASE_PINK }, { ph: PHASE_PINK, offset: 220 }];
+        if (r < 0.30) return [{ ph: PHASE_PURPLE }, { ph: PHASE_PURPLE, offset: 220 }];
+        return [{ ph: r < 0.65 ? PHASE_PINK : PHASE_PURPLE }];
+      }
+      // Harder
+      if (r < 0.18) return [{ ph: PHASE_PINK }, { ph: PHASE_PINK, offset: 210 }];
+      if (r < 0.36) return [{ ph: PHASE_PURPLE }, { ph: PHASE_PURPLE, offset: 210 }];
+      if (r < 0.50) return [{ ph: PHASE_PINK }, { ph: PHASE_PURPLE, offset: 200 }];
+      return [{ ph: r < 0.75 ? PHASE_PINK : PHASE_PURPLE }];
+    }
+
+    function spawnGate(baseX) {
+      const gapH = getGap();
+      const playH = CH;
+      const minGapY = 40;
+      const maxGapY = playH - 40 - gapH;
+      const gapY = minGapY + Math.random() * (maxGapY - minGapY);
+      const pattern = pickPattern();
+      pattern.forEach(p => {
+        gates.push({
+          x: baseX + (p.offset || 0),
+          gapY: gapY,
+          gapH: gapH,
+          phase: p.ph,
+          scored: false,
+          nearMissChecked: false
+        });
+      });
+    }
+
+    // ─── Particles ────────────────────────────────────────────────────────────
+    function addParticle(x, y, vx, vy, life, size, color, type) {
+      if (particles.length >= PARTICLE_CAP) {
+        // Remove oldest
+        particles.splice(0, 5);
+      }
+      particles.push({ x, y, vx, vy, life, maxLife: life, size, color, type });
+    }
+
+    function addTrail(x, y, phase) {
+      const col = phase === PHASE_PINK ? 'rgba(255,80,200,' : 'rgba(160,80,255,';
+      addParticle(x, y,
+        (Math.random() - 0.5) * 30,
+        (Math.random() - 0.5) * 30,
+        0.35 + Math.random() * 0.25,
+        4 + Math.random() * 4,
+        col, 'trail');
+    }
+
+    function addPassBurst(x, y, phase) {
+      const hue = phase === PHASE_PINK ? 320 : 270;
+      for (let i = 0; i < 18; i++) {
+        const angle = (i / 18) * Math.PI * 2;
+        const spd = 60 + Math.random() * 140;
+        addParticle(x, y,
+          Math.cos(angle) * spd,
+          Math.sin(angle) * spd,
+          0.5 + Math.random() * 0.4,
+          3 + Math.random() * 5,
+          `hsla(${hue + (Math.random()-0.5)*30},100%,70%,`, 'burst');
+      }
+    }
+
+    function addNearMissRing(x, y) {
+      for (let i = 0; i < 12; i++) {
+        const angle = (i / 12) * Math.PI * 2;
+        addParticle(x, y,
+          Math.cos(angle) * 90,
+          Math.sin(angle) * 90,
+          0.4,
+          3,
+          'rgba(255,255,180,', 'ring');
+      }
+    }
+
+    function addDeathBurst(x, y) {
+      for (let i = 0; i < 30; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const spd = 80 + Math.random() * 200;
+        addParticle(x, y,
+          Math.cos(angle) * spd,
+          Math.sin(angle) * spd,
+          0.8 + Math.random() * 0.5,
+          4 + Math.random() * 8,
+          `hsla(${Math.random() * 60 + 280},100%,65%,`, 'burst');
+      }
+    }
+
+    function updateParticles(dt) {
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.vy += 200 * dt; // gentle gravity on particles
+        p.life -= dt;
+        if (p.life <= 0) particles.splice(i, 1);
+      }
+    }
+
+    function drawParticles() {
+      for (const p of particles) {
+        const alpha = Math.max(0, p.life / p.maxLife);
+        ctx.save();
+        ctx.globalAlpha = alpha * 0.85;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size * alpha + 0.5, 0, Math.PI * 2);
+        ctx.fillStyle = p.color + alpha + ')';
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    // ─── Background / Forest ─────────────────────────────────────────────────
+    function drawBackground(hue) {
+      // Gradient sky
+      const grad = ctx.createLinearGradient(0, 0, 0, CH);
+      grad.addColorStop(0, `hsl(${hue + 230},60%,10%)`);
+      grad.addColorStop(0.5, `hsl(${hue + 200},55%,18%)`);
+      grad.addColorStop(1, `hsl(${hue + 170},65%,22%)`);
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, CW, CH);
+
+      // Atmospheric glow (horizon)
+      const glow = ctx.createRadialGradient(CW * 0.5, CH * 0.75, 0, CW * 0.5, CH * 0.75, CW * 0.9);
+      glow.addColorStop(0, `hsla(${hue + 190},90%,55%,0.12)`);
+      glow.addColorStop(1, 'transparent');
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, CW, CH);
+    }
+
+    function drawForest(hue) {
+      forestLayers.forEach((layer, li) => {
+        const depthAlpha = 0.3 + li * 0.25;
+        layer.forEach(tree => {
+          const darkH = hue + 140 + li * 10;
+          ctx.fillStyle = `hsla(${darkH},40%,${8 + li * 4}%,${depthAlpha})`;
+          // Trunk
+          const tx = tree.x;
+          const ty = CH;
+          const tw = tree.w * 0.3;
+          const th = tree.h * 0.55;
+          ctx.fillRect(tx - tw / 2, ty - th, tw, th);
+          // Crown (triangle-ish blob via multiple rects)
+          ctx.beginPath();
+          ctx.moveTo(tx, ty - th - tree.h * 0.5);
+          ctx.lineTo(tx - tree.w * 0.55, ty - th);
+          ctx.lineTo(tx + tree.w * 0.55, ty - th);
+          ctx.closePath();
+          ctx.fill();
+          // Second tier
+          ctx.beginPath();
+          ctx.moveTo(tx, ty - th - tree.h * 0.72);
+          ctx.lineTo(tx - tree.w * 0.42, ty - th - tree.h * 0.2);
+          ctx.lineTo(tx + tree.w * 0.42, ty - th - tree.h * 0.2);
+          ctx.closePath();
+          ctx.fill();
+        });
+      });
+    }
+
+    function scrollForest(dt) {
+      const speed = getSpeed();
+      forestLayers.forEach((layer, li) => {
+        const parallax = 0.15 + li * 0.25;
+        layer.forEach(tree => {
+          tree.x -= speed * parallax * dt;
+          if (tree.x + tree.w < -50) tree.x += CW + 100;
+        });
+      });
+    }
+
+    // ─── Gate rendering ──────────────────────────────────────────────────────
+    function gateColor(gate) {
+      if (gate.phase === PHASE_PINK) return { h: 320, s: 100, l: 60 };
+      return { h: 270, s: 100, l: 60 };
+    }
+
+    function drawGates() {
+      for (const g of gates) {
+        const { h, s, l } = gateColor(g);
+        const solid = g.phase === playerPhase;
+        const alpha = solid ? 1.0 : 0.28;
+
+        ctx.save();
+        ctx.globalAlpha = alpha;
+
+        if (!solid) {
+          ctx.setLineDash([6, 4]);
+        }
+
+        // Top bar
+        const topH = g.gapY;
+        if (topH > 0) {
+          // Neon fill
+          ctx.fillStyle = `hsl(${h},${s}%,${l - 10}%)`;
+          ctx.fillRect(g.x, 0, GATE_W, topH);
+
+          // Glowing edge
+          const topGrad = ctx.createLinearGradient(g.x, topH - 8, g.x, topH);
+          topGrad.addColorStop(0, `hsla(${h},100%,80%,0)`);
+          topGrad.addColorStop(1, `hsla(${h},100%,85%,${solid ? 0.9 : 0.3})`);
+          ctx.fillStyle = topGrad;
+          ctx.fillRect(g.x, topH - 8, GATE_W, 8);
+        }
+
+        // Bottom bar
+        const botY = g.gapY + g.gapH;
+        const botH = CH - botY;
+        if (botH > 0) {
+          ctx.fillStyle = `hsl(${h},${s}%,${l - 10}%)`;
+          ctx.fillRect(g.x, botY, GATE_W, botH);
+
+          const botGrad = ctx.createLinearGradient(g.x, botY, g.x, botY + 8);
+          botGrad.addColorStop(0, `hsla(${h},100%,85%,${solid ? 0.9 : 0.3})`);
+          botGrad.addColorStop(1, `hsla(${h},100%,80%,0)`);
+          ctx.fillStyle = botGrad;
+          ctx.fillRect(g.x, botY, GATE_W, 8);
+        }
+
+        // Outline for ghost
+        if (!solid) {
+          ctx.strokeStyle = `hsla(${h},100%,70%,0.7)`;
+          ctx.lineWidth = 1.5;
+          if (topH > 0) ctx.strokeRect(g.x, 0, GATE_W, topH);
+          if (botH > 0) ctx.strokeRect(g.x, botY, GATE_W, botH);
+        }
+
+        // Rush extra bloom
+        if (rushActive && solid) {
+          ctx.shadowColor = `hsl(${h},100%,70%)`;
+          ctx.shadowBlur = 18;
+          ctx.fillStyle = `hsla(${h},100%,75%,0.18)`;
+          ctx.fillRect(g.x - 4, 0, GATE_W + 8, topH);
+          ctx.fillRect(g.x - 4, botY, GATE_W + 8, botH);
+          ctx.shadowBlur = 0;
+        }
+
+        ctx.setLineDash([]);
+        ctx.restore();
+      }
+    }
+
+    // ─── Player rendering ─────────────────────────────────────────────────────
+    function drawPlayer(alpha) {
+      const hue = playerPhase === PHASE_PINK ? 320 : 270;
+      const col = `hsl(${hue},100%,65%)`;
+
+      ctx.save();
+      ctx.globalAlpha = alpha !== undefined ? alpha : 1;
+
+      // Outer glow
+      const glowR = rushActive ? PLAYER_R * 2.2 : PLAYER_R * 1.7;
+      const grad = ctx.createRadialGradient(px, py, 0, px, py, glowR);
+      grad.addColorStop(0, `hsla(${hue},100%,75%,0.5)`);
+      grad.addColorStop(0.5, `hsla(${hue},100%,65%,0.2)`);
+      grad.addColorStop(1, `hsla(${hue},100%,60%,0)`);
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(px, py, glowR, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Core circle
+      ctx.beginPath();
+      ctx.arc(px, py, PLAYER_R, 0, Math.PI * 2);
+      ctx.fillStyle = col;
+      ctx.shadowColor = col;
+      ctx.shadowBlur = rushActive ? 20 : 10;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // Highlight
+      ctx.beginPath();
+      ctx.arc(px - PLAYER_R * 0.3, py - PLAYER_R * 0.3, PLAYER_R * 0.35, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255,255,255,0.45)`;
+      ctx.fill();
+
+      // Rush ring
+      if (rushActive) {
+        const ringR = PLAYER_R + 8 + Math.sin(Date.now() * 0.008) * 3;
+        ctx.beginPath();
+        ctx.arc(px, py, ringR, 0, Math.PI * 2);
+        ctx.strokeStyle = `hsla(${hue},100%,80%,0.7)`;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    }
+
+    // ─── HUD ─────────────────────────────────────────────────────────────────
+    function drawHUD() {
+      // Score
+      ctx.save();
+      ctx.fillStyle = 'rgba(255,255,255,0.92)';
+      ctx.font = `bold ${Math.round(CW * 0.075)}px 'Segoe UI', sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.shadowColor = playerPhase === PHASE_PINK ? '#ff80d0' : '#b06fff';
+      ctx.shadowBlur = 12;
+      ctx.fillText(score, CW * 0.5, 12);
+      ctx.shadowBlur = 0;
+
+      // Best
+      ctx.fillStyle = 'rgba(200,160,255,0.6)';
+      ctx.font = `${Math.round(CW * 0.038)}px 'Segoe UI', sans-serif`;
+      ctx.fillText('BEST ' + bestScore, CW * 0.5, 12 + CW * 0.085);
+      ctx.restore();
+
+      // Glow meter
+      const barW = CW * 0.38;
+      const barH = 7;
+      const barX = CW * 0.31;
+      const barY = CH - 18;
+
+      ctx.save();
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.beginPath();
+      ctx.roundRect(barX, barY, barW, barH, 4);
+      ctx.fill();
+
+      const fill = Math.min(glowMeter, 1);
+      if (fill > 0) {
+        const gGrad = ctx.createLinearGradient(barX, 0, barX + barW, 0);
+        gGrad.addColorStop(0, '#ff60c8');
+        gGrad.addColorStop(1, '#b060ff');
+        ctx.fillStyle = gGrad;
+        ctx.shadowColor = '#ff60ff';
+        ctx.shadowBlur = rushActive ? 14 : 6;
+        ctx.beginPath();
+        ctx.roundRect(barX, barY, barW * fill, barH, 4);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+
+      // Glow label
+      ctx.fillStyle = 'rgba(220,180,255,0.7)';
+      ctx.font = `bold 10px 'Segoe UI', sans-serif`;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('GLOW', barX - 36, barY + barH / 2);
+
+      // x2 indicator
+      if (rushActive) {
+        const pulse = 0.85 + 0.15 * Math.sin(Date.now() * 0.008);
+        ctx.save();
+        ctx.globalAlpha = pulse;
+        ctx.font = `bold ${Math.round(CW * 0.06)}px 'Segoe UI', sans-serif`;
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#ffff60';
+        ctx.shadowColor = '#ffff00';
+        ctx.shadowBlur = 14;
+        ctx.fillText('×2', CW - 12, barY + barH / 2);
+        ctx.restore();
+      }
+
+      ctx.restore();
+    }
+
+    // ─── Screen overlays ──────────────────────────────────────────────────────
+    function drawStart() {
+      ctx.save();
+      ctx.fillStyle = 'rgba(5,2,20,0.72)';
+      ctx.fillRect(0, 0, CW, CH);
+
+      // Title
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      const pulse = 0.9 + 0.1 * Math.sin(Date.now() * 0.003);
+      ctx.save();
+      ctx.globalAlpha = pulse;
+      ctx.font = `bold ${Math.round(CW * 0.13)}px 'Segoe UI', sans-serif`;
+      ctx.fillStyle = '#ff80d0';
+      ctx.shadowColor = '#ff40d0';
+      ctx.shadowBlur = 24;
+      ctx.fillText('GLOW', CW * 0.5, CH * 0.36);
+      ctx.fillStyle = '#c080ff';
+      ctx.shadowColor = '#9040ff';
+      ctx.fillText('GLIDE', CW * 0.5, CH * 0.36 + CW * 0.14);
+      ctx.shadowBlur = 0;
+      ctx.restore();
+
+      // Subtitle
+      ctx.font = `${Math.round(CW * 0.042)}px 'Segoe UI', sans-serif`;
+      ctx.fillStyle = 'rgba(230,200,255,0.8)';
+      ctx.fillText('Phase Gates', CW * 0.5, CH * 0.36 + CW * 0.27);
+
+      // Phase demo circles
+      drawMiniPhaseDemo();
+
+      // Tap prompt
+      const tapPulse = 0.5 + 0.5 * Math.sin(Date.now() * 0.004);
+      ctx.globalAlpha = tapPulse;
+      ctx.font = `bold ${Math.round(CW * 0.052)}px 'Segoe UI', sans-serif`;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText('TAP TO START', CW * 0.5, CH * 0.78);
+      ctx.globalAlpha = 1;
+
+      // Best score
+      if (bestScore > 0) {
+        ctx.font = `${Math.round(CW * 0.038)}px 'Segoe UI', sans-serif`;
+        ctx.fillStyle = 'rgba(200,160,255,0.7)';
+        ctx.fillText('BEST: ' + bestScore, CW * 0.5, CH * 0.86);
+      }
+
+      ctx.restore();
+    }
+
+    function drawMiniPhaseDemo() {
+      const cy = CH * 0.62;
+      const spacing = CW * 0.16;
+      const cx = CW * 0.5;
+
+      // Pink circle
+      ctx.beginPath();
+      ctx.arc(cx - spacing, cy, 16, 0, Math.PI * 2);
+      ctx.fillStyle = '#ff80d0';
+      ctx.shadowColor = '#ff40d0';
+      ctx.shadowBlur = 12;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // Arrow
+      ctx.font = `bold ${Math.round(CW * 0.055)}px 'Segoe UI', sans-serif`;
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      ctx.fillText('⇄', cx, cy + 4);
+
+      // Purple circle
+      ctx.beginPath();
+      ctx.arc(cx + spacing, cy, 16, 0, Math.PI * 2);
+      ctx.fillStyle = '#b06fff';
+      ctx.shadowColor = '#9040ff';
+      ctx.shadowBlur = 12;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      ctx.font = `${Math.round(CW * 0.033)}px 'Segoe UI', sans-serif`;
+      ctx.fillStyle = 'rgba(220,200,255,0.65)';
+      ctx.textAlign = 'center';
+      ctx.fillText('Tap to flip phase', cx, cy + 34);
+    }
+
+    function drawGameOver() {
+      ctx.save();
+      ctx.fillStyle = 'rgba(5,2,20,0.78)';
+      ctx.fillRect(0, 0, CW, CH);
+
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      ctx.font = `bold ${Math.round(CW * 0.1)}px 'Segoe UI', sans-serif`;
+      ctx.fillStyle = '#ff4488';
+      ctx.shadowColor = '#ff0060';
+      ctx.shadowBlur = 20;
+      ctx.fillText('CRASHED', CW * 0.5, CH * 0.28);
+      ctx.shadowBlur = 0;
+
+      if (deathReason) {
+        ctx.font = `${Math.round(CW * 0.038)}px 'Segoe UI', sans-serif`;
+        ctx.fillStyle = 'rgba(255,180,200,0.75)';
+        ctx.fillText(deathReason, CW * 0.5, CH * 0.36);
+      }
+
+      ctx.font = `bold ${Math.round(CW * 0.115)}px 'Segoe UI', sans-serif`;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(score, CW * 0.5, CH * 0.5);
+
+      ctx.font = `${Math.round(CW * 0.038)}px 'Segoe UI', sans-serif`;
+      ctx.fillStyle = 'rgba(200,160,255,0.8)';
+      ctx.fillText('SCORE', CW * 0.5, CH * 0.5 + CW * 0.125);
+
+      ctx.font = `${Math.round(CW * 0.05)}px 'Segoe UI', sans-serif`;
+      ctx.fillStyle = score >= bestScore ? '#ffdd60' : 'rgba(200,160,255,0.8)';
+      if (score >= bestScore && score > 0) {
+        ctx.fillStyle = '#ffdd60';
+        ctx.shadowColor = '#ffcc00';
+        ctx.shadowBlur = 14;
+        ctx.fillText('NEW BEST!', CW * 0.5, CH * 0.65);
+        ctx.shadowBlur = 0;
+      } else {
+        ctx.fillStyle = 'rgba(180,140,255,0.75)';
+        ctx.fillText('BEST ' + bestScore, CW * 0.5, CH * 0.65);
+      }
+
+      const tapPulse = 0.5 + 0.5 * Math.sin(Date.now() * 0.004);
+      ctx.globalAlpha = tapPulse;
+      ctx.font = `bold ${Math.round(CW * 0.052)}px 'Segoe UI', sans-serif`;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText('TAP TO RETRY', CW * 0.5, CH * 0.8);
+      ctx.globalAlpha = 1;
+
+      ctx.restore();
+    }
+
+    // ─── Vignette & slow-mo ──────────────────────────────────────────────────
+    function drawVignette(progress) {
+      if (progress <= 0) return;
+      const grad = ctx.createRadialGradient(CW/2, CH/2, CW * 0.2, CW/2, CH/2, CW * 0.85);
+      const hue = playerPhase === PHASE_PINK ? 320 : 270;
+      grad.addColorStop(0, `hsla(${hue},0%,0%,0)`);
+      grad.addColorStop(1, `hsla(${hue},80%,30%,${progress * 0.45})`);
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, CW, CH);
+    }
+
+    // ─── Collision ────────────────────────────────────────────────────────────
+    function circleRect(cx, cy, r, rx, ry, rw, rh) {
+      const nearX = Math.max(rx, Math.min(cx, rx + rw));
+      const nearY = Math.max(ry, Math.min(cy, ry + rh));
+      const dx = cx - nearX;
+      const dy = cy - nearY;
+      return dx * dx + dy * dy < r * r;
+    }
+
+    function checkCollision() {
+      for (const g of gates) {
+        // Only solid gates can kill
+        if (g.phase !== playerPhase) continue;
+
+        // Top bar collision
+        if (g.gapY > 0) {
+          if (circleRect(px, py, PLAYER_R, g.x, 0, GATE_W, g.gapY)) {
+            return { hit: true, reason: 'Wrong phase collision' };
+          }
+        }
+        // Bottom bar collision
+        const botY = g.gapY + g.gapH;
+        if (botY < CH) {
+          if (circleRect(px, py, PLAYER_R, g.x, botY, GATE_W, CH - botY)) {
+            return { hit: true, reason: 'Missed gap' };
+          }
+        }
+      }
+
+      // Out of bounds
+      if (py - PLAYER_R < 0) return { hit: true, reason: 'Out of bounds — top' };
+      if (py + PLAYER_R > CH) return { hit: true, reason: 'Out of bounds — bottom' };
+
+      return { hit: false };
+    }
+
+    // ─── Scoring & near-miss ─────────────────────────────────────────────────
+    function checkScoring() {
+      for (const g of gates) {
+        // Score: player center passes right edge of gate
+        if (!g.scored && px > g.x + GATE_W) {
+          g.scored = true;
+          score++;
+          if (score > bestScore) bestScore = score;
+          localStorage.setItem(HS_KEY, bestScore);
+          addPassBurst(g.x + GATE_W, g.gapY + g.gapH * 0.5, playerPhase);
+          sfxPass();
+        }
+
+        // Near-miss: only for SOLID gates, only once per gate
+        if (!g.nearMissChecked && g.phase === playerPhase && px > g.x && px < g.x + GATE_W + 30) {
+          // Distance from player center to nearest gap edge (vertical)
+          const topEdge = g.gapY; // bottom of top bar
+          const botEdge = g.gapY + g.gapH; // top of bottom bar
+          const distTop = Math.abs(py - topEdge);
+          const distBot = Math.abs(py - botEdge);
+          const dist = Math.min(distTop, distBot) - PLAYER_R;
+
+          if (dist >= 0 && dist <= NEAR_MISS_MARGIN && px > g.x + GATE_W) {
+            g.nearMissChecked = true;
+            glowMeter = Math.min(1, glowMeter + GLOW_INC);
+            addNearMissRing(px, py);
+            sfxNearMiss();
+            shakeT = 0.1;
+            shakeAmt = 4;
+          }
+        }
+      }
+    }
+
+    // ─── Main game loop ───────────────────────────────────────────────────────
+    function update(dt) {
+      // Clamp dt to avoid spiral of death
+      dt = Math.min(dt, 0.05);
+
+      // Slow-mo (visual only on death lead-in — currently used for near-miss micro effect)
+      // (not implemented as actual time dilation; game stays responsive)
+
+      // Hue drift
+      bgHue += 8 * dt * hueDir;
+      if (bgHue > 60) hueDir = -1;
+      if (bgHue < 0) hueDir = 1;
+
+      if (state !== 'playing') return;
+
+      // Physics
+      vy += GRAVITY * dt;
+      vy = Math.max(-VY_MAX, Math.min(VY_MAX, vy));
+      py += vy * dt;
+
+      // Glow meter
+      glowMeter = Math.max(0, glowMeter - GLOW_DECAY * dt);
+      if (glowMeter >= 1 && !rushActive) {
+        rushActive = true;
+        rushT = RUSH_DURATION;
+        glowMeter = 0;
+        sfxRush();
+        addDeathBurst(px, py); // reuse burst for rush activation
+      }
+      if (rushActive) {
+        rushT -= dt;
+        if (rushT <= 0) { rushActive = false; rushT = 0; }
+      }
+
+      // Speed & spawn
+      const speed = getSpeed();
+      spawnAcc += speed * dt;
+      const spacing = getSpacing();
+      if (spawnAcc >= spacing) {
+        spawnAcc -= spacing;
+        spawnGate(CW + 60);
+      }
+
+      // Scroll gates
+      for (const g of gates) g.x -= speed * dt;
+
+      // Scroll forest
+      scrollForest(dt);
+
+      // Remove off-screen gates
+      gates = gates.filter(g => g.x + GATE_W + 20 > 0);
+
+      // Particles
+      updateParticles(dt);
+
+      // Trail
+      trailAcc += dt;
+      if (trailAcc >= 1 / TRAIL_RATE) {
+        trailAcc = 0;
+        addTrail(px, py, playerPhase);
+      }
+
+      // Shake decay
+      if (shakeT > 0) shakeT -= dt;
+
+      // Vignette decay
+      if (vigT > 0) vigT -= dt * 3;
+
+      // Scoring
+      checkScoring();
+
+      // Collision
+      const col = checkCollision();
+      if (col.hit) {
+        deathReason = col.reason;
+        if (score > bestScore) bestScore = score;
+        localStorage.setItem(HS_KEY, bestScore);
+        addDeathBurst(px, py);
+        sfxDeath();
+        shakeT = 0.22;
+        shakeAmt = 12;
+        state = 'gameover';
+      }
+
+      // Update rush score multiplier counter (score already incremented 1x; handle x2 display only)
+      // (Actual x2 bonus: handled in drawHUD display; for scoring we'd double-count — let's do that)
+      // Actually let's properly do x2 scoring: track if rush was active at score increment
+      // We need to handle this in checkScoring, which is called above.
+      // Let me integrate rush multiplier there... handled in drawHUD is just display.
+      // For actual double scoring, see checkScoring — we'll patch it in the next update pass.
+    }
+
+    // Patch checkScoring to use multiplier
+    const _checkScoring = checkScoring;
+    function checkScoringWithMultiplier() {
+      const prevScore = score;
+      _checkScoring();
+      if (rushActive && score > prevScore) {
+        // Add one more point for each point gained
+        score += (score - prevScore);
+        if (score > bestScore) {
+          bestScore = score;
+          localStorage.setItem(HS_KEY, bestScore);
+        }
+      }
+    }
+
+    // Replace update's scoring call
+    // (We'll restructure below cleanly)
+
+    function drawFrame(now) {
+      ctx.clearRect(0, 0, CW, CH);
+
+      // Shake offset
+      let sx = 0, sy = 0;
+      if (shakeT > 0) {
+        sx = (Math.random() - 0.5) * shakeAmt * 2;
+        sy = (Math.random() - 0.5) * shakeAmt * 2;
+      }
+
+      ctx.save();
+      if (sx || sy) ctx.translate(sx, sy);
+
+      drawBackground(bgHue);
+      drawForest(bgHue);
+      drawParticles();
+
+      if (state === 'playing' || state === 'gameover') {
+        drawGates();
+        drawPlayer(state === 'gameover' ? 0.4 : 1);
+      }
+
+      if (vigT > 0) drawVignette(vigT);
+
+      ctx.restore();
+
+      if (state === 'playing') drawHUD();
+      if (state === 'start') drawStart();
+      if (state === 'gameover') drawGameOver();
+    }
+
+    let scoreMultiplierHandled = false;
+    function gameLoop(now) {
+      const dt = lastTime ? (now - lastTime) / 1000 : 0.016;
+      lastTime = now;
+
+      update(dt);
+      drawFrame(now);
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    // ─── Revised update with proper x2 scoring ───────────────────────────────
+    // Override update to use patched scoring
+    const originalUpdate = update;
+
+    function updateClean(dt) {
+      dt = Math.min(dt, 0.05);
+
+      bgHue += 8 * dt * hueDir;
+      if (bgHue > 60) hueDir = -1;
+      if (bgHue < 0) hueDir = 1;
+
+      if (state !== 'playing') return;
+
+      vy += GRAVITY * dt;
+      vy = Math.max(-VY_MAX, Math.min(VY_MAX, vy));
+      py += vy * dt;
+
+      glowMeter = Math.max(0, glowMeter - GLOW_DECAY * dt);
+      if (glowMeter >= 1 && !rushActive) {
+        rushActive = true;
+        rushT = RUSH_DURATION;
+        glowMeter = 0;
+        sfxRush();
+        vigT = 1.0;
+        addPassBurst(px, py, playerPhase);
+      }
+      if (rushActive) {
+        rushT -= dt;
+        if (rushT <= 0) { rushActive = false; rushT = 0; }
+      }
+
+      const speed = getSpeed();
+      spawnAcc += speed * dt;
+      const spacing = getSpacing();
+      while (spawnAcc >= spacing) {
+        spawnAcc -= spacing;
+        spawnGate(CW + 60);
+      }
+
+      for (const g of gates) g.x -= speed * dt;
+      scrollForest(dt);
+      gates = gates.filter(g => g.x + GATE_W + 20 > 0);
+
+      updateParticles(dt);
+
+      trailAcc += dt;
+      if (trailAcc >= 1 / TRAIL_RATE) {
+        trailAcc = 0;
+        addTrail(px, py, playerPhase);
+      }
+
+      if (shakeT > 0) shakeT = Math.max(0, shakeT - dt);
+      if (vigT > 0) vigT = Math.max(0, vigT - dt * 3);
+
+      // Scoring with x2
+      for (const g of gates) {
+        if (!g.scored && px > g.x + GATE_W) {
+          g.scored = true;
+          const pts = rushActive ? 2 : 1;
+          score += pts;
+          if (score > bestScore) {
+            bestScore = score;
+            localStorage.setItem(HS_KEY, bestScore);
+          }
+          addPassBurst(g.x + GATE_W, g.gapY + g.gapH * 0.5, playerPhase);
+          sfxPass();
+        }
+
+        // Near-miss check
+        if (!g.nearMissChecked && g.phase === playerPhase && g.scored) {
+          const topEdge = g.gapY;
+          const botEdge = g.gapY + g.gapH;
+          const distTop = Math.abs(py - topEdge);
+          const distBot = Math.abs(py - botEdge);
+          const dist = Math.min(distTop, distBot) - PLAYER_R;
+
+          if (dist >= 0 && dist <= NEAR_MISS_MARGIN) {
+            g.nearMissChecked = true;
+            glowMeter = Math.min(1, glowMeter + GLOW_INC);
+            addNearMissRing(px, py);
+            sfxNearMiss();
+            shakeT = 0.1;
+            shakeAmt = 4;
+          }
+        }
+      }
+
+      // Collision
+      const col = checkCollision();
+      if (col.hit) {
+        deathReason = col.reason;
+        if (score > bestScore) {
+          bestScore = score;
+          localStorage.setItem(HS_KEY, bestScore);
+        }
+        addDeathBurst(px, py);
+        sfxDeath();
+        shakeT = 0.22;
+        shakeAmt = 12;
+        state = 'gameover';
+      }
+    }
+
+    // ─── Input handling ───────────────────────────────────────────────────────
+    function handleInput() {
+      ensureAudio();
+
+      if (state === 'start') {
+        state = 'playing';
+        initForest();
+        resetGame();
+        return;
+      }
+
+      if (state === 'gameover') {
+        state = 'playing';
+        initForest();
+        resetGame();
+        return;
+      }
+
+      if (state === 'playing') {
+        // Flip phase + pop
+        playerPhase = playerPhase === PHASE_PINK ? PHASE_PURPLE : PHASE_PINK;
+        vy = TAP_IMPULSE;
+        vigT = 0.6;
+        sfxFlip();
+        // Add flip burst
+        const hue = playerPhase === PHASE_PINK ? 320 : 270;
+        for (let i = 0; i < 8; i++) {
+          const angle = (i / 8) * Math.PI * 2;
+          addParticle(px, py,
+            Math.cos(angle) * 50,
+            Math.sin(angle) * 50,
+            0.3,
+            3,
+            `hsla(${hue},100%,70%,`, 'burst');
+        }
+      }
+    }
+
+    // Touch
+    canvas.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      handleInput();
+    }, { passive: false });
+
+    // Also allow clicking on the wrapper
+    document.getElementById('wrapper').addEventListener('pointerdown', e => {
+      if (e.target === canvas) return; // already handled
+      e.preventDefault();
+      handleInput();
+    }, { passive: false });
+
+    // Keyboard
+    window.addEventListener('keydown', e => {
+      if (e.code === 'Space' || e.code === 'Enter') {
+        e.preventDefault();
+        handleInput();
+      }
+    });
+
+    // Mute button
+    muteBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      muted = !muted;
+      muteBtn.textContent = muted ? '🔇' : '🔊';
+    });
+
+    // ─── Boot ─────────────────────────────────────────────────────────────────
+    initForest();
+    resizeCanvas();
+
+    // Patch game loop to use clean update
+    requestAnimationFrame(function cleanLoop(now) {
+      const dt = lastTime ? (now - lastTime) / 1000 : 0.016;
+      lastTime = now;
+
+      updateClean(dt);
+      drawFrame(now);
+
+      requestAnimationFrame(cleanLoop);
+    });
+
+  })();
+  </script>
+
+  <!-- SEO description block (hidden from visual layout but crawlable) -->
+  <article id="seo-section" style="position:absolute;left:-9999px;top:-9999px;visibility:hidden;" aria-hidden="true">
+    <h1>Glow Glide - Hyper-Casual Phase Gate Endless Runner</h1>
+    <p>
+      Glow Glide is a free browser-based HTML5 game. Your glowing orb flies forward automatically through a vibrant
+      sunset forest filled with neon branch gates. Tap to instantly flip your phase between pink and purple — gates that
+      match your color are solid walls you must fly through the gap, while the opposite color becomes intangible and
+      phased right through. Timing and phase management are everything.
+    </p>
+    <h2>Features</h2>
+    <ul>
+      <li>One-tap phase-flip mechanic — simple to learn, hard to master</li>
+      <li>Progressive difficulty with curated gate patterns</li>
+      <li>Near-miss bonus system charges the Glow Meter</li>
+      <li>Glow Rush mode — 3 seconds of double-score frenzy</li>
+      <li>Particle effects, screen shake, and neon glow visuals</li>
+      <li>High score saved locally — try to beat your best</li>
+      <li>Fully playable on mobile and desktop browsers</li>
+    </ul>
+    <h2>How to Play</h2>
+    <p>
+      Tap the screen (or press Space/Enter on desktop) to flip between pink and purple phase.
+      Pink gates are solid when you're pink — pass through the gap in the middle to score a point.
+      Purple gates are ghostly when you're pink, so you fly right through. Build near-miss passes
+      to charge your Glow Meter. When it fills, Glow Rush activates for 3 seconds of ×2 scoring and
+      a wider effective gap to help you survive the surge. Crash into a solid gate bar or fly off-screen
+      and it's game over. Try to beat your high score!
+    </p>
+  </article>
+</body>
+</html>

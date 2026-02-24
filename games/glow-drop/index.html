@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Glow Drop - Free HTML5 Game</title>
+  <meta name="description" content="Play Glow Drop - Tap to catch neon raindrops as gravity switches directions randomly.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a0a1a">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Glow Drop - Free HTML5 Game">
+  <meta property="og:description" content="Play Glow Drop - Tap to catch neon raindrops as gravity switches directions randomly.">
+  <meta property="og:url" content="https://balinti.github.io/glow-drop/">
+  <meta property="og:image" content="https://balinti.github.io/glow-drop/preview.png">
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #0a0a1a;
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      touch-action: none;
+    }
+    #wrapper {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      height: 100vh;
+      max-height: 750px;
+      display: flex;
+      flex-direction: column;
+    }
+    #ad-bar {
+      width: 100%;
+      min-height: 50px;
+      background: rgba(0,0,0,0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    #canvas-wrap {
+      position: relative;
+      flex: 1;
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: pointer;
+    }
+    #ui-overlay {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      padding: 10px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      pointer-events: none;
+      z-index: 10;
+    }
+    .score-box {
+      background: rgba(0,0,0,0.45);
+      border-radius: 10px;
+      padding: 5px 14px;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+    .score-box span { font-size: 22px; display: block; line-height: 1.1; }
+    #challenge-banner {
+      position: absolute;
+      top: 60px; left: 50%; transform: translateX(-50%);
+      background: rgba(255,200,0,0.18);
+      border: 1px solid rgba(255,200,0,0.5);
+      border-radius: 8px;
+      padding: 4px 14px;
+      color: #ffe066;
+      font-size: 12px;
+      pointer-events: none;
+      z-index: 11;
+      white-space: nowrap;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+<div id="wrapper">
+  <div id="ad-bar">
+    <!-- AdSense Auto Ads will fill this area -->
+  </div>
+  <div id="canvas-wrap">
+    <canvas id="c"></canvas>
+    <div id="ui-overlay">
+      <div class="score-box" id="score-el">Score<span id="score-val">0</span></div>
+      <div class="score-box" id="best-el">Best<span id="best-val">0</span></div>
+    </div>
+    <div id="challenge-banner" id="ch-banner"></div>
+  </div>
+</div>
+
+<script>
+(function() {
+'use strict';
+
+// ─── QUERY PARAMS ─────────────────────────────────────────────────────────────
+const params = new URLSearchParams(location.search);
+const challengeScore = parseInt(params.get('score') || params.get('challenge') || '0', 10);
+const challengeBanner = document.getElementById('challenge-banner');
+if (challengeScore > 0) {
+  challengeBanner.textContent = `Challenge: Beat ${challengeScore} pts!`;
+  challengeBanner.style.display = 'block';
+}
+
+// ─── CANVAS SETUP ─────────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const wrap = document.getElementById('canvas-wrap');
+let W, H, DPR;
+
+function resize() {
+  DPR = window.devicePixelRatio || 1;
+  W = wrap.clientWidth;
+  H = wrap.clientHeight;
+  canvas.width = W * DPR;
+  canvas.height = H * DPR;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+resize();
+window.addEventListener('resize', () => { resize(); });
+
+// ─── PERSISTENT HIGH SCORE ────────────────────────────────────────────────────
+let best = parseInt(localStorage.getItem('glowdrop_best') || '0', 10);
+document.getElementById('best-val').textContent = best;
+
+// ─── GAME STATE ───────────────────────────────────────────────────────────────
+const STATE = { START: 0, PLAYING: 1, GAMEOVER: 2 };
+let state = STATE.START;
+
+// ─── GAME VARS ────────────────────────────────────────────────────────────────
+let score, streak, multiplier, drops, particles, shakeFrames, shakeAmt;
+let catcherLane; // 0 = bottom, 1 = top
+let bgHue, globalTime;
+let lastDropTime, dropInterval;
+let patternIndex, patternTable;
+let perfectWindowOpen; // flash indicator
+let flashFrames;
+let flashColor;
+
+// Drop patterns: 0 = bottom lane drop (up-drop), 1 = top lane drop (down-drop)
+// Player must be in matching lane. Pattern cycles and evolves.
+const BASE_PATTERNS = [
+  [1,0,1,0,1,1,0,0],
+  [1,1,0,0,1,0,0,1],
+  [0,1,0,1,0,0,1,1],
+  [1,0,0,1,1,0,1,0],
+];
+
+function buildPattern(level) {
+  const base = BASE_PATTERNS[level % BASE_PATTERNS.length];
+  if (level < 4) return [...base];
+  // Higher levels: inject doubles (same lane twice)
+  const p = [...base];
+  const ins = Math.floor(level / 4);
+  for (let i = 0; i < ins && p.length < 14; i++) {
+    const pos = Math.floor(Math.random() * p.length);
+    p.splice(pos, 0, p[pos]);
+  }
+  return p;
+}
+
+function initGame() {
+  score = 0;
+  streak = 0;
+  multiplier = 1;
+  drops = [];
+  particles = [];
+  shakeFrames = 0; shakeAmt = 0;
+  catcherLane = 0;
+  bgHue = 200;
+  globalTime = 0;
+  lastDropTime = -999;
+  dropInterval = 2200; // ms between drops
+  patternIndex = 0;
+  patternTable = buildPattern(0);
+  perfectWindowOpen = false;
+  flashFrames = 0;
+  flashColor = '';
+  document.getElementById('score-val').textContent = '0';
+  document.getElementById('best-val').textContent = best;
+}
+
+// ─── DROP OBJECT ──────────────────────────────────────────────────────────────
+// lane: 0 = bottom (spawns at bottom, moves UP), 1 = top (spawns at top, moves DOWN)
+function spawnDrop(lane) {
+  const speed = 2.2 + Math.min(score / 80, 4.5); // px/frame
+  const y = lane === 1 ? -18 : H + 18;
+  const dir = lane === 1 ? 1 : -1; // 1=downward, -1=upward
+  const hue = lane === 1 ? 185 : 300; // cyan vs magenta
+  drops.push({ lane, x: W / 2, y, dir, speed, hue, caught: false, missed: false, radius: 13 });
+}
+
+// ─── PARTICLES ────────────────────────────────────────────────────────────────
+function spawnParticles(x, y, hue, count, burst) {
+  for (let i = 0; i < count; i++) {
+    const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.5;
+    const spd = burst ? (2 + Math.random() * 5) : (1 + Math.random() * 3);
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * spd,
+      vy: Math.sin(angle) * spd,
+      life: 1, decay: 0.025 + Math.random() * 0.03,
+      radius: burst ? (2 + Math.random() * 3) : (1.5 + Math.random() * 2),
+      hue, sat: 90 + Math.random() * 10, lit: 60 + Math.random() * 20
+    });
+  }
+}
+
+// ─── CATCHER ─────────────────────────────────────────────────────────────────
+function catcherY() {
+  // lane 0 = bottom quarter, lane 1 = top quarter
+  return catcherLane === 0 ? H * 0.78 : H * 0.22;
+}
+
+const CATCH_ZONE = 38; // px tolerance
+const PERFECT_ZONE = 14;
+
+// ─── SCREEN SHAKE ─────────────────────────────────────────────────────────────
+function triggerShake(amt, frames) {
+  shakeAmt = amt; shakeFrames = frames;
+}
+
+// ─── DRAW HELPERS ─────────────────────────────────────────────────────────────
+function drawGlow(x, y, r, hue, alpha) {
+  const grad = ctx.createRadialGradient(x, y, 0, x, y, r * 2.5);
+  grad.addColorStop(0, `hsla(${hue},100%,75%,${alpha})`);
+  grad.addColorStop(0.5, `hsla(${hue},100%,55%,${alpha * 0.5})`);
+  grad.addColorStop(1, `hsla(${hue},100%,40%,0)`);
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(x, y, r * 2.5, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawCatcher(cy) {
+  const hue = catcherLane === 0 ? 300 : 185;
+  ctx.save();
+  ctx.shadowBlur = 22;
+  ctx.shadowColor = `hsl(${hue},100%,65%)`;
+  // Outer ring
+  ctx.strokeStyle = `hsl(${hue},100%,70%)`;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(W / 2, cy, 20, 0, Math.PI * 2);
+  ctx.stroke();
+  // Inner dot
+  ctx.fillStyle = `hsl(${hue},100%,80%)`;
+  ctx.beginPath();
+  ctx.arc(W / 2, cy, 6, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // Pulse ring
+  const pulse = Math.sin(globalTime * 0.08) * 0.5 + 0.5;
+  ctx.save();
+  ctx.globalAlpha = pulse * 0.4;
+  ctx.strokeStyle = `hsl(${hue},100%,70%)`;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(W / 2, cy, 30 + pulse * 8, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawDrop(d) {
+  ctx.save();
+  ctx.shadowBlur = 18;
+  ctx.shadowColor = `hsl(${d.hue},100%,65%)`;
+  ctx.fillStyle = `hsl(${d.hue},100%,70%)`;
+  ctx.beginPath();
+  ctx.arc(d.x, d.y, d.radius, 0, Math.PI * 2);
+  ctx.fill();
+  drawGlow(d.x, d.y, d.radius, d.hue, 0.6);
+  ctx.restore();
+}
+
+function drawLaneIndicators() {
+  // Subtle dashed lines at catcher travel positions
+  const lanes = [H * 0.22, H * 0.78];
+  const hues = [185, 300];
+  lanes.forEach((ly, i) => {
+    ctx.save();
+    ctx.globalAlpha = catcherLane === i ? 0.25 : 0.08;
+    ctx.strokeStyle = `hsl(${hues[i]},80%,65%)`;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([6, 8]);
+    ctx.beginPath();
+    ctx.moveTo(0, ly);
+    ctx.lineTo(W, ly);
+    ctx.stroke();
+    ctx.restore();
+  });
+}
+
+function drawBackground() {
+  // Dark gradient with slow hue shift
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, `hsl(${bgHue},60%,4%)`);
+  grad.addColorStop(0.5, `hsl(${(bgHue + 20) % 360},50%,6%)`);
+  grad.addColorStop(1, `hsl(${(bgHue + 40) % 360},60%,4%)`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+}
+
+function drawStartScreen() {
+  drawBackground();
+
+  // Title glow
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.shadowBlur = 40;
+  ctx.shadowColor = `hsl(185,100%,65%)`;
+  ctx.fillStyle = `hsl(185,100%,80%)`;
+  ctx.font = 'bold 52px system-ui, sans-serif';
+  ctx.fillText('GLOW DROP', W / 2, H / 2 - 70);
+  ctx.restore();
+
+  // Subtitle
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  ctx.font = '16px system-ui, sans-serif';
+  ctx.fillText('Flip lanes to catch neon drops', W / 2, H / 2 - 28);
+  ctx.restore();
+
+  // Animated tap prompt
+  const alpha = Math.sin(globalTime * 0.06) * 0.4 + 0.6;
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 20px system-ui, sans-serif';
+  ctx.fillText('TAP TO START', W / 2, H / 2 + 30);
+  ctx.restore();
+
+  // Demo drops
+  const t = globalTime * 0.02;
+  const dy1 = H * 0.35 + Math.sin(t) * 30;
+  const dy2 = H * 0.65 + Math.cos(t * 0.8) * 25;
+  drawGlow(W / 2 - 60, dy1, 13, 185, 0.8);
+  drawGlow(W / 2 + 60, dy2, 13, 300, 0.8);
+
+  if (challengeScore > 0) {
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ffe066';
+    ctx.font = '13px system-ui, sans-serif';
+    ctx.fillText(`Challenge: Beat ${challengeScore} pts!`, W / 2, H / 2 + 65);
+    ctx.restore();
+  }
+
+  // Best score
+  if (best > 0) {
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.font = '13px system-ui, sans-serif';
+    ctx.fillText(`Best: ${best}`, W / 2, H / 2 + 90);
+    ctx.restore();
+  }
+}
+
+function drawGameOver() {
+  drawBackground();
+
+  // Dim overlay
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.save();
+  ctx.textAlign = 'center';
+
+  // Title
+  ctx.shadowBlur = 30;
+  ctx.shadowColor = `hsl(300,100%,65%)`;
+  ctx.fillStyle = `hsl(300,100%,75%)`;
+  ctx.font = 'bold 40px system-ui, sans-serif';
+  ctx.fillText('GAME OVER', W / 2, H / 2 - 90);
+
+  // Score
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 64px system-ui, sans-serif';
+  ctx.fillText(score, W / 2, H / 2 - 20);
+
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.font = '14px system-ui, sans-serif';
+  ctx.fillText('SCORE', W / 2, H / 2 + 12);
+
+  // Best
+  const isBest = score >= best;
+  ctx.fillStyle = isBest ? '#ffe066' : 'rgba(255,255,255,0.4)';
+  ctx.font = isBest ? 'bold 18px system-ui, sans-serif' : '16px system-ui, sans-serif';
+  ctx.fillText(isBest ? `NEW BEST: ${best}` : `Best: ${best}`, W / 2, H / 2 + 45);
+
+  if (challengeScore > 0) {
+    const beat = score > challengeScore;
+    ctx.fillStyle = beat ? '#66ffb2' : '#ff6680';
+    ctx.font = '14px system-ui, sans-serif';
+    ctx.fillText(beat ? `Challenge BEATEN!` : `Challenge: ${challengeScore} — Try again!`, W / 2, H / 2 + 72);
+  }
+
+  // Tap to retry
+  const alpha = Math.sin(globalTime * 0.07) * 0.4 + 0.6;
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 18px system-ui, sans-serif';
+  ctx.fillText('TAP TO RETRY', W / 2, H / 2 + 110);
+
+  ctx.restore();
+
+  // Share button area (drawn as canvas button)
+  drawShareButton();
+}
+
+let shareBtn = { x: 0, y: 0, w: 0, h: 0 };
+function drawShareButton() {
+  const bw = 160, bh = 38;
+  const bx = W / 2 - bw / 2;
+  const by = H / 2 + 138;
+  shareBtn = { x: bx, y: by, w: bw, h: bh };
+
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  roundRect(ctx, bx, by, bw, bh, 10);
+  ctx.stroke();
+
+  ctx.fillStyle = 'rgba(255,255,255,0.07)';
+  ctx.beginPath();
+  roundRect(ctx, bx, by, bw, bh, 10);
+  ctx.fill();
+
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.textAlign = 'center';
+  ctx.font = '13px system-ui, sans-serif';
+  ctx.fillText('Share Score', W / 2, by + 24);
+  ctx.restore();
+}
+
+function roundRect(c, x, y, w, h, r) {
+  c.moveTo(x + r, y);
+  c.lineTo(x + w - r, y);
+  c.arcTo(x + w, y, x + w, y + h, r);
+  c.lineTo(x + w, y + h - r);
+  c.arcTo(x + w, y + h, x, y + h, r);
+  c.lineTo(x + r, y + h);
+  c.arcTo(x, y + h, x, y, r);
+  c.lineTo(x, y + r);
+  c.arcTo(x, y, x + w, y, r);
+}
+
+function doShare() {
+  const url = `${location.origin}${location.pathname}?score=${score}`;
+  const text = `I scored ${score} in Glow Drop! Can you beat me?`;
+  if (navigator.share) {
+    navigator.share({ title: 'Glow Drop', text, url }).catch(() => {});
+  } else {
+    navigator.clipboard.writeText(`${text}\n${url}`).then(() => {
+      flashMessage('Copied!', '#66ffb2');
+    }).catch(() => {});
+  }
+}
+
+let flashMsg = '', flashMsgFrames = 0;
+function flashMessage(msg, color) {
+  flashMsg = msg; flashMsgFrames = 90; flashColor = color;
+}
+
+// ─── HUD ─────────────────────────────────────────────────────────────────────
+function updateHUD() {
+  document.getElementById('score-val').textContent = score;
+  document.getElementById('best-val').textContent = best;
+}
+
+// ─── DIFFICULTY RAMP ─────────────────────────────────────────────────────────
+function getDifficulty() {
+  // drop interval shrinks with score
+  return Math.max(700, 2200 - score * 12);
+}
+
+// ─── LEVEL / PATTERN ─────────────────────────────────────────────────────────
+function getPatternLevel() { return Math.floor(score / 10); }
+
+// ─── MAIN GAME LOGIC ─────────────────────────────────────────────────────────
+let lastTs = 0;
+function update(ts) {
+  const dt = Math.min(ts - lastTs, 50);
+  lastTs = ts;
+  globalTime++;
+
+  bgHue = (200 + globalTime * 0.05 + (multiplier - 1) * 20) % 360;
+
+  if (state === STATE.START || state === STATE.GAMEOVER) {
+    return;
+  }
+
+  // Spawn drops
+  dropInterval = getDifficulty();
+  if (ts - lastDropTime > dropInterval && drops.filter(d => !d.caught && !d.missed).length < 3) {
+    const nextLane = patternTable[patternIndex % patternTable.length];
+    patternIndex++;
+    if (patternIndex % patternTable.length === 0) {
+      patternTable = buildPattern(getPatternLevel());
+    }
+    spawnDrop(nextLane);
+    lastDropTime = ts;
+  }
+
+  // Move drops
+  const cy = catcherY();
+  drops.forEach(d => {
+    if (d.caught || d.missed) return;
+    d.y += d.dir * d.speed;
+
+    // Check catch
+    const dist = Math.abs(d.y - cy);
+    if (Math.abs(d.x - W / 2) < CATCH_ZONE && dist < CATCH_ZONE) {
+      if (d.lane === catcherLane) {
+        // Caught!
+        const perfect = dist < PERFECT_ZONE;
+        d.caught = true;
+        streak++;
+        multiplier = Math.min(1 + Math.floor(streak / 3), 6);
+        const pts = (perfect ? 2 : 1) * multiplier;
+        score += pts;
+        if (score > best) { best = score; localStorage.setItem('glowdrop_best', best); }
+        spawnParticles(d.x, d.y, d.hue, perfect ? 18 : 10, true);
+        if (perfect) {
+          triggerShake(3, 6);
+          flashMessage('PERFECT!', `hsl(${d.hue},100%,70%)`);
+          flashFrames = 40;
+          flashColor = `hsl(${d.hue},100%,70%)`;
+        }
+        updateHUD();
+      }
+    }
+
+    // Miss detection: drop passed through catcher zone and continues off screen
+    const offTop = d.y < -50;
+    const offBot = d.y > H + 50;
+    if ((offTop || offBot) && !d.caught) {
+      d.missed = true;
+      // Game over
+      triggerShake(10, 25);
+      spawnParticles(W / 2, offTop ? 0 : H, 300, 20, true);
+      setTimeout(endGame, 200);
+    }
+  });
+
+  // Remove old caught/missed drops
+  drops = drops.filter(d => {
+    if (d.caught) {
+      // keep for a few frames for visual
+      d.radius *= 0.85;
+      return d.radius > 1;
+    }
+    return !d.missed;
+  });
+
+  // Update particles
+  particles.forEach(p => {
+    p.x += p.vx; p.y += p.vy;
+    p.vx *= 0.95; p.vy *= 0.95;
+    p.life -= p.decay;
+  });
+  particles = particles.filter(p => p.life > 0);
+
+  if (shakeFrames > 0) shakeFrames--;
+  if (flashFrames > 0) flashFrames--;
+  if (flashMsgFrames > 0) flashMsgFrames--;
+}
+
+function endGame() {
+  if (state !== STATE.PLAYING) return;
+  state = STATE.GAMEOVER;
+  if (score > best) { best = score; localStorage.setItem('glowdrop_best', best); }
+  updateHUD();
+}
+
+// ─── DRAW ─────────────────────────────────────────────────────────────────────
+function draw() {
+  if (state === STATE.START) {
+    drawStartScreen();
+    return;
+  }
+  if (state === STATE.GAMEOVER) {
+    drawGameOver();
+    drawParticles();
+    return;
+  }
+
+  // Screen shake
+  ctx.save();
+  if (shakeFrames > 0) {
+    const sx = (Math.random() - 0.5) * shakeAmt;
+    const sy = (Math.random() - 0.5) * shakeAmt;
+    ctx.translate(sx, sy);
+  }
+
+  // Background fade trail
+  drawBackground();
+
+  drawLaneIndicators();
+
+  // Flash overlay
+  if (flashFrames > 0) {
+    ctx.save();
+    ctx.globalAlpha = (flashFrames / 40) * 0.18;
+    ctx.fillStyle = flashColor;
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+  }
+
+  // Drops
+  drops.forEach(d => drawDrop(d));
+
+  // Catcher
+  drawCatcher(catcherY());
+
+  // Particles
+  drawParticles();
+
+  // Multiplier label
+  if (multiplier > 1) {
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.globalAlpha = 0.85;
+    ctx.font = `bold ${14 + multiplier * 2}px system-ui, sans-serif`;
+    ctx.fillStyle = `hsl(${bgHue},100%,75%)`;
+    ctx.shadowBlur = 12;
+    ctx.shadowColor = ctx.fillStyle;
+    ctx.fillText(`×${multiplier}`, W / 2, H / 2);
+    ctx.restore();
+  }
+
+  // Flash message
+  if (flashMsgFrames > 0) {
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.globalAlpha = Math.min(1, flashMsgFrames / 20);
+    ctx.font = 'bold 22px system-ui, sans-serif';
+    ctx.fillStyle = flashColor;
+    ctx.shadowBlur = 16;
+    ctx.shadowColor = flashColor;
+    ctx.fillText(flashMsg, W / 2, H / 2 - 40);
+    ctx.restore();
+  }
+
+  ctx.restore(); // shake
+}
+
+function drawParticles() {
+  particles.forEach(p => {
+    ctx.save();
+    ctx.globalAlpha = p.life * 0.9;
+    ctx.fillStyle = `hsl(${p.hue},${p.sat}%,${p.lit}%)`;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.radius * p.life, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  });
+}
+
+// ─── LOOP ─────────────────────────────────────────────────────────────────────
+function loop(ts) {
+  update(ts);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// ─── INPUT ────────────────────────────────────────────────────────────────────
+function handleInput(clientX, clientY) {
+  if (state === STATE.START) {
+    state = STATE.PLAYING;
+    initGame();
+    lastTs = performance.now();
+    return;
+  }
+  if (state === STATE.GAMEOVER) {
+    // Check share button
+    if (clientX !== undefined && clientY !== undefined) {
+      const rect = canvas.getBoundingClientRect();
+      const cx = (clientX - rect.left) * (W / rect.width);
+      const cy2 = (clientY - rect.top) * (H / rect.height);
+      if (cx >= shareBtn.x && cx <= shareBtn.x + shareBtn.w &&
+          cy2 >= shareBtn.y && cy2 <= shareBtn.y + shareBtn.h) {
+        doShare();
+        return;
+      }
+    }
+    state = STATE.PLAYING;
+    initGame();
+    lastTs = performance.now();
+    return;
+  }
+  if (state === STATE.PLAYING) {
+    catcherLane = catcherLane === 0 ? 1 : 0;
+    spawnParticles(W / 2, catcherY(), catcherLane === 0 ? 300 : 185, 5, false);
+  }
+}
+
+canvas.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  handleInput(e.clientX, e.clientY);
+});
+
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    handleInput();
+  }
+});
+
+// ─── BOOT ─────────────────────────────────────────────────────────────────────
+globalTime = 0;
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

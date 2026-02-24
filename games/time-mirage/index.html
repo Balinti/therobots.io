@@ -1,0 +1,1002 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Time Mirage - Free HTML5 Game</title>
+  <meta name="description" content="Play Time Mirage - Tap quickly to collect glitching cubes before they vanish in a vaporwave dreamscape.">
+  <meta name="theme-color" content="#0d0221">
+  <link rel="canonical" href="https://balinti.github.io/time-mirage/">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Time Mirage - Free HTML5 Game">
+  <meta property="og:description" content="Play Time Mirage - Tap quickly to collect glitching cubes before they vanish in a vaporwave dreamscape.">
+  <meta property="og:url" content="https://balinti.github.io/time-mirage/">
+  <meta property="og:image" content="https://balinti.github.io/time-mirage/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Time Mirage - Free HTML5 Game">
+  <meta name="twitter:description" content="Play Time Mirage - Tap quickly to collect glitching cubes before they vanish in a vaporwave dreamscape.">
+  <meta name="twitter:image" content="https://balinti.github.io/time-mirage/og-image.png">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      background: #0d0221;
+      color: #e0d0ff;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      overflow-x: hidden;
+    }
+    #game-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 100%;
+      padding: 8px 0 0;
+    }
+    #canvas-container {
+      position: relative;
+      width: 420px;
+      max-width: 100vw;
+    }
+    canvas {
+      display: block;
+      touch-action: manipulation;
+      cursor: pointer;
+      border-radius: 12px;
+      box-shadow: 0 0 40px #6610f255, 0 0 80px #0d022188;
+    }
+    #seo-block {
+      width: 100%;
+      max-width: 420px;
+      padding: 18px 16px 32px;
+      color: #9980cc;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    #seo-block h2 { color: #c8a0f0; font-size: 15px; margin: 14px 0 6px; }
+    #seo-block ul { padding-left: 18px; }
+    #seo-block p { margin: 4px 0; }
+    @media (max-width: 440px) {
+      #canvas-container { width: 100vw; }
+    }
+    @media (max-height: 760px) {
+      #game-wrap { padding: 0; }
+    }
+  </style>
+</head>
+<body>
+<div id="game-wrap">
+  <div id="canvas-container">
+    <canvas id="c"></canvas>
+  </div>
+  <div id="seo-block">
+    <h2>How to Play</h2>
+    <p>A neon cube glitches down the lane, cycling between <strong>STABLE</strong> (clean) and <strong>UNSTABLE</strong> (glitching) states.</p>
+    <ul>
+      <li>Tap / click or press <strong>Space / Enter</strong> to lock the cube.</li>
+      <li>Lock during <strong>STABLE</strong>: earn points, extend time, build combo.</li>
+      <li>Lock during <strong>UNSTABLE</strong>: <em>MIRAGE!</em> — lose a strike &amp; time.</li>
+      <li>Miss a cube: time penalty, combo reset.</li>
+      <li>Game over when time runs out or you hit 3 strikes.</li>
+    </ul>
+
+    <h2>Tips</h2>
+    <ul>
+      <li>Watch for the cube to go clean before tapping — patience wins.</li>
+      <li>Decoy (gold) cubes have shorter stable windows but bigger rewards.</li>
+      <li>Hit the center of the stable window for a <strong>PERFECT</strong> bonus.</li>
+      <li>Combos multiply your points — don't break the chain!</li>
+    </ul>
+
+    <h2>About Time Mirage</h2>
+    <p>Time Mirage is a free browser-based hyper-casual game built with pure HTML5 Canvas. No downloads, no installs — just tap and play.</p>
+  </div>
+</div>
+
+<script>
+/* =========================================================
+   TIME MIRAGE — single-file HTML5 canvas game
+   ========================================================= */
+
+// ── Constants ───────────────────────────────────────────
+const DESIGN_W = 420, DESIGN_H = 750;
+const LS_KEY = 'tm_high';
+const CUBE_SIZE_BASE = 52; // CSS px at scale 1
+
+// ── Responsive setup ────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let CSS_W, CSS_H, U, DPR;
+
+function resize() {
+  const avW = Math.min(window.innerWidth, 420);
+  const avH = window.innerHeight - 20;
+  const s = Math.min(avW / DESIGN_W, avH / DESIGN_H);
+  CSS_W = Math.floor(DESIGN_W * s);
+  CSS_H = Math.floor(DESIGN_H * s);
+  U = CSS_W / DESIGN_W;
+  DPR = Math.min(window.devicePixelRatio || 1, 3);
+  canvas.width  = CSS_W * DPR;
+  canvas.height = CSS_H * DPR;
+  canvas.style.width  = CSS_W + 'px';
+  canvas.style.height = CSS_H + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  document.getElementById('canvas-container').style.width = CSS_W + 'px';
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ── State ────────────────────────────────────────────────
+let state = 'start'; // 'start' | 'playing' | 'gameover'
+let gameoverTime = 0; // timestamp of gameover (for 500ms lockout)
+
+// ── Scoring / resources ─────────────────────────────────
+let score, highScore, combo, comboMax, strikes, timeLeft, runTime;
+let perfectCount, totalTaps, successCount;
+const TIME_MAX = 12.0;
+
+// ── Cube ─────────────────────────────────────────────────
+let cube = null;
+let afterCubeTimer = 0; // gap timer after resolve
+let waitingForGap = false;
+
+// ── Particles ────────────────────────────────────────────
+let particles = [];
+
+// ── Floating texts ───────────────────────────────────────
+let floats = [];
+
+// ── Screen shake ─────────────────────────────────────────
+let shakeTimer = 0, shakeAmp = 0;
+
+// ── Flash ────────────────────────────────────────────────
+let flashAlpha = 0;
+
+// ── Challenge banner ─────────────────────────────────────
+const urlParams = new URLSearchParams(window.location.search);
+const challengeScore = parseInt(urlParams.get('challengeScore')) || 0;
+
+// ── Share hit regions ────────────────────────────────────
+let btnShare = null, btnChallenge = null;
+
+// ── Load high score ──────────────────────────────────────
+highScore = parseInt(localStorage.getItem(LS_KEY)) || 0;
+
+// ── Utility ──────────────────────────────────────────────
+function rand(a, b) { return a + Math.random() * (b - a); }
+function randInt(a, b) { return Math.floor(rand(a, b + 1)); }
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+// ── Difficulty calculators ───────────────────────────────
+function getVY(t)        { return clamp(260 + 6.5 * t, 260, 620) * U; }
+function getGap(t)       { return clamp(0.55 - 0.0045 * t, 0.22, 0.55); }
+function getCycleMs(t)   { return clamp(900 - 35 * t, 520, 900); }
+function getStableMs(t, decoy) {
+  return decoy
+    ? clamp(220 - 18 * t, 140, 220)
+    : clamp(350 - 22 * t, 220, 350);
+}
+function getPDecoy(t) { return clamp((t - 30) * 0.008, 0, 0.28); }
+function getPDouble(t){ return clamp((t - 60) * 0.01,  0, 0.22); }
+
+// ── Spawn cube ───────────────────────────────────────────
+function spawnCube() {
+  const t = runTime;
+  const cycleMs   = getCycleMs(t);
+  const isDecoy   = Math.random() < getPDecoy(t);
+  const isDouble  = Math.random() < getPDouble(t);
+  const stableMs  = getStableMs(t, isDecoy);
+  const stableOff = rand(80, cycleMs - stableMs - 80);
+  let stableOff2 = null;
+  if (isDouble) {
+    stableOff2 = clamp(stableOff + cycleMs * 0.45 + rand(-40, 40), 80, cycleMs - stableMs - 80);
+  }
+  cube = {
+    x: CSS_W * 0.5,
+    y: -80 * U,
+    vy: getVY(t),
+    size: CUBE_SIZE_BASE * U * (isDecoy ? 1.18 : 1.0),
+    isDecoy,
+    isDouble,
+    cycleMs,
+    stableMs,
+    stableOffMs: stableOff,
+    stableOff2Ms: stableOff2,
+    phaseMs: 0,
+    locked: false,
+    resolved: false,
+    hue: isDecoy ? 45 : null, // gold for decoy; null = baseHue driven
+  };
+}
+
+// ── Cube stable check ────────────────────────────────────
+function isCubeStable(c) {
+  const p = c.phaseMs % c.cycleMs;
+  const inW1 = p >= c.stableOffMs && p <= c.stableOffMs + c.stableMs;
+  if (inW1) return true;
+  if (c.isDouble && c.stableOff2Ms !== null) {
+    const inW2 = p >= c.stableOff2Ms && p <= c.stableOff2Ms + c.stableMs;
+    if (inW2) return true;
+  }
+  return false;
+}
+
+// ── Perfect check ────────────────────────────────────────
+function isPerfect(c) {
+  const perfectMs = c.stableMs * 0.22;
+  const p = c.phaseMs % c.cycleMs;
+  const center1 = c.stableOffMs + c.stableMs / 2;
+  const d1 = Math.abs(p - center1);
+  if (d1 <= perfectMs) return true;
+  if (c.isDouble && c.stableOff2Ms !== null) {
+    const center2 = c.stableOff2Ms + c.stableMs / 2;
+    const d2 = Math.abs(p - center2);
+    if (d2 <= perfectMs) return true;
+  }
+  return false;
+}
+
+// ── Resolve cube ─────────────────────────────────────────
+function resolveCube(type) {
+  // type: 'success' | 'mistap' | 'miss'
+  if (!cube || cube.resolved) return;
+  cube.resolved = true;
+  cube.locked = true;
+
+  const cx = cube.x, cy = cube.y;
+
+  if (type === 'success') {
+    const perf = isPerfect(cube);
+    const decoy = cube.isDecoy;
+    combo = Math.min(combo + 1, 10);
+    const mult = 1 + 0.15 * combo;
+    const perfBonus = perf ? 1.35 : 1.0;
+    const base = decoy ? 180 : 120;
+    const pts = Math.floor(base * mult * perfBonus);
+    score += pts;
+    if (perf) perfectCount++;
+    successCount++;
+    totalTaps++;
+
+    // Time
+    let tAdd = decoy ? (perf ? 1.05 : 0.70) : (perf ? 0.85 : 0.55);
+    timeLeft = clamp(timeLeft + tAdd, 0, TIME_MAX);
+
+    // Particles
+    spawnParticles(cx, cy, perf ? randInt(40, 70) : randInt(20, 40),
+      perf ? [60, 180, 300] : [cube.hue !== null ? cube.hue : (Date.now() * 0.02 % 360)]);
+
+    // Float text
+    spawnFloat(cx, cy - cube.size, '+' + pts, perf ? '#fff' : '#aef', 22 * U);
+    if (perf) {
+      spawnFloat(cx, cy - cube.size * 2, 'PERFECT', '#ffe040', 20 * U);
+      triggerShake(0.12, 6 * U);
+    } else {
+      triggerShake(0.08, 3 * U);
+    }
+
+  } else if (type === 'mistap') {
+    strikes++;
+    combo = 0;
+    totalTaps++;
+    const pen = cube.isDecoy ? 1.40 : 1.10;
+    timeLeft = Math.max(0, timeLeft - pen);
+    spawnParticles(cx, cy, randInt(10, 20), [0, 320]);
+    spawnFloat(cx, cy, 'MIRAGE!', '#ff4488', 22 * U);
+    triggerShake(0.18, 10 * U);
+
+  } else if (type === 'miss') {
+    combo = 0;
+    timeLeft = Math.max(0, timeLeft - 0.90);
+    spawnParticles(cx, cy, randInt(8, 14), [270, 200]);
+    spawnFloat(cx, cy, 'MISS', '#88aaff', 20 * U);
+    triggerShake(0.10, 5 * U);
+  }
+
+  waitingForGap = true;
+  afterCubeTimer = getGap(runTime);
+  cube = null;
+
+  // Check gameover
+  if (timeLeft <= 0 || strikes >= 3) {
+    triggerGameover();
+  }
+}
+
+// ── Trigger gameover ─────────────────────────────────────
+function triggerGameover() {
+  state = 'gameover';
+  gameoverTime = performance.now();
+  triggerShake(0.35, 14 * U);
+  flashAlpha = 0.6;
+  if (score > highScore) {
+    highScore = score;
+    localStorage.setItem(LS_KEY, highScore);
+  }
+  buildGameoverButtons();
+}
+
+// ── Start new game ───────────────────────────────────────
+function startGame() {
+  state = 'playing';
+  score = 0;
+  combo = 0;
+  comboMax = 0;
+  strikes = 0;
+  timeLeft = 6.0;
+  runTime = 0;
+  perfectCount = 0;
+  totalTaps = 0;
+  successCount = 0;
+  particles = [];
+  floats = [];
+  shakeTimer = 0;
+  cube = null;
+  waitingForGap = false;
+  afterCubeTimer = 0;
+  flashAlpha = 0;
+  btnShare = null;
+  btnChallenge = null;
+  spawnCube();
+}
+
+// ── Particles ────────────────────────────────────────────
+function spawnParticles(x, y, count, hues) {
+  for (let i = 0; i < count; i++) {
+    const angle = rand(0, Math.PI * 2);
+    const speed = rand(60, 260) * U;
+    const hue = hues[randInt(0, hues.length - 1)];
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - rand(30, 80) * U,
+      life: 1.0,
+      maxLife: rand(0.6, 1.0),
+      size: rand(3, 8) * U,
+      hue,
+      drag: 0.97,
+    });
+  }
+}
+
+function spawnFloat(x, y, text, color, size) {
+  floats.push({ x, y, text, color, size, life: 1.0, vy: -90 * U });
+}
+
+// ── Shake ────────────────────────────────────────────────
+function triggerShake(dur, amp) {
+  shakeTimer = Math.max(shakeTimer, dur);
+  shakeAmp = Math.max(shakeAmp, amp);
+}
+
+// ── Input handler ────────────────────────────────────────
+function handleAction() {
+  if (state === 'start') {
+    startGame();
+  } else if (state === 'gameover') {
+    if (performance.now() - gameoverTime > 500) {
+      startGame();
+    }
+  } else if (state === 'playing') {
+    if (cube && !cube.resolved) {
+      if (isCubeStable(cube)) {
+        resolveCube('success');
+      } else {
+        resolveCube('mistap');
+      }
+    }
+  }
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  // Check gameover button regions
+  if (state === 'gameover' && performance.now() - gameoverTime > 500) {
+    const rect = canvas.getBoundingClientRect();
+    const px = (e.clientX - rect.left) / (CSS_W / CSS_W); // normalized
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    if (btnShare && hitBtn(btnShare, mx, my)) { doShare(); return; }
+    if (btnChallenge && hitBtn(btnChallenge, mx, my)) { doChallenge(); return; }
+  }
+  handleAction();
+}, { passive: false });
+
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    handleAction();
+  }
+});
+
+function hitBtn(btn, mx, my) {
+  return mx >= btn.x && mx <= btn.x + btn.w && my >= btn.y && my <= btn.y + btn.h;
+}
+
+// ── Gameover button regions ──────────────────────────────
+function buildGameoverButtons() {
+  const cx = CSS_W / 2;
+  const bw = 100 * U, bh = 34 * U;
+  btnShare     = { x: cx - bw - 8 * U, y: CSS_H * 0.80, w: bw, h: bh };
+  btnChallenge = { x: cx + 8 * U,      y: CSS_H * 0.80, w: bw, h: bh };
+}
+
+function doShare() {
+  const text = `I scored ${score} in Time Mirage! Can you beat me? https://balinti.github.io/time-mirage/`;
+  if (navigator.share) {
+    navigator.share({ title: 'Time Mirage', text, url: 'https://balinti.github.io/time-mirage/' }).catch(() => {});
+  } else {
+    navigator.clipboard.writeText(text).then(() => {
+      spawnFloat(CSS_W / 2, CSS_H * 0.75, 'Copied!', '#aef', 18 * U);
+    }).catch(() => {});
+  }
+}
+
+function doChallenge() {
+  const url = `https://balinti.github.io/time-mirage/?challengeScore=${score}`;
+  if (navigator.share) {
+    navigator.share({ title: 'Time Mirage Challenge', text: `Beat my score of ${score}!`, url }).catch(() => {});
+  } else {
+    navigator.clipboard.writeText(url).then(() => {
+      spawnFloat(CSS_W / 2, CSS_H * 0.75, 'Link copied!', '#aef', 18 * U);
+    }).catch(() => {});
+  }
+}
+
+// ── RAF loop ─────────────────────────────────────────────
+let lastTs = null;
+function loop(ts) {
+  requestAnimationFrame(loop);
+  if (lastTs === null) { lastTs = ts; }
+  const dt = clamp((ts - lastTs) / 1000, 0, 0.033);
+  lastTs = ts;
+  update(dt, ts);
+  render(ts);
+}
+
+// ── Update ───────────────────────────────────────────────
+function update(dt, ts) {
+  // Shake
+  if (shakeTimer > 0) {
+    shakeTimer -= dt;
+    if (shakeTimer <= 0) { shakeTimer = 0; shakeAmp = 0; }
+  }
+  // Flash
+  if (flashAlpha > 0) flashAlpha = Math.max(0, flashAlpha - dt * 3);
+
+  // Particles
+  const GRAVITY = 900 * U;
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.vy += GRAVITY * dt;
+    p.vx *= p.drag;
+    p.vy *= p.drag;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.life -= dt / p.maxLife;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+
+  // Floats
+  for (let i = floats.length - 1; i >= 0; i--) {
+    const f = floats[i];
+    f.y += f.vy * dt;
+    f.life -= dt * 1.4;
+    if (f.life <= 0) floats.splice(i, 1);
+  }
+
+  if (state !== 'playing') return;
+
+  runTime += dt;
+  timeLeft = Math.max(0, timeLeft - dt);
+
+  // Cube update
+  if (cube && !cube.resolved) {
+    cube.y += cube.vy * dt;
+    cube.phaseMs += dt * 1000;
+
+    // Miss check
+    const missLineY = CSS_H * 0.82;
+    if (cube.y >= missLineY && !cube.resolved) {
+      resolveCube('miss');
+    }
+  }
+
+  // Gap timer after cube resolved
+  if (waitingForGap && !cube) {
+    afterCubeTimer -= dt;
+    if (afterCubeTimer <= 0) {
+      waitingForGap = false;
+      if (state === 'playing') spawnCube();
+    }
+  }
+
+  // Gameover check
+  if (timeLeft <= 0 || strikes >= 3) {
+    if (state === 'playing') triggerGameover();
+  }
+
+  // Update cube velocity with ramp
+  if (cube && !cube.resolved) {
+    cube.vy = getVY(runTime);
+  }
+
+  // Update combo max
+  if (combo > comboMax) comboMax = combo;
+}
+
+// ── Render ───────────────────────────────────────────────
+function render(ts) {
+  ctx.save();
+
+  // Shake offset
+  let sx = 0, sy = 0;
+  if (shakeTimer > 0) {
+    const amp = shakeAmp * (shakeTimer / Math.max(shakeTimer, 0.001));
+    sx = rand(-amp, amp);
+    sy = rand(-amp, amp);
+    ctx.translate(sx, sy);
+  }
+
+  // Background
+  drawBackground(ts);
+
+  // Flash
+  if (flashAlpha > 0) {
+    ctx.fillStyle = `rgba(255,120,200,${flashAlpha})`;
+    ctx.fillRect(0, 0, CSS_W, CSS_H);
+  }
+
+  // Lane
+  drawLane(ts);
+
+  // Miss line
+  const missLineY = CSS_H * 0.82;
+  ctx.strokeStyle = 'rgba(255,60,120,0.35)';
+  ctx.lineWidth = 1.5 * U;
+  ctx.setLineDash([6 * U, 6 * U]);
+  ctx.beginPath();
+  ctx.moveTo(CSS_W * 0.25, missLineY);
+  ctx.lineTo(CSS_W * 0.75, missLineY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Cube
+  if (cube && !cube.resolved) drawCube(cube, ts);
+
+  // Particles
+  drawParticles();
+
+  // Floats
+  drawFloats();
+
+  // HUD
+  if (state === 'playing') drawHUD(ts);
+
+  // Overlays
+  if (state === 'start')    drawStart(ts);
+  if (state === 'gameover') drawGameover(ts);
+
+  ctx.restore();
+}
+
+// ── Background ───────────────────────────────────────────
+function drawBackground(ts) {
+  const baseHue = (ts * 0.02) % 360;
+  const grad = ctx.createLinearGradient(0, 0, 0, CSS_H);
+  grad.addColorStop(0,   `hsl(${baseHue},60%,6%)`);
+  grad.addColorStop(0.5, `hsl(${(baseHue + 40) % 360},55%,9%)`);
+  grad.addColorStop(1,   `hsl(${(baseHue + 80) % 360},65%,5%)`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, CSS_W, CSS_H);
+
+  // Slow moving bands
+  for (let i = 0; i < 3; i++) {
+    const by = ((ts * 0.025 + i * 250) % (CSS_H + 100)) - 50;
+    const bg = ctx.createLinearGradient(0, by, 0, by + 80 * U);
+    bg.addColorStop(0,   'rgba(0,0,0,0)');
+    bg.addColorStop(0.5, `hsla(${(baseHue + 120 * i) % 360},80%,50%,0.04)`);
+    bg.addColorStop(1,   'rgba(0,0,0,0)');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, by, CSS_W, 80 * U);
+  }
+
+  // Scanlines
+  const lineGap = 6 * U;
+  ctx.fillStyle = 'rgba(0,0,0,0.06)';
+  for (let y = 0; y < CSS_H; y += lineGap) {
+    ctx.fillRect(0, y, CSS_W, 1);
+  }
+}
+
+// ── Lane ─────────────────────────────────────────────────
+function drawLane(ts) {
+  const lx = CSS_W * 0.5;
+  const baseHue = (ts * 0.02) % 360;
+  // Glow line
+  const lg = ctx.createLinearGradient(0, 0, 0, CSS_H);
+  lg.addColorStop(0,   `hsla(${baseHue},100%,70%,0.0)`);
+  lg.addColorStop(0.3, `hsla(${baseHue},100%,70%,0.12)`);
+  lg.addColorStop(0.7, `hsla(${baseHue},100%,70%,0.12)`);
+  lg.addColorStop(1,   `hsla(${baseHue},100%,70%,0.0)`);
+  ctx.strokeStyle = lg;
+  ctx.lineWidth = 2 * U;
+  ctx.beginPath();
+  ctx.moveTo(lx, 0);
+  ctx.lineTo(lx, CSS_H);
+  ctx.stroke();
+}
+
+// ── Cube ─────────────────────────────────────────────────
+function drawCube(c, ts) {
+  const stable = isCubeStable(c);
+  const s = c.size;
+  const hs = s / 2;
+  const baseHue = c.hue !== null ? c.hue : (ts * 0.02 % 360);
+
+  ctx.save();
+
+  if (!stable) {
+    // Glitch: chroma ghost rectangles
+    const jx = rand(-3, 3) * U;
+    const jy = rand(-3, 3) * U;
+    // Cyan ghost
+    ctx.fillStyle = `rgba(0,220,255,0.18)`;
+    ctx.fillRect(c.x - hs + 3 * U + jx, c.y - hs + jy, s, s);
+    // Magenta ghost
+    ctx.fillStyle = `rgba(255,0,180,0.18)`;
+    ctx.fillRect(c.x - hs - 3 * U + jx, c.y - hs + jy, s, s);
+
+    // Main body — darker, jittered
+    const dx = rand(-2, 2) * U;
+    const dy = rand(-2, 2) * U;
+    ctx.fillStyle = `hsl(${baseHue},60%,18%)`;
+    ctx.fillRect(c.x - hs + dx, c.y - hs + dy, s, s);
+
+    // Glitch scanline strips
+    const strips = randInt(1, 3);
+    for (let i = 0; i < strips; i++) {
+      const sy2 = c.y - hs + rand(0, s - 4 * U);
+      const sh  = rand(2, 6) * U;
+      ctx.fillStyle = `hsla(${baseHue + 30},100%,70%,0.22)`;
+      ctx.fillRect(c.x - hs + rand(-4, 4) * U, sy2, s, sh);
+    }
+
+    // Unstable border
+    ctx.strokeStyle = `hsl(${baseHue},80%,50%)`;
+    ctx.lineWidth = 2 * U;
+    ctx.strokeRect(c.x - hs + dx, c.y - hs + dy, s, s);
+
+  } else {
+    // STABLE: crisp white core + cyan outline
+    // Outer glow
+    const glow = ctx.createRadialGradient(c.x, c.y, s * 0.1, c.x, c.y, s * 1.1);
+    glow.addColorStop(0, `hsla(${baseHue},100%,80%,0.22)`);
+    glow.addColorStop(1, `hsla(${baseHue},100%,50%,0.0)`);
+    ctx.fillStyle = glow;
+    ctx.fillRect(c.x - s, c.y - s, s * 2, s * 2);
+
+    // Core
+    ctx.fillStyle = `hsl(${baseHue},30%,90%)`;
+    ctx.fillRect(c.x - hs, c.y - hs, s, s);
+
+    // Inner highlight
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.fillRect(c.x - hs + 4 * U, c.y - hs + 4 * U, s * 0.4, s * 0.4);
+
+    // Border
+    ctx.strokeStyle = `hsl(${baseHue},100%,72%)`;
+    ctx.lineWidth = 2.5 * U;
+    ctx.strokeRect(c.x - hs, c.y - hs, s, s);
+
+    // Decoy indicator (gold diamond)
+    if (c.isDecoy) {
+      ctx.save();
+      ctx.translate(c.x, c.y - hs - 10 * U);
+      ctx.rotate(Math.PI / 4);
+      ctx.fillStyle = '#ffe040';
+      ctx.fillRect(-5 * U, -5 * U, 10 * U, 10 * U);
+      ctx.restore();
+    }
+  }
+
+  // Decoy label
+  if (c.isDecoy) {
+    ctx.fillStyle = stable ? '#ffe040' : 'rgba(255,220,60,0.5)';
+    ctx.font = `bold ${11 * U}px monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('DECOY', c.x, c.y);
+  }
+
+  ctx.restore();
+}
+
+// ── Particles ────────────────────────────────────────────
+function drawParticles() {
+  for (const p of particles) {
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, p.life) * 0.9;
+    ctx.fillStyle = `hsl(${p.hue},100%,70%)`;
+    ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+    ctx.restore();
+  }
+}
+
+// ── Floats ───────────────────────────────────────────────
+function drawFloats() {
+  for (const f of floats) {
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, f.life);
+    ctx.fillStyle = f.color;
+    ctx.font = `bold ${f.size}px monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    // Shadow
+    ctx.shadowColor = f.color;
+    ctx.shadowBlur = 8 * U;
+    ctx.fillText(f.text, f.x, f.y);
+    ctx.restore();
+  }
+}
+
+// ── HUD ───────────────────────────────────────────────────
+function drawHUD(ts) {
+  const baseHue = (ts * 0.02) % 360;
+  const pad = 14 * U;
+
+  // Score
+  ctx.save();
+  ctx.fillStyle = '#ffffff';
+  ctx.font = `bold ${26 * U}px monospace`;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.shadowColor = `hsl(${baseHue},100%,70%)`;
+  ctx.shadowBlur = 12 * U;
+  ctx.fillText(score, pad, pad);
+
+  // Best
+  ctx.fillStyle = `hsl(${baseHue},80%,70%)`;
+  ctx.font = `${13 * U}px monospace`;
+  ctx.fillText('BEST ' + highScore, pad, pad + 30 * U);
+
+  // Combo
+  if (combo > 0) {
+    ctx.fillStyle = combo >= 8 ? '#ffe040' : '#aaeeff';
+    ctx.font = `bold ${16 * U}px monospace`;
+    ctx.textAlign = 'right';
+    ctx.fillText('×' + combo + ' COMBO', CSS_W - pad, pad + 5 * U);
+  }
+
+  // Strikes
+  for (let i = 0; i < 3; i++) {
+    const sx = CSS_W - pad - (2 - i) * 20 * U;
+    const sy = pad + 30 * U;
+    ctx.fillStyle = i < strikes ? '#ff3366' : 'rgba(255,80,120,0.25)';
+    ctx.beginPath();
+    ctx.arc(sx, sy + 7 * U, 7 * U, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+
+  // Time bar
+  const bx = pad, by = CSS_H - 28 * U;
+  const bw = CSS_W - pad * 2;
+  const bh = 12 * U;
+  const frac = clamp(timeLeft / TIME_MAX, 0, 1);
+
+  // Track
+  ctx.fillStyle = 'rgba(255,255,255,0.1)';
+  ctx.beginPath();
+  ctx.roundRect(bx, by, bw, bh, 6 * U);
+  ctx.fill();
+
+  // Fill
+  const barHue = frac > 0.4 ? baseHue : (frac > 0.2 ? 40 : 0);
+  const barGrad = ctx.createLinearGradient(bx, 0, bx + bw * frac, 0);
+  barGrad.addColorStop(0, `hsl(${barHue},100%,60%)`);
+  barGrad.addColorStop(1, `hsl(${(barHue + 40) % 360},100%,70%)`);
+  ctx.fillStyle = barGrad;
+  ctx.beginPath();
+  ctx.roundRect(bx, by, bw * frac, bh, 6 * U);
+  ctx.fill();
+
+  // Glow on bar
+  if (frac > 0.05) {
+    ctx.shadowColor = `hsl(${barHue},100%,70%)`;
+    ctx.shadowBlur = 8 * U;
+    ctx.beginPath();
+    ctx.roundRect(bx, by, bw * frac, bh, 6 * U);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
+  // Time text
+  ctx.fillStyle = 'rgba(255,255,255,0.8)';
+  ctx.font = `bold ${11 * U}px monospace`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(timeLeft.toFixed(1) + 's', CSS_W / 2, by + bh / 2);
+}
+
+// ── Start screen ──────────────────────────────────────────
+function drawStart(ts) {
+  const baseHue = (ts * 0.02) % 360;
+  const cx = CSS_W / 2, cy = CSS_H / 2;
+
+  // Dim overlay
+  ctx.fillStyle = 'rgba(8,2,20,0.72)';
+  ctx.fillRect(0, 0, CSS_W, CSS_H);
+
+  // Title
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  // Glow title
+  ctx.shadowColor = `hsl(${baseHue},100%,70%)`;
+  ctx.shadowBlur = 24 * U;
+  ctx.fillStyle = `hsl(${baseHue},90%,80%)`;
+  ctx.font = `bold ${38 * U}px monospace`;
+  ctx.fillText('TIME', cx, cy - 70 * U);
+  ctx.fillStyle = `hsl(${(baseHue + 50) % 360},90%,80%)`;
+  ctx.fillText('MIRAGE', cx, cy - 30 * U);
+
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = 'rgba(200,180,255,0.7)';
+  ctx.font = `${13 * U}px monospace`;
+  ctx.fillText('Stabilize the cube. Survive the mirage.', cx, cy + 20 * U);
+
+  // Challenge banner
+  if (challengeScore > 0) {
+    ctx.fillStyle = 'rgba(255,220,40,0.15)';
+    ctx.beginPath();
+    ctx.roundRect(cx - 140 * U, cy + 42 * U, 280 * U, 28 * U, 6 * U);
+    ctx.fill();
+    ctx.fillStyle = '#ffe040';
+    ctx.font = `bold ${13 * U}px monospace`;
+    ctx.fillText(`🏆 Beat ${challengeScore} to win the challenge!`, cx, cy + 56 * U);
+  }
+
+  // Tap to start
+  const pulse = 0.7 + 0.3 * Math.sin(ts * 0.004);
+  ctx.globalAlpha = pulse;
+  ctx.fillStyle = '#ffffff';
+  ctx.font = `bold ${17 * U}px monospace`;
+  ctx.fillText('TAP TO START', cx, cy + 90 * U);
+  ctx.globalAlpha = 0.5;
+  ctx.font = `${12 * U}px monospace`;
+  ctx.fillText('Space / Enter', cx, cy + 112 * U);
+  ctx.globalAlpha = 1;
+
+  // Best score
+  if (highScore > 0) {
+    ctx.fillStyle = `hsl(${baseHue},80%,65%)`;
+    ctx.font = `${13 * U}px monospace`;
+    ctx.fillText('Best: ' + highScore, cx, cy + 140 * U);
+  }
+
+  ctx.restore();
+}
+
+// ── Gameover screen ───────────────────────────────────────
+function drawGameover(ts) {
+  const baseHue = (ts * 0.02) % 360;
+  const cx = CSS_W / 2;
+
+  // Overlay
+  ctx.fillStyle = 'rgba(8,2,20,0.80)';
+  ctx.fillRect(0, 0, CSS_W, CSS_H);
+
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  // Title
+  ctx.shadowColor = '#ff3366';
+  ctx.shadowBlur = 20 * U;
+  ctx.fillStyle = '#ff4488';
+  ctx.font = `bold ${30 * U}px monospace`;
+  ctx.fillText('GAME OVER', cx, CSS_H * 0.18);
+  ctx.shadowBlur = 0;
+
+  // Score
+  ctx.fillStyle = '#ffffff';
+  ctx.font = `bold ${46 * U}px monospace`;
+  ctx.shadowColor = `hsl(${baseHue},100%,70%)`;
+  ctx.shadowBlur = 18 * U;
+  ctx.fillText(score, cx, CSS_H * 0.30);
+  ctx.shadowBlur = 0;
+
+  // New best indicator
+  if (score > 0 && score >= highScore) {
+    ctx.fillStyle = '#ffe040';
+    ctx.font = `bold ${16 * U}px monospace`;
+    ctx.fillText('NEW BEST!', cx, CSS_H * 0.39);
+  } else if (highScore > 0) {
+    ctx.fillStyle = `hsl(${baseHue},70%,65%)`;
+    ctx.font = `${14 * U}px monospace`;
+    ctx.fillText('Best: ' + highScore, cx, CSS_H * 0.39);
+  }
+
+  // Stats
+  ctx.fillStyle = 'rgba(200,180,255,0.75)';
+  ctx.font = `${13 * U}px monospace`;
+  const perfPct = totalTaps > 0 ? Math.round(perfectCount / totalTaps * 100) : 0;
+  ctx.fillText(`Best Combo: ×${comboMax}   Perfects: ${perfPct}%   Strikes: ${strikes}`, cx, CSS_H * 0.47);
+
+  // Share / Challenge buttons
+  if (btnShare) {
+    drawBtn(btnShare, 'SHARE', `hsl(${baseHue},80%,55%)`, ts);
+    drawBtn(btnChallenge, 'CHALLENGE', `hsl(${(baseHue+140)%360},80%,55%)`, ts);
+  }
+
+  // Tap to retry
+  const lockout = performance.now() - gameoverTime < 500;
+  if (!lockout) {
+    const pulse = 0.7 + 0.3 * Math.sin(ts * 0.004);
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `bold ${17 * U}px monospace`;
+    ctx.fillText('TAP TO RETRY', cx, CSS_H * 0.90);
+    ctx.globalAlpha = 1;
+  }
+
+  ctx.restore();
+}
+
+function drawBtn(btn, label, color, ts) {
+  ctx.save();
+  ctx.fillStyle = color + '33';
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5 * U;
+  ctx.beginPath();
+  ctx.roundRect(btn.x, btn.y, btn.w, btn.h, 6 * U);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = '#fff';
+  ctx.font = `bold ${11 * U}px monospace`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, btn.x + btn.w / 2, btn.y + btn.h / 2);
+  ctx.restore();
+}
+
+// ── Polyfill roundRect for older browsers ────────────────
+if (!CanvasRenderingContext2D.prototype.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+    if (typeof r === 'number') r = [r];
+    const tl = r[0] || 0, tr = r[1] || tl, br = r[2] || tl, bl = r[3] || tr;
+    this.beginPath();
+    this.moveTo(x + tl, y);
+    this.lineTo(x + w - tr, y);
+    this.quadraticCurveTo(x + w, y, x + w, y + tr);
+    this.lineTo(x + w, y + h - br);
+    this.quadraticCurveTo(x + w, y + h, x + w - br, y + h);
+    this.lineTo(x + bl, y + h);
+    this.quadraticCurveTo(x, y + h, x, y + h - bl);
+    this.lineTo(x, y + tl);
+    this.quadraticCurveTo(x, y, x + tl, y);
+    this.closePath();
+  };
+}
+
+// ── Boot ─────────────────────────────────────────────────
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

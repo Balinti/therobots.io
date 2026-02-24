@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Cog Climb - Free HTML5 Game</title>
+<meta name="description" content="Play Cog Climb - Tap to brace rotating cogs and burst upward before the crush zone swallows you. Free hyper-casual HTML5 game.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0a0a1a">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Cog Climb - Free HTML5 Game">
+<meta property="og:description" content="Ride a chain of rotating cogs upward! Tap to brace at the right moment and burst skyward before the crush zone catches you.">
+<meta property="og:url" content="https://balinti.github.io/cog-climb/">
+<meta property="og:image" content="https://balinti.github.io/cog-climb/preview.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Cog Climb - Free HTML5 Game">
+<meta name="twitter:description" content="Ride a chain of rotating cogs upward! Brace the cyan notch to burst skyward.">
+<meta name="twitter:image" content="https://balinti.github.io/cog-climb/preview.png">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#0a0a1a;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:'Segoe UI',Arial,sans-serif;overflow:hidden;touch-action:none;user-select:none}
+#wrap{display:flex;flex-direction:column;align-items:center;width:100%;max-width:420px}
+#container{position:relative;width:100%;width:min(100vw,420px);height:min(100vh,750px);max-width:420px;max-height:750px;overflow:hidden;background:#0d0d24;border-radius:4px;flex-shrink:0}
+canvas{position:absolute;top:0;left:0;width:100%;height:100%;display:block}
+#ui{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:5}
+#scorebar{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:center;padding:10px 16px;background:linear-gradient(to bottom,rgba(0,0,0,0.7) 0%,transparent 100%)}
+.scoreblock{display:flex;flex-direction:column;align-items:center}
+.slabel{font-size:10px;color:rgba(255,255,255,0.45);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:2px}
+.sval{font-size:24px;font-weight:800;color:#fff;text-shadow:0 0 10px rgba(0,255,255,0.5);line-height:1}
+#combodisp{position:absolute;top:64px;left:50%;transform:translateX(-50%);font-size:22px;font-weight:800;color:#ff0;text-shadow:0 0 12px #ff0,0 0 24px rgba(255,200,0,0.5);white-space:nowrap;opacity:0;transition:opacity 0.25s;pointer-events:none}
+#overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:all;z-index:20;background:rgba(4,4,18,0.88)}
+.ov-title{font-size:54px;font-weight:900;color:#0ff;text-shadow:0 0 24px #0ff,0 0 48px rgba(0,255,255,0.4);letter-spacing:5px;margin-bottom:6px;line-height:1}
+.ov-sub{font-size:15px;font-weight:600;color:rgba(180,220,255,0.75);letter-spacing:3px;margin-bottom:20px}
+.ov-hint{font-size:13px;color:rgba(255,255,255,0.4);text-align:center;line-height:1.8;margin-bottom:38px}
+.ov-btn{font-size:17px;font-weight:800;color:#0d0d24;background:#0ff;border:none;border-radius:32px;padding:13px 52px;cursor:pointer;letter-spacing:2px;box-shadow:0 0 24px #0ff,0 0 48px rgba(0,255,255,0.3);pointer-events:all;transition:transform .1s,box-shadow .1s;-webkit-tap-highlight-color:transparent}
+.ov-btn:active{transform:scale(0.94);box-shadow:0 0 12px #0ff}
+.ov-crush{font-size:46px;font-weight:900;color:#f55;text-shadow:0 0 24px #f55,0 0 48px rgba(255,50,50,0.4);letter-spacing:3px;margin-bottom:18px}
+.ov-sline{font-size:28px;color:#fff;margin-bottom:6px}
+.ov-sline span{color:#0ff}
+.ov-bline{font-size:17px;color:rgba(255,255,255,0.5);margin-bottom:34px}
+.ov-bline span{color:#ff0}
+#howto{padding:10px 16px 8px;color:rgba(160,185,210,0.5);font-size:11px;line-height:1.65;text-align:center;width:100%;max-width:420px}
+#howto strong{color:rgba(0,200,200,0.5);letter-spacing:.5px}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="container">
+    <canvas id="gc"></canvas>
+    <div id="ui">
+      <div id="scorebar">
+        <div class="scoreblock"><div class="slabel">SCORE</div><div class="sval" id="sv">0</div></div>
+        <div class="scoreblock"><div class="slabel">BEST</div><div class="sval" id="bv">0</div></div>
+      </div>
+      <div id="combodisp" id="cd"></div>
+    </div>
+    <div id="overlay">
+      <div class="ov-title">COG CLIMB</div>
+      <div class="ov-sub">BRACE &amp; BURST</div>
+      <div class="ov-hint">Tap / Space to <strong style="color:#0ff">BRACE</strong><br>Hit the <strong style="color:#0ff">cyan notch</strong> to burst upward<br>Don&apos;t get crushed by the rising zone!</div>
+      <button class="ov-btn" id="startBtn">TAP TO START</button>
+    </div>
+  </div>
+  <div id="howto">
+    <strong>HOW TO PLAY:</strong> Tap or press Space to BRACE. If the glowing cyan notch on the rotating cog aligns with your position (top of cog), you burst upward and score. Miss and you CLANK — no burst, combo resets. Keep bursting to stay above the rising crush zone. Fast cogs, shrinking notches, and stutter cogs add challenge over time.
+  </div>
+</div>
+<script>
+(function(){
+'use strict';
+
+// ── Canvas ─────────────────────────────────────────────────────
+const canvas = document.getElementById('gc');
+const ctx    = canvas.getContext('2d');
+const cont   = document.getElementById('container');
+let W = 0, H = 0, dpr = 1;
+
+function resize(){
+  const r = cont.getBoundingClientRect();
+  W = r.width; H = r.height;
+  dpr = Math.min(window.devicePixelRatio || 1, 3);
+  canvas.width  = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ── Constants ──────────────────────────────────────────────────
+const LS_KEY        = 'cogclimb_highscore_v1';
+const COG_R         = 36;          // cog body radius
+const TOOTH_H       = 9;
+const TOOTH_COUNT   = 10;
+const COG_SPACING   = 105;         // px between cog centres (screen space)
+const NUM_COGS      = 9;
+const SAFE_HALF_0   = 0.40;        // initial safe wedge half-angle (radians)
+const GRAV          = 200;         // px/s² downward (mild)
+const BURST_VY      = -290;        // px/s upward on successful brace
+const BRACE_DUR     = 0.20;        // seconds brace lasts
+const BRACE_ASSIST  = 40;          // max fall speed while bracing (px/s)
+const SCROLL_BASE   = 42;          // cog downward scroll speed (px/s) — cogs come from top
+const CRUSH_RISE    = 22;          // crush zone rise speed px/s (purely screen-space)
+const PLAYER_Y_REL  = -(COG_R + 16); // player Y above cog centre
+
+// ── State ──────────────────────────────────────────────────────
+let state   = 'start';
+let score   = 0;
+let best    = parseInt(localStorage.getItem(LS_KEY) || '0');
+let combo   = 0;
+let elapsed = 0;
+
+// Shake
+let trauma = 0;
+
+// Red flash
+let redFlash = 0;
+
+// Ambient hue
+let ambHue = 210;
+
+// ── Cogs ───────────────────────────────────────────────────────
+// All positions in screen space.
+// Cogs scroll DOWNWARD (y increases over time at scrollSpeed).
+// New cogs enter from TOP, exit at BOTTOM.
+let cogs   = [];
+let cogIdx = 0;
+
+// ── Player ─────────────────────────────────────────────────────
+let player = { x:0, y:0, vy:0, bracing:false, braceTimer:0, dead:false, trail:[] };
+
+// ── Particles & rings ──────────────────────────────────────────
+let particles = [];
+let rings     = [];
+const MAX_P   = 160;
+
+// ── Crush zone ─────────────────────────────────────────────────
+// Screen-space Y. Starts below screen, rises.
+let crushY = 0;
+
+// ── Scroll speed (increases with difficulty) ──────────────────
+let scrollSpeed   = SCROLL_BASE;
+let crushRiseRate = CRUSH_RISE;
+
+// ── UI refs ────────────────────────────────────────────────────
+const overlay  = document.getElementById('overlay');
+const startBtn = document.getElementById('startBtn');
+const svEl     = document.getElementById('sv');
+const bvEl     = document.getElementById('bv');
+const cdEl     = document.getElementById('combodisp');
+let   cdTimer  = null;
+bvEl.textContent = best;
+
+// ── Cog factory ────────────────────────────────────────────────
+function makeCog(sy, idx){
+  const diff  = Math.min(elapsed / 90, 1);
+  const dir   = Math.random() < 0.5 ? 1 : -1;
+  let   rspd  = (0.9 + diff * 1.5) * dir;
+  let   sHalf = Math.max(SAFE_HALF_0 - diff * 0.18, 0.16);
+  let   type  = 'normal';
+
+  if(idx % 9 === 8)  type = 'double';
+  if(idx % 6 === 5)  type = 'fast';
+  if(elapsed > 45 && idx % 11 === 10) type = 'stutter';
+
+  if(type === 'fast') rspd *= 1.85;
+
+  const safeAng  = Math.random() * Math.PI * 2;
+  const safeAng2 = (type === 'double')
+    ? (safeAng + Math.PI + (Math.random() - 0.5) * 0.5)
+    : null;
+
+  const xOff = (idx % 2 === 0) ? -20 : 20;
+
+  return {
+    y: sy,
+    xOff,
+    ang:     0,
+    rotSpd:  rspd,
+    safeAng,
+    safeAng2,
+    safeHalf: sHalf,
+    type,
+    idx,
+    stutterT: 0,
+    stutterP: false,
+    tint: type === 'fast' ? 'hsl(30,90%,55%)' : null
+  };
+}
+
+function initCogs(){
+  cogs   = [];
+  cogIdx = 0;
+  // Stack cogs from bottom of screen upward, then let scroll handle it
+  // First cog visible near player starting position
+  const baseY = H * 0.58; // first cog below mid-screen
+  for(let i = 0; i < NUM_COGS; i++){
+    cogs.push(makeCog(baseY - i * COG_SPACING, cogIdx++));
+  }
+}
+
+function recycleCogs(){
+  for(let i = cogs.length - 1; i >= 0; i--){
+    if(cogs[i].y > H + COG_R + 20){
+      // Recycle: find topmost cog, place this one COG_SPACING above it
+      const topY = cogs.reduce((m, c) => Math.min(m, c.y), Infinity);
+      cogs[i] = makeCog(topY - COG_SPACING, cogIdx++);
+    }
+  }
+  // Ensure we always have enough cogs above screen
+  while(cogs.length < NUM_COGS){
+    const topY = cogs.reduce((m, c) => Math.min(m, c.y), Infinity);
+    cogs.push(makeCog(topY - COG_SPACING, cogIdx++));
+  }
+}
+
+// ── Player init ────────────────────────────────────────────────
+function initPlayer(){
+  // Start player sitting on the first (lowest) cog
+  const firstCog = cogs.reduce((best, c) => c.y > best.y ? c : best, cogs[0]);
+  player.x       = W / 2 + firstCog.xOff;
+  player.y       = firstCog.y + PLAYER_Y_REL;
+  player.vy      = 0;
+  player.bracing = false;
+  player.braceTimer = 0;
+  player.dead    = false;
+  player.trail   = [];
+}
+
+// ── Game start ─────────────────────────────────────────────────
+function startGame(){
+  score       = 0;
+  combo       = 0;
+  elapsed     = 0;
+  trauma      = 0;
+  redFlash    = 0;
+  ambHue      = 210;
+  scrollSpeed = SCROLL_BASE;
+  crushRiseRate = CRUSH_RISE;
+  crushY      = H + 100;
+  particles   = [];
+  rings       = [];
+  cogIdx      = 0;
+  svEl.textContent = '0';
+  bvEl.textContent = best;
+  initCogs();
+  initPlayer();
+  state = 'playing';
+  overlay.style.display = 'none';
+  cdEl.style.opacity = '0';
+}
+
+// ── Brace input ────────────────────────────────────────────────
+function onBrace(){
+  if(state === 'start' || state === 'gameover'){ startGame(); return; }
+  if(state !== 'playing') return;
+  if(player.bracing) return;
+  doBrace();
+}
+
+document.addEventListener('pointerdown', onBrace);
+document.addEventListener('keydown', e => {
+  if(e.code === 'Space' || e.code === 'Enter'){ e.preventDefault(); onBrace(); }
+});
+startBtn.addEventListener('pointerdown', e => { e.stopPropagation(); startGame(); });
+
+// ── Brace logic ────────────────────────────────────────────────
+function doBrace(){
+  player.bracing    = true;
+  player.braceTimer = BRACE_DUR;
+
+  const cog = getActiveCog();
+  if(!cog){ clank(); return; }
+
+  if(hitTest(cog)){
+    // Success
+    combo++;
+    const pts = 10 + combo * 5;
+    score += pts;
+    updateScoreUI();
+    player.vy = BURST_VY;
+    trauma = Math.max(trauma, 0.15);
+    spawnParticles(player.x, player.y, '#0ff', 20);
+    spawnRing(player.x, player.y, '#0ff');
+    showCombo(combo);
+    if(combo >= 5) spawnParticles(player.x, player.y, '#ff0', 10);
+  } else {
+    clank();
+  }
+}
+
+function clank(){
+  combo    = 0;
+  trauma   = Math.max(trauma, 0.28);
+  redFlash = 1;
+  spawnParticles(player.x, player.y, '#f55', 14);
+  hideCombo();
+}
+
+function getActiveCog(){
+  // Cog closest to player by Y distance
+  let best = null, bestD = Infinity;
+  for(const c of cogs){
+    const d = Math.abs(c.y - (player.y - PLAYER_Y_REL)); // compare to cog centre
+    if(d < bestD){ bestD = d; best = c; }
+  }
+  // Only valid if close enough
+  return (bestD < COG_R + 30) ? best : null;
+}
+
+function hitTest(cog){
+  // Player is always at the TOP of the cog (angle = -PI/2)
+  const playerAngle = -Math.PI / 2;
+  function wrap(a){
+    let d = ((a % (Math.PI*2)) + Math.PI*4) % (Math.PI*2);
+    if(d > Math.PI) d -= Math.PI * 2;
+    return Math.abs(d);
+  }
+  const n1 = cog.safeAng + cog.ang;
+  if(wrap(playerAngle - n1) <= cog.safeHalf) return true;
+  if(cog.safeAng2 !== null){
+    const n2 = cog.safeAng2 + cog.ang;
+    if(wrap(playerAngle - n2) <= cog.safeHalf) return true;
+  }
+  return false;
+}
+
+// ── Particles ──────────────────────────────────────────────────
+function spawnParticles(x, y, color, count){
+  for(let i = 0; i < count; i++){
+    if(particles.length >= MAX_P) break;
+    const a   = Math.random() * Math.PI * 2;
+    const spd = 80 + Math.random() * 200;
+    const ml  = 0.4 + Math.random() * 0.4;
+    particles.push({ x, y, vx: Math.cos(a)*spd, vy: Math.sin(a)*spd - 40,
+      life: ml, maxLife: ml, color, sz: 2 + Math.random() * 3 });
+  }
+}
+
+function spawnRing(x, y, color){
+  rings.push({ x, y, r: 0, life: 1, color });
+}
+
+// ── Score UI ───────────────────────────────────────────────────
+function updateScoreUI(){
+  svEl.textContent = Math.floor(score);
+  if(score > best){
+    best = Math.floor(score);
+    bvEl.textContent = best;
+    localStorage.setItem(LS_KEY, best);
+  }
+}
+
+// ── Combo display ──────────────────────────────────────────────
+function showCombo(c){
+  if(c < 2) return;
+  cdEl.textContent = 'x' + c + ' COMBO!';
+  cdEl.style.opacity = '1';
+  clearTimeout(cdTimer);
+  cdTimer = setTimeout(() => { cdEl.style.opacity = '0'; }, 1100);
+}
+function hideCombo(){ cdEl.style.opacity = '0'; }
+
+// ── Update ─────────────────────────────────────────────────────
+let lastTs = 0;
+
+function update(dt){
+  if(state !== 'playing') return;
+
+  elapsed += dt;
+  ambHue   = (ambHue + dt * 7) % 360;
+
+  // Difficulty ramp
+  const diff    = Math.min(elapsed / 90, 1);
+  scrollSpeed   = SCROLL_BASE + diff * 68;
+  crushRiseRate = CRUSH_RISE  + diff * 55;
+
+  // Scroll cogs downward
+  for(const c of cogs){
+    if(c.type === 'stutter'){
+      c.stutterT += dt;
+      if(c.stutterT > 1.6) c.stutterT = 0;
+      c.stutterP = c.stutterT > 1.3;
+    }
+    c.y += scrollSpeed * dt;
+    if(!c.stutterP) c.ang += c.rotSpd * dt;
+  }
+  recycleCogs();
+
+  // Player physics
+  if(player.bracing){
+    player.braceTimer -= dt;
+    if(player.braceTimer <= 0){ player.bracing = false; player.braceTimer = 0; }
+    player.vy += GRAV * dt;
+    player.vy = Math.min(player.vy, BRACE_ASSIST); // limit fall while bracing
+  } else {
+    player.vy += GRAV * dt;
+  }
+  player.vy = Math.min(player.vy, 420);
+  player.y += player.vy * dt;
+
+  // Also carry player with scroll so they don't immediately fall behind
+  // Player passively scrolls down with cogs (slightly slower → they slowly lose ground)
+  player.y += scrollSpeed * 0.18 * dt;
+
+  // Trail
+  player.trail.unshift({ x: player.x, y: player.y, age: 0 });
+  if(player.trail.length > 14) player.trail.length = 14;
+  player.trail.forEach(t => t.age += dt);
+
+  // Score from time
+  score += scrollSpeed * dt * 0.06;
+  updateScoreUI();
+
+  // Crush zone rises
+  crushY -= crushRiseRate * dt;
+
+  // Death
+  if(player.y > crushY - 10 || player.y > H + 30){
+    die(); return;
+  }
+
+  // Particles
+  for(let i = particles.length - 1; i >= 0; i--){
+    const p = particles[i];
+    p.life -= dt;
+    if(p.life <= 0){ particles.splice(i, 1); continue; }
+    p.x  += p.vx * dt;
+    p.y  += p.vy * dt;
+    p.vy += 240 * dt;
+  }
+
+  // Rings
+  for(let i = rings.length - 1; i >= 0; i--){
+    const r = rings[i];
+    r.life -= dt * 2.8;
+    if(r.life <= 0){ rings.splice(i, 1); continue; }
+    r.r += dt * 190;
+  }
+
+  // Shake decay
+  trauma   = Math.max(0, trauma   - dt * 2.0);
+  redFlash = Math.max(0, redFlash - dt * 4.5);
+}
+
+// ── Die ────────────────────────────────────────────────────────
+function die(){
+  if(player.dead) return;
+  player.dead = true;
+  state       = 'gameover';
+  trauma      = 1.0;
+  redFlash    = 2;
+  spawnParticles(player.x, player.y, '#f55', 50);
+  spawnParticles(player.x, player.y, '#ff0', 30);
+  setTimeout(showGameover, 700);
+}
+
+function showGameover(){
+  overlay.innerHTML = `
+    <div class="ov-crush">CRUSHED</div>
+    <div class="ov-sline">Score: <span>${Math.floor(score)}</span></div>
+    <div class="ov-bline">Best: <span>${best}</span></div>
+    <button class="ov-btn" id="retryBtn">TAP TO RETRY</button>`;
+  overlay.style.display = 'flex';
+  document.getElementById('retryBtn').addEventListener('pointerdown', e => {
+    e.stopPropagation(); startGame();
+  });
+}
+
+// ── Draw ───────────────────────────────────────────────────────
+function draw(){
+  ctx.clearRect(0, 0, W, H);
+
+  // Background gradient
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, `hsl(${ambHue},38%,5%)`);
+  bg.addColorStop(1, `hsl(${(ambHue+45)%360},28%,3%)`);
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // Shake
+  const sm  = trauma * trauma * 16;
+  const shX = (Math.random() * 2 - 1) * sm;
+  const shY = (Math.random() * 2 - 1) * sm;
+  ctx.save();
+  ctx.translate(shX, shY);
+
+  // Cogs
+  for(const c of cogs){
+    const cx = W / 2 + c.xOff;
+    if(c.y < -(COG_R + TOOTH_H + 4) || c.y > H + COG_R + TOOTH_H + 4) continue;
+    drawCog(c, cx, c.y);
+  }
+
+  // Player
+  if(state === 'playing' || state === 'gameover') drawPlayer();
+
+  // Particles
+  for(const p of particles){
+    const alpha = p.life / p.maxLife;
+    if(alpha <= 0) continue;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle   = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, Math.max(0.5, p.sz * alpha), 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // Rings
+  for(const r of rings){
+    ctx.globalAlpha  = r.life * 0.65;
+    ctx.strokeStyle  = r.color;
+    ctx.lineWidth    = 2.5;
+    ctx.beginPath();
+    ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  // Crush zone
+  drawCrush();
+
+  ctx.restore();
+
+  // Red vignette (outside shake)
+  if(redFlash > 0){
+    const vg = ctx.createRadialGradient(W/2, H/2, H*0.15, W/2, H/2, H*0.75);
+    vg.addColorStop(0, 'rgba(255,0,0,0)');
+    vg.addColorStop(1, `rgba(220,0,0,${Math.min(redFlash, 1) * 0.42})`);
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, 0, W, H);
+  }
+}
+
+function drawCog(cog, cx, cy){
+  const R   = COG_R;
+  const tH  = TOOTH_H;
+  const tW  = 0.19;
+  const n   = TOOTH_COUNT;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+
+  // Stutter outline telegraph
+  if(cog.type === 'stutter' && cog.stutterT > 1.0){
+    const pulse = 0.35 + 0.4 * Math.sin(elapsed * 22);
+    ctx.strokeStyle = `rgba(255,190,0,${pulse})`;
+    ctx.lineWidth   = 3.5;
+    ctx.beginPath();
+    ctx.arc(0, 0, R + tH + 5, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  // Body colour
+  const bc = cog.tint || `hsl(${(ambHue+175)%360},24%,20%)`;
+  const rc = cog.tint || `hsl(${(ambHue+195)%360},30%,33%)`;
+
+  // Gear teeth path (before rotation for wedge overlay)
+  ctx.rotate(cog.ang);
+  ctx.beginPath();
+  for(let i = 0; i < n; i++){
+    const a  = (i / n) * Math.PI * 2;
+    ctx.lineTo(Math.cos(a - tW) * R,      Math.sin(a - tW) * R);
+    ctx.lineTo(Math.cos(a - tW) * (R+tH), Math.sin(a - tW) * (R+tH));
+    ctx.lineTo(Math.cos(a + tW) * (R+tH), Math.sin(a + tW) * (R+tH));
+    ctx.lineTo(Math.cos(a + tW) * R,      Math.sin(a + tW) * R);
+  }
+  ctx.closePath();
+  ctx.fillStyle   = bc;
+  ctx.fill();
+  ctx.strokeStyle = rc;
+  ctx.lineWidth   = 1.5;
+  ctx.stroke();
+
+  // Inner hub
+  ctx.beginPath();
+  ctx.arc(0, 0, R * 0.42, 0, Math.PI * 2);
+  ctx.fillStyle   = `hsl(${ambHue},18%,13%)`;
+  ctx.fill();
+  ctx.strokeStyle = rc;
+  ctx.lineWidth   = 1;
+  ctx.stroke();
+
+  // Hub cross detail
+  ctx.strokeStyle = rc;
+  ctx.lineWidth   = 1;
+  for(let i = 0; i < 4; i++){
+    const a = (i / 4) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(a) * R * 0.15, Math.sin(a) * R * 0.15);
+    ctx.lineTo(Math.cos(a) * R * 0.38, Math.sin(a) * R * 0.38);
+    ctx.stroke();
+  }
+
+  ctx.rotate(-cog.ang); // undo rotation to draw wedge in world space
+  // Safe wedge (world angle)
+  drawWedge(cog.safeAng + cog.ang, cog.safeHalf, R);
+  if(cog.safeAng2 !== null) drawWedge(cog.safeAng2 + cog.ang, cog.safeHalf, R);
+
+  ctx.restore();
+}
+
+function drawWedge(ang, half, R){
+  const a0 = ang - half;
+  const a1 = ang + half;
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.arc(0, 0, R + TOOTH_H + 3, a0, a1);
+  ctx.closePath();
+  ctx.fillStyle   = 'rgba(0,255,255,0.17)';
+  ctx.fill();
+  ctx.strokeStyle = '#0ff';
+  ctx.lineWidth   = 2.2;
+  ctx.stroke();
+}
+
+function drawPlayer(){
+  const px = player.x;
+  const py = player.y;
+
+  // Trail (upward burst streaks)
+  if(player.vy < 0){
+    for(let i = 1; i < player.trail.length; i++){
+      const t     = player.trail[i];
+      const alpha = Math.max(0, (1 - t.age / 0.35) * 0.32);
+      if(alpha <= 0) break;
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle   = '#0ff';
+      const sz = 4.5 * (1 - i / player.trail.length);
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, sz, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  ctx.save();
+  ctx.translate(px, py);
+
+  if(player.bracing){
+    ctx.shadowColor = '#0ff';
+    ctx.shadowBlur  = 22;
+  }
+
+  // Body
+  const bodyC = player.bracing ? '#0ff' : '#d8eeff';
+  ctx.beginPath();
+  ctx.arc(0, 0, 11, 0, Math.PI * 2);
+  ctx.fillStyle   = bodyC;
+  ctx.fill();
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth   = 2;
+  ctx.stroke();
+
+  // Visor
+  ctx.beginPath();
+  ctx.arc(0, -2, 4.5, 0, Math.PI * 2);
+  ctx.fillStyle = player.bracing ? '#fff' : '#08aaff';
+  ctx.fill();
+
+  ctx.shadowBlur = 0;
+  ctx.restore();
+}
+
+function drawCrush(){
+  if(crushY >= H + 50) return;
+  const pulse = 0.55 + 0.45 * Math.sin(elapsed * 5.5);
+  const zH    = H - crushY;
+
+  // Fill
+  const cg = ctx.createLinearGradient(0, crushY, 0, H);
+  cg.addColorStop(0, `rgba(255,0,0,${0.22 * pulse})`);
+  cg.addColorStop(1, `rgba(180,0,0,${0.5  * pulse})`);
+  ctx.fillStyle = cg;
+  ctx.fillRect(0, crushY, W, Math.max(0, zH));
+
+  // Edge glow
+  ctx.strokeStyle = `rgba(255,60,60,${0.85 * pulse})`;
+  ctx.lineWidth   = 3;
+  ctx.beginPath();
+  ctx.moveTo(0, crushY);
+  ctx.lineTo(W, crushY);
+  ctx.stroke();
+
+  // Label
+  ctx.fillStyle = `rgba(255,110,110,${0.75 * pulse})`;
+  ctx.font      = 'bold 12px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('▲  CRUSH ZONE  ▲', W / 2, crushY + 18);
+}
+
+// ── Idle animation (start screen) ─────────────────────────────
+let idleCogs = [];
+function initIdleCogs(){
+  idleCogs = [];
+  for(let i = 0; i < 6; i++){
+    idleCogs.push({ x: W/2 + (i%2===0?-24:24), y: H*0.32 + i*90,
+      ang: 0, spd: 0.7*(i%2===0?1:-1), r: 28 });
+  }
+}
+
+function drawIdle(ts){
+  ctx.clearRect(0, 0, W, H);
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, `hsl(${ambHue},38%,5%)`);
+  bg.addColorStop(1, `hsl(${(ambHue+45)%360},28%,3%)`);
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+  ambHue = (ambHue + 0.15) % 360;
+  for(const c of idleCogs){
+    c.ang += c.spd * 0.016;
+    ctx.save();
+    ctx.translate(c.x, c.y);
+    ctx.rotate(c.ang);
+    idleCogShape(c.r, `hsl(${(ambHue+200)%360},30%,22%)`, `hsl(${(ambHue+220)%360},40%,38%)`);
+    ctx.restore();
+    // Safe wedge on idle
+    ctx.save();
+    ctx.translate(c.x, c.y);
+    drawWedge(Math.PI * 1.5 + c.ang, 0.36, c.r);
+    ctx.restore();
+  }
+}
+
+function idleCogShape(R, fill, stroke){
+  const n = 8, tH = 6, tW = 0.22;
+  ctx.beginPath();
+  for(let i = 0; i < n; i++){
+    const a = (i / n) * Math.PI * 2;
+    ctx.lineTo(Math.cos(a - tW)*R,      Math.sin(a - tW)*R);
+    ctx.lineTo(Math.cos(a - tW)*(R+tH), Math.sin(a - tW)*(R+tH));
+    ctx.lineTo(Math.cos(a + tW)*(R+tH), Math.sin(a + tW)*(R+tH));
+    ctx.lineTo(Math.cos(a + tW)*R,      Math.sin(a + tW)*R);
+  }
+  ctx.closePath();
+  ctx.fillStyle   = fill;
+  ctx.fill();
+  ctx.strokeStyle = stroke;
+  ctx.lineWidth   = 1.5;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(0, 0, R * 0.38, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  ctx.fill();
+}
+
+// ── Main loop ─────────────────────────────────────────────────
+function loop(ts){
+  const dt = Math.min((ts - lastTs) / 1000, 0.05);
+  lastTs = ts;
+
+  if(state === 'start'){
+    drawIdle(ts);
+  } else {
+    update(dt);
+    draw();
+  }
+  requestAnimationFrame(loop);
+}
+
+// ── Boot ──────────────────────────────────────────────────────
+overlay.style.display = 'flex';
+requestAnimationFrame(ts => {
+  resize();          // ensure canvas dimensions are valid after first layout
+  initIdleCogs();
+  lastTs = ts;
+  requestAnimationFrame(loop);
+});
+
+})();
+</script>
+</body>
+</html>

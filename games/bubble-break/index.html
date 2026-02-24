@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Bubble Break - Free HTML5 Game</title>
+<meta name="description" content="Play Bubble Break - Tap to split a bubble cluster underwater and match colors before bubbles pop away.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0a1628">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Bubble Break - Free HTML5 Game">
+<meta property="og:description" content="Play Bubble Break - Tap to split a bubble cluster underwater and match colors before bubbles pop away.">
+<meta property="og:url" content="https://balinti.github.io/bubble-break/">
+<meta property="og:image" content="https://balinti.github.io/bubble-break/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Bubble Break - Free HTML5 Game">
+<meta name="twitter:description" content="Play Bubble Break - Tap to split a bubble cluster underwater and match colors before bubbles pop away.">
+<meta name="twitter:image" content="https://balinti.github.io/bubble-break/og-image.png">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{width:100%;height:100%;overflow:hidden;background:#0a1628;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;touch-action:none;user-select:none;-webkit-user-select:none;}
+#wrap{display:flex;align-items:center;justify-content:center;width:100%;height:100vh;height:100dvh;}
+canvas{display:block;max-width:420px;max-height:750px;width:100%;height:100%;border-radius:12px;image-rendering:auto;}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="c"></canvas></div>
+<script>
+'use strict';
+(() => {
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+// --- High-DPI setup ---
+const DPR = Math.min(window.devicePixelRatio || 1, 3);
+let W, H, COLS, ROWS, RAD, DIAM, GRID_X0, GRID_Y0, SURFACE_Y;
+const MAX_W = 420, MAX_H = 750;
+
+function resize() {
+  const wrap = document.getElementById('wrap');
+  const ww = Math.min(wrap.clientWidth, MAX_W);
+  const wh = Math.min(wrap.clientHeight, MAX_H);
+  const aspect = MAX_W / MAX_H;
+  let cw, ch;
+  if (ww / wh > aspect) { ch = wh; cw = ch * aspect; }
+  else { cw = ww; ch = cw / aspect; }
+  canvas.style.width = cw + 'px';
+  canvas.style.height = ch + 'px';
+  canvas.width = Math.round(cw * DPR);
+  canvas.height = Math.round(ch * DPR);
+  W = canvas.width;
+  H = canvas.height;
+  COLS = 8;
+  RAD = Math.floor(W / (COLS * 2 + 1));
+  DIAM = RAD * 2;
+  ROWS = 14;
+  GRID_X0 = RAD + Math.floor((W - COLS * DIAM) / 2);
+  SURFACE_Y = Math.round(H * 0.12);
+  GRID_Y0 = SURFACE_Y + RAD;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// --- Game state ---
+let state = 'start'; // 'start' | 'playing' | 'gameover'
+let score = 0;
+let best = parseInt(localStorage.getItem('bb_best')) || 0;
+let combo = 0;
+let comboTimer = 0;
+let comboMultiplier = 1;
+let gameTime = 0;
+let riseTimer = 0;
+let riseCooldown = 2.5;
+let grid = []; // grid[row][col] = { color, pressure, pressureCount } or null
+let particles = [];
+let pulseRings = [];
+let scoreSplats = [];
+let shakeTimer = 0;
+let shakeMag = 0;
+let slowMoTimer = 0;
+let nearDeath = false;
+let autopopTimer = 0;
+let autopopActive = false;
+let bgTime = 0;
+let bgBubbles = [];
+
+// --- Colors ---
+const PALETTE = [
+  [340, 80, 55], // pink-red
+  [200, 85, 50], // ocean blue
+  [130, 70, 48], // emerald
+  [45, 90, 55],  // golden
+  [275, 75, 55], // purple
+];
+function hsl(h, s, l) { return `hsl(${h},${s}%,${l}%)`; }
+function colorStr(idx) {
+  if (idx < 0) return hsl(0, 0, 45); // gray for pressure
+  const c = PALETTE[idx % PALETTE.length];
+  return hsl(c[0], c[1], c[2]);
+}
+function colorStrLight(idx) {
+  if (idx < 0) return hsl(0, 0, 65);
+  const c = PALETTE[idx % PALETTE.length];
+  return hsl(c[0], c[1], c[2] + 20);
+}
+
+// --- Difficulty helpers ---
+function numColors() {
+  if (gameTime < 20) return 3;
+  if (gameTime < 75) return 4;
+  return 5;
+}
+function riseInterval() {
+  if (gameTime < 20) return 2.8;
+  if (gameTime < 40) return 2.2;
+  if (gameTime < 75) return 1.7;
+  return 1.3;
+}
+function comboDecayRate() {
+  if (gameTime < 40) return 1.8;
+  if (gameTime < 75) return 2.5;
+  return 3.5;
+}
+function shouldSpawnPressure() {
+  if (gameTime < 40) return false;
+  return Math.random() < (gameTime < 75 ? 0.12 : 0.22);
+}
+
+// --- Grid helpers ---
+function initGrid() {
+  grid = [];
+  const nc = numColors();
+  // Create initial board with guaranteed groups
+  for (let r = 0; r < ROWS; r++) {
+    grid[r] = [];
+    for (let c = 0; c < COLS; c++) {
+      grid[r][c] = null;
+    }
+  }
+  // Fill bottom 5 rows with bubbles, seeding some groups
+  for (let r = ROWS - 5; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      grid[r][c] = { color: Math.floor(Math.random() * nc), pressure: false, pressureCount: 0 };
+    }
+  }
+  // Force some obvious groups of 4-5 for instant fun
+  seedGroup(ROWS - 1, 0, 0, 4);
+  seedGroup(ROWS - 2, 3, 1, 5);
+  seedGroup(ROWS - 3, 1, 2, 4);
+  seedGroup(ROWS - 1, 5, 1, 3);
+}
+
+function seedGroup(startRow, startCol, colorIdx, size) {
+  // BFS-like seeding: place same color in connected cells
+  const placed = [];
+  const queue = [[startRow, startCol]];
+  const visited = new Set();
+  while (placed.length < size && queue.length > 0) {
+    const [r, c] = queue.shift();
+    const key = r * 100 + c;
+    if (visited.has(key)) continue;
+    visited.add(key);
+    if (r < 0 || r >= ROWS || c < 0 || c >= COLS) continue;
+    if (!grid[r][c]) continue;
+    grid[r][c].color = colorIdx;
+    placed.push([r, c]);
+    // Add neighbors
+    const neighbors = getNeighbors(r, c);
+    for (const [nr, nc] of neighbors) {
+      if (!visited.has(nr * 100 + nc)) queue.push([nr, nc]);
+    }
+  }
+}
+
+function getNeighbors(r, c) {
+  const n = [];
+  // left, right
+  if (c > 0) n.push([r, c - 1]);
+  if (c < COLS - 1) n.push([r, c + 1]);
+  // up, down
+  if (r > 0) n.push([r - 1, c]);
+  if (r < ROWS - 1) n.push([r + 1, c]);
+  // hex-like: diagonal based on row parity (even rows offset right)
+  const odd = r % 2 === 1;
+  if (odd) {
+    if (r > 0 && c < COLS - 1) n.push([r - 1, c + 1]);
+    if (r < ROWS - 1 && c < COLS - 1) n.push([r + 1, c + 1]);
+  } else {
+    if (r > 0 && c > 0) n.push([r - 1, c - 1]);
+    if (r < ROWS - 1 && c > 0) n.push([r + 1, c - 1]);
+  }
+  return n;
+}
+
+function cellPos(r, c) {
+  const odd = r % 2 === 1;
+  const x = GRID_X0 + c * DIAM + (odd ? RAD : 0);
+  const y = GRID_Y0 + r * (DIAM * 0.88);
+  return { x, y };
+}
+
+function findConnectedGroup(r, c) {
+  const cell = grid[r][c];
+  if (!cell || cell.pressure) return [];
+  const color = cell.color;
+  const group = [];
+  const visited = new Set();
+  const stack = [[r, c]];
+  while (stack.length > 0) {
+    const [cr, cc] = stack.pop();
+    const key = cr * 100 + cc;
+    if (visited.has(key)) continue;
+    visited.add(key);
+    const cell2 = grid[cr]?.[cc];
+    if (!cell2 || cell2.pressure || cell2.color !== color) continue;
+    group.push([cr, cc]);
+    for (const [nr, nc] of getNeighbors(cr, cc)) {
+      if (!visited.has(nr * 100 + nc)) stack.push([nr, nc]);
+    }
+  }
+  return group;
+}
+
+function popGroup(group, tapR, tapC) {
+  const nc = numColors();
+  const multiplier = comboMultiplier;
+  const basePoints = group.length * 10;
+  const sizeBonus = group.length >= 5 ? group.length * 5 : 0;
+  const pts = (basePoints + sizeBonus) * multiplier;
+  score += pts;
+  if (score > best) { best = score; localStorage.setItem('bb_best', best); }
+
+  // Combo
+  combo++;
+  comboTimer = 3.0;
+  if (combo >= 8) comboMultiplier = 5;
+  else if (combo >= 5) comboMultiplier = 3;
+  else if (combo >= 3) comboMultiplier = 2;
+  else comboMultiplier = 1;
+
+  // Spawn particles & splat
+  const tapPos = cellPos(tapR, tapC);
+  spawnScoreSplat(tapPos.x, tapPos.y, pts, multiplier);
+
+  for (const [r, c] of group) {
+    const pos = cellPos(r, c);
+    spawnPopParticles(pos.x, pos.y, grid[r][c].color, group.length >= 5 ? 18 : 12);
+    grid[r][c] = null;
+  }
+
+  // Shake on big pops
+  if (group.length >= 5) {
+    shakeTimer = 0.15;
+    shakeMag = 3 * DPR;
+  }
+
+  // Near-death slow-mo
+  if (nearDeath) {
+    slowMoTimer = 0.4;
+  }
+
+  // Start auto-pop window
+  autopopTimer = 0.3;
+  autopopActive = true;
+}
+
+function dropBubbles() {
+  // Gravity: drop bubbles down into empty spaces column by column
+  for (let c = 0; c < COLS; c++) {
+    let write = ROWS - 1;
+    for (let r = ROWS - 1; r >= 0; r--) {
+      if (grid[r][c]) {
+        if (r !== write) {
+          grid[write][c] = grid[r][c];
+          grid[r][c] = null;
+        }
+        write--;
+      }
+    }
+  }
+}
+
+function checkAutoPop() {
+  let popped = false;
+  const checked = new Set();
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const key = r * 100 + c;
+      if (checked.has(key)) continue;
+      if (!grid[r][c] || grid[r][c].pressure) continue;
+      const group = findConnectedGroup(r, c);
+      for (const [gr, gc] of group) checked.add(gr * 100 + gc);
+      if (group.length >= 3) {
+        popGroup(group, r, c);
+        popped = true;
+      }
+    }
+  }
+  if (popped) dropBubbles();
+  return popped;
+}
+
+function addRow() {
+  const nc = numColors();
+  // Check if top row has any bubbles => game over
+  for (let c = 0; c < COLS; c++) {
+    if (grid[0][c]) {
+      triggerGameOver();
+      return;
+    }
+  }
+  // Shift everything up
+  for (let r = 0; r < ROWS - 1; r++) {
+    grid[r] = grid[r + 1];
+  }
+  // New bottom row
+  grid[ROWS - 1] = [];
+  for (let c = 0; c < COLS; c++) {
+    if (shouldSpawnPressure()) {
+      grid[ROWS - 1][c] = { color: -1, pressure: true, pressureCount: 3 };
+    } else {
+      grid[ROWS - 1][c] = { color: Math.floor(Math.random() * nc), pressure: false, pressureCount: 0 };
+    }
+  }
+}
+
+function processPressureBubbles() {
+  let extraPush = false;
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const cell = grid[r][c];
+      if (cell && cell.pressure) {
+        cell.pressureCount--;
+        if (cell.pressureCount <= 0) {
+          // Convert to random color and flag extra push
+          cell.pressure = false;
+          cell.color = Math.floor(Math.random() * numColors());
+          cell.pressureCount = 0;
+          extraPush = true;
+          // Particle burst for conversion
+          const pos = cellPos(r, c);
+          spawnPopParticles(pos.x, pos.y, cell.color, 8);
+        }
+      }
+    }
+  }
+  return extraPush;
+}
+
+function checkNearDeath() {
+  // Check if row index 1 has any bubbles (within 1 row of surface)
+  for (let c = 0; c < COLS; c++) {
+    if (grid[1]?.[c]) { nearDeath = true; return; }
+  }
+  nearDeath = false;
+}
+
+function triggerGameOver() {
+  state = 'gameover';
+  shakeTimer = 0.4;
+  shakeMag = 8 * DPR;
+  if (score > best) { best = score; localStorage.setItem('bb_best', best); }
+}
+
+// --- Input ---
+function handleTap(px, py) {
+  if (state === 'start') { startGame(); return; }
+  if (state === 'gameover') { startGame(); return; }
+  if (state !== 'playing') return;
+
+  // Find tapped bubble
+  let bestDist = RAD * 1.2;
+  let bestR = -1, bestC = -1;
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (!grid[r][c]) continue;
+      const pos = cellPos(r, c);
+      const dx = px - pos.x, dy = py - pos.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestR = r;
+        bestC = c;
+      }
+    }
+  }
+  if (bestR < 0) return;
+
+  const cell = grid[bestR][bestC];
+  if (cell.pressure) return; // Can't tap pressure bubbles
+
+  const group = findConnectedGroup(bestR, bestC);
+  const tapPos = cellPos(bestR, bestC);
+
+  // Pulse ring always
+  spawnPulseRing(tapPos.x, tapPos.y, cell.color);
+
+  if (group.length >= 3) {
+    popGroup(group, bestR, bestC);
+    dropBubbles();
+    // Auto-pop chain handled in update
+  } else {
+    // Nudge: cycle color
+    const nc = numColors();
+    cell.color = (cell.color + 1) % nc;
+    // Small nudge particles
+    spawnPopParticles(tapPos.x, tapPos.y, cell.color, 4);
+  }
+}
+
+function getCanvasCoords(e) {
+  const rect = canvas.getBoundingClientRect();
+  const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+  const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+  return { x, y };
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  const { x, y } = getCanvasCoords(e);
+  handleTap(x, y);
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    if (state === 'start') startGame();
+    else if (state === 'gameover') startGame();
+  }
+});
+
+// --- Particles ---
+function spawnPopParticles(x, y, colorIdx, count) {
+  for (let i = 0; i < count; i++) {
+    const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.4;
+    const speed = (2 + Math.random() * 4) * DPR;
+    const c = colorIdx >= 0 ? PALETTE[colorIdx % PALETTE.length] : [0, 0, 55];
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 0.6 + Math.random() * 0.3,
+      maxLife: 0.6 + Math.random() * 0.3,
+      size: (2 + Math.random() * 3) * DPR,
+      h: c[0] + (Math.random() - 0.5) * 20,
+      s: c[1],
+      l: c[2] + Math.random() * 20,
+    });
+  }
+}
+
+function spawnPulseRing(x, y, colorIdx) {
+  const c = colorIdx >= 0 ? PALETTE[colorIdx % PALETTE.length] : [200, 50, 50];
+  pulseRings.push({ x, y, radius: RAD * 0.5, maxRadius: RAD * 5, life: 0.5, maxLife: 0.5, h: c[0], s: c[1], l: c[2] });
+  // Chromatic offset ring
+  pulseRings.push({ x: x + 2 * DPR, y: y - 2 * DPR, radius: RAD * 0.5, maxRadius: RAD * 5, life: 0.5, maxLife: 0.5, h: c[0] + 30, s: c[1], l: c[2] + 10 });
+}
+
+function spawnScoreSplat(x, y, pts, mult) {
+  const text = mult > 1 ? `+${pts} x${mult}` : `+${pts}`;
+  scoreSplats.push({ x, y, text, life: 1.2, maxLife: 1.2 });
+}
+
+// --- Background bubbles ---
+function initBgBubbles() {
+  bgBubbles = [];
+  for (let i = 0; i < 12; i++) {
+    bgBubbles.push({
+      x: Math.random() * W,
+      y: Math.random() * H,
+      r: (10 + Math.random() * 30) * DPR,
+      speed: (0.2 + Math.random() * 0.4) * DPR,
+      phase: Math.random() * Math.PI * 2,
+    });
+  }
+}
+initBgBubbles();
+
+// --- Start game ---
+function startGame() {
+  state = 'playing';
+  score = 0;
+  combo = 0;
+  comboTimer = 0;
+  comboMultiplier = 1;
+  gameTime = 0;
+  riseTimer = 0;
+  particles = [];
+  pulseRings = [];
+  scoreSplats = [];
+  shakeTimer = 0;
+  slowMoTimer = 0;
+  nearDeath = false;
+  autopopTimer = 0;
+  autopopActive = false;
+  initGrid();
+}
+
+// --- Update ---
+let lastTime = 0;
+function update(dt) {
+  bgTime += dt;
+
+  // Update bg bubbles
+  for (const b of bgBubbles) {
+    b.y -= b.speed;
+    b.x += Math.sin(bgTime * 0.8 + b.phase) * 0.3 * DPR;
+    if (b.y + b.r < 0) { b.y = H + b.r; b.x = Math.random() * W; }
+  }
+
+  if (state !== 'playing') return;
+
+  const timeMult = slowMoTimer > 0 ? 0.3 : 1;
+  const adt = dt * timeMult;
+  gameTime += adt;
+
+  // Combo decay
+  if (comboTimer > 0) {
+    comboTimer -= adt * comboDecayRate();
+    if (comboTimer <= 0) {
+      comboTimer = 0;
+      combo = 0;
+      comboMultiplier = 1;
+    }
+  }
+
+  // Rise timer
+  riseTimer += adt;
+  if (riseTimer >= riseInterval()) {
+    riseTimer = 0;
+    const extraPush = processPressureBubbles();
+    addRow();
+    if (state === 'gameover') return;
+    if (extraPush) {
+      addRow();
+      if (state === 'gameover') return;
+    }
+    checkNearDeath();
+  }
+
+  // Auto-pop window
+  if (autopopActive) {
+    autopopTimer -= adt;
+    if (autopopTimer <= 0) {
+      autopopActive = false;
+      // Check for chain pops after drops
+      checkAutoPop();
+    }
+  }
+
+  // Shake decay
+  if (shakeTimer > 0) shakeTimer -= dt;
+  if (slowMoTimer > 0) slowMoTimer -= dt;
+
+  // Particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.life -= dt;
+    if (p.life <= 0) { particles.splice(i, 1); continue; }
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 2 * DPR * dt;
+    p.vx *= 0.98;
+  }
+
+  // Pulse rings
+  for (let i = pulseRings.length - 1; i >= 0; i--) {
+    const r = pulseRings[i];
+    r.life -= dt;
+    if (r.life <= 0) { pulseRings.splice(i, 1); continue; }
+    const t = 1 - r.life / r.maxLife;
+    r.radius = r.maxRadius * t;
+  }
+
+  // Score splats
+  for (let i = scoreSplats.length - 1; i >= 0; i--) {
+    const s = scoreSplats[i];
+    s.life -= dt;
+    s.y -= 1.5 * DPR;
+    if (s.life <= 0) scoreSplats.splice(i, 1);
+  }
+}
+
+// --- Draw ---
+function draw() {
+  ctx.save();
+
+  // Shake offset
+  let sx = 0, sy = 0;
+  if (shakeTimer > 0) {
+    sx = (Math.random() - 0.5) * shakeMag * 2;
+    sy = (Math.random() - 0.5) * shakeMag * 2;
+  }
+  ctx.translate(sx, sy);
+
+  // Background gradient
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  const warmShift = nearDeath ? 20 : 0;
+  grad.addColorStop(0, hsl(220 - warmShift, 50, 8 + Math.sin(bgTime * 0.3) * 2));
+  grad.addColorStop(0.5, hsl(215 - warmShift, 45, 12 + Math.sin(bgTime * 0.2 + 1) * 2));
+  grad.addColorStop(1, hsl(225 - warmShift, 55, 10 + Math.sin(bgTime * 0.4 + 2) * 2));
+  ctx.fillStyle = grad;
+  ctx.fillRect(-10, -10, W + 20, H + 20);
+
+  // Background bubble silhouettes
+  ctx.globalAlpha = 0.06;
+  for (const b of bgBubbles) {
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+    ctx.fillStyle = '#88bbff';
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  if (state === 'start') {
+    drawStartScreen();
+    ctx.restore();
+    return;
+  }
+
+  if (state === 'playing' || state === 'gameover') {
+    drawGame();
+  }
+
+  if (state === 'gameover') {
+    drawGameOver();
+  }
+
+  ctx.restore();
+}
+
+function drawGame() {
+  // Surface line
+  ctx.strokeStyle = nearDeath ? 'rgba(255,80,60,0.5)' : 'rgba(100,180,255,0.2)';
+  ctx.lineWidth = 2 * DPR;
+  ctx.setLineDash([8 * DPR, 6 * DPR]);
+  ctx.beginPath();
+  ctx.moveTo(0, SURFACE_Y);
+  ctx.lineTo(W, SURFACE_Y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Near-death tint overlay
+  if (nearDeath) {
+    ctx.fillStyle = `rgba(255,40,20,${0.04 + Math.sin(bgTime * 6) * 0.02})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // Pulse rings
+  for (const r of pulseRings) {
+    const alpha = r.life / r.maxLife;
+    ctx.strokeStyle = `hsla(${r.h},${r.s}%,${r.l}%,${alpha * 0.4})`;
+    ctx.lineWidth = (2 + (1 - alpha) * 2) * DPR;
+    ctx.beginPath();
+    ctx.arc(r.x, r.y, r.radius, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  // Grid bubbles
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const cell = grid[r][c];
+      if (!cell) continue;
+      const pos = cellPos(r, c);
+      if (pos.y - RAD < SURFACE_Y - RAD) continue; // Don't draw above surface
+
+      const bRad = RAD * 0.88;
+
+      if (cell.pressure) {
+        // Pressure bubble: gray with countdown
+        const grd = ctx.createRadialGradient(pos.x - bRad * 0.3, pos.y - bRad * 0.3, bRad * 0.1, pos.x, pos.y, bRad);
+        grd.addColorStop(0, hsl(0, 0, 60));
+        grd.addColorStop(1, hsl(0, 0, 35));
+        ctx.fillStyle = grd;
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, bRad, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Countdown text
+        ctx.fillStyle = '#fff';
+        ctx.font = `bold ${Math.round(RAD * 0.9)}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(cell.pressureCount.toString(), pos.x, pos.y + 1 * DPR);
+
+        // Warning outline
+        if (cell.pressureCount <= 1) {
+          ctx.strokeStyle = `rgba(255,60,40,${0.5 + Math.sin(bgTime * 8) * 0.3})`;
+          ctx.lineWidth = 2 * DPR;
+          ctx.beginPath();
+          ctx.arc(pos.x, pos.y, bRad + 2 * DPR, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      } else {
+        // Normal bubble
+        const grd = ctx.createRadialGradient(
+          pos.x - bRad * 0.3, pos.y - bRad * 0.3, bRad * 0.1,
+          pos.x, pos.y, bRad
+        );
+        grd.addColorStop(0, colorStrLight(cell.color));
+        grd.addColorStop(1, colorStr(cell.color));
+        ctx.fillStyle = grd;
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, bRad, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Shine highlight
+        ctx.fillStyle = 'rgba(255,255,255,0.25)';
+        ctx.beginPath();
+        ctx.arc(pos.x - bRad * 0.25, pos.y - bRad * 0.25, bRad * 0.3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
+  // Particles
+  for (const p of particles) {
+    const alpha = p.life / p.maxLife;
+    ctx.fillStyle = `hsla(${p.h},${p.s}%,${p.l}%,${alpha})`;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size * alpha, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Score splats
+  for (const s of scoreSplats) {
+    const alpha = Math.min(1, s.life / s.maxLife * 2);
+    const scale = 1 + (1 - s.life / s.maxLife) * 0.3;
+    ctx.save();
+    ctx.translate(s.x, s.y);
+    ctx.scale(scale, scale);
+    ctx.font = `bold ${Math.round(14 * DPR)}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+    ctx.strokeStyle = `rgba(0,0,0,${alpha * 0.5})`;
+    ctx.lineWidth = 3 * DPR;
+    ctx.strokeText(s.text, 0, 0);
+    ctx.fillText(s.text, 0, 0);
+    ctx.restore();
+  }
+
+  // HUD
+  drawHUD();
+}
+
+function drawHUD() {
+  const pad = 12 * DPR;
+  const fontSize = Math.round(14 * DPR);
+
+  // Score
+  ctx.font = `bold ${fontSize}px sans-serif`;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.fillText(`Score: ${score}`, pad, pad);
+
+  // Best
+  ctx.textAlign = 'right';
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.fillText(`Best: ${best}`, W - pad, pad);
+
+  // Combo
+  if (comboMultiplier > 1) {
+    ctx.textAlign = 'center';
+    const comboAlpha = Math.min(1, comboTimer);
+    ctx.fillStyle = `rgba(255,220,50,${comboAlpha})`;
+    ctx.font = `bold ${Math.round(18 * DPR)}px sans-serif`;
+    ctx.fillText(`x${comboMultiplier} COMBO`, W / 2, pad);
+  }
+}
+
+function drawStartScreen() {
+  // Title
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  // Glow
+  ctx.shadowColor = 'rgba(100,180,255,0.5)';
+  ctx.shadowBlur = 20 * DPR;
+  ctx.fillStyle = '#fff';
+  ctx.font = `bold ${Math.round(36 * DPR)}px sans-serif`;
+  ctx.fillText('Bubble Break', W / 2, H * 0.35);
+  ctx.shadowBlur = 0;
+
+  // Subtitle
+  ctx.fillStyle = 'rgba(150,200,255,0.7)';
+  ctx.font = `${Math.round(14 * DPR)}px sans-serif`;
+  ctx.fillText('Match & pop color groups underwater', W / 2, H * 0.43);
+
+  // Tap to start
+  const pulse = 0.7 + Math.sin(bgTime * 3) * 0.3;
+  ctx.fillStyle = `rgba(255,255,255,${pulse})`;
+  ctx.font = `bold ${Math.round(18 * DPR)}px sans-serif`;
+  ctx.fillText('Tap to Start', W / 2, H * 0.58);
+
+  // Best score
+  if (best > 0) {
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.font = `${Math.round(13 * DPR)}px sans-serif`;
+    ctx.fillText(`Best: ${best}`, W / 2, H * 0.66);
+  }
+
+  // Decorative bubbles
+  const deco = [
+    { x: W * 0.2, y: H * 0.2, r: 20 * DPR, c: 0 },
+    { x: W * 0.8, y: H * 0.25, r: 16 * DPR, c: 1 },
+    { x: W * 0.15, y: H * 0.75, r: 22 * DPR, c: 2 },
+    { x: W * 0.85, y: H * 0.7, r: 18 * DPR, c: 0 },
+    { x: W * 0.5, y: H * 0.82, r: 14 * DPR, c: 1 },
+  ];
+  for (const d of deco) {
+    const floatY = d.y + Math.sin(bgTime * 1.5 + d.x) * 6 * DPR;
+    const grd = ctx.createRadialGradient(d.x - d.r * 0.3, floatY - d.r * 0.3, d.r * 0.1, d.x, floatY, d.r);
+    grd.addColorStop(0, colorStrLight(d.c));
+    grd.addColorStop(1, colorStr(d.c));
+    ctx.globalAlpha = 0.4;
+    ctx.fillStyle = grd;
+    ctx.beginPath();
+    ctx.arc(d.x, floatY, d.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawGameOver() {
+  // Overlay
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  // Game Over title
+  ctx.shadowColor = 'rgba(255,80,60,0.5)';
+  ctx.shadowBlur = 15 * DPR;
+  ctx.fillStyle = '#ff6644';
+  ctx.font = `bold ${Math.round(32 * DPR)}px sans-serif`;
+  ctx.fillText('Game Over', W / 2, H * 0.33);
+  ctx.shadowBlur = 0;
+
+  // Score
+  ctx.fillStyle = '#fff';
+  ctx.font = `bold ${Math.round(22 * DPR)}px sans-serif`;
+  ctx.fillText(`Score: ${score}`, W / 2, H * 0.44);
+
+  // Best
+  ctx.fillStyle = 'rgba(255,220,80,0.9)';
+  ctx.font = `${Math.round(16 * DPR)}px sans-serif`;
+  ctx.fillText(`Best: ${best}`, W / 2, H * 0.52);
+
+  // Tap to retry
+  const pulse = 0.6 + Math.sin(bgTime * 3) * 0.4;
+  ctx.fillStyle = `rgba(255,255,255,${pulse})`;
+  ctx.font = `bold ${Math.round(18 * DPR)}px sans-serif`;
+  ctx.fillText('Tap to Retry', W / 2, H * 0.64);
+}
+
+// --- Main loop ---
+function loop(ts) {
+  const dt = Math.min((ts - lastTime) / 1000, 0.05);
+  lastTime = ts;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame((ts) => { lastTime = ts; loop(ts); });
+
+})();
+</script>
+</body>
+</html>

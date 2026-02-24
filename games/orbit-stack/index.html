@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Orbit Stack - Free HTML5 Game</title>
+  <meta name="description" content="Play Orbit Stack - Stack floating satellites in orbit while speed gradually increases.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a0a1a">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Orbit Stack - Free HTML5 Game">
+  <meta property="og:description" content="Play Orbit Stack - Stack floating satellites in orbit while speed gradually increases.">
+  <meta property="og:url" content="https://balinti.github.io/orbit-stack/">
+  <meta property="og:image" content="https://balinti.github.io/orbit-stack/preview.png">
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "VideoGame",
+    "name": "Orbit Stack",
+    "description": "Stack floating satellites in orbit while speed gradually increases.",
+    "url": "https://balinti.github.io/orbit-stack/",
+    "genre": "Casual",
+    "gamePlatform": "Web Browser",
+    "operatingSystem": "Any",
+    "applicationCategory": "Game"
+  }
+  </script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #0a0a1a;
+      display: flex; flex-direction: column;
+      align-items: center;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      color: #ccc;
+      overflow-x: hidden;
+      touch-action: manipulation;
+    }
+    #game-wrap {
+      width: 100%;
+      max-width: 420px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    #game-canvas {
+      display: block;
+      width: 100%;
+      max-width: 420px;
+      max-height: 750px;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    #seo-text {
+      max-width: 420px;
+      padding: 16px;
+      font-size: 13px;
+      line-height: 1.6;
+      color: #888;
+    }
+    #seo-text h2 { color: #aaa; font-size: 15px; margin-bottom: 6px; }
+    #seo-text p { margin-bottom: 8px; }
+    #seo-text ul { padding-left: 18px; margin-bottom: 8px; }
+    #seo-text li { margin-bottom: 4px; }
+  </style>
+</head>
+<body>
+<div id="game-wrap">
+  <canvas id="game-canvas"></canvas>
+  <section id="seo-text">
+    <h2>How to Play Orbit Stack</h2>
+    <p>A module orbits around the planet. Tap or press Space/Enter to drop it straight down onto the docking tower. Stack as many modules as you can!</p>
+    <ul>
+      <li>Tap / click / press Space or Enter to drop the orbiting module</li>
+      <li>Land on the tower to build your stack — overlap determines how wide the next piece is</li>
+      <li>Perfect center landings give bonus points and start a combo multiplier</li>
+      <li>Miss completely? Game over!</li>
+      <li>Orbit speed increases the higher your stack goes</li>
+      <li>After 10 stacks, orbit direction flips (watch for the pulse warning)</li>
+      <li>After 25 stacks, the orbit radius shifts between rings</li>
+      <li>After 45 stacks, a sideways drift appears during fall — stay sharp!</li>
+    </ul>
+    <h2>Tips &amp; Tricks</h2>
+    <ul>
+      <li>Watch the vertical drop line — it shows exactly where the module will fall</li>
+      <li>Perfect landings trigger slow-motion and a combo multiplier — try to chain them</li>
+      <li>If you make a big slice, the game briefly slows down the orbit to give you a recovery window</li>
+      <li>Share your score and challenge friends with the share button on the game over screen</li>
+    </ul>
+  </section>
+</div>
+<script>
+(function() {
+'use strict';
+
+// --- Constants ---
+const CANVAS_W = 420, CANVAS_H = 750;
+const PLANET_R = 48;
+const PLANET_CY = 210;
+const TOWER_X = CANVAS_W / 2;
+const TOWER_BASE_Y = CANVAS_H - 60;
+const MODULE_H = 18;
+const MODULE_MIN_W = 14;
+const MODULE_INIT_W = 80;
+const PERFECT_ZONE = 10;
+const ORBIT_BASE_SPEED = 0.9; // deg/sec
+const ORBIT_SPEED_MAX = 3.2;
+const STACK_LAYER_H = MODULE_H + 2;
+const STAR_COUNT = 80;
+
+// --- Canvas setup ---
+const canvas = document.getElementById('game-canvas');
+const ctx = canvas.getContext('2d');
+let dpr = window.devicePixelRatio || 1;
+
+function resizeCanvas() {
+  dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  const cssW = Math.min(window.innerWidth, 420);
+  const cssH = Math.min(window.innerHeight, 750);
+  canvas.style.width = cssW + 'px';
+  canvas.style.height = cssH + 'px';
+  canvas.width = Math.round(cssW * dpr);
+  canvas.height = Math.round(cssH * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+// --- State ---
+let state = 'start'; // 'start' | 'playing' | 'gameover'
+let score = 0, bestScore = parseInt(localStorage.getItem('orbitstack_best') || '0');
+let bestCombo = parseInt(localStorage.getItem('orbitstack_bestcombo') || '0');
+let combo = 0;
+let stack = []; // [{x, w, y}] bottom of module
+let orbitAngle = 0; // radians
+let orbitSpeed = ORBIT_BASE_SPEED; // deg/sec
+let orbitDir = 1; // 1 or -1
+let orbitRadius = 110;
+let moduleW = MODULE_INIT_W;
+let dropping = false;
+let dropX = 0, dropY = 0, dropVY = 0, dropDrift = 0;
+let particles = [];
+let shakeAmt = 0, shakeX = 0, shakeY = 0;
+let hue = 200;
+let slowMoTimer = 0;
+let dirFlipPulse = 0;
+let radiusShiftPulse = 0;
+let driftWarning = 0;
+let recoveryWindow = 0;
+let frameTime = 0;
+let lastTime = 0;
+let stars = [];
+let bgHue = 220;
+
+// Challenge mode
+const urlParams = new URLSearchParams(window.location.search);
+const challengeScore = parseInt(urlParams.get('challenge') || '0');
+
+// --- Stars ---
+function initStars() {
+  stars = [];
+  for (let i = 0; i < STAR_COUNT; i++) {
+    stars.push({
+      x: Math.random() * CANVAS_W,
+      y: Math.random() * CANVAS_H,
+      r: Math.random() * 1.5 + 0.3,
+      brightness: Math.random(),
+      twinkleSpeed: Math.random() * 2 + 0.5
+    });
+  }
+}
+initStars();
+
+// --- Helpers ---
+function towerTopY() {
+  if (stack.length === 0) return TOWER_BASE_Y;
+  return stack[stack.length - 1].y;
+}
+
+function stackTopX() {
+  if (stack.length === 0) return TOWER_X;
+  return stack[stack.length - 1].x;
+}
+
+function stackTopW() {
+  if (stack.length === 0) return MODULE_INIT_W;
+  return stack[stack.length - 1].w;
+}
+
+function getOrbitXY(angle, radius) {
+  return {
+    x: TOWER_X + Math.cos(angle) * radius,
+    y: PLANET_CY + Math.sin(angle) * radius * 0.38 // slight ellipse
+  };
+}
+
+function spawnParticles(x, y, count, hue, size) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = Math.random() * 180 + 60;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 80,
+      life: 1,
+      decay: Math.random() * 1.5 + 0.8,
+      size: Math.random() * size + 2,
+      hue: hue + Math.random() * 30 - 15,
+      sat: 80 + Math.random() * 20,
+      lit: 60 + Math.random() * 20
+    });
+  }
+}
+
+function shake(amt) {
+  shakeAmt = Math.max(shakeAmt, amt);
+}
+
+function resetGame() {
+  score = 0; combo = 0;
+  stack = [];
+  moduleW = MODULE_INIT_W;
+  orbitAngle = -Math.PI / 2; // top
+  orbitSpeed = ORBIT_BASE_SPEED;
+  orbitDir = 1;
+  orbitRadius = 110;
+  dropping = false;
+  particles = [];
+  shakeAmt = 0;
+  slowMoTimer = 0;
+  dirFlipPulse = 0;
+  radiusShiftPulse = 0;
+  driftWarning = 0;
+  recoveryWindow = 0;
+  hue = 200;
+  bgHue = 220;
+}
+
+function startGame() {
+  resetGame();
+  state = 'playing';
+}
+
+function endGame() {
+  state = 'gameover';
+  if (score > bestScore) { bestScore = score; localStorage.setItem('orbitstack_best', bestScore); }
+  if (combo > bestCombo) { bestCombo = combo; localStorage.setItem('orbitstack_bestcombo', bestCombo); }
+  shake(10);
+  spawnParticles(TOWER_X, towerTopY(), 30, hue, 5);
+}
+
+// --- Difficulty ---
+function updateDifficulty() {
+  const n = score;
+  // Orbit speed
+  let targetSpeed = ORBIT_BASE_SPEED + n * 0.045;
+  if (recoveryWindow > 0) targetSpeed *= 0.7;
+  orbitSpeed = Math.min(targetSpeed, ORBIT_SPEED_MAX);
+
+  // Direction flip after 10 stacks, every ~6
+  if (n >= 10 && n % 6 === 0 && dirFlipPulse <= 0) {
+    dirFlipPulse = 1.5;
+  }
+
+  // Radius shift after 25, every ~8
+  if (n >= 25 && n % 8 === 0 && radiusShiftPulse <= 0) {
+    radiusShiftPulse = 1.5;
+  }
+
+  // Drift warning after 45
+  if (n >= 45 && driftWarning <= 0 && !dropping) {
+    driftWarning = 0.5;
+  }
+}
+
+// --- Drop ---
+function triggerDrop() {
+  if (dropping) return;
+  const pos = getOrbitXY(orbitAngle, orbitRadius);
+  dropX = pos.x;
+  dropY = pos.y;
+  dropVY = 600; // px/sec
+  dropDrift = score >= 45 ? (Math.random() - 0.5) * 80 : 0;
+  dropping = true;
+}
+
+function landModule() {
+  const landX = dropX;
+  const topX = stackTopX();
+  const topW = stackTopW();
+  const topLeft = topX - topW / 2;
+  const topRight = topX + topW / 2;
+  const modLeft = landX - moduleW / 2;
+  const modRight = landX + moduleW / 2;
+
+  const overlapLeft = Math.max(modLeft, topLeft);
+  const overlapRight = Math.min(modRight, topRight);
+  const overlap = overlapRight - overlapLeft;
+
+  if (overlap <= 0 || overlap < MODULE_MIN_W) {
+    // Miss
+    spawnParticles(landX, towerTopY() - MODULE_H / 2, 15, 0, 4);
+    shake(8);
+    endGame();
+    return;
+  }
+
+  const newX = (overlapLeft + overlapRight) / 2;
+  const newW = overlap;
+  const newY = towerTopY() - MODULE_H;
+
+  // Chopped chunk
+  if (overlap < moduleW - 2) {
+    const chopW = moduleW - overlap;
+    const chopSide = modLeft < topLeft ? 'left' : 'right';
+    const chopX = chopSide === 'left' ? modLeft + chopW / 2 : modRight - chopW / 2;
+    spawnChunk(chopX, newY, chopW, chopSide);
+  }
+
+  const isPerfect = Math.abs(newX - (stack.length === 0 ? TOWER_X : topX)) < PERFECT_ZONE && Math.abs(newW - (stack.length === 0 ? MODULE_INIT_W : topW)) < PERFECT_ZONE * 2;
+
+  score++;
+  hue = (hue + 15) % 360;
+
+  if (isPerfect) {
+    combo++;
+    slowMoTimer = 0.1;
+    spawnParticles(newX, newY, 20, hue, 4);
+    shake(3);
+  } else {
+    combo = 0;
+    spawnParticles(newX, newY, 8, hue, 3);
+    shake(4);
+    // Recovery: if big slice, reduce speed
+    if (overlap < moduleW * 0.6) recoveryWindow = 3;
+  }
+
+  stack.push({ x: newX, w: newW, y: newY });
+  moduleW = newW;
+  dropping = false;
+
+  updateDifficulty();
+}
+
+function spawnChunk(x, y, w, dir) {
+  const vx = (dir === 'left' ? -1 : 1) * (120 + Math.random() * 80);
+  particles.push({
+    x, y, vx, vy: -60,
+    life: 1, decay: 0.6, size: w,
+    hue: hue, sat: 80, lit: 60,
+    isChunk: true, w, h: MODULE_H,
+    rot: 0, rotSpeed: (Math.random() - 0.5) * 6
+  });
+}
+
+// --- Input ---
+function handleInput() {
+  if (state === 'start') { startGame(); return; }
+  if (state === 'gameover') { startGame(); return; }
+  if (state === 'playing' && !dropping) triggerDrop();
+}
+
+canvas.addEventListener('pointerdown', function(e) {
+  e.preventDefault();
+  handleInput();
+}, { passive: false });
+
+document.addEventListener('keydown', function(e) {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    handleInput();
+  }
+});
+
+// Share button logic (handled in draw)
+let shareBtn = { x: 0, y: 0, w: 0, h: 0 };
+canvas.addEventListener('click', function(e) {
+  if (state !== 'gameover') return;
+  const rect = canvas.getBoundingClientRect();
+  const cx = (e.clientX - rect.left) / rect.width * CANVAS_W;
+  const cy = (e.clientY - rect.top) / rect.height * CANVAS_H;
+  if (cx > shareBtn.x && cx < shareBtn.x + shareBtn.w && cy > shareBtn.y && cy < shareBtn.y + shareBtn.h) {
+    const url = window.location.origin + window.location.pathname + '?challenge=' + score;
+    if (navigator.share) {
+      navigator.share({ title: 'Orbit Stack', text: 'I stacked ' + score + ' modules! Can you beat me?', url });
+    } else {
+      navigator.clipboard.writeText(url).then(() => {
+        alert('Challenge link copied! Share it with friends.');
+      }).catch(() => {
+        prompt('Copy this link:', url);
+      });
+    }
+  }
+});
+
+// --- Draw helpers ---
+function drawRoundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.lineTo(x + r, y + h);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.lineTo(x, y + r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+// --- Main loop ---
+function loop(ts) {
+  requestAnimationFrame(loop);
+  const rawDt = Math.min((ts - lastTime) / 1000, 0.05);
+  lastTime = ts;
+  frameTime = ts;
+
+  const dt = slowMoTimer > 0 ? rawDt * 0.3 : rawDt;
+  if (slowMoTimer > 0) slowMoTimer -= rawDt;
+  if (recoveryWindow > 0) recoveryWindow -= rawDt;
+
+  update(dt, rawDt);
+  draw();
+}
+
+function update(dt, rawDt) {
+  bgHue = (bgHue + rawDt * 2) % 360;
+
+  // Particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy += 300 * dt;
+    p.life -= p.decay * dt;
+    if (p.isChunk) { p.rot += p.rotSpeed * dt; }
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+
+  // Shake decay
+  if (shakeAmt > 0) {
+    shakeAmt -= rawDt * 18;
+    if (shakeAmt < 0) shakeAmt = 0;
+    shakeX = (Math.random() - 0.5) * shakeAmt * 2;
+    shakeY = (Math.random() - 0.5) * shakeAmt * 2;
+  } else { shakeX = 0; shakeY = 0; }
+
+  if (state !== 'playing') return;
+
+  // Direction flip pulse
+  if (dirFlipPulse > 0) {
+    dirFlipPulse -= rawDt;
+    if (dirFlipPulse <= 0) {
+      orbitDir *= -1;
+      dirFlipPulse = 0;
+    }
+  }
+
+  // Radius shift pulse
+  if (radiusShiftPulse > 0) {
+    radiusShiftPulse -= rawDt;
+    if (radiusShiftPulse <= 0) {
+      const rings = [90, 110, 135];
+      const cur = rings.indexOf(orbitRadius);
+      orbitRadius = rings[(cur + 1) % rings.length];
+      radiusShiftPulse = 0;
+    }
+  }
+
+  if (driftWarning > 0) driftWarning -= rawDt;
+
+  // Orbit
+  if (!dropping) {
+    orbitAngle += orbitDir * (orbitSpeed * Math.PI / 180) * dt;
+  }
+
+  // Drop
+  if (dropping) {
+    dropVY += 500 * dt;
+    dropY += dropVY * dt;
+    dropX += dropDrift * dt;
+    const landY = towerTopY() - MODULE_H / 2;
+    if (dropY >= landY) {
+      dropY = landY;
+      landModule();
+    }
+  }
+}
+
+function draw() {
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
+
+  // Background
+  const grad = ctx.createLinearGradient(0, 0, 0, CANVAS_H);
+  grad.addColorStop(0, `hsl(${bgHue},35%,6%)`);
+  grad.addColorStop(1, `hsl(${(bgHue + 40) % 360},30%,10%)`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+
+  // Stars
+  for (const s of stars) {
+    const twinkle = 0.4 + 0.6 * Math.abs(Math.sin(frameTime * 0.001 * s.twinkleSpeed));
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255,255,255,${s.brightness * twinkle * 0.8})`;
+    ctx.fill();
+  }
+
+  if (state === 'start') { drawStart(); ctx.restore(); return; }
+  if (state === 'gameover') { drawGame(); drawGameOver(); ctx.restore(); return; }
+
+  drawGame();
+  ctx.restore();
+}
+
+function drawGame() {
+  // Orbit track
+  ctx.save();
+  const orbitPos = getOrbitXY(orbitAngle, orbitRadius);
+  const trackRX = orbitRadius;
+  const trackRY = orbitRadius * 0.38;
+
+  ctx.strokeStyle = `rgba(255,255,255,0.08)`;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.ellipse(TOWER_X, PLANET_CY, trackRX, trackRY, 0, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Direction flip pulse visual
+  if (dirFlipPulse > 0) {
+    const alpha = dirFlipPulse * 0.6;
+    ctx.strokeStyle = `rgba(255,80,80,${alpha})`;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.ellipse(TOWER_X, PLANET_CY, trackRX, trackRY, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  // Radius shift pulse
+  if (radiusShiftPulse > 0) {
+    const alpha = radiusShiftPulse * 0.5;
+    ctx.strokeStyle = `rgba(80,200,255,${alpha})`;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.ellipse(TOWER_X, PLANET_CY, trackRX + 20, (trackRX + 20) * 0.38, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  // Planet
+  const planetGrad = ctx.createRadialGradient(TOWER_X - 14, PLANET_CY - 14, 4, TOWER_X, PLANET_CY, PLANET_R);
+  planetGrad.addColorStop(0, `hsl(${hue},60%,55%)`);
+  planetGrad.addColorStop(0.5, `hsl(${hue},50%,35%)`);
+  planetGrad.addColorStop(1, `hsl(${hue},40%,18%)`);
+  ctx.beginPath();
+  ctx.arc(TOWER_X, PLANET_CY, PLANET_R, 0, Math.PI * 2);
+  ctx.fillStyle = planetGrad;
+  ctx.fill();
+  // Planet ring
+  ctx.strokeStyle = `hsla(${hue},70%,70%,0.3)`;
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.ellipse(TOWER_X, PLANET_CY, PLANET_R + 16, 6, 0, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Drop line
+  if (!dropping) {
+    ctx.strokeStyle = `rgba(255,255,255,0.12)`;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 6]);
+    ctx.beginPath();
+    ctx.moveTo(orbitPos.x, orbitPos.y + MODULE_H / 2);
+    ctx.lineTo(orbitPos.x, towerTopY());
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Drift warning
+  if (driftWarning > 0 && !dropping) {
+    ctx.fillStyle = `rgba(255,200,50,${driftWarning})`;
+    ctx.font = 'bold 11px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('⚠ DRIFT', TOWER_X, orbitPos.y - 30);
+  }
+
+  // Tower base
+  const towerW = 24;
+  const towerH = TOWER_BASE_Y - towerTopY() + MODULE_H;
+  ctx.fillStyle = 'rgba(255,255,255,0.06)';
+  ctx.fillRect(TOWER_X - towerW / 2, towerTopY(), towerW, towerH);
+
+  // Stack
+  for (let i = 0; i < stack.length; i++) {
+    const s = stack[i];
+    const stackHue = (200 + i * 15) % 360;
+    const stackGrad = ctx.createLinearGradient(s.x - s.w / 2, s.y, s.x + s.w / 2, s.y + MODULE_H);
+    stackGrad.addColorStop(0, `hsl(${stackHue},70%,65%)`);
+    stackGrad.addColorStop(1, `hsl(${stackHue},55%,45%)`);
+    drawRoundRect(s.x - s.w / 2, s.y, s.w, MODULE_H, 4);
+    ctx.fillStyle = stackGrad;
+    ctx.fill();
+    ctx.strokeStyle = `hsla(${stackHue},80%,80%,0.3)`;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  // Orbiting module
+  if (!dropping) {
+    const modGrad = ctx.createLinearGradient(orbitPos.x - moduleW / 2, orbitPos.y, orbitPos.x + moduleW / 2, orbitPos.y + MODULE_H);
+    modGrad.addColorStop(0, `hsl(${hue},80%,70%)`);
+    modGrad.addColorStop(1, `hsl(${hue},65%,50%)`);
+    drawRoundRect(orbitPos.x - moduleW / 2, orbitPos.y - MODULE_H / 2, moduleW, MODULE_H, 4);
+    ctx.fillStyle = modGrad;
+    ctx.fill();
+    ctx.strokeStyle = `hsla(${hue},90%,85%,0.5)`;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    // Glow
+    ctx.shadowColor = `hsl(${hue},80%,60%)`;
+    ctx.shadowBlur = 12;
+    ctx.fillStyle = 'transparent';
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  // Dropping module
+  if (dropping) {
+    const modGrad = ctx.createLinearGradient(dropX - moduleW / 2, dropY, dropX + moduleW / 2, dropY + MODULE_H);
+    modGrad.addColorStop(0, `hsl(${hue},80%,70%)`);
+    modGrad.addColorStop(1, `hsl(${hue},65%,50%)`);
+    drawRoundRect(dropX - moduleW / 2, dropY - MODULE_H / 2, moduleW, MODULE_H, 4);
+    ctx.fillStyle = modGrad;
+    ctx.fill();
+    ctx.strokeStyle = `hsla(${hue},90%,85%,0.5)`;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+
+  // Particles
+  for (const p of particles) {
+    ctx.globalAlpha = Math.max(0, p.life);
+    if (p.isChunk) {
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.fillStyle = `hsl(${p.hue},${p.sat}%,${p.lit}%)`;
+      ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+      ctx.restore();
+    } else {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fillStyle = `hsl(${p.hue},${p.sat}%,${p.lit}%)`;
+      ctx.fill();
+    }
+  }
+  ctx.globalAlpha = 1;
+
+  // Score HUD
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  ctx.fillRect(0, 0, CANVAS_W, 44);
+
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 22px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText(score, CANVAS_W / 2, 30);
+
+  if (challengeScore > 0) {
+    ctx.fillStyle = score >= challengeScore ? '#4cff8a' : '#ffcc44';
+    ctx.font = '12px system-ui';
+    ctx.fillText(`Beat ${challengeScore}`, CANVAS_W / 2, 44);
+  }
+
+  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  ctx.font = '11px system-ui';
+  ctx.textAlign = 'right';
+  ctx.fillText('Best: ' + bestScore, CANVAS_W - 10, 28);
+
+  if (combo >= 2) {
+    ctx.fillStyle = `hsl(${hue},90%,70%)`;
+    ctx.font = 'bold 13px system-ui';
+    ctx.textAlign = 'center';
+    const showY = towerTopY() - 28;
+    ctx.fillText(`PERFECT x${combo}`, CANVAS_W / 2, Math.max(showY, 60));
+  }
+
+  ctx.restore();
+}
+
+function drawStart() {
+  // Title
+  ctx.textAlign = 'center';
+
+  // Planet teaser
+  const pg = ctx.createRadialGradient(TOWER_X - 14, PLANET_CY - 14, 4, TOWER_X, PLANET_CY, PLANET_R);
+  pg.addColorStop(0, `hsl(200,60%,55%)`);
+  pg.addColorStop(1, `hsl(200,40%,18%)`);
+  ctx.beginPath(); ctx.arc(TOWER_X, PLANET_CY, PLANET_R, 0, Math.PI * 2);
+  ctx.fillStyle = pg; ctx.fill();
+  ctx.strokeStyle = `hsla(200,70%,70%,0.3)`; ctx.lineWidth = 5;
+  ctx.beginPath(); ctx.ellipse(TOWER_X, PLANET_CY, PLANET_R + 16, 6, 0, 0, Math.PI * 2); ctx.stroke();
+
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 42px system-ui';
+  ctx.fillText('ORBIT', CANVAS_W / 2, CANVAS_H / 2 - 20);
+  ctx.fillStyle = `hsl(200,80%,70%)`;
+  ctx.font = 'bold 42px system-ui';
+  ctx.fillText('STACK', CANVAS_W / 2, CANVAS_H / 2 + 30);
+
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  ctx.font = '16px system-ui';
+  ctx.fillText('Tap to Start', CANVAS_W / 2, CANVAS_H / 2 + 80);
+
+  if (bestScore > 0) {
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.font = '13px system-ui';
+    ctx.fillText('Best: ' + bestScore, CANVAS_W / 2, CANVAS_H / 2 + 108);
+  }
+
+  if (challengeScore > 0) {
+    ctx.fillStyle = '#ffcc44';
+    ctx.font = 'bold 14px system-ui';
+    ctx.fillText(`Challenge: Beat ${challengeScore}`, CANVAS_W / 2, CANVAS_H / 2 + 136);
+  }
+}
+
+function drawGameOver() {
+  // Overlay
+  ctx.fillStyle = 'rgba(0,0,0,0.65)';
+  ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ff5555';
+  ctx.font = 'bold 36px system-ui';
+  ctx.fillText('GAME OVER', CANVAS_W / 2, CANVAS_H / 2 - 80);
+
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 54px system-ui';
+  ctx.fillText(score, CANVAS_W / 2, CANVAS_H / 2 - 20);
+
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.font = '15px system-ui';
+  ctx.fillText('Score', CANVAS_W / 2, CANVAS_H / 2 + 10);
+
+  if (score >= bestScore && score > 0) {
+    ctx.fillStyle = '#ffd700';
+    ctx.font = 'bold 16px system-ui';
+    ctx.fillText('New Best!', CANVAS_W / 2, CANVAS_H / 2 + 36);
+  } else {
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.font = '14px system-ui';
+    ctx.fillText('Best: ' + bestScore, CANVAS_W / 2, CANVAS_H / 2 + 36);
+  }
+
+  if (combo > 1) {
+    ctx.fillStyle = `hsl(${hue},80%,65%)`;
+    ctx.font = '13px system-ui';
+    ctx.fillText('Best Combo: ' + bestCombo + 'x', CANVAS_W / 2, CANVAS_H / 2 + 60);
+  }
+
+  // Restart button
+  const btnW = 160, btnH = 44;
+  const btnX = CANVAS_W / 2 - btnW / 2;
+  const btnY = CANVAS_H / 2 + 90;
+  const restartGrad = ctx.createLinearGradient(btnX, btnY, btnX, btnY + btnH);
+  restartGrad.addColorStop(0, `hsl(${hue},70%,55%)`);
+  restartGrad.addColorStop(1, `hsl(${hue},55%,38%)`);
+  drawRoundRect(btnX, btnY, btnW, btnH, 10);
+  ctx.fillStyle = restartGrad; ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 16px system-ui';
+  ctx.fillText('Play Again', CANVAS_W / 2, btnY + 28);
+
+  // Share button
+  const sbW = 160, sbH = 38;
+  const sbX = CANVAS_W / 2 - sbW / 2;
+  const sbY = btnY + btnH + 12;
+  drawRoundRect(sbX, sbY, sbW, sbH, 10);
+  ctx.fillStyle = 'rgba(255,255,255,0.1)'; ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.lineWidth = 1; ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.75)';
+  ctx.font = '14px system-ui';
+  ctx.fillText('Share / Challenge', CANVAS_W / 2, sbY + 24);
+
+  shareBtn = { x: sbX, y: sbY, w: sbW, h: sbH };
+
+  ctx.fillStyle = 'rgba(255,255,255,0.3)';
+  ctx.font = '12px system-ui';
+  ctx.fillText('Tap anywhere to restart', CANVAS_W / 2, sbY + sbH + 20);
+}
+
+// Kick off
+lastTime = performance.now();
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

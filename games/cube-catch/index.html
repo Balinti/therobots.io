@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Cube Catch - Free HTML5 Game</title>
+<meta name="description" content="Play Cube Catch - Swipe to catch falling cubes as obstacles rapidly multiply across the screen.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0a0e1a">
+<link rel="canonical" href="https://balinti.github.io/cube-catch/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Cube Catch - Free HTML5 Game">
+<meta property="og:description" content="Play Cube Catch - Swipe to catch falling cubes as obstacles rapidly multiply across the screen.">
+<meta property="og:url" content="https://balinti.github.io/cube-catch/">
+<meta property="og:image" content="https://balinti.github.io/cube-catch/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Cube Catch - Free HTML5 Game">
+<meta name="twitter:description" content="Play Cube Catch - Swipe to catch falling cubes as obstacles rapidly multiply across the screen.">
+<meta name="twitter:image" content="https://balinti.github.io/cube-catch/og-image.png">
+<link rel="preconnect" href="https://pagead2.googlesyndication.com">
+<link rel="preconnect" href="https://googleads.g.doubleclick.net">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;height:100svh;overflow-x:hidden;background:#0a0e1a;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;color:#c8cdd8}
+body{display:flex;flex-direction:column;align-items:center;min-height:100svh}
+#game-header{text-align:center;padding:12px 8px 4px;max-width:420px;width:100%}
+#game-header h1{font-size:1.1rem;color:#e0e4ef;margin-bottom:2px}
+#game-header p{font-size:.72rem;color:#6b7394;line-height:1.3}
+#game-wrap{position:relative;width:100%;max-width:420px;flex:1 1 auto;display:flex;align-items:center;justify-content:center;padding:4px 0 40px}
+canvas{display:block;width:100%;height:100%;max-height:700px;border-radius:10px;touch-action:none;-webkit-tap-highlight-color:transparent}
+#below-game{max-width:420px;width:100%;padding:12px 16px 24px;font-size:.75rem;color:#5a6080;line-height:1.5}
+#below-game h2{font-size:.85rem;color:#8890b0;margin:10px 0 4px}
+#below-game p,#below-game a{color:#5a6080;text-decoration:none}
+#below-game a:hover{color:#8890b0;text-decoration:underline}
+#below-game details{margin:4px 0}
+#below-game summary{cursor:pointer;color:#7880a0}
+.footer-links{display:flex;gap:12px;flex-wrap:wrap;margin-top:8px}
+</style>
+</head>
+<body>
+<div id="game-header">
+<h1>Cube Catch</h1>
+<p>Tap to switch lanes. Catch the right color!</p>
+</div>
+<div id="game-wrap">
+<canvas id="gc"></canvas>
+</div>
+<div id="below-game">
+<h2>How to Play</h2>
+<p>Tap the screen to cycle your funnel between three lanes. Catch cubes that match your funnel&rsquo;s target color to score points. Wrong-color cubes add heat &mdash; when heat maxes out or you catch 3 correct in a row, your target color flips. Missing 3 target cubes ends the game. Build combos for higher scores!</p>
+<details><summary>FAQ</summary>
+<p><strong>What are the controls?</strong> Tap/click to move lanes. Hold briefly to brake (wider funnel, slower movement). Keyboard: Space or Enter.</p>
+<p><strong>How does scoring work?</strong> +1 per correct catch, multiplied by your combo. Catch all target cubes in a wave for a Perfect Wave bonus.</p>
+<p><strong>Why did my color flip?</strong> Catching 3 correct cubes in a row or maxing out heat from wrong catches triggers an automatic color flip.</p>
+</details>
+<div class="footer-links">
+<a href="https://balinti.github.io/" target="_blank" rel="noopener">More Games</a>
+</div>
+</div>
+<script>
+'use strict';
+(function(){
+
+const C = document.getElementById('gc');
+const ctx = C.getContext('2d');
+const W = ()=> C._w;
+const H = ()=> C._h;
+let dpr = Math.min(window.devicePixelRatio||1, 2);
+
+function resize(){
+  const wrap = document.getElementById('game-wrap');
+  const r = wrap.getBoundingClientRect();
+  const w = Math.min(r.width, 420);
+  const h = Math.min(r.height, 700);
+  C._w = w;
+  C._h = h;
+  C.style.width = w+'px';
+  C.style.height = h+'px';
+  dpr = Math.min(window.devicePixelRatio||1, 2);
+  C.width = w * dpr;
+  C.height = h * dpr;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// Colors
+const BLUE = '#3b8bff';
+const BLUE_GLOW = 'rgba(59,139,255,0.45)';
+const RED = '#ff4455';
+const RED_GLOW = 'rgba(255,68,85,0.4)';
+const BG_TOP = '#0a0e1a';
+const BG_BOT = '#141830';
+const LANE_LINE = 'rgba(255,255,255,0.04)';
+
+// Game state
+let state = 'start'; // start, playing, gameover
+let score = 0;
+let best = parseInt(localStorage.getItem('cc_best'))||0;
+let combo = 0;
+let strikes = 0;
+let heat = 0;
+let correctStreak = 0;
+let targetIsBlue = true;
+let funnelLane = 1; // 0,1,2
+let diff = 0;
+let gameTime = 0;
+let cubes = [];
+let particles = [];
+let waves = [];
+let currentWave = null;
+let waveTimer = 0;
+let shakeX = 0, shakeY = 0, shakeMag = 0, shakeDecay = 0;
+let flipOverlay = 0;
+let flipDir = 1;
+let hitStop = 0;
+let vignetteAlpha = 0;
+let hue = 200;
+let holdStart = 0;
+let isHolding = false;
+let brakeActive = false;
+let ghostWave = null;
+let ghostTimer = 0;
+let tapCount = 0;
+let lastTapTime = 0;
+let animFrame = 0;
+
+// Layout helpers
+function laneX(lane){
+  const w = W();
+  const laneW = w / 3;
+  return laneW * lane + laneW / 2;
+}
+function laneW(){ return W()/3; }
+function funnelY(){ return H() * 0.78; }
+function funnelWidth(){ return brakeActive ? laneW()*0.75 : laneW()*0.55; }
+function funnelHeight(){ return 18; }
+
+// Wave patterns
+const PATTERNS = [
+  // stairs left
+  (n)=>{ const c=[]; for(let i=0;i<n;i++) c.push({lane:i%3,delay:i*0.18}); return c; },
+  // stairs right
+  (n)=>{ const c=[]; for(let i=0;i<n;i++) c.push({lane:2-(i%3),delay:i*0.18}); return c; },
+  // V shape
+  (n)=>{ const lanes=[0,1,2,1,0]; const c=[]; for(let i=0;i<n;i++) c.push({lane:lanes[i%5],delay:i*0.16}); return c; },
+  // alternating
+  (n)=>{ const c=[]; for(let i=0;i<n;i++) c.push({lane:i%2===0?0:2,delay:i*0.2}); return c; },
+  // center burst
+  (n)=>{ const c=[]; c.push({lane:1,delay:0}); if(n>1)c.push({lane:0,delay:0.15}); if(n>2)c.push({lane:2,delay:0.15}); for(let i=3;i<n;i++) c.push({lane:i%3,delay:0.1*i}); return c; },
+  // all same lane
+  (n)=>{ const l=Math.floor(Math.random()*3); const c=[]; for(let i=0;i<n;i++) c.push({lane:l,delay:i*0.22}); return c; },
+];
+
+function generateWave(){
+  const waveSize = Math.min(3 + Math.floor(diff*0.7), 7);
+  const pattern = PATTERNS[Math.floor(Math.random()*PATTERNS.length)];
+  const items = pattern(waveSize);
+  // assign colors: majority target, some wrong
+  const targetProb = Math.max(0.45, 0.7 - diff*0.03);
+  items.forEach(item=>{
+    item.isTarget = Math.random() < targetProb;
+    item.isBlue = targetIsBlue ? item.isTarget : !item.isTarget;
+  });
+  // ensure at least 1 target and 1 non-target if wave>2
+  if(waveSize > 2){
+    let hasTarget = items.some(i=>i.isTarget);
+    let hasWrong = items.some(i=>!i.isTarget);
+    if(!hasTarget) items[0].isTarget = true, items[0].isBlue = targetIsBlue;
+    if(!hasWrong && waveSize>2) { items[waveSize-1].isTarget = false; items[waveSize-1].isBlue = !targetIsBlue; }
+  }
+  return { items, totalTargets: items.filter(i=>i.isTarget).length, caughtTargets: 0, allSpawned: false, spawned: 0, spawnTimer: 0 };
+}
+
+function generateFirstWave(){
+  // simple: 2 target cubes in center lane
+  const items = [
+    {lane:1, delay:0, isTarget:true, isBlue:true},
+    {lane:1, delay:0.35, isTarget:true, isBlue:true},
+  ];
+  return { items, totalTargets:2, caughtTargets:0, allSpawned:false, spawned:0, spawnTimer:0 };
+}
+
+function spawnCube(lane, isBlue, isTarget){
+  const size = 28 + Math.random()*6;
+  cubes.push({
+    x: laneX(lane),
+    y: -size,
+    lane,
+    size,
+    isBlue,
+    isTarget,
+    vy: 140 + diff*18 + Math.random()*20,
+    rot: Math.random()*Math.PI*2,
+    rotV: (Math.random()-0.5)*3,
+    alive: true,
+    caught: false,
+    missed: false,
+  });
+}
+
+function spawnParticles(x, y, color, count, spread){
+  for(let i=0;i<count;i++){
+    const angle = Math.random()*Math.PI*2;
+    const speed = 40 + Math.random()*spread;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle)*speed,
+      vy: Math.sin(angle)*speed - 30,
+      size: 2+Math.random()*4,
+      life: 0.4+Math.random()*0.4,
+      maxLife: 0.4+Math.random()*0.4,
+      color,
+      rot: Math.random()*Math.PI*2,
+    });
+  }
+}
+
+function triggerShake(mag){
+  shakeMag = mag;
+  shakeDecay = mag;
+}
+
+function triggerFlip(){
+  targetIsBlue = !targetIsBlue;
+  flipOverlay = 1;
+  flipDir = Math.random()>0.5?1:-1;
+  correctStreak = 0;
+  heat = 0;
+}
+
+function checkFlipConditions(){
+  if(correctStreak >= 3){
+    triggerFlip();
+    return;
+  }
+  if(heat >= 1){
+    triggerFlip();
+  }
+}
+
+// Share
+function shareScore(){
+  const text = `I scored ${score} in Cube Catch! Can you beat it?\nhttps://balinti.github.io/cube-catch/`;
+  if(navigator.share){
+    navigator.share({title:'Cube Catch',text}).catch(()=>{});
+  } else if(navigator.clipboard){
+    navigator.clipboard.writeText(text).then(()=>{ alert('Score copied to clipboard!'); }).catch(()=>{});
+  }
+}
+
+// Input
+let shareBtn = null; // computed in gameover render
+
+function handleTap(){
+  if(state==='start'){
+    startGame();
+    return;
+  }
+  if(state==='gameover'){
+    // check if share button hit - handled separately
+    startGame();
+    return;
+  }
+  if(state==='playing'){
+    funnelLane = (funnelLane+1)%3;
+    holdStart = performance.now();
+    isHolding = true;
+  }
+}
+
+function handleRelease(){
+  isHolding = false;
+  brakeActive = false;
+}
+
+C.addEventListener('pointerdown',(e)=>{
+  e.preventDefault();
+  // Gameover share button check
+  if(state==='gameover' && shareBtn){
+    const rect = C.getBoundingClientRect();
+    const mx = (e.clientX - rect.left);
+    const my = (e.clientY - rect.top);
+    if(mx>=shareBtn.x && mx<=shareBtn.x+shareBtn.w && my>=shareBtn.y && my<=shareBtn.y+shareBtn.h){
+      shareScore();
+      return;
+    }
+  }
+  handleTap();
+});
+C.addEventListener('pointerup', handleRelease);
+C.addEventListener('pointercancel', handleRelease);
+
+document.addEventListener('keydown',(e)=>{
+  if(e.code==='Space'||e.code==='Enter'){
+    e.preventDefault();
+    handleTap();
+  }
+});
+document.addEventListener('keyup',(e)=>{
+  if(e.code==='Space'||e.code==='Enter') handleRelease();
+});
+
+function startGame(){
+  state = 'playing';
+  score = 0;
+  combo = 0;
+  strikes = 0;
+  heat = 0;
+  correctStreak = 0;
+  targetIsBlue = true;
+  funnelLane = 1;
+  diff = 0;
+  gameTime = 0;
+  cubes = [];
+  particles = [];
+  waves = [];
+  currentWave = generateFirstWave();
+  waveTimer = 0;
+  shakeX=0; shakeY=0; shakeMag=0; shakeDecay=0;
+  flipOverlay = 0;
+  hitStop = 0;
+  vignetteAlpha = 0;
+  ghostWave = null;
+  ghostTimer = 0;
+  brakeActive = false;
+  isHolding = false;
+}
+
+// Update
+let lastTime = 0;
+function update(ts){
+  if(!lastTime) lastTime = ts;
+  let dt = (ts - lastTime)/1000;
+  lastTime = ts;
+  if(dt > 0.033) dt = 0.033;
+
+  animFrame++;
+  hue = (hue + dt*15) % 360;
+
+  if(state !== 'playing'){
+    // still update particles
+    updateParticles(dt);
+    if(shakeDecay > 0){
+      shakeDecay -= dt*12;
+      if(shakeDecay<0) shakeDecay=0;
+      shakeX = (Math.random()-0.5)*shakeDecay*2;
+      shakeY = (Math.random()-0.5)*shakeDecay*2;
+    }
+    if(vignetteAlpha > 0) vignetteAlpha -= dt*2;
+    return;
+  }
+
+  // Hit stop
+  if(hitStop > 0){
+    hitStop -= dt;
+    if(hitStop < 0) hitStop = 0;
+    return;
+  }
+
+  gameTime += dt;
+  diff = Math.min(gameTime/30 + score/80, 8);
+
+  // Brake check
+  if(isHolding && performance.now()-holdStart > 120){
+    brakeActive = true;
+  } else {
+    brakeActive = false;
+  }
+
+  // Wave spawning
+  if(currentWave && !currentWave.allSpawned){
+    currentWave.spawnTimer += dt;
+    while(currentWave.spawned < currentWave.items.length){
+      const item = currentWave.items[currentWave.spawned];
+      if(currentWave.spawnTimer >= item.delay){
+        spawnCube(item.lane, item.isBlue, item.isTarget);
+        currentWave.spawned++;
+      } else break;
+    }
+    if(currentWave.spawned >= currentWave.items.length) currentWave.allSpawned = true;
+  }
+
+  // Wave interval
+  const waveInterval = Math.max(1.2, 2.8 - diff*0.18);
+  waveTimer += dt;
+  if(waveTimer >= waveInterval && (!currentWave || currentWave.allSpawned)){
+    // show ghost
+    const newWave = generateWave();
+    ghostWave = newWave;
+    ghostTimer = 0.25;
+    // queue the wave
+    waves.push(newWave);
+    waveTimer = 0;
+  }
+
+  // Ghost timer
+  if(ghostTimer > 0) ghostTimer -= dt;
+
+  // Activate queued wave
+  if(waves.length > 0 && ghostTimer <= 0){
+    currentWave = waves.shift();
+    ghostWave = null;
+  }
+
+  // Update cubes
+  const fy = funnelY();
+  const fw = funnelWidth();
+  const fh = funnelHeight();
+  const fx = laneX(funnelLane);
+
+  for(let i=cubes.length-1; i>=0; i--){
+    const c = cubes[i];
+    if(!c.alive) continue;
+    const speed = brakeActive ? c.vy * 0.65 : c.vy;
+    c.y += speed * dt;
+    c.rot += c.rotV * dt;
+
+    // Catch detection
+    if(!c.caught && !c.missed && c.y+c.size/2 >= fy-fh/2 && c.y-c.size/2 <= fy+fh/2){
+      if(Math.abs(c.x - fx) < fw/2 + c.size/3){
+        c.caught = true;
+        c.alive = false;
+        if(c.isTarget){
+          // Correct catch
+          combo++;
+          correctStreak++;
+          score += combo;
+          spawnParticles(c.x, c.y, targetIsBlue?BLUE:RED, 8, 80);
+          triggerShake(2);
+          if(currentWave) currentWave.caughtTargets++;
+          // Check perfect wave
+          if(currentWave && currentWave.allSpawned && currentWave.caughtTargets >= currentWave.totalTargets){
+            // check all cubes from this wave are done
+            const remaining = cubes.filter(cc=>cc.alive && cc.isTarget);
+            if(remaining.length === 0){
+              score += 5 * combo;
+              hitStop = 0.04;
+              triggerShake(5);
+              spawnParticles(fx, fy, '#ffdd44', 20, 120);
+            }
+          }
+          checkFlipConditions();
+        } else {
+          // Wrong catch
+          combo = 0;
+          heat = Math.min(heat + 0.35 + diff*0.02, 1);
+          spawnParticles(c.x, c.y, '#ff6644', 6, 60);
+          triggerShake(3);
+          checkFlipConditions();
+        }
+      }
+    }
+
+    // Missed (fell past funnel)
+    if(!c.caught && !c.missed && c.y > fy + fh + c.size){
+      c.missed = true;
+      if(c.isTarget){
+        strikes++;
+        combo = 0;
+        vignetteAlpha = 0.6;
+        triggerShake(6);
+        spawnParticles(c.x, H(), '#ff2244', 10, 100);
+        if(strikes >= 3){
+          gameOver();
+          return;
+        }
+      }
+      c.alive = false;
+    }
+
+    // Off screen cleanup
+    if(c.y > H()+60) c.alive = false;
+  }
+  cubes = cubes.filter(c=>c.alive);
+
+  // Shake
+  if(shakeDecay > 0){
+    shakeDecay -= dt*14;
+    if(shakeDecay<0) shakeDecay=0;
+    shakeX = (Math.random()-0.5)*shakeDecay*2;
+    shakeY = (Math.random()-0.5)*shakeDecay*2;
+  } else { shakeX=0; shakeY=0; }
+
+  // Flip overlay
+  if(flipOverlay > 0){
+    flipOverlay -= dt*4;
+    if(flipOverlay<0) flipOverlay=0;
+  }
+
+  // Vignette
+  if(vignetteAlpha > 0) vignetteAlpha -= dt*1.5;
+
+  updateParticles(dt);
+}
+
+function updateParticles(dt){
+  for(let i=particles.length-1;i>=0;i--){
+    const p = particles[i];
+    p.x += p.vx*dt;
+    p.y += p.vy*dt;
+    p.vy += 180*dt;
+    p.life -= dt;
+    p.rot += dt*4;
+    if(p.life<=0) particles.splice(i,1);
+  }
+}
+
+function gameOver(){
+  state = 'gameover';
+  if(score > best){
+    best = score;
+    localStorage.setItem('cc_best', best);
+  }
+  triggerShake(12);
+  vignetteAlpha = 0.8;
+  spawnParticles(W()/2, H()/2, '#ff4455', 30, 150);
+}
+
+// Draw
+function draw(){
+  const w = W(), h = H();
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,w,h);
+
+  // Background gradient
+  const bgGrad = ctx.createLinearGradient(0,0,0,h);
+  bgGrad.addColorStop(0, BG_TOP);
+  bgGrad.addColorStop(1, BG_BOT);
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0,0,w,h);
+
+  // Apply shake
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
+
+  if(state === 'start'){
+    drawStartScreen(w,h);
+  } else if(state === 'playing'){
+    drawGame(w,h);
+  } else if(state === 'gameover'){
+    drawGame(w,h);
+    drawGameOver(w,h);
+  }
+
+  // Flip overlay
+  if(flipOverlay > 0){
+    ctx.save();
+    ctx.globalAlpha = flipOverlay*0.35;
+    ctx.fillStyle = targetIsBlue ? BLUE : RED;
+    // Diagonal wipe
+    ctx.beginPath();
+    const off = (1-flipOverlay)*w*2*flipDir;
+    ctx.moveTo(off, 0);
+    ctx.lineTo(off+w, 0);
+    ctx.lineTo(off+w*0.5, h);
+    ctx.lineTo(off-w*0.5, h);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Vignette
+  if(vignetteAlpha > 0){
+    const vg = ctx.createRadialGradient(w/2,h/2,h*0.3,w/2,h/2,h*0.8);
+    vg.addColorStop(0,'transparent');
+    vg.addColorStop(1,`rgba(255,30,30,${vignetteAlpha*0.5})`);
+    ctx.fillStyle = vg;
+    ctx.fillRect(0,0,w,h);
+  }
+
+  // Particles (on top)
+  drawParticles(w,h);
+
+  ctx.restore();
+}
+
+function drawStartScreen(w,h){
+  // Title
+  ctx.textAlign='center';
+  ctx.textBaseline='middle';
+
+  // Animated glow
+  const glowAmt = 0.5 + Math.sin(animFrame*0.04)*0.3;
+  ctx.shadowColor = `hsla(${hue},80%,60%,${glowAmt})`;
+  ctx.shadowBlur = 20;
+  ctx.fillStyle = '#e8ecf8';
+  ctx.font = 'bold 38px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText('CUBE CATCH', w/2, h*0.35);
+  ctx.shadowBlur = 0;
+
+  ctx.fillStyle = '#7880a0';
+  ctx.font = '14px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText('Color Flip Funnel', w/2, h*0.35+36);
+
+  // Animated cubes decoration
+  const cubeCount = 5;
+  for(let i=0;i<cubeCount;i++){
+    const t = animFrame*0.02 + i*1.3;
+    const cx = w*0.2 + (w*0.6)*(i/(cubeCount-1));
+    const cy = h*0.52 + Math.sin(t)*12;
+    const sz = 16;
+    const isB = i%2===0;
+    ctx.save();
+    ctx.translate(cx,cy);
+    ctx.rotate(Math.sin(t*0.7)*0.3);
+    drawCubeShape(0,0,sz,isB,1);
+    ctx.restore();
+  }
+
+  // Tap prompt
+  const alpha = 0.5 + Math.sin(animFrame*0.06)*0.4;
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = '#a0a8cc';
+  ctx.font = '16px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText('Tap to Start', w/2, h*0.68);
+  ctx.globalAlpha = 1;
+
+  // Best score
+  if(best>0){
+    ctx.fillStyle = '#5a6080';
+    ctx.font = '12px "Segoe UI",system-ui,sans-serif';
+    ctx.fillText('Best: '+best, w/2, h*0.75);
+  }
+}
+
+function drawGame(w,h){
+  // Lane dividers
+  ctx.strokeStyle = LANE_LINE;
+  ctx.lineWidth = 1;
+  for(let i=1;i<3;i++){
+    const x = w/3*i;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, h);
+    ctx.stroke();
+  }
+
+  // Ghost wave preview
+  if(ghostWave && ghostTimer > 0){
+    ctx.globalAlpha = ghostTimer * 2;
+    ghostWave.items.forEach(item=>{
+      const gx = laneX(item.lane);
+      const gy = 30;
+      ctx.strokeStyle = item.isBlue ? 'rgba(59,139,255,0.3)' : 'rgba(255,68,85,0.3)';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(gx-12, gy-12, 24, 24);
+    });
+    ctx.globalAlpha = 1;
+  }
+
+  // Cubes
+  cubes.forEach(c=>{
+    ctx.save();
+    ctx.translate(c.x, c.y);
+    ctx.rotate(c.rot);
+    drawCubeShape(0, 0, c.size, c.isBlue, 1);
+    ctx.restore();
+  });
+
+  // Funnel
+  drawFunnel(w,h);
+
+  // HUD
+  drawHUD(w,h);
+}
+
+function drawCubeShape(x, y, size, isBlue, alpha){
+  const half = size/2;
+  ctx.globalAlpha = alpha;
+  if(isBlue){
+    // Rounded blue cube with glow
+    ctx.shadowColor = BLUE_GLOW;
+    ctx.shadowBlur = 10;
+    ctx.fillStyle = BLUE;
+    roundRect(x-half, y-half, size, size, 5);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    // inner highlight
+    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    roundRect(x-half+3, y-half+3, size-6, size*0.4, 3);
+    ctx.fill();
+  } else {
+    // Spiky red cube with harsh outline
+    ctx.fillStyle = RED;
+    ctx.shadowColor = RED_GLOW;
+    ctx.shadowBlur = 8;
+    // Draw slightly rotated square for spiky look
+    ctx.beginPath();
+    const spike = 3;
+    ctx.moveTo(x-half-spike, y);
+    ctx.lineTo(x, y-half-spike);
+    ctx.lineTo(x+half+spike, y);
+    ctx.lineTo(x, y+half+spike);
+    ctx.closePath();
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = 'rgba(255,200,200,0.4)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function roundRect(x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.lineTo(x+w-r,y);
+  ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+  ctx.lineTo(x+w,y+h-r);
+  ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  ctx.lineTo(x+r,y+h);
+  ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+  ctx.lineTo(x,y+r);
+  ctx.quadraticCurveTo(x,y,x+r,y);
+  ctx.closePath();
+}
+
+function drawFunnel(w,h){
+  const fx = laneX(funnelLane);
+  const fy = funnelY();
+  const fw = funnelWidth();
+  const fh = funnelHeight();
+
+  // Funnel glow
+  const glowColor = targetIsBlue ? BLUE_GLOW : RED_GLOW;
+  const baseColor = targetIsBlue ? BLUE : RED;
+
+  ctx.shadowColor = glowColor;
+  ctx.shadowBlur = 18;
+  ctx.fillStyle = baseColor;
+
+  // Trapezoid funnel shape
+  ctx.beginPath();
+  const topW = fw * 1.2;
+  const botW = fw * 0.5;
+  ctx.moveTo(fx - topW/2, fy - fh/2);
+  ctx.lineTo(fx + topW/2, fy - fh/2);
+  ctx.lineTo(fx + botW/2, fy + fh/2);
+  ctx.lineTo(fx - botW/2, fy + fh/2);
+  ctx.closePath();
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Inner highlight
+  ctx.fillStyle = 'rgba(255,255,255,0.12)';
+  ctx.beginPath();
+  ctx.moveTo(fx - topW/2+4, fy - fh/2+2);
+  ctx.lineTo(fx + topW/2-4, fy - fh/2+2);
+  ctx.lineTo(fx + topW*0.3/2, fy - fh/2 + fh*0.45);
+  ctx.lineTo(fx - topW*0.3/2, fy - fh/2 + fh*0.45);
+  ctx.closePath();
+  ctx.fill();
+
+  // Target color indicator text
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.font = 'bold 9px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText(targetIsBlue ? 'BLUE' : 'RED', fx, fy + fh + 10);
+}
+
+function drawHUD(w,h){
+  // Score
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = '#d0d4e8';
+  ctx.font = 'bold 20px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText(score, 14, 12);
+
+  // Combo
+  if(combo > 1){
+    ctx.fillStyle = `hsla(${hue},70%,65%,0.9)`;
+    ctx.font = 'bold 13px "Segoe UI",system-ui,sans-serif';
+    ctx.fillText('x'+combo, 14, 36);
+  }
+
+  // Strikes
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#ff4455';
+  ctx.font = '14px "Segoe UI",system-ui,sans-serif';
+  let strikeStr = '';
+  for(let i=0;i<3;i++) strikeStr += i<strikes ? '✕ ' : '○ ';
+  ctx.fillText(strikeStr.trim(), w-14, 14);
+
+  // Heat bar
+  if(heat > 0){
+    const barW = 60;
+    const barH = 4;
+    const barX = w - 14 - barW;
+    const barY = 34;
+    ctx.fillStyle = 'rgba(255,255,255,0.1)';
+    roundRect(barX, barY, barW, barH, 2);
+    ctx.fill();
+    ctx.fillStyle = heat > 0.7 ? '#ff4455' : '#ff8844';
+    roundRect(barX, barY, barW*heat, barH, 2);
+    ctx.fill();
+  }
+}
+
+function drawGameOver(w,h){
+  // Overlay
+  ctx.fillStyle = 'rgba(10,14,26,0.75)';
+  ctx.fillRect(0,0,w,h);
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  ctx.fillStyle = '#e8ecf8';
+  ctx.font = 'bold 28px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText('GAME OVER', w/2, h*0.32);
+
+  ctx.fillStyle = '#a0a8cc';
+  ctx.font = '18px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText('Score: '+score, w/2, h*0.42);
+
+  const isNew = score >= best && score > 0;
+  ctx.fillStyle = isNew ? '#ffdd44' : '#6b7394';
+  ctx.font = '14px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText(isNew ? 'NEW BEST!' : 'Best: '+best, w/2, h*0.48);
+
+  // Retry prompt
+  const alpha = 0.5 + Math.sin(animFrame*0.06)*0.4;
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = '#a0a8cc';
+  ctx.font = '16px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText('Tap to Retry', w/2, h*0.58);
+  ctx.globalAlpha = 1;
+
+  // Share button
+  const btnW = 100, btnH = 32;
+  const btnX = w/2 - btnW/2;
+  const btnY = h*0.65 - btnH/2;
+  ctx.fillStyle = 'rgba(59,139,255,0.2)';
+  roundRect(btnX, btnY, btnW, btnH, 8);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(59,139,255,0.5)';
+  ctx.lineWidth = 1;
+  roundRect(btnX, btnY, btnW, btnH, 8);
+  ctx.stroke();
+  ctx.fillStyle = '#70a8e8';
+  ctx.font = '13px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText('Share Score', w/2, h*0.65);
+
+  shareBtn = {x:btnX, y:btnY, w:btnW, h:btnH};
+}
+
+function drawParticles(){
+  particles.forEach(p=>{
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, p.life/p.maxLife);
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.rot);
+    ctx.fillStyle = p.color;
+    ctx.fillRect(-p.size/2, -p.size/2, p.size, p.size);
+    ctx.restore();
+  });
+}
+
+// Main loop
+function loop(ts){
+  update(ts);
+  draw();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

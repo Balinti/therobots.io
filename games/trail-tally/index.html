@@ -1,0 +1,905 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Trail Tally - Free HTML5 Game</title>
+<meta name="description" content="Play Trail Tally - Tap to combine floating number clouds leaving sparkling trails that stack higher and higher.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Trail Tally - Free HTML5 Game">
+<meta property="og:description" content="Play Trail Tally - Tap to combine floating number clouds leaving sparkling trails that stack higher and higher.">
+<meta property="og:url" content="https://balinti.github.io/trail-tally/">
+<meta property="og:image" content="https://balinti.github.io/trail-tally/preview.png">
+<meta name="theme-color" content="#1a1a2e">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 100%; height: 100%;
+    background: #0d0d1a;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: flex-start;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    touch-action: manipulation;
+    overflow-x: hidden;
+    color: #e0e0ff;
+  }
+  #gameWrapper {
+    position: relative;
+    width: 100%;
+    max-width: 420px;
+    max-height: 750px;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  #gameCanvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    cursor: pointer;
+  }
+  #howToPlay {
+    width: 100%;
+    max-width: 420px;
+    padding: 10px 16px;
+    font-size: 12px;
+    color: #888;
+    line-height: 1.5;
+  }
+  #howToPlay h2 { font-size: 13px; color: #aaa; margin-bottom: 4px; }
+  #howToPlay p { margin-bottom: 3px; }
+</style>
+</head>
+<body>
+<div id="gameWrapper">
+  <canvas id="gameCanvas"></canvas>
+</div>
+<section id="howToPlay">
+  <h2>How to Play Trail Tally</h2>
+  <p>A numbered cloud drifts left and right across the top. Tap or click to drop it into the column below.</p>
+  <p>When two equal-value clouds land on top of each other in the same column, they merge into the next power of two (1+1=2, 2+2=4, etc.).</p>
+  <p>Chain merges boost your Trail Meter, multiplying your score. Don't let any column stack reach the storm line at the top or it's game over!</p>
+  <p>Storm Clouds (blockers) appear later — merge adjacent clouds twice above them to clear them and earn bonus points.</p>
+  <p>Controls: Tap / Click / Space / Enter to drop the current cloud.</p>
+</section>
+<script>
+(function(){
+'use strict';
+
+// ─── Canvas Setup ────────────────────────────────────────────────────────────
+const wrapper = document.getElementById('gameWrapper');
+const canvas  = document.getElementById('gameCanvas');
+const ctx     = canvas.getContext('2d');
+const DPR     = Math.min(window.devicePixelRatio || 1, 2);
+
+let W, H;
+function resize() {
+  const rect = wrapper.getBoundingClientRect();
+  W = rect.width;
+  H = rect.height;
+  canvas.width  = W * DPR;
+  canvas.height = H * DPR;
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  if (state === 'playing') layoutVars();
+}
+window.addEventListener('resize', resize);
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+const LANES       = 5;
+const CLOUD_R     = 28;           // cloud base radius
+const FALL_SPEED  = 480;          // px/s
+const MAX_PARTICLES = 200;
+const LS_SCORE    = 'ttss_highScore';
+const LS_TILE     = 'ttss_highTile';
+
+// ─── State ───────────────────────────────────────────────────────────────────
+let state = 'start';  // 'start' | 'playing' | 'gameover'
+let highScore = parseInt(localStorage.getItem(LS_SCORE) || '0');
+let highTile  = parseInt(localStorage.getItem(LS_TILE)  || '0');
+
+// layout (computed in layoutVars)
+let pf = {};   // playfield bounds: x, y, w, h, laneW
+let stormLineY = 0;
+
+function layoutVars() {
+  const pad = 12;
+  const headerH = 70;
+  pf.x = pad;
+  pf.y = headerH;
+  pf.w = W - pad * 2;
+  pf.h = H - headerH - pad;
+  pf.laneW = pf.w / LANES;
+  stormLineY = pf.y + CLOUD_R * 2 + 8;
+}
+
+// ─── Game variables ──────────────────────────────────────────────────────────
+let score, trailMeter, elapsed, gameTime;
+let stacks;        // stacks[lane] = array of tile objects (bottom to top)
+let activeTile;    // the drifting cloud
+let particles;
+let shakeX, shakeY, shakeDuration;
+let hue;
+let stormPulseActive, stormPulseTimer, stormPulseWarning;
+let skyburstTimer, skyburstText;
+let chainLen;
+let spawnQueue;
+let dropCooldown;
+
+function initGame() {
+  score       = 0;
+  trailMeter  = 1.0;
+  elapsed     = 0;
+  gameTime    = 0;
+  stacks      = Array.from({length: LANES}, () => []);
+  particles   = [];
+  shakeX = shakeY = shakeDuration = 0;
+  hue         = 200;
+  stormPulseActive  = false;
+  stormPulseTimer   = 0;
+  stormPulseWarning = false;
+  skyburstTimer = 0;
+  skyburstText  = '';
+  chainLen      = 0;
+  spawnQueue    = [];
+  dropCooldown  = 0;
+  layoutVars();
+  spawnActive();
+}
+
+// ─── Tile factory ────────────────────────────────────────────────────────────
+function makeTile(value, isBlocker) {
+  return {
+    value,
+    isBlocker: !!isBlocker,
+    blockerHp: isBlocker ? 2 : 0,
+    x: 0, y: 0,
+    targetX: 0, targetY: 0,
+    falling: false,
+    merging: false,
+    mergeScale: 1,
+    mergeTimer: 0,
+    squash: 1, stretch: 1,
+    alpha: 1,
+    lane: -1
+  };
+}
+
+function tileColor(t) {
+  if (t.isBlocker) return `hsl(${hue+180},30%,35%)`;
+  const h = (hue + t.value * 37) % 360;
+  const l = Math.min(40 + t.value * 4, 72);
+  return `hsl(${h},80%,${l}%)`;
+}
+
+function laneX(lane) {
+  return pf.x + pf.laneW * lane + pf.laneW / 2;
+}
+
+function stackTop(lane) {
+  const s = stacks[lane];
+  if (!s.length) return pf.y + pf.h - CLOUD_R;
+  const top = s[s.length - 1];
+  return top.y - CLOUD_R * 2 - 4;
+}
+
+// ─── Spawn active tile ────────────────────────────────────────────────────────
+function spawnActive() {
+  const t = elapsed;
+  let maxVal = 1;
+  if (t > 15) maxVal = 2;
+  if (t > 30) maxVal = 3;
+  if (t > 50) maxVal = 4;
+  if (t > 80) maxVal = 5;
+
+  let isBlocker = false;
+  if (t > 40) {
+    const blockerChance = Math.min(0.04 + (t - 40) * 0.001, 0.18);
+    isBlocker = Math.random() < blockerChance;
+  }
+
+  const value = isBlocker ? 0 : (1 + Math.floor(Math.random() * maxVal));
+  const tile = makeTile(value, isBlocker);
+  tile.x = pf.x + pf.w / 2;
+  tile.y = pf.y + CLOUD_R + 4;
+  tile.driftDir = Math.random() < 0.5 ? 1 : -1;
+  tile.driftSpeed = getDriftSpeed();
+  tile.falling = false;
+  tile.lane = -1;
+  activeTile = tile;
+}
+
+function getDriftSpeed() {
+  const t = elapsed;
+  return 60 + Math.min(t * 1.2, 80);
+}
+
+// ─── Drop active tile ─────────────────────────────────────────────────────────
+function dropTile() {
+  if (!activeTile || activeTile.falling || dropCooldown > 0) return;
+
+  // Find the lane under the tile
+  const lane = Math.floor((activeTile.x - pf.x) / pf.laneW);
+  const clampedLane = Math.max(0, Math.min(LANES - 1, lane));
+
+  activeTile.lane = clampedLane;
+  activeTile.targetX = laneX(clampedLane);
+  activeTile.targetY = stackTop(clampedLane);
+  activeTile.falling = true;
+  activeTile.driftDir = 0;
+
+  dropCooldown = 0.15;
+
+  // Squash on launch
+  activeTile.squash = 1.3;
+  activeTile.stretch = 0.7;
+
+  spawnParticles(activeTile.x, activeTile.y, 5, tileColor(activeTile));
+}
+
+// ─── Merge resolution ─────────────────────────────────────────────────────────
+function resolveMerges() {
+  let merged = true;
+  let totalChain = 0;
+  while (merged) {
+    merged = false;
+    for (let lane = 0; lane < LANES; lane++) {
+      const s = stacks[lane];
+      for (let i = s.length - 1; i >= 1; i--) {
+        const top = s[i];
+        const bot = s[i - 1];
+        if (!top.isBlocker && !bot.isBlocker && top.value === bot.value) {
+          // merge
+          const newVal = top.value + 1;
+          const newTile = makeTile(newVal);
+          newTile.lane = lane;
+          newTile.x = laneX(lane);
+          newTile.y = bot.y;
+          newTile.targetX = newTile.x;
+          newTile.targetY = bot.y;
+          newTile.merging = true;
+          newTile.mergeScale = 1.4;
+          newTile.mergeTimer = 0.2;
+          newTile.squash = 0.7;
+          newTile.stretch = 1.4;
+
+          s.splice(i - 1, 2, newTile);
+
+          // score
+          const pts = newVal * newVal * Math.ceil(trailMeter);
+          score += pts;
+          chainLen++;
+          totalChain++;
+          trailMeter = Math.min(trailMeter + 0.5, 8);
+
+          spawnParticles(newTile.x, newTile.y, 12 + chainLen * 3, tileColor(newTile));
+          triggerShake(chainLen >= 3 ? 4 : 2, 0.18);
+
+          // update high tile
+          if (newVal > highTile) {
+            highTile = newVal;
+            localStorage.setItem(LS_TILE, highTile);
+          }
+
+          // blocker adjacency check (tile below the new one)
+          if (i - 1 >= 1) {
+            const below = s[i - 2]; // after splice, newTile is at i-1
+            if (below && below.isBlocker) {
+              below.blockerHp--;
+              if (below.blockerHp <= 0) {
+                score += 50 * Math.ceil(trailMeter);
+                spawnParticles(laneX(lane), below.y, 20, '#ff9900');
+                s.splice(i - 2, 1);
+                triggerShake(3, 0.2);
+              }
+            }
+          }
+
+          merged = true;
+          break;
+        }
+      }
+      if (merged) break;
+    }
+  }
+
+  if (totalChain >= 4) {
+    skyburstTimer = 1.5;
+    skyburstText  = 'SKYBURST!';
+  } else if (totalChain >= 2) {
+    skyburstTimer = 0.8;
+    skyburstText  = 'CHAIN x' + totalChain;
+  }
+
+  if (totalChain === 0) chainLen = 0;
+
+  // restack y positions
+  for (let lane = 0; lane < LANES; lane++) {
+    const s = stacks[lane];
+    for (let i = 0; i < s.length; i++) {
+      const ty = pf.y + pf.h - CLOUD_R - i * (CLOUD_R * 2 + 4);
+      s[i].targetY = ty;
+    }
+  }
+}
+
+// ─── Game Over check ──────────────────────────────────────────────────────────
+function checkGameOver() {
+  for (let lane = 0; lane < LANES; lane++) {
+    const s = stacks[lane];
+    if (!s.length) continue;
+    const top = s[s.length - 1];
+    const effectiveStorm = stormPulseActive ? stormLineY + 40 : stormLineY;
+    if (top.y - CLOUD_R < effectiveStorm) {
+      triggerShake(12, 0.5);
+      endGame();
+      return true;
+    }
+  }
+  return false;
+}
+
+function endGame() {
+  state = 'gameover';
+  if (score > highScore) {
+    highScore = score;
+    localStorage.setItem(LS_SCORE, highScore);
+  }
+  spawnParticles(W / 2, H / 2, 60, `hsl(${hue},80%,60%)`);
+}
+
+// ─── Particles ────────────────────────────────────────────────────────────────
+function spawnParticles(x, y, count, color) {
+  const room = MAX_PARTICLES - particles.length;
+  const n = Math.min(count, room);
+  for (let i = 0; i < n; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 60 + Math.random() * 120;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 40,
+      life: 0.6 + Math.random() * 0.5,
+      maxLife: 0,
+      r: 2 + Math.random() * 3,
+      color,
+      alpha: 1
+    });
+    particles[particles.length - 1].maxLife = particles[particles.length - 1].life;
+  }
+}
+
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x  += p.vx * dt;
+    p.y  += p.vy * dt;
+    p.vy += 200 * dt;
+    p.life -= dt;
+    p.alpha = Math.max(0, p.life / p.maxLife);
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+// ─── Screen shake ─────────────────────────────────────────────────────────────
+function triggerShake(mag, dur) {
+  if (mag > shakeDuration * 15) {
+    shakeX = (Math.random() - 0.5) * mag;
+    shakeY = (Math.random() - 0.5) * mag;
+    shakeDuration = dur;
+  }
+}
+
+// ─── Difficulty helpers ───────────────────────────────────────────────────────
+let stormPulseInterval = 15; // seconds between pulses after 90s
+
+// ─── Main loop ────────────────────────────────────────────────────────────────
+let lastTime = 0;
+function loop(ts) {
+  requestAnimationFrame(loop);
+  const dt = Math.min((ts - lastTime) / 1000, 0.033);
+  lastTime = ts;
+
+  hue = (hue + dt * 8) % 360;
+
+  if (state === 'playing') update(dt);
+  draw(dt);
+}
+
+function update(dt) {
+  elapsed   += dt;
+  gameTime  += dt;
+
+  // Trail Meter decay
+  const decayRate = elapsed > 15 ? 0.12 + elapsed * 0.001 : 0.05;
+  trailMeter = Math.max(1, trailMeter - decayRate * dt);
+
+  // Storm Pulse
+  if (elapsed > 90) {
+    stormPulseInterval -= dt * 0.005;
+    stormPulseInterval = Math.max(stormPulseInterval, 7);
+  }
+  if (elapsed > 90 && !stormPulseActive) {
+    stormPulseTimer -= dt;
+    if (stormPulseTimer <= 0) {
+      stormPulseTimer = stormPulseInterval;
+      stormPulseActive = true;
+      stormPulseWarning = true;
+      setTimeout(() => { stormPulseActive = false; stormPulseWarning = false; }, 3000);
+    }
+  }
+
+  // Skyburst banner
+  if (skyburstTimer > 0) skyburstTimer -= dt;
+
+  // Shake decay
+  if (shakeDuration > 0) {
+    shakeDuration -= dt;
+    if (shakeDuration <= 0) { shakeX = shakeY = 0; }
+    else {
+      shakeX = (Math.random() - 0.5) * shakeDuration * 20;
+      shakeY = (Math.random() - 0.5) * shakeDuration * 20;
+    }
+  }
+
+  // Drop cooldown
+  if (dropCooldown > 0) dropCooldown -= dt;
+
+  // Active tile drift/fall
+  if (activeTile) {
+    if (!activeTile.falling) {
+      activeTile.x += activeTile.driftDir * activeTile.driftSpeed * dt;
+      // Bounce off walls
+      if (activeTile.x < pf.x + CLOUD_R) {
+        activeTile.x = pf.x + CLOUD_R;
+        activeTile.driftDir = 1;
+      }
+      if (activeTile.x > pf.x + pf.w - CLOUD_R) {
+        activeTile.x = pf.x + pf.w - CLOUD_R;
+        activeTile.driftDir = -1;
+      }
+      // Update drift speed dynamically
+      activeTile.driftSpeed = getDriftSpeed();
+    } else {
+      // Fall toward target
+      const dy = activeTile.targetY - activeTile.y;
+      const dx = activeTile.targetX - activeTile.x;
+      const moveY = FALL_SPEED * dt;
+      if (Math.abs(dy) < moveY + 1 && Math.abs(dx) < 5) {
+        activeTile.x = activeTile.targetX;
+        activeTile.y = activeTile.targetY;
+        // Land
+        const lane = activeTile.lane;
+        activeTile.falling = false;
+        activeTile.squash = 1.4;
+        activeTile.stretch = 0.7;
+        stacks[lane].push(activeTile);
+        spawnParticles(activeTile.x, activeTile.y, 8, tileColor(activeTile));
+        activeTile = null;
+
+        // resolve merges
+        chainLen = 0;
+        resolveMerges();
+
+        if (!checkGameOver()) {
+          spawnActive();
+        }
+      } else {
+        activeTile.y += Math.sign(dy) * Math.min(Math.abs(dy), moveY);
+        activeTile.x += dx * 8 * dt;
+        // Squash/stretch during fall
+        activeTile.stretch = 1.2;
+        activeTile.squash  = 0.85;
+      }
+    }
+
+    // Animate squash/stretch
+    if (activeTile) {
+      activeTile.squash  += (1 - activeTile.squash)  * 10 * dt;
+      activeTile.stretch += (1 - activeTile.stretch) * 10 * dt;
+    }
+  }
+
+  // Animate stacked tiles squash/stretch + merge
+  for (let lane = 0; lane < LANES; lane++) {
+    const s = stacks[lane];
+    for (let i = 0; i < s.length; i++) {
+      const t = s[i];
+      // Smooth position
+      t.y += (t.targetY - t.y) * 12 * dt;
+      t.squash  += (1 - t.squash)  * 8 * dt;
+      t.stretch += (1 - t.stretch) * 8 * dt;
+      if (t.merging) {
+        t.mergeTimer -= dt;
+        t.mergeScale += (1 - t.mergeScale) * 10 * dt;
+        if (t.mergeTimer <= 0) { t.merging = false; t.mergeScale = 1; }
+      }
+    }
+  }
+
+  updateParticles(dt);
+}
+
+// ─── Draw ─────────────────────────────────────────────────────────────────────
+function draw() {
+  ctx.save();
+
+  // Background gradient (slowly scrolling hue)
+  const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+  bgGrad.addColorStop(0, `hsl(${hue},40%,8%)`);
+  bgGrad.addColorStop(1, `hsl(${(hue+60)%360},40%,14%)`);
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Storm pulse overlay
+  if (stormPulseWarning) {
+    const flashAlpha = 0.15 + 0.1 * Math.sin(Date.now() / 80);
+    ctx.fillStyle = `rgba(255,80,80,${flashAlpha})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // Apply shake
+  ctx.translate(shakeX, shakeY);
+
+  if (state === 'start')    drawStart();
+  else if (state === 'playing')  drawGame();
+  else if (state === 'gameover') drawGameOver();
+
+  ctx.restore();
+}
+
+function drawStart() {
+  // Title
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.fillStyle = `hsl(${hue},90%,75%)`;
+  ctx.font = 'bold 42px system-ui';
+  ctx.shadowColor = `hsl(${hue},90%,60%)`;
+  ctx.shadowBlur = 20;
+  ctx.fillText('Trail Tally', W / 2, H * 0.28);
+  ctx.shadowBlur = 0;
+
+  ctx.font = '18px system-ui';
+  ctx.fillStyle = '#b0b0d0';
+  ctx.fillText('Storm Stack', W / 2, H * 0.28 + 34);
+
+  ctx.font = '15px system-ui';
+  ctx.fillStyle = '#8080a0';
+  ctx.fillText('Tap or press Space to start', W / 2, H * 0.5);
+
+  ctx.font = '13px system-ui';
+  ctx.fillStyle = '#606080';
+  ctx.fillText(`High Score: ${highScore}`, W / 2, H * 0.5 + 30);
+  if (highTile > 0) ctx.fillText(`Best Tile: ${Math.pow(2, highTile - 1) * 1}`, W / 2, H * 0.5 + 50);
+
+  // Animated clouds decoration
+  const t = Date.now() / 1000;
+  for (let i = 0; i < 5; i++) {
+    const cx = W / 2 + Math.sin(t * 0.7 + i * 1.3) * (W * 0.35);
+    const cy = H * 0.65 + Math.sin(t * 0.5 + i * 0.8) * 30;
+    const v  = i + 1;
+    drawCloud(cx, cy, CLOUD_R * 0.8, v, false, `hsl(${(hue + v * 37) % 360},80%,55%)`, 1, 1, 1);
+  }
+  ctx.restore();
+}
+
+function drawGame() {
+  ctx.save();
+
+  // Playfield background
+  ctx.fillStyle = `rgba(0,0,10,0.4)`;
+  ctx.beginPath();
+  roundRect(ctx, pf.x, pf.y, pf.w, pf.h, 16);
+  ctx.fill();
+
+  // Trail Meter glow
+  if (trailMeter > 2) {
+    const glowAlpha = Math.min((trailMeter - 2) / 6 * 0.5, 0.5);
+    ctx.strokeStyle = `hsla(${hue},90%,65%,${glowAlpha})`;
+    ctx.lineWidth = 6 + (trailMeter - 2);
+    ctx.beginPath();
+    roundRect(ctx, pf.x, pf.y, pf.w, pf.h, 16);
+    ctx.stroke();
+  }
+
+  // Lane separators
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.lineWidth = 1;
+  for (let i = 1; i < LANES; i++) {
+    const lx = pf.x + pf.laneW * i;
+    ctx.beginPath();
+    ctx.moveTo(lx, pf.y + 8);
+    ctx.lineTo(lx, pf.y + pf.h - 8);
+    ctx.stroke();
+  }
+
+  // Storm line
+  const stormLineColor = stormPulseWarning
+    ? `rgba(255,80,80,0.9)`
+    : `rgba(255,120,60,0.7)`;
+  ctx.strokeStyle = stormLineColor;
+  ctx.lineWidth = 2;
+  ctx.setLineDash([6, 4]);
+  ctx.beginPath();
+  ctx.moveTo(pf.x + 4, stormLineY);
+  ctx.lineTo(pf.x + pf.w - 4, stormLineY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = stormLineColor;
+  ctx.font = 'bold 10px system-ui';
+  ctx.textAlign = 'right';
+  ctx.fillText('STORM', pf.x + pf.w - 4, stormLineY - 3);
+
+  // Clip to playfield
+  ctx.save();
+  ctx.beginPath();
+  roundRect(ctx, pf.x, pf.y, pf.w, pf.h, 16);
+  ctx.clip();
+
+  // Draw stacked tiles
+  for (let lane = 0; lane < LANES; lane++) {
+    const s = stacks[lane];
+    for (let i = 0; i < s.length; i++) {
+      const t = s[i];
+      const sc = t.merging ? t.mergeScale : 1;
+      drawCloud(t.x, t.y, CLOUD_R * sc, t.value, t.isBlocker, tileColor(t), t.squash, t.stretch, t.alpha);
+    }
+  }
+
+  // Draw active tile
+  if (activeTile) {
+    drawCloud(activeTile.x, activeTile.y, CLOUD_R, activeTile.value, activeTile.isBlocker,
+              tileColor(activeTile), activeTile.squash, activeTile.stretch, 1);
+    // Drop indicator line
+    const lane = Math.max(0, Math.min(LANES - 1, Math.floor((activeTile.x - pf.x) / pf.laneW)));
+    const indicX = laneX(lane);
+    const indicY = activeTile.y + CLOUD_R;
+    const indicTarget = stackTop(lane) - CLOUD_R;
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([4, 6]);
+    ctx.beginPath();
+    ctx.moveTo(indicX, indicY);
+    ctx.lineTo(indicX, indicTarget);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  ctx.restore(); // unclip
+
+  // Particles
+  for (const p of particles) {
+    ctx.globalAlpha = p.alpha;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // HUD
+  ctx.textAlign = 'left';
+  ctx.fillStyle = `hsl(${hue},70%,80%)`;
+  ctx.font = 'bold 26px system-ui';
+  ctx.fillText(score, 16, 38);
+
+  ctx.font = '13px system-ui';
+  ctx.fillStyle = '#8080a0';
+  ctx.fillText('SCORE', 16, 54);
+
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#8080a0';
+  ctx.font = '13px system-ui';
+  ctx.fillText('BEST ' + highScore, W - 16, 38);
+
+  // Trail Meter bar
+  const barW = 100;
+  const barH = 8;
+  const barX = W / 2 - barW / 2;
+  const barY = 45;
+  ctx.fillStyle = 'rgba(255,255,255,0.1)';
+  roundRect(ctx, barX, barY, barW, barH, 4);
+  ctx.fill();
+  const meterFill = Math.min((trailMeter - 1) / 7, 1) * barW;
+  const meterColor = `hsl(${(hue+120)%360},80%,60%)`;
+  ctx.fillStyle = meterColor;
+  roundRect(ctx, barX, barY, meterFill, barH, 4);
+  ctx.fill();
+  ctx.textAlign = 'center';
+  ctx.font = '11px system-ui';
+  ctx.fillStyle = '#b0b0d0';
+  ctx.fillText('TRAIL x' + trailMeter.toFixed(1), W / 2, barY - 3);
+
+  // Skyburst banner
+  if (skyburstTimer > 0) {
+    const alpha = Math.min(skyburstTimer * 2, 1);
+    const sc    = 1 + (1 - alpha) * 0.3;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(W / 2, H / 2 - 60);
+    ctx.scale(sc, sc);
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 32px system-ui';
+    ctx.fillStyle = `hsl(${hue},100%,75%)`;
+    ctx.shadowColor = `hsl(${hue},100%,60%)`;
+    ctx.shadowBlur = 20;
+    ctx.fillText(skyburstText, 0, 0);
+    ctx.restore();
+  }
+
+  ctx.restore();
+}
+
+function drawGameOver() {
+  drawGame(); // draw the frozen game state behind
+
+  ctx.save();
+  // Overlay
+  ctx.fillStyle = 'rgba(0,0,20,0.75)';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = `hsl(${hue},90%,75%)`;
+  ctx.font = 'bold 40px system-ui';
+  ctx.shadowColor = `hsl(${hue},90%,60%)`;
+  ctx.shadowBlur = 20;
+  ctx.fillText('GAME OVER', W / 2, H * 0.35);
+  ctx.shadowBlur = 0;
+
+  ctx.font = 'bold 28px system-ui';
+  ctx.fillStyle = '#e0e0ff';
+  ctx.fillText(score, W / 2, H * 0.35 + 50);
+  ctx.font = '14px system-ui';
+  ctx.fillStyle = '#8080a0';
+  ctx.fillText('SCORE', W / 2, H * 0.35 + 70);
+
+  if (score >= highScore) {
+    ctx.fillStyle = `hsl(${(hue+60)%360},90%,70%)`;
+    ctx.font = 'bold 16px system-ui';
+    ctx.fillText('NEW HIGH SCORE!', W / 2, H * 0.35 + 94);
+  } else {
+    ctx.fillStyle = '#606080';
+    ctx.font = '13px system-ui';
+    ctx.fillText('Best: ' + highScore, W / 2, H * 0.35 + 94);
+  }
+
+  ctx.font = '15px system-ui';
+  ctx.fillStyle = '#b0b0d0';
+  ctx.fillText('Tap or press Space to play again', W / 2, H * 0.65);
+
+  ctx.restore();
+}
+
+// ─── Cloud drawing ────────────────────────────────────────────────────────────
+function drawCloud(x, y, r, value, isBlocker, color, squash, stretch, alpha) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(x, y);
+  ctx.scale(squash, stretch);
+
+  if (isBlocker) {
+    // Storm cloud — dark spiky shape
+    ctx.fillStyle = `hsl(${hue+180},25%,30%)`;
+    ctx.strokeStyle = `hsl(${hue+180},25%,55%)`;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    const pts = 8;
+    for (let i = 0; i < pts * 2; i++) {
+      const angle = (i / (pts * 2)) * Math.PI * 2 - Math.PI / 2;
+      const rad = i % 2 === 0 ? r : r * 0.65;
+      ctx.lineTo(Math.cos(angle) * rad, Math.sin(angle) * rad);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    // HP pips
+    ctx.fillStyle = '#ff6060';
+    ctx.font = 'bold 11px system-ui';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('⚡', 0, 0);
+  } else {
+    // Normal cloud — rounded blob
+    ctx.fillStyle = color;
+    const grad = ctx.createRadialGradient(-r * 0.25, -r * 0.25, r * 0.1, 0, 0, r * 1.1);
+    grad.addColorStop(0, lightenColor(color, 30));
+    grad.addColorStop(1, color);
+    ctx.fillStyle = grad;
+    ctx.strokeStyle = lightenColor(color, 40);
+    ctx.lineWidth = 3;
+
+    // Main circle + bumps
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Decorative bumps
+    const bumps = [[r * 0.55, -r * 0.55, r * 0.38], [-r * 0.55, -r * 0.5, r * 0.32]];
+    for (const [bx, by, br] of bumps) {
+      ctx.beginPath();
+      ctx.arc(bx, by, br, 0, Math.PI * 2);
+      ctx.fillStyle = lightenColor(color, 15);
+      ctx.fill();
+      ctx.strokeStyle = lightenColor(color, 35);
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    // Number label
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.font = `bold ${r < 22 ? 14 : 18}px system-ui`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const dispVal = value <= 1 ? 1 : Math.pow(2, value - 1);
+    // For cleaner display: show raw value as 2^(v-1) starting from v=1 → 1
+    const label = value === 1 ? '1' : String(Math.pow(2, value - 1));
+    ctx.fillText(label, 0, 1);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(label, 0, 0);
+  }
+
+  ctx.restore();
+}
+
+function lightenColor(hslStr, amount) {
+  // Quick lightness bump for hsl strings
+  return hslStr.replace(/(\d+)%\)/, (m, l) => `${Math.min(parseInt(l) + amount, 95)}%)`);
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+// ─── Input ────────────────────────────────────────────────────────────────────
+function handleInput() {
+  if (state === 'start') {
+    state = 'playing';
+    initGame();
+  } else if (state === 'playing') {
+    dropTile();
+  } else if (state === 'gameover') {
+    state = 'playing';
+    initGame();
+  }
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  handleInput();
+});
+
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    handleInput();
+  }
+});
+
+// Prevent space scroll
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'Space') e.preventDefault();
+}, { passive: false });
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+resize();
+layoutVars();
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

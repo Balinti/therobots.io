@@ -1,0 +1,1129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Sweet Serve - Free HTML5 Game</title>
+  <meta name="description" content="Play Sweet Serve - Tap to serve and return a jellybean ball as the camera zooms dynamically.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#1a0a2e">
+  <meta property="og:title" content="Sweet Serve - Free HTML5 Game">
+  <meta property="og:description" content="Tap to serve and return a jellybean ball. Hit the Sweet Spot for perfect combos!">
+  <meta property="og:url" content="https://balinti.github.io/sweet-serve/">
+  <meta property="og:image" content="https://balinti.github.io/sweet-serve/preview.png">
+  <meta property="og:type" content="website">
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #0d0520;
+      color: #f0e8ff;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      overflow-x: hidden;
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+    #game-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 100%;
+      max-width: 420px;
+      flex: 1;
+      position: relative;
+    }
+    #canvas-container {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      height: min(750px, 100svh);
+      overflow: hidden;
+      border-radius: 0 0 18px 18px;
+      box-shadow: 0 0 60px rgba(180,100,255,0.25);
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+      cursor: pointer;
+    }
+    #info-section {
+      width: 100%;
+      max-width: 420px;
+      padding: 24px 20px 80px;
+      text-align: center;
+    }
+    #info-section h1 {
+      font-size: 1.6rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, #ff6ec7, #a78bfa, #38bdf8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 8px;
+    }
+    #info-section .tagline {
+      font-size: 0.95rem;
+      color: #c4b5e0;
+      margin-bottom: 20px;
+    }
+    #info-section h2 {
+      font-size: 1rem;
+      color: #e2d9f3;
+      margin-bottom: 8px;
+      text-align: left;
+    }
+    #info-section ul {
+      list-style: none;
+      text-align: left;
+      margin-bottom: 20px;
+    }
+    #info-section ul li {
+      font-size: 0.875rem;
+      color: #b8a9d4;
+      padding: 4px 0;
+      padding-left: 20px;
+      position: relative;
+    }
+    #info-section ul li::before {
+      content: '🍬';
+      position: absolute;
+      left: 0;
+      font-size: 0.75rem;
+    }
+    .faq { text-align: left; margin-top: 16px; }
+    .faq details { border-radius: 8px; background: rgba(255,255,255,0.04); margin-bottom: 8px; }
+    .faq summary { padding: 10px 14px; font-size: 0.875rem; color: #d1c4e9; cursor: pointer; user-select: none; }
+    .faq p { padding: 0 14px 10px; font-size: 0.82rem; color: #9e8fc0; line-height: 1.5; }
+  </style>
+</head>
+<body>
+<div id="game-wrapper">
+  <div id="canvas-container">
+    <canvas id="gc"></canvas>
+  </div>
+  <section id="info-section">
+    <h1>Sweet Serve</h1>
+    <p class="tagline">Hit the jellybean. Own the sweet spot. Build the combo.</p>
+    <h2>How to Play</h2>
+    <ul>
+      <li>Tap / press Space or Enter to hit the ball</li>
+      <li>Aim for the glowing Sweet Spot ring for a Perfect hit</li>
+      <li>Alternate Left and Right lanes with each hit</li>
+      <li>Miss the ball and it's game over</li>
+      <li>Combos multiply your score — don't break the streak!</li>
+    </ul>
+    <div class="faq">
+      <details>
+        <summary>What are flavor modifiers?</summary>
+        <p>Purple (Sticky) balls arrive slower but have a tighter perfect window. Cyan (Bouncy) balls arc sideways. Phase 4+ introduces a tiny inner Double Sweet ring for huge bonus points.</p>
+      </details>
+      <details>
+        <summary>How is high score saved?</summary>
+        <p>Your best score and best combo are saved automatically in your browser using localStorage — no account needed.</p>
+      </details>
+      <details>
+        <summary>Does it work on mobile?</summary>
+        <p>Yes! Tap anywhere on the canvas to play. The game is fully optimized for touch devices with pointer events.</p>
+      </details>
+    </div>
+  </section>
+</div>
+
+<script>
+(function() {
+'use strict';
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+const LS_HS  = 'sweetserve_highscore';
+const LS_BC  = 'sweetserve_bestcombo';
+const CANVAS_W = 420;
+const CANVAS_H = 750;
+const DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+// ─── Canvas setup ─────────────────────────────────────────────────────────────
+const canvas = document.getElementById('gc');
+const ctx    = canvas.getContext('2d');
+canvas.width  = CANVAS_W * DPR;
+canvas.height = CANVAS_H * DPR;
+ctx.scale(DPR, DPR);
+
+// ─── State ────────────────────────────────────────────────────────────────────
+const STATES = { START: 'start', PLAYING: 'playing', GAMEOVER: 'gameover' };
+let state = STATES.START;
+
+// ─── Persistence ─────────────────────────────────────────────────────────────
+function getHS()  { return parseInt(localStorage.getItem(LS_HS)  || '0', 10); }
+function getBC()  { return parseInt(localStorage.getItem(LS_BC)  || '0', 10); }
+function saveHS(v){ localStorage.setItem(LS_HS, v); }
+function saveBC(v){ localStorage.setItem(LS_BC, v); }
+
+// ─── Game vars ────────────────────────────────────────────────────────────────
+let score, combo, bestCombo, highScore, bestComboAll;
+let bgHue, comboHeat;
+let phase; // 1-5 difficulty phases
+let hits;
+let newHSFlag, newBCFlag;
+
+// ─── Shake ────────────────────────────────────────────────────────────────────
+let shakeTime = 0, shakeMag = 0;
+function triggerShake(mag, dur) { shakeMag = mag; shakeTime = dur; }
+
+// ─── Slow-mo ─────────────────────────────────────────────────────────────────
+let slowMo = 1, slowMoTimer = 0;
+function triggerSlowMo(dur) { slowMo = 0.25; slowMoTimer = dur; }
+
+// ─── Freeze ──────────────────────────────────────────────────────────────────
+let freezeTimer = 0;
+
+// ─── Particle pool ────────────────────────────────────────────────────────────
+const POOL_SIZE = 200;
+const particles = [];
+for (let i = 0; i < POOL_SIZE; i++) {
+  particles.push({ active: false, x: 0, y: 0, vx: 0, vy: 0,
+    life: 0, maxLife: 1, r: 4, hue: 0, sat: 80, lit: 60, alpha: 1, shape: 0 });
+}
+function spawnParticles(x, y, count, hue, big) {
+  let spawned = 0;
+  for (let i = 0; i < particles.length && spawned < count; i++) {
+    const p = particles[i];
+    if (p.active) continue;
+    p.active = true;
+    p.x = x; p.y = y;
+    const angle = Math.random() * Math.PI * 2;
+    const speed = (big ? 5 : 3) + Math.random() * (big ? 7 : 4);
+    p.vx = Math.cos(angle) * speed;
+    p.vy = Math.sin(angle) * speed - (big ? 3 : 1);
+    p.life = 0;
+    p.maxLife = 0.5 + Math.random() * 0.5;
+    p.r = (big ? 5 : 3) + Math.random() * (big ? 5 : 3);
+    p.hue = hue + (Math.random() - 0.5) * 40;
+    p.sat = 80 + Math.random() * 20;
+    p.lit = 55 + Math.random() * 20;
+    p.alpha = 1;
+    p.shape = Math.random() < 0.4 ? 1 : 0; // 0=circle 1=star
+    spawned++;
+  }
+}
+
+// ─── Lane system ─────────────────────────────────────────────────────────────
+// Lanes: 0=Left, 1=Right
+const LANE_X = [CANVAS_W * 0.28, CANVAS_W * 0.72];
+const SCOOP_Y = CANVAS_H * 0.84;
+let nextLane = 0; // which lane ball flies to next
+
+// ─── Sweet Spot ───────────────────────────────────────────────────────────────
+// Ring that moves vertically
+let sweetSpot = { // current ring
+  lane: 0, y: 0, vy: 0, outerR: 0, innerR: 0,
+  minY: CANVAS_H * 0.25, maxY: CANVAS_H * 0.68,
+  hue: 0, phase: 0 // phase for double sweet
+};
+function resetSweetSpot(lane) {
+  const sz = getSweetSpotSize();
+  sweetSpot.lane = lane;
+  sweetSpot.y = CANVAS_H * 0.35 + Math.random() * CANVAS_H * 0.2;
+  sweetSpot.vy = (phase >= 3 ? 2.5 : 1.5) * (Math.random() < 0.5 ? 1 : -1);
+  sweetSpot.outerR = sz.outer;
+  sweetSpot.innerR = sz.inner;
+  sweetSpot.hue = 40 + Math.random() * 260;
+  sweetSpot.doubleSweet = phase >= 4 && Math.random() < 0.3;
+  sweetSpot.doubleSweetR = sz.outer * 0.28;
+}
+function getSweetSpotSize() {
+  // outer ring narrows with phase
+  const outer = Math.max(28, 72 - (phase - 1) * 9);
+  const inner = outer * 0.45;
+  return { outer, inner };
+}
+
+// ─── Ball ─────────────────────────────────────────────────────────────────────
+let ball = {
+  x: LANE_X[0], y: SCOOP_Y - 60,
+  vx: 0, vy: 0,
+  r: 16, hue: 0,
+  trail: [],
+  squash: 1, squashTimer: 0,
+  flavor: 'normal', // normal | sticky | bouncy
+  wobblePhase: 0,
+  active: false,
+  arriving: false, // flying toward scoop
+};
+const TRAIL_LEN = 8;
+
+function launchBall(fromLane) {
+  const toLane = fromLane; // ball goes to fromLane scoop
+  const fromX = LANE_X[1 - fromLane]; // comes from opposite side top
+  ball.x = fromX;
+  ball.y = CANVAS_H * 0.12;
+  ball.hue = 20 + Math.random() * 320;
+  ball.trail = [];
+  ball.squash = 1;
+  ball.squashTimer = 0;
+  ball.active = true;
+  ball.arriving = true;
+  ball.flavor = pickFlavor();
+  ball.wobblePhase = 0;
+
+  // Calculate arc: land near LANE_X[toLane], SCOOP_Y
+  const targetX = LANE_X[toLane];
+  const targetY = SCOOP_Y - ball.r * 2;
+  const speed = getArriveSpeed();
+  const dx = targetX - ball.x;
+  const dy = targetY - ball.y;
+  const dist = Math.sqrt(dx*dx + dy*dy);
+  ball.vx = (dx / dist) * speed;
+  ball.vy = (dy / dist) * speed;
+
+  if (ball.flavor === 'bouncy') {
+    ball.vx += (Math.random() - 0.5) * 2.5;
+  }
+}
+
+function pickFlavor() {
+  if (phase < 2) return 'normal';
+  const r = Math.random();
+  if (phase >= 3 && r < 0.15) return 'sticky';
+  if (phase >= 2 && r < 0.30) return 'bouncy';
+  return 'normal';
+}
+
+function getArriveSpeed() {
+  let s = 4.5 + phase * 0.7;
+  if (ball.flavor === 'sticky') s *= 0.7;
+  return s;
+}
+
+// ─── Scoop display ────────────────────────────────────────────────────────────
+let scoops = [
+  { lane: 0, hitAnim: 0, hitScale: 1 },
+  { lane: 1, hitAnim: 0, hitScale: 1 }
+];
+
+// ─── Crack ring effect ─────────────────────────────────────────────────────────
+let crackRings = []; // { x, y, r, life, maxLife }
+function spawnCrack(x, y) {
+  crackRings.push({ x, y, r: 0, life: 0, maxLife: 0.5 });
+}
+
+// ─── Floating texts ────────────────────────────────────────────────────────────
+let floatingTexts = [];
+function spawnText(x, y, txt, color, size) {
+  floatingTexts.push({ x, y, txt, color, size: size || 22, vy: -1.5, life: 0, maxLife: 0.9, alpha: 1 });
+}
+
+// ─── Slow-mo micro-zoom ───────────────────────────────────────────────────────
+let microZoom = 1, microZoomTimer = 0;
+function triggerMicroZoom(dur) { microZoom = 1.045; microZoomTimer = dur; }
+
+// ─── Input ────────────────────────────────────────────────────────────────────
+let inputThisFrame = false;
+
+canvas.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  inputThisFrame = true;
+});
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    inputThisFrame = true;
+  }
+});
+
+// ─── Init / Restart ───────────────────────────────────────────────────────────
+function initGame() {
+  score = 0;
+  combo = 0;
+  bestCombo = 0;
+  highScore = getHS();
+  bestComboAll = getBC();
+  bgHue = 260;
+  comboHeat = 0;
+  phase = 1;
+  hits = 0;
+  newHSFlag = false;
+  newBCFlag = false;
+  nextLane = Math.random() < 0.5 ? 0 : 1;
+  particles.forEach(p => p.active = false);
+  crackRings.length = 0;
+  floatingTexts.length = 0;
+  shakeTime = 0; shakeMag = 0;
+  slowMo = 1; slowMoTimer = 0;
+  freezeTimer = 0;
+  microZoom = 1; microZoomTimer = 0;
+
+  resetSweetSpot(nextLane);
+  launchBall(nextLane);
+}
+
+// ─── Update ───────────────────────────────────────────────────────────────────
+let lastTime = 0;
+function update(dt) {
+  if (state !== STATES.PLAYING) return;
+  if (freezeTimer > 0) { freezeTimer -= dt; return; }
+
+  const eff = dt * slowMo;
+
+  // slow-mo decay
+  if (slowMoTimer > 0) {
+    slowMoTimer -= dt;
+    if (slowMoTimer <= 0) { slowMo = 1; slowMoTimer = 0; }
+  }
+
+  // micro-zoom decay
+  if (microZoomTimer > 0) {
+    microZoomTimer -= dt;
+    if (microZoomTimer <= 0) { microZoom = 1; microZoomTimer = 0; }
+  } else {
+    // ease back
+    microZoom += (1 - microZoom) * 0.08;
+  }
+
+  // shake decay
+  if (shakeTime > 0) shakeTime -= dt;
+
+  // bg hue drift
+  bgHue += eff * 4;
+  if (bgHue > 360) bgHue -= 360;
+
+  // combo heat
+  comboHeat = Math.min(1, combo / 12);
+
+  // sweet spot movement
+  sweetSpot.y += sweetSpot.vy * eff * 60;
+  if (sweetSpot.y < sweetSpot.minY || sweetSpot.y > sweetSpot.maxY) {
+    sweetSpot.vy *= -1;
+    sweetSpot.y = Math.max(sweetSpot.minY, Math.min(sweetSpot.maxY, sweetSpot.y));
+  }
+  // phase 3+ add oscillation
+  if (phase >= 3) {
+    sweetSpot.phase += eff * 0.04;
+    sweetSpot.y += Math.sin(sweetSpot.phase * Math.PI * 2) * 0.4;
+  }
+
+  // ball movement
+  if (ball.active && ball.arriving) {
+    if (ball.flavor === 'bouncy') {
+      ball.wobblePhase += eff * 3;
+      ball.x += ball.vx * eff * 60 + Math.sin(ball.wobblePhase) * 1.2;
+    } else {
+      ball.x += ball.vx * eff * 60;
+    }
+    ball.y += ball.vy * eff * 60;
+
+    // trail
+    ball.trail.unshift({ x: ball.x, y: ball.y });
+    if (ball.trail.length > TRAIL_LEN) ball.trail.pop();
+
+    // squash decay
+    if (ball.squashTimer > 0) {
+      ball.squashTimer -= dt;
+      ball.squash = 1 + 0.35 * (ball.squashTimer / 0.15);
+    } else {
+      ball.squash = 1;
+    }
+
+    // check arrival at scoop zone
+    const sx = LANE_X[nextLane];
+    const sy = SCOOP_Y;
+    const dx = ball.x - sx;
+    const dy = ball.y - sy;
+    if (dy > 0 || Math.sqrt(dx*dx+dy*dy) < ball.r + 30) {
+      // Missed or hit check was handled by input — if we're here without input it's a miss
+      if (ball.y > SCOOP_Y + 60) {
+        // ball passed — game over
+        triggerGameOver();
+      }
+    }
+  }
+
+  // particles
+  for (const p of particles) {
+    if (!p.active) continue;
+    p.life += dt;
+    if (p.life >= p.maxLife) { p.active = false; continue; }
+    p.x += p.vx * eff * 60;
+    p.y += p.vy * eff * 60;
+    p.vy += 0.15 * eff * 60; // gravity
+    p.vx *= 0.97;
+    p.alpha = 1 - p.life / p.maxLife;
+  }
+
+  // crack rings
+  for (let i = crackRings.length - 1; i >= 0; i--) {
+    const c = crackRings[i];
+    c.life += dt;
+    c.r += 60 * dt;
+    if (c.life >= c.maxLife) { crackRings.splice(i, 1); continue; }
+  }
+
+  // floating texts
+  for (let i = floatingTexts.length - 1; i >= 0; i--) {
+    const f = floatingTexts[i];
+    f.life += dt;
+    f.y += f.vy * eff * 60;
+    f.alpha = 1 - f.life / f.maxLife;
+    if (f.life >= f.maxLife) { floatingTexts.splice(i, 1); }
+  }
+
+  // scoop anims
+  for (const s of scoops) {
+    if (s.hitAnim > 0) {
+      s.hitAnim -= dt;
+      s.hitScale = 1 + 0.3 * (s.hitAnim / 0.2);
+    } else {
+      s.hitScale = 1;
+    }
+  }
+
+  // phase escalation
+  phase = 1;
+  if (hits >= 6)  phase = 2;
+  if (hits >= 14) phase = 3;
+  if (hits >= 24) phase = 4;
+  if (hits >= 38) phase = 5;
+}
+
+// ─── Handle tap/input ─────────────────────────────────────────────────────────
+function handleInput() {
+  if (state === STATES.START) {
+    state = STATES.PLAYING;
+    initGame();
+    return;
+  }
+  if (state === STATES.GAMEOVER) {
+    state = STATES.PLAYING;
+    initGame();
+    return;
+  }
+  if (state !== STATES.PLAYING) return;
+  if (!ball.active || !ball.arriving) return;
+
+  // Check if ball is in tappable zone (near scoop)
+  const sx = LANE_X[nextLane];
+  const sy = SCOOP_Y;
+  const dx = ball.x - sx;
+  const dy = ball.y - sy;
+  const distToScoop = Math.sqrt(dx*dx + dy*dy);
+
+  // Hit window: ball must be within 100px of scoop center
+  if (distToScoop > 110) {
+    // Too early — ignore (or could penalize)
+    return;
+  }
+
+  // Evaluate Sweet Spot
+  const spotX = LANE_X[sweetSpot.lane];
+  const spotY = sweetSpot.y;
+  const distToSpot = Math.sqrt((ball.x - spotX)**2 + (ball.y - spotY)**2);
+
+  let hitType = 'normal'; // 'miss' | 'normal' | 'perfect' | 'double'
+  if (sweetSpot.doubleSweet && distToSpot <= sweetSpot.doubleSweetR) {
+    hitType = 'double';
+  } else if (distToSpot <= sweetSpot.innerR + (sweetSpot.outerR - sweetSpot.innerR)) {
+    // within outer ring
+    if (distToSpot <= sweetSpot.innerR + (sweetSpot.outerR - sweetSpot.innerR) * 0.55) {
+      hitType = 'perfect';
+    } else {
+      // near miss — within outer but not inner band
+      hitType = 'near';
+    }
+  }
+
+  // Always count as a hit if ball is in range
+  processHit(hitType, ball.x, ball.y);
+}
+
+function processHit(hitType, bx, by) {
+  const scoop = scoops[nextLane];
+  scoop.hitAnim = 0.2;
+
+  hits++;
+  ball.squash = 1.55;
+  ball.squashTimer = 0.15;
+
+  let pts = 0;
+  let perfect = false;
+  let isDouble = false;
+
+  if (hitType === 'double') {
+    pts = 500 + combo * 50;
+    combo += 3;
+    perfect = true;
+    isDouble = true;
+    spawnParticles(bx, by, 30, sweetSpot.hue, true);
+    triggerSlowMo(140);
+    triggerMicroZoom(180);
+    spawnText(bx, by - 40, 'DOUBLE SWEET! +' + pts, `hsl(${sweetSpot.hue},100%,75%)`, 26);
+    triggerShake(3, 0.1);
+  } else if (hitType === 'perfect') {
+    pts = 100 + combo * 15;
+    combo++;
+    perfect = true;
+    spawnParticles(bx, by, 20, sweetSpot.hue, true);
+    triggerSlowMo(120);
+    triggerMicroZoom(140);
+    spawnText(bx, by - 30, 'PERFECT! +' + pts, `hsl(${sweetSpot.hue},100%,70%)`, 22);
+    triggerShake(2, 0.08);
+  } else if (hitType === 'near') {
+    pts = 25;
+    combo = 0;
+    spawnCrack(LANE_X[sweetSpot.lane], sweetSpot.y);
+    spawnParticles(bx, by, 8, ball.hue, false);
+    spawnText(bx, by - 25, 'So close!', '#ffcc88', 16);
+  } else {
+    // normal
+    pts = 50 + combo * 5;
+    combo++;
+    spawnParticles(bx, by, 12, ball.hue, false);
+    spawnText(bx, by - 25, '+' + pts, '#e0d0ff', 18);
+  }
+
+  score += pts;
+
+  if (combo > bestCombo) {
+    bestCombo = combo;
+    if (bestCombo > bestComboAll) {
+      bestComboAll = bestCombo;
+      saveBC(bestComboAll);
+      newBCFlag = true;
+    }
+  }
+  if (score > highScore) {
+    highScore = score;
+    saveHS(highScore);
+    newHSFlag = true;
+  }
+
+  // Next launch
+  nextLane = 1 - nextLane;
+  ball.arriving = false;
+  ball.active = false;
+
+  // Tiny delay then launch next
+  setTimeout(() => {
+    if (state === STATES.PLAYING) {
+      resetSweetSpot(nextLane);
+      launchBall(nextLane);
+    }
+  }, perfect ? 200 : 120);
+}
+
+function triggerGameOver() {
+  ball.active = false;
+  triggerShake(10, 0.5);
+  freezeTimer = 0.22;
+  spawnParticles(ball.x, ball.y, 25, ball.hue, false);
+
+  if (score > highScore) { highScore = score; saveHS(highScore); newHSFlag = true; }
+  if (bestCombo > bestComboAll) { bestComboAll = bestCombo; saveBC(bestComboAll); newBCFlag = true; }
+
+  setTimeout(() => {
+    state = STATES.GAMEOVER;
+  }, 250);
+}
+
+// ─── Draw helpers ─────────────────────────────────────────────────────────────
+function drawRoundRect(x, y, w, h, r, fill, stroke) {
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, r);
+  if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+  if (stroke) { ctx.strokeStyle = stroke; ctx.stroke(); }
+}
+
+function drawStar(x, y, r, hue, alpha) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = `hsl(${hue},90%,65%)`;
+  ctx.beginPath();
+  for (let i = 0; i < 5; i++) {
+    const a = (i * 2 * Math.PI / 5) - Math.PI / 2;
+    const bA = a + Math.PI / 5;
+    if (i === 0) ctx.moveTo(x + Math.cos(a)*r, y + Math.sin(a)*r);
+    else ctx.lineTo(x + Math.cos(a)*r, y + Math.sin(a)*r);
+    ctx.lineTo(x + Math.cos(bA)*r*0.45, y + Math.sin(bA)*r*0.45);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function flavorColor(f) {
+  if (f === 'sticky')  return [280, 70, 65];
+  if (f === 'bouncy')  return [185, 85, 60];
+  return null;
+}
+
+// ─── Draw scene ───────────────────────────────────────────────────────────────
+function draw(now) {
+  ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+
+  // Background gradient
+  const heatH = bgHue + comboHeat * 30;
+  const grad = ctx.createLinearGradient(0, 0, 0, CANVAS_H);
+  grad.addColorStop(0,   `hsl(${heatH}, ${30 + comboHeat*20}%, ${8 + comboHeat*4}%)`);
+  grad.addColorStop(0.6, `hsl(${(heatH+40)%360}, ${25 + comboHeat*15}%, ${12 + comboHeat*5}%)`);
+  grad.addColorStop(1,   `hsl(${(heatH+80)%360}, 20%, 7%)`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+
+  // subtle grid lines
+  ctx.strokeStyle = `hsla(${heatH},40%,60%,0.04)`;
+  ctx.lineWidth = 1;
+  for (let x = 0; x < CANVAS_W; x += 40) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,CANVAS_H); ctx.stroke(); }
+  for (let y = 0; y < CANVAS_H; y += 40) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(CANVAS_W,y); ctx.stroke(); }
+
+  // Apply shake + micro-zoom
+  const shk = shakeTime > 0 ? (Math.random() - 0.5) * shakeMag * 2 : 0;
+  const skY = shakeTime > 0 ? (Math.random() - 0.5) * shakeMag : 0;
+
+  ctx.save();
+  if (microZoom !== 1 || shk !== 0) {
+    const cx = CANVAS_W / 2, cy = CANVAS_H / 2;
+    ctx.translate(cx + shk, cy + skY);
+    ctx.scale(microZoom, microZoom);
+    ctx.translate(-cx, -cy);
+  }
+
+  if (state === STATES.PLAYING || state === STATES.GAMEOVER) {
+    drawGame(now);
+  }
+
+  ctx.restore();
+
+  // UI (no shake)
+  if (state === STATES.START)    drawStartScreen();
+  if (state === STATES.PLAYING)  drawPlayingUI();
+  if (state === STATES.GAMEOVER) drawGameOverScreen();
+}
+
+function drawGame(now) {
+  // Lane divider
+  ctx.strokeStyle = `hsla(${bgHue},50%,70%,0.12)`;
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([8,12]);
+  ctx.beginPath(); ctx.moveTo(CANVAS_W/2, 40); ctx.lineTo(CANVAS_W/2, CANVAS_H - 80);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Scoop targets
+  for (const s of scoops) {
+    const sx = LANE_X[s.lane];
+    const sy = SCOOP_Y;
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.scale(s.hitScale, 1 / s.hitScale);
+    // scoop body
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 32, 14, 0, 0, Math.PI * 2);
+    const sGrad = ctx.createRadialGradient(0, -4, 2, 0, 0, 32);
+    sGrad.addColorStop(0, `hsl(${bgHue+s.lane*60},70%,70%)`);
+    sGrad.addColorStop(1, `hsl(${bgHue+s.lane*60},60%,40%)`);
+    ctx.fillStyle = sGrad;
+    ctx.fill();
+    ctx.strokeStyle = `hsl(${bgHue+s.lane*60},80%,80%)`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // handle
+    ctx.beginPath();
+    ctx.moveTo(0, 14);
+    ctx.lineTo(0, 36);
+    ctx.strokeStyle = `hsl(${bgHue+s.lane*60},50%,55%)`;
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Sweet Spot ring
+  {
+    const sx = LANE_X[sweetSpot.lane];
+    const sy = sweetSpot.y;
+    const pulse = 0.8 + 0.2 * Math.sin(Date.now() / 250);
+
+    // outer glow
+    ctx.save();
+    ctx.globalAlpha = 0.18 * pulse;
+    ctx.beginPath();
+    ctx.arc(sx, sy, sweetSpot.outerR + 10, 0, Math.PI * 2);
+    ctx.fillStyle = `hsl(${sweetSpot.hue},100%,70%)`;
+    ctx.fill();
+    ctx.restore();
+
+    // outer ring
+    ctx.beginPath();
+    ctx.arc(sx, sy, sweetSpot.outerR, 0, Math.PI * 2);
+    ctx.strokeStyle = `hsl(${sweetSpot.hue},100%,68%)`;
+    ctx.lineWidth = 2.5 * pulse;
+    ctx.stroke();
+
+    // inner ring (perfect zone)
+    ctx.beginPath();
+    ctx.arc(sx, sy, sweetSpot.innerR, 0, Math.PI * 2);
+    ctx.strokeStyle = `hsl(${sweetSpot.hue},100%,85%)`;
+    ctx.lineWidth = 2 * pulse;
+    ctx.stroke();
+
+    // sweet spot fill
+    ctx.beginPath();
+    ctx.arc(sx, sy, sweetSpot.innerR, 0, Math.PI * 2);
+    ctx.fillStyle = `hsla(${sweetSpot.hue},100%,70%,0.1)`;
+    ctx.fill();
+
+    // double sweet inner
+    if (sweetSpot.doubleSweet) {
+      ctx.beginPath();
+      ctx.arc(sx, sy, sweetSpot.doubleSweetR, 0, Math.PI * 2);
+      ctx.strokeStyle = `hsl(${(sweetSpot.hue+180)%360},100%,80%)`;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.fillStyle = `hsla(${(sweetSpot.hue+180)%360},100%,70%,0.2)`;
+      ctx.fill();
+    }
+
+    // flavor label
+    if (ball.flavor !== 'normal') {
+      ctx.font = '11px system-ui';
+      ctx.fillStyle = ball.flavor === 'sticky' ? '#c084fc' : '#67e8f9';
+      ctx.textAlign = 'center';
+      ctx.fillText(ball.flavor === 'sticky' ? 'STICKY' : 'BOUNCY', sx, sy + sweetSpot.outerR + 16);
+    }
+  }
+
+  // Ball trail
+  if (ball.active) {
+    for (let i = ball.trail.length - 1; i >= 0; i--) {
+      const t = ball.trail[i];
+      const tf = i / ball.trail.length;
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, ball.r * (1 - tf * 0.7) * 0.6, 0, Math.PI * 2);
+      const fc = flavorColor(ball.flavor);
+      const th = fc ? fc[0] : ball.hue;
+      ctx.fillStyle = `hsla(${th},80%,65%,${(1 - tf) * 0.35})`;
+      ctx.fill();
+    }
+
+    // Ball body (jellybean shape)
+    ctx.save();
+    ctx.translate(ball.x, ball.y);
+    ctx.scale(1 / ball.squash, ball.squash);
+
+    const fc = flavorColor(ball.flavor);
+    const bh = fc ? fc[0] : ball.hue;
+    const bs = fc ? fc[1] : 85;
+    const bl = fc ? fc[2] : 62;
+
+    const bGrad = ctx.createRadialGradient(-ball.r*0.3, -ball.r*0.4, 1, 0, 0, ball.r);
+    bGrad.addColorStop(0, `hsl(${bh},${bs}%,${bl+18}%)`);
+    bGrad.addColorStop(0.6, `hsl(${bh},${bs}%,${bl}%)`);
+    bGrad.addColorStop(1, `hsl(${bh},${bs-10}%,${bl-18}%)`);
+
+    ctx.beginPath();
+    ctx.arc(0, 0, ball.r, 0, Math.PI * 2);
+    ctx.fillStyle = bGrad;
+    ctx.fill();
+
+    // shine
+    ctx.beginPath();
+    ctx.ellipse(-ball.r*0.22, -ball.r*0.32, ball.r*0.32, ball.r*0.18, -0.5, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  // Particles
+  for (const p of particles) {
+    if (!p.active) continue;
+    ctx.save();
+    ctx.globalAlpha = p.alpha;
+    if (p.shape === 1) {
+      drawStar(p.x, p.y, p.r, p.hue, p.alpha);
+    } else {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = `hsl(${p.hue},${p.sat}%,${p.lit}%)`;
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // Crack rings
+  for (const c of crackRings) {
+    const a = 1 - c.life / c.maxLife;
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(255,220,100,${a * 0.7})`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  // Floating texts
+  for (const f of floatingTexts) {
+    ctx.save();
+    ctx.globalAlpha = f.alpha;
+    ctx.font = `bold ${f.size}px system-ui`;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = f.color;
+    ctx.shadowColor = f.color;
+    ctx.shadowBlur = 8;
+    ctx.fillText(f.txt, f.x, f.y);
+    ctx.restore();
+  }
+}
+
+function drawPlayingUI() {
+  // Score
+  ctx.font = 'bold 28px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ffffff';
+  ctx.shadowColor = `hsl(${bgHue},80%,70%)`;
+  ctx.shadowBlur = 10;
+  ctx.fillText(score, CANVAS_W / 2, 46);
+  ctx.shadowBlur = 0;
+
+  // Combo
+  if (combo >= 2) {
+    const comboGlow = `hsl(${(bgHue+120)%360},100%,70%)`;
+    ctx.font = `bold ${14 + Math.min(combo, 12)}px system-ui`;
+    ctx.fillStyle = comboGlow;
+    ctx.shadowColor = comboGlow;
+    ctx.shadowBlur = 8;
+    ctx.fillText(`×${combo} COMBO`, CANVAS_W / 2, 70);
+    ctx.shadowBlur = 0;
+  }
+
+  // High score
+  ctx.font = '12px system-ui';
+  ctx.fillStyle = 'rgba(200,180,255,0.55)';
+  ctx.textAlign = 'right';
+  ctx.fillText('BEST: ' + highScore, CANVAS_W - 14, 22);
+
+  // Phase indicator
+  ctx.textAlign = 'left';
+  ctx.fillStyle = 'rgba(200,180,255,0.4)';
+  ctx.fillText('LV.' + phase, 14, 22);
+
+  // Next lane arrow
+  if (ball.active && ball.arriving) {
+    const tx = LANE_X[nextLane];
+    ctx.save();
+    ctx.globalAlpha = 0.5 + 0.3 * Math.sin(Date.now() / 200);
+    ctx.font = '18px system-ui';
+    ctx.fillStyle = `hsl(${bgHue},90%,80%)`;
+    ctx.textAlign = 'center';
+    ctx.fillText('▼', tx, SCOOP_Y - 60 - Math.abs(Math.sin(Date.now()/200))*6);
+    ctx.restore();
+  }
+}
+
+function drawStartScreen() {
+  // Overlay
+  ctx.fillStyle = 'rgba(10,4,30,0.72)';
+  ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+
+  // Candy bg pattern
+  for (let i = 0; i < 8; i++) {
+    const x = (i % 4) * (CANVAS_W / 3.5) + 20;
+    const y = Math.floor(i / 4) * 340 + 80;
+    ctx.save();
+    ctx.globalAlpha = 0.08;
+    ctx.beginPath();
+    ctx.arc(x, y, 60, 0, Math.PI*2);
+    ctx.fillStyle = `hsl(${i*45},80%,65%)`;
+    ctx.fill();
+    ctx.restore();
+  }
+
+  ctx.textAlign = 'center';
+
+  // Title
+  ctx.font = 'bold 52px system-ui';
+  const tg = ctx.createLinearGradient(CANVAS_W/2 - 140, 0, CANVAS_W/2 + 140, 0);
+  tg.addColorStop(0, '#ff6ec7');
+  tg.addColorStop(0.5, '#a78bfa');
+  tg.addColorStop(1, '#38bdf8');
+  ctx.fillStyle = tg;
+  ctx.shadowColor = '#a78bfa';
+  ctx.shadowBlur = 30;
+  ctx.fillText('Sweet', CANVAS_W/2, CANVAS_H*0.32);
+  ctx.fillText('Serve', CANVAS_W/2, CANVAS_H*0.32 + 60);
+  ctx.shadowBlur = 0;
+
+  // Subtitle
+  ctx.font = '16px system-ui';
+  ctx.fillStyle = '#c4b5e0';
+  ctx.fillText('Split Scoop Edition', CANVAS_W/2, CANVAS_H*0.32 + 96);
+
+  // Instructions
+  ctx.font = '14px system-ui';
+  ctx.fillStyle = 'rgba(200,185,240,0.8)';
+  const lines = [
+    'Tap to hit the jellybean ball',
+    'Aim for the glowing Sweet Spot ring',
+    'Alternate lanes — build your combo!',
+    'Miss = Game Over'
+  ];
+  lines.forEach((l, i) => {
+    ctx.fillText(l, CANVAS_W/2, CANVAS_H*0.56 + i*26);
+  });
+
+  // High score
+  const hs = getHS();
+  if (hs > 0) {
+    ctx.font = '14px system-ui';
+    ctx.fillStyle = 'rgba(250,220,100,0.85)';
+    ctx.fillText('Best: ' + hs, CANVAS_W/2, CANVAS_H*0.74);
+  }
+
+  // Start button
+  const now = Date.now();
+  const pulse = 0.92 + 0.08 * Math.sin(now / 350);
+  ctx.save();
+  ctx.translate(CANVAS_W/2, CANVAS_H*0.82);
+  ctx.scale(pulse, pulse);
+  drawRoundRect(-80, -24, 160, 48, 24,
+    'rgba(167,139,250,0.25)', 'rgba(167,139,250,0.9)');
+  ctx.font = 'bold 20px system-ui';
+  ctx.fillStyle = '#fff';
+  ctx.shadowColor = '#a78bfa';
+  ctx.shadowBlur = 10;
+  ctx.fillText('TAP TO PLAY', 0, 7);
+  ctx.shadowBlur = 0;
+  ctx.restore();
+}
+
+function drawGameOverScreen() {
+  // Dim world
+  ctx.fillStyle = 'rgba(8,3,22,0.78)';
+  ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+
+  ctx.textAlign = 'center';
+
+  // Card
+  const cy = CANVAS_H * 0.38;
+  drawRoundRect(CANVAS_W*0.1, cy - 120, CANVAS_W*0.8, 310, 20,
+    'rgba(30,14,60,0.92)', 'rgba(167,139,250,0.35)');
+
+  // Game Over
+  ctx.font = 'bold 38px system-ui';
+  ctx.fillStyle = '#ff6ec7';
+  ctx.shadowColor = '#ff6ec7';
+  ctx.shadowBlur = 20;
+  ctx.fillText('GAME OVER', CANVAS_W/2, cy - 60);
+  ctx.shadowBlur = 0;
+
+  // Score
+  ctx.font = 'bold 54px system-ui';
+  ctx.fillStyle = '#fff';
+  ctx.fillText(score, CANVAS_W/2, cy - 5);
+
+  ctx.font = '14px system-ui';
+  ctx.fillStyle = 'rgba(200,180,255,0.65)';
+  ctx.fillText('SCORE', CANVAS_W/2, cy + 18);
+
+  // Best score
+  ctx.font = 'bold 18px system-ui';
+  ctx.fillStyle = newHSFlag ? '#fcd34d' : 'rgba(180,160,230,0.8)';
+  if (newHSFlag) {
+    ctx.shadowColor = '#fcd34d'; ctx.shadowBlur = 12;
+    ctx.fillText('NEW BEST! ' + highScore, CANVAS_W/2, cy + 56);
+    ctx.shadowBlur = 0;
+  } else {
+    ctx.fillText('Best: ' + highScore, CANVAS_W/2, cy + 56);
+  }
+
+  // Combo
+  ctx.font = '14px system-ui';
+  ctx.fillStyle = newBCFlag ? '#a5f3fc' : 'rgba(180,160,230,0.65)';
+  ctx.fillText(`Combo: ×${bestCombo}  |  Best: ×${bestComboAll}`, CANVAS_W/2, cy + 82);
+
+  // Phase reached
+  ctx.font = '13px system-ui';
+  ctx.fillStyle = 'rgba(180,160,230,0.5)';
+  ctx.fillText('Phase ' + phase + '  •  Hits: ' + hits, CANVAS_W/2, cy + 104);
+
+  // Retry
+  const pulse = 0.92 + 0.08 * Math.sin(Date.now() / 350);
+  ctx.save();
+  ctx.translate(CANVAS_W/2, cy + 160);
+  ctx.scale(pulse, pulse);
+  drawRoundRect(-70, -22, 140, 44, 22,
+    'rgba(167,139,250,0.25)', 'rgba(167,139,250,0.9)');
+  ctx.font = 'bold 18px system-ui';
+  ctx.fillStyle = '#fff';
+  ctx.fillText('TRY AGAIN', 0, 7);
+  ctx.restore();
+
+  // Share button (on new high score or big combo)
+  if (newHSFlag || bestCombo >= 5) {
+    ctx.save();
+    ctx.translate(CANVAS_W/2, cy + 210);
+    drawRoundRect(-55, -18, 110, 36, 18,
+      'rgba(56,189,248,0.15)', 'rgba(56,189,248,0.6)');
+    ctx.font = '14px system-ui';
+    ctx.fillStyle = '#7dd3fc';
+    ctx.fillText('SHARE SCORE', 0, 6);
+    ctx.restore();
+  }
+}
+
+// Share logic on gameover tap
+let shareBtn = { x: CANVAS_W/2, y: 0, w: 110, h: 36 };
+canvas.addEventListener('pointerdown', (e) => {
+  if (state !== STATES.GAMEOVER) return;
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = CANVAS_W / rect.width;
+  const scaleY = CANVAS_H / rect.height;
+  const cx = (e.clientX - rect.left) * scaleX;
+  const cy2 = (e.clientY - rect.top) * scaleY;
+  const cardCY = CANVAS_H * 0.38;
+
+  // Share button hit test
+  if ((newHSFlag || bestCombo >= 5)) {
+    const sbx = CANVAS_W/2, sby = cardCY + 210;
+    if (Math.abs(cx - sbx) < 60 && Math.abs(cy2 - sby) < 20) {
+      const shareText = `I scored ${score} in Sweet Serve! Best combo: ×${bestCombo} 🍬 Play free: https://balinti.github.io/sweet-serve/`;
+      if (navigator.share) {
+        navigator.share({ title: 'Sweet Serve', text: shareText }).catch(() => {});
+      } else {
+        navigator.clipboard?.writeText(shareText).then(() => {
+          spawnText(CANVAS_W/2, cardCY + 200, 'Copied!', '#a5f3fc', 15);
+        }).catch(() => {});
+      }
+      return;
+    }
+  }
+});
+
+// ─── Main loop ────────────────────────────────────────────────────────────────
+function loop(now) {
+  const dt = Math.min((now - (lastTime || now)) / 1000, 0.05);
+  lastTime = now;
+
+  if (inputThisFrame) {
+    handleInput();
+    inputThisFrame = false;
+  }
+
+  update(dt);
+  draw(now);
+
+  requestAnimationFrame(loop);
+}
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+state = STATES.START;
+// Draw start screen right away so there's something visible before first input
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

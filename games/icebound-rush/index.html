@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Icebound Rush - Free HTML5 Game</title>
+  <meta name="description" content="Play Icebound Rush - Swipe directions to navigate an arctic explorer through gravity-changing cliff paths.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a1628">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Icebound Rush - Free HTML5 Game">
+  <meta property="og:description" content="Flip gravity to dodge icy hazards in this fast-paced tunnel runner!">
+  <meta property="og:url" content="https://balinti.github.io/icebound-rush/">
+  <meta property="og:image" content="https://balinti.github.io/icebound-rush/og-image.jpg">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Icebound Rush - Free HTML5 Game">
+  <meta name="twitter:description" content="Flip gravity to dodge icy hazards in this fast-paced tunnel runner!">
+  <meta name="twitter:image" content="https://balinti.github.io/icebound-rush/og-image.jpg">
+
+  <link rel="canonical" href="https://balinti.github.io/icebound-rush/">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #050d1a;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      font-family: 'Segoe UI', Arial, sans-serif;
+    }
+    #game-wrap {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      height: 100vh;
+      max-height: 750px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+      cursor: pointer;
+    }
+    #seo-text {
+      color: #223;
+      font-size: 10px;
+      text-align: center;
+      padding: 4px 0 2px;
+      letter-spacing: 0.03em;
+      opacity: 0.35;
+      user-select: none;
+    }
+  </style>
+</head>
+<body>
+<div id="game-wrap">
+  <canvas id="c"></canvas>
+  <div id="seo-text">Icebound Rush &mdash; Free Browser Hyper-Casual Game</div>
+</div>
+<script>
+(function(){
+'use strict';
+
+// ── Canvas setup ──────────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+const wrap   = document.getElementById('game-wrap');
+
+let W = 0, H = 0, DPR = 1;
+function resize(){
+  const r = wrap.getBoundingClientRect();
+  W = r.width; H = r.height;
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width  = W * DPR;
+  canvas.height = H * DPR;
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ── High score ────────────────────────────────────────────────────────────────
+const LS_KEY = 'iceboundrush_highscore';
+let highScore = parseInt(localStorage.getItem(LS_KEY) || '0', 10) || 0;
+function saveHS(s){ if(s > highScore){ highScore = s; localStorage.setItem(LS_KEY, '' + s); } }
+
+// ── Challenge param ────────────────────────────────────────────────────────────
+const urlParams = new URLSearchParams(window.location.search);
+const challengeScore = parseInt(urlParams.get('challenge') || '0', 10) || 0;
+
+// ── Particle pool ─────────────────────────────────────────────────────────────
+const MAX_PARTICLES = 200;
+const particles = [];
+for(let i = 0; i < MAX_PARTICLES; i++) particles.push({active:false});
+
+function spawnParticles(x, y, count, hue, speed, size, type){
+  let spawned = 0;
+  for(let i = 0; i < MAX_PARTICLES && spawned < count; i++){
+    const p = particles[i];
+    if(p.active) continue;
+    const angle = Math.random() * Math.PI * 2;
+    const spd   = speed * (0.5 + Math.random());
+    p.active = true;
+    p.x = x; p.y = y;
+    p.vx = Math.cos(angle) * spd;
+    p.vy = Math.sin(angle) * spd;
+    p.life = 1; p.decay = 0.025 + Math.random() * 0.04;
+    p.size = size * (0.5 + Math.random());
+    p.hue  = hue + (Math.random() - 0.5) * 40;
+    p.sat  = 60 + Math.random() * 40;
+    p.lit  = 55 + Math.random() * 30;
+    p.type = type || 'shard'; // 'shard' | 'circle'
+    p.angle = Math.random() * Math.PI * 2;
+    p.spin  = (Math.random() - 0.5) * 0.3;
+    spawned++;
+  }
+}
+
+function updateParticles(dt){
+  for(let i = 0; i < MAX_PARTICLES; i++){
+    const p = particles[i];
+    if(!p.active) continue;
+    p.x += p.vx * dt * 60;
+    p.y += p.vy * dt * 60;
+    p.vy += 0.08 * dt * 60;
+    p.vx *= 0.98;
+    p.life -= p.decay * dt * 60;
+    p.angle += p.spin * dt * 60;
+    if(p.life <= 0) p.active = false;
+  }
+}
+
+function drawParticles(){
+  for(let i = 0; i < MAX_PARTICLES; i++){
+    const p = particles[i];
+    if(!p.active) continue;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, p.life);
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.angle);
+    ctx.fillStyle = `hsl(${p.hue},${p.sat}%,${p.lit}%)`;
+    if(p.type === 'circle'){
+      ctx.beginPath();
+      ctx.arc(0, 0, p.size, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      // ice shard triangle
+      ctx.beginPath();
+      ctx.moveTo(0, -p.size);
+      ctx.lineTo(p.size * 0.6, p.size * 0.7);
+      ctx.lineTo(-p.size * 0.6, p.size * 0.7);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
+// ── Screen shake ──────────────────────────────────────────────────────────────
+let shakeAmt = 0, shakeDur = 0;
+function addShake(amt, dur){ shakeAmt = Math.max(shakeAmt, amt); shakeDur = Math.max(shakeDur, dur); }
+let shakeX = 0, shakeY = 0;
+function updateShake(dt){
+  if(shakeDur <= 0){ shakeX = 0; shakeY = 0; return; }
+  shakeDur -= dt;
+  const a = shakeAmt * (shakeDur / 0.4);
+  shakeX = (Math.random() - 0.5) * a * 2;
+  shakeY = (Math.random() - 0.5) * a * 2;
+}
+
+// ── Flash overlay ─────────────────────────────────────────────────────────────
+let flashAlpha = 0, flashHue = 200;
+function addFlash(alpha, hue){ flashAlpha = Math.max(flashAlpha, alpha); flashHue = hue; }
+function updateFlash(dt){ flashAlpha = Math.max(0, flashAlpha - dt * 3); }
+
+// ── Game constants ────────────────────────────────────────────────────────────
+const PLAYER_RADIUS  = 14;
+const GRAVITY        = 1800;   // px/s²
+const TUNNEL_PAD     = 60;     // floor/ceiling thickness drawing
+const MIN_GAP        = PLAYER_RADIUS * 2 + 30; // min gap between obs top/bottom
+const BASE_SPEED     = 220;
+const MAX_SPEED      = 520;
+const LEAD_TIME      = 0.55;   // seconds of reaction time guarantee
+
+// ── Game state ────────────────────────────────────────────────────────────────
+let state = 'start'; // 'start' | 'playing' | 'gameover'
+let score = 0;
+let elapsed = 0;     // seconds since game start (for difficulty)
+let baseHue = 190;   // HSL cycling hue
+let speed = BASE_SPEED;
+let nearMissCount = 0;
+let deathLockout = 0; // death animation lockout timer
+
+// ── Player ────────────────────────────────────────────────────────────────────
+const player = { x:0, y:0, vy:0, onFloor:true, radius: PLAYER_RADIUS };
+
+function resetPlayer(){
+  player.x  = W * 0.22;
+  player.y  = H * 0.5;
+  player.vy = 0;
+  player.onFloor = true;
+}
+
+// ── Obstacles ─────────────────────────────────────────────────────────────────
+const obstacles = [];
+let spawnTimer = 0;
+let spawnInterval = 1.6;
+
+function getFloor(){ return H - TUNNEL_PAD; }
+function getCeiling(){ return TUNNEL_PAD; }
+
+function spawnObstacle(){
+  const floorY = getFloor();
+  const ceilY  = getCeiling();
+  const gap    = floorY - ceilY;
+
+  // Decide sides randomly but ensure gap is passable
+  const side   = Math.random() < 0.5 ? 'floor' : 'ceiling';
+  const hRange = gap * 0.1 + (gap * 0.25) * (elapsed / 60);
+  const h      = Math.min(gap * 0.38, 20 + Math.random() * hRange);
+  const w      = 28 + Math.random() * 34;
+  const spawnX = W + speed * LEAD_TIME + w;
+
+  let y;
+  if(side === 'floor'){
+    y = floorY - h;
+  } else {
+    y = ceilY;
+  }
+
+  obstacles.push({ x: spawnX, y, w, h, side, scored: false });
+}
+
+function spawnOrb(){
+  const floorY = getFloor();
+  const ceilY  = getCeiling();
+  const midY   = (floorY + ceilY) / 2;
+  // Place orb near middle or offset
+  const oy = midY + (Math.random() - 0.5) * (floorY - ceilY) * 0.4;
+  const spawnX = W + speed * LEAD_TIME;
+  obstacles.push({ x: spawnX, y: oy, r: 10, type: 'orb', scored: false });
+}
+
+// ── Flip gravity ──────────────────────────────────────────────────────────────
+function flip(){
+  if(state !== 'playing') return;
+  player.onFloor = !player.onFloor;
+  // Give a velocity kick toward the new surface
+  player.vy = player.onFloor ? -300 : 300;
+
+  const flipHue = baseHue + 140;
+  spawnParticles(player.x, player.y, 12, flipHue, 4, 6, 'shard');
+  checkNearMiss();
+}
+
+// ── Near-miss detection ────────────────────────────────────────────────────────
+function checkNearMiss(){
+  const px = player.x, py = player.y, pr = player.radius;
+  for(let i = 0; i < obstacles.length; i++){
+    const o = obstacles[i];
+    if(o.type === 'orb') continue;
+    // Only hazards that have already passed or are very close
+    const rightEdge = o.x + o.w;
+    const nearWindow = pr * 3.5;
+    if(Math.abs(rightEdge - px) < nearWindow){
+      // Check if player just flipped AWAY from the hazard side
+      const wasFloor = (o.side === 'floor');
+      const nowOnFloor = player.onFloor; // after flip, this is the NEW side
+      // Near-miss: we just flipped away from the hazard
+      if((wasFloor && !nowOnFloor) || (!wasFloor && nowOnFloor)){
+        nearMissCount++;
+        score += 25;
+        addShake(6, 0.18);
+        addFlash(0.35, 60);
+        spawnParticles(px, py, 18, 55, 5, 7, 'shard');
+        return;
+      }
+    }
+  }
+}
+
+// ── Collision detection ───────────────────────────────────────────────────────
+function circleAABB(cx, cy, cr, rx, ry, rw, rh){
+  const nearX = Math.max(rx, Math.min(cx, rx + rw));
+  const nearY = Math.max(ry, Math.min(cy, ry + rh));
+  const dx = cx - nearX, dy = cy - nearY;
+  return dx * dx + dy * dy < cr * cr;
+}
+
+function circleCircle(x1, y1, r1, x2, y2, r2){
+  const dx = x1 - x2, dy = y1 - y2;
+  return dx * dx + dy * dy < (r1 + r2) * (r1 + r2);
+}
+
+function checkCollisions(){
+  const px = player.x, py = player.y, pr = player.radius;
+  for(let i = 0; i < obstacles.length; i++){
+    const o = obstacles[i];
+    if(o.type === 'orb'){
+      if(!o.scored && circleCircle(px, py, pr, o.x, o.y, o.r)){
+        o.scored = true;
+        score += 50;
+        spawnParticles(o.x, o.y, 15, 50, 4, 5, 'circle');
+        addFlash(0.2, 50);
+        obstacles.splice(i, 1);
+        i--;
+      }
+    } else {
+      if(circleAABB(px, py, pr, o.x, o.y, o.w, o.h)){
+        die();
+        return;
+      }
+    }
+  }
+  // Wall collisions
+  if(py - pr <= getCeiling() || py + pr >= getFloor()){
+    die();
+  }
+}
+
+// ── Die ───────────────────────────────────────────────────────────────────────
+function die(){
+  if(state !== 'playing') return;
+  saveHS(score);
+  state = 'gameover';
+  deathLockout = 0.5; // 500ms lockout
+  addShake(22, 0.5);
+  addFlash(0.85, 0);
+  spawnParticles(player.x, player.y, 40, 200, 7, 9, 'shard');
+  spawnParticles(player.x, player.y, 20, 0, 5, 5, 'circle');
+}
+
+// ── Difficulty scaling ────────────────────────────────────────────────────────
+function updateDifficulty(dt){
+  elapsed += dt;
+  speed = Math.min(MAX_SPEED, BASE_SPEED + elapsed * 18);
+  spawnInterval = Math.max(0.7, 1.6 - elapsed * 0.012);
+}
+
+// ── Challenge banner ──────────────────────────────────────────────────────────
+let challengeBannerTimer = challengeScore > 0 ? 2.5 : 0;
+
+// ── Share / Challenge ─────────────────────────────────────────────────────────
+function doShare(){
+  const url = `https://balinti.github.io/icebound-rush/?challenge=${score}`;
+  const text = `I scored ${score} in Icebound Rush! Can you beat me? 🧊`;
+  if(navigator.share){
+    navigator.share({ title: 'Icebound Rush', text, url }).catch(()=>{});
+  } else {
+    try{
+      navigator.clipboard.writeText(url + '\n' + text);
+      flashCopied = 1.5;
+    } catch(e){}
+  }
+}
+function doChallenge(){
+  const url = `https://balinti.github.io/icebound-rush/?challenge=${score}`;
+  if(navigator.share){
+    navigator.share({ title: 'Beat my Icebound Rush score!', text: `Beat my score of ${score}!`, url }).catch(()=>{});
+  } else {
+    try{
+      navigator.clipboard.writeText(url);
+      flashCopied = 1.5;
+    } catch(e){}
+  }
+}
+let flashCopied = 0; // display "Copied!" for this many seconds
+
+// ── Hit area bookkeeping for gameover buttons ─────────────────────────────────
+let shareBtn   = {x:0, y:0, w:0, h:0};
+let challengeBtn = {x:0, y:0, w:0, h:0};
+let restartBtn = {x:0, y:0, w:0, h:0};
+
+// ── Start game ────────────────────────────────────────────────────────────────
+function startGame(){
+  state = 'playing';
+  score = 0;
+  elapsed = 0;
+  speed = BASE_SPEED;
+  spawnInterval = 1.6;
+  spawnTimer = 0.5;
+  nearMissCount = 0;
+  obstacles.length = 0;
+  for(let i = 0; i < MAX_PARTICLES; i++) particles[i].active = false;
+  shakeAmt = 0; shakeDur = 0; shakeX = 0; shakeY = 0;
+  flashAlpha = 0;
+  resetPlayer();
+  if(challengeScore > 0) challengeBannerTimer = 2.5;
+}
+
+// ── Input ─────────────────────────────────────────────────────────────────────
+function handleInput(ex, ey){
+  if(state === 'start'){
+    startGame();
+    return;
+  }
+  if(state === 'gameover'){
+    if(deathLockout > 0) return;
+    // Check button hits
+    if(inRect(ex, ey, shareBtn))     { doShare();     return; }
+    if(inRect(ex, ey, challengeBtn)) { doChallenge(); return; }
+    startGame();
+    return;
+  }
+  if(state === 'playing') flip();
+}
+
+function inRect(x, y, r){ return x >= r.x && x <= r.x+r.w && y >= r.y && y <= r.y+r.h; }
+
+canvas.addEventListener('pointerdown', e => {
+  const rect = canvas.getBoundingClientRect();
+  const ex = (e.clientX - rect.left);
+  const ey = (e.clientY - rect.top);
+  handleInput(ex, ey);
+}, {passive:true});
+
+document.addEventListener('keydown', e => {
+  if(e.code === 'Space' || e.code === 'Enter'){
+    e.preventDefault();
+    handleInput(W/2, H/2);
+  }
+});
+
+// ── Main update ───────────────────────────────────────────────────────────────
+function update(dt){
+  if(state !== 'playing') return;
+
+  updateDifficulty(dt);
+
+  // Player physics
+  const gDir = player.onFloor ? 1 : -1;
+  player.vy += GRAVITY * gDir * dt;
+  player.vy  = Math.max(-900, Math.min(900, player.vy));
+  player.y  += player.vy * dt;
+
+  // Soft clamp near walls (not die yet)
+  const floor = getFloor() - player.radius;
+  const ceil  = getCeiling() + player.radius;
+  if(player.onFloor && player.y > floor){ player.y = floor; player.vy = 0; }
+  if(!player.onFloor && player.y < ceil){ player.y = ceil;  player.vy = 0; }
+
+  // Obstacles
+  spawnTimer -= dt;
+  if(spawnTimer <= 0){
+    // 20% chance orb instead
+    if(Math.random() < 0.2) spawnOrb(); else spawnObstacle();
+    spawnTimer = spawnInterval * (0.8 + Math.random() * 0.4);
+  }
+
+  for(let i = obstacles.length - 1; i >= 0; i--){
+    const o = obstacles[i];
+    o.x -= speed * dt;
+    if(!o.scored && o.type !== 'orb' && o.x + o.w < player.x){
+      o.scored = true;
+      score += 10;
+    }
+    if(o.x + (o.w || o.r*2 || 30) < -30) obstacles.splice(i, 1);
+  }
+
+  // Score from distance
+  score += dt * speed * 0.04;
+
+  checkCollisions();
+
+  // Challenge banner
+  if(challengeBannerTimer > 0) challengeBannerTimer -= dt;
+  if(flashCopied > 0) flashCopied -= dt;
+  if(deathLockout > 0) deathLockout -= dt;
+}
+
+// ── Draw helpers ──────────────────────────────────────────────────────────────
+function roundRect(x, y, w, h, r){
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.lineTo(x+w-r, y);
+  ctx.quadraticCurveTo(x+w, y, x+w, y+r);
+  ctx.lineTo(x+w, y+h-r);
+  ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+  ctx.lineTo(x+r, y+h);
+  ctx.quadraticCurveTo(x, y+h, x, y+h-r);
+  ctx.lineTo(x, y+r);
+  ctx.quadraticCurveTo(x, y, x+r, y);
+  ctx.closePath();
+}
+
+// ── Draw world ────────────────────────────────────────────────────────────────
+function drawWorld(){
+  const floorY = getFloor();
+  const ceilY  = getCeiling();
+
+  // Background gradient
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, `hsl(${baseHue},60%,8%)`);
+  bg.addColorStop(1, `hsl(${baseHue+30},55%,12%)`);
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // Tunnel walls (icy gradient)
+  // Ceiling slab
+  const cg = ctx.createLinearGradient(0, 0, 0, ceilY);
+  cg.addColorStop(0, `hsl(${baseHue+10},70%,15%)`);
+  cg.addColorStop(1, `hsl(${baseHue+20},75%,35%)`);
+  ctx.fillStyle = cg;
+  ctx.fillRect(0, 0, W, ceilY);
+
+  // Floor slab
+  const fg = ctx.createLinearGradient(0, floorY, 0, H);
+  fg.addColorStop(0, `hsl(${baseHue+20},75%,35%)`);
+  fg.addColorStop(1, `hsl(${baseHue+10},70%,15%)`);
+  ctx.fillStyle = fg;
+  ctx.fillRect(0, floorY, W, H - floorY);
+
+  // Icy edge lines
+  ctx.strokeStyle = `hsla(${baseHue+40},90%,80%,0.6)`;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(0, ceilY); ctx.lineTo(W, ceilY); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, floorY); ctx.lineTo(W, floorY); ctx.stroke();
+
+  // Tunnel speed lines (parallax streaks)
+  ctx.strokeStyle = `hsla(${baseHue+50},80%,85%,0.08)`;
+  ctx.lineWidth = 1;
+  const numStreaks = 8;
+  for(let i = 0; i < numStreaks; i++){
+    const sy = ceilY + (floorY - ceilY) * ((i + 0.5) / numStreaks);
+    const streakLen = 30 + Math.random() * 60;
+    const sx = (Date.now() * 0.12 * (i % 3 + 1)) % (W + streakLen) - streakLen;
+    ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx + streakLen, sy); ctx.stroke();
+  }
+
+  // Obstacles
+  for(let i = 0; i < obstacles.length; i++){
+    const o = obstacles[i];
+    if(o.type === 'orb'){
+      // Warmth orb
+      const og = ctx.createRadialGradient(o.x, o.y, 0, o.x, o.y, o.r * 2);
+      og.addColorStop(0, `hsla(50, 100%, 80%, 0.9)`);
+      og.addColorStop(0.5, `hsla(45, 100%, 60%, 0.6)`);
+      og.addColorStop(1, `hsla(40, 100%, 50%, 0)`);
+      ctx.fillStyle = og;
+      ctx.beginPath();
+      ctx.arc(o.x, o.y, o.r * 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = `hsla(55, 100%, 90%, 0.95)`;
+      ctx.beginPath();
+      ctx.arc(o.x, o.y, o.r, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      // Ice obstacle
+      const iceh = baseHue + 30;
+      const iceGrad = ctx.createLinearGradient(o.x, o.y, o.x, o.y + o.h);
+      if(o.side === 'ceiling'){
+        iceGrad.addColorStop(0, `hsl(${iceh},80%,55%)`);
+        iceGrad.addColorStop(1, `hsl(${iceh+10},70%,30%)`);
+      } else {
+        iceGrad.addColorStop(0, `hsl(${iceh+10},70%,30%)`);
+        iceGrad.addColorStop(1, `hsl(${iceh},80%,55%)`);
+      }
+      ctx.fillStyle = iceGrad;
+      roundRect(o.x, o.y, o.w, o.h, 4);
+      ctx.fill();
+      // Glint
+      ctx.fillStyle = `hsla(${iceh+40},90%,90%,0.3)`;
+      ctx.fillRect(o.x + 3, o.y + 3, o.w * 0.35, 2);
+    }
+  }
+
+  // Player
+  const px = player.x, py = player.y, pr = player.radius;
+  // Glow
+  const pg = ctx.createRadialGradient(px, py, 0, px, py, pr * 2.5);
+  pg.addColorStop(0, `hsla(${baseHue+160},90%,80%,0.5)`);
+  pg.addColorStop(1, `hsla(${baseHue+160},90%,60%,0)`);
+  ctx.fillStyle = pg;
+  ctx.beginPath(); ctx.arc(px, py, pr * 2.5, 0, Math.PI * 2); ctx.fill();
+
+  // Body
+  const pb = ctx.createRadialGradient(px - pr*0.3, py - pr*0.3, 0, px, py, pr);
+  pb.addColorStop(0, `hsl(${baseHue+170},95%,90%)`);
+  pb.addColorStop(1, `hsl(${baseHue+150},80%,55%)`);
+  ctx.fillStyle = pb;
+  ctx.beginPath(); ctx.arc(px, py, pr, 0, Math.PI * 2); ctx.fill();
+
+  // Eye
+  ctx.fillStyle = '#0a1628';
+  ctx.beginPath();
+  ctx.arc(px + pr * 0.3, py - pr * 0.15, pr * 0.22, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = 'white';
+  ctx.beginPath();
+  ctx.arc(px + pr * 0.32, py - pr * 0.18, pr * 0.08, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Gravity indicator arrow
+  const arrowDir = player.onFloor ? -1 : 1;
+  const ax = px + pr + 6, ay = py;
+  ctx.strokeStyle = `hsla(${baseHue+160},90%,85%,0.7)`;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(ax, ay);
+  ctx.lineTo(ax, ay + arrowDir * pr * 0.8);
+  ctx.stroke();
+  ctx.fillStyle = `hsla(${baseHue+160},90%,85%,0.7)`;
+  ctx.beginPath();
+  ctx.moveTo(ax - 4, ay + arrowDir * pr * 0.5);
+  ctx.lineTo(ax, ay + arrowDir * pr * 0.95);
+  ctx.lineTo(ax + 4, ay + arrowDir * pr * 0.5);
+  ctx.closePath();
+  ctx.fill();
+}
+
+// ── Draw HUD ──────────────────────────────────────────────────────────────────
+function drawHUD(){
+  // Score
+  ctx.fillStyle = 'rgba(255,255,255,0.95)';
+  ctx.font = `bold ${Math.round(W * 0.07)}px 'Segoe UI', Arial, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.shadowColor = `hsl(${baseHue+40},90%,70%)`;
+  ctx.shadowBlur = 12;
+  ctx.fillText(Math.floor(score), W / 2, 42);
+  ctx.shadowBlur = 0;
+
+  // Best
+  ctx.fillStyle = 'rgba(180,220,255,0.6)';
+  ctx.font = `${Math.round(W * 0.035)}px 'Segoe UI', Arial, sans-serif`;
+  ctx.fillText(`BEST: ${highScore}`, W / 2, 62);
+
+  // Near-miss streak
+  if(nearMissCount > 0){
+    ctx.fillStyle = `hsl(55,100%,70%)`;
+    ctx.font = `bold ${Math.round(W * 0.033)}px Arial`;
+    ctx.fillText(`⚡ x${nearMissCount} near-miss`, W / 2, 82);
+  }
+
+  // Challenge banner
+  if(challengeScore > 0 && challengeBannerTimer > 0){
+    const alpha = Math.min(1, challengeBannerTimer);
+    ctx.fillStyle = `rgba(255,200,50,${alpha * 0.9})`;
+    ctx.font = `bold ${Math.round(W * 0.045)}px Arial`;
+    ctx.fillText(`🎯 Beat ${challengeScore}!`, W / 2, H * 0.15);
+    // Progress bar
+    const prog = Math.min(1, score / challengeScore);
+    const bw = W * 0.5, bh = 8;
+    const bx = (W - bw) / 2, by = H * 0.15 + 10;
+    ctx.fillStyle = `rgba(255,255,255,0.2)`;
+    roundRect(bx, by, bw, bh, 4); ctx.fill();
+    ctx.fillStyle = `rgba(255,200,50,${alpha})`;
+    roundRect(bx, by, bw * prog, bh, 4); ctx.fill();
+  }
+
+  // Copied toast
+  if(flashCopied > 0){
+    ctx.fillStyle = `rgba(50,255,150,${Math.min(1, flashCopied)})`;
+    ctx.font = `bold ${Math.round(W * 0.04)}px Arial`;
+    ctx.fillText('Link copied! 📋', W / 2, H * 0.7);
+  }
+}
+
+// ── Draw start screen ─────────────────────────────────────────────────────────
+function drawStart(){
+  // Background
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, `hsl(${baseHue},60%,6%)`);
+  bg.addColorStop(1, `hsl(${baseHue+30},55%,12%)`);
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // Decorative ice slabs
+  ctx.fillStyle = `hsl(${baseHue+20},75%,30%)`;
+  ctx.fillRect(0, 0, W, 50);
+  ctx.fillRect(0, H - 50, W, 50);
+  ctx.strokeStyle = `hsla(${baseHue+40},90%,75%,0.5)`;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(0,50); ctx.lineTo(W,50); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0,H-50); ctx.lineTo(W,H-50); ctx.stroke();
+
+  // Title
+  ctx.textAlign = 'center';
+  ctx.shadowColor = `hsl(${baseHue+40},100%,65%)`;
+  ctx.shadowBlur = 24;
+  ctx.fillStyle = 'white';
+  ctx.font = `bold ${Math.round(W * 0.12)}px 'Segoe UI', Arial`;
+  ctx.fillText('ICEBOUND', W/2, H*0.3);
+  ctx.font = `bold ${Math.round(W * 0.09)}px 'Segoe UI', Arial`;
+  ctx.fillStyle = `hsl(${baseHue+50},100%,75%)`;
+  ctx.fillText('RUSH', W/2, H*0.3 + W*0.12 + 4);
+  ctx.shadowBlur = 0;
+
+  // Sub
+  ctx.fillStyle = 'rgba(180,220,255,0.8)';
+  ctx.font = `${Math.round(W * 0.04)}px Arial`;
+  ctx.fillText('Flip Gravity. Dodge the Ice.', W/2, H*0.3 + W*0.21 + 10);
+
+  // Instructions
+  ctx.fillStyle = 'rgba(140,200,255,0.6)';
+  ctx.font = `${Math.round(W * 0.036)}px Arial`;
+  ctx.fillText('Tap or press SPACE to flip', W/2, H*0.56);
+  ctx.fillText('Avoid the icy obstacles!', W/2, H*0.56 + 26);
+
+  // Start button
+  const bw = W * 0.55, bh = 52;
+  const bx = (W - bw) / 2, by = H * 0.66;
+  const grad = ctx.createLinearGradient(bx, by, bx, by + bh);
+  grad.addColorStop(0, `hsl(${baseHue+40},90%,55%)`);
+  grad.addColorStop(1, `hsl(${baseHue+20},80%,40%)`);
+  ctx.fillStyle = grad;
+  roundRect(bx, by, bw, bh, 12); ctx.fill();
+  ctx.strokeStyle = `hsl(${baseHue+60},90%,80%)`;
+  ctx.lineWidth = 1.5;
+  roundRect(bx, by, bw, bh, 12); ctx.stroke();
+  ctx.fillStyle = 'white';
+  ctx.font = `bold ${Math.round(W * 0.055)}px Arial`;
+  ctx.fillText('PLAY', W/2, by + bh * 0.66);
+
+  // High score
+  if(highScore > 0){
+    ctx.fillStyle = 'rgba(200,230,255,0.65)';
+    ctx.font = `${Math.round(W * 0.038)}px Arial`;
+    ctx.fillText(`Best: ${highScore}`, W/2, H*0.82);
+  }
+
+  // Hint orb demo
+  const orbPulse = 0.8 + 0.2 * Math.sin(Date.now() * 0.004);
+  const og = ctx.createRadialGradient(W/2, H*0.47, 0, W/2, H*0.47, 14 * orbPulse);
+  og.addColorStop(0, 'rgba(255,230,80,0.9)');
+  og.addColorStop(1, 'rgba(255,160,0,0)');
+  ctx.fillStyle = og;
+  ctx.beginPath(); ctx.arc(W/2, H*0.47, 14*orbPulse, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = 'rgba(255,240,100,0.95)';
+  ctx.font = `${Math.round(W * 0.03)}px Arial`;
+  ctx.fillText('collect orbs for +50pts', W/2, H*0.47 + 28);
+}
+
+// ── Draw gameover ─────────────────────────────────────────────────────────────
+function drawGameover(){
+  // Dim overlay
+  ctx.fillStyle = 'rgba(5,13,30,0.72)';
+  ctx.fillRect(0, 0, W, H);
+
+  // Panel
+  const pw = W * 0.82, ph = H * 0.62;
+  const px = (W - pw) / 2, py = (H - ph) / 2;
+  const panelGrad = ctx.createLinearGradient(px, py, px, py+ph);
+  panelGrad.addColorStop(0, 'rgba(15,30,65,0.97)');
+  panelGrad.addColorStop(1, 'rgba(5,15,40,0.97)');
+  ctx.fillStyle = panelGrad;
+  roundRect(px, py, pw, ph, 16); ctx.fill();
+  ctx.strokeStyle = `hsl(${baseHue+40},80%,55%)`;
+  ctx.lineWidth = 2;
+  roundRect(px, py, pw, ph, 16); ctx.stroke();
+
+  ctx.textAlign = 'center';
+
+  // Title
+  ctx.fillStyle = `hsl(${baseHue+40},100%,70%)`;
+  ctx.shadowColor = `hsl(${baseHue+40},100%,60%)`;
+  ctx.shadowBlur = 16;
+  ctx.font = `bold ${Math.round(W * 0.075)}px Arial`;
+  ctx.fillText('FROZEN!', W/2, py + 56);
+  ctx.shadowBlur = 0;
+
+  // Score
+  ctx.fillStyle = 'white';
+  ctx.font = `${Math.round(W * 0.038)}px Arial`;
+  ctx.fillText('SCORE', W/2, py + 90);
+  ctx.font = `bold ${Math.round(W * 0.11)}px Arial`;
+  ctx.shadowColor = `hsl(${baseHue+60},100%,70%)`;
+  ctx.shadowBlur = 14;
+  ctx.fillText(Math.floor(score), W/2, py + 140);
+  ctx.shadowBlur = 0;
+
+  // Best
+  const isBest = score >= highScore && highScore > 0;
+  if(isBest){
+    ctx.fillStyle = `hsl(50,100%,65%)`;
+    ctx.font = `bold ${Math.round(W * 0.042)}px Arial`;
+    ctx.fillText('⭐ NEW BEST!', W/2, py + 168);
+  } else {
+    ctx.fillStyle = 'rgba(150,200,255,0.6)';
+    ctx.font = `${Math.round(W * 0.036)}px Arial`;
+    ctx.fillText(`Best: ${highScore}`, W/2, py + 168);
+  }
+
+  // Near miss
+  if(nearMissCount > 0){
+    ctx.fillStyle = `hsl(55,100%,65%)`;
+    ctx.font = `${Math.round(W * 0.033)}px Arial`;
+    ctx.fillText(`⚡ ${nearMissCount} near-miss${nearMissCount>1?'es':''}!`, W/2, py + 195);
+  }
+
+  // Buttons
+  const locked = deathLockout > 0;
+  const btnAlpha = locked ? 0.4 : 1;
+
+  // Share
+  const sbw = pw * 0.38, sbh = 42;
+  const sbx = px + pw * 0.08, sby = py + ph - 130;
+  shareBtn = {x: sbx, y: sby, w: sbw, h: sbh};
+  ctx.globalAlpha = btnAlpha;
+  ctx.fillStyle = `hsl(${baseHue+30},75%,42%)`;
+  roundRect(sbx, sby, sbw, sbh, 10); ctx.fill();
+  ctx.strokeStyle = `hsl(${baseHue+50},90%,70%)`;
+  ctx.lineWidth = 1;
+  roundRect(sbx, sby, sbw, sbh, 10); ctx.stroke();
+  ctx.fillStyle = 'white';
+  ctx.font = `bold ${Math.round(W * 0.042)}px Arial`;
+  ctx.fillText('Share', sbx + sbw/2, sby + sbh*0.67);
+
+  // Challenge
+  const cbw = pw * 0.42, cbh = 42;
+  const cbx = px + pw * 0.52, cby = sby;
+  challengeBtn = {x: cbx, y: cby, w: cbw, h: cbh};
+  ctx.fillStyle = `hsl(40,85%,38%)`;
+  roundRect(cbx, cby, cbw, cbh, 10); ctx.fill();
+  ctx.strokeStyle = `hsl(50,100%,65%)`;
+  ctx.lineWidth = 1;
+  roundRect(cbx, cby, cbw, cbh, 10); ctx.stroke();
+  ctx.fillStyle = 'white';
+  ctx.font = `bold ${Math.round(W * 0.036)}px Arial`;
+  ctx.fillText('Challenge', cbx + cbw/2, cby + cbh*0.67);
+
+  ctx.globalAlpha = 1;
+
+  // Restart tap hint
+  if(!locked){
+    ctx.fillStyle = 'rgba(180,210,255,0.55)';
+    ctx.font = `${Math.round(W * 0.036)}px Arial`;
+    ctx.fillText('Tap anywhere to play again', W/2, py + ph - 22);
+  } else {
+    ctx.fillStyle = 'rgba(180,180,180,0.4)';
+    ctx.font = `${Math.round(W * 0.03)}px Arial`;
+    ctx.fillText('...', W/2, py + ph - 22);
+  }
+
+  // Copied toast
+  if(flashCopied > 0){
+    ctx.fillStyle = `rgba(50,255,150,${Math.min(1, flashCopied)})`;
+    ctx.font = `bold ${Math.round(W * 0.04)}px Arial`;
+    ctx.fillText('Copied! 📋', W/2, py - 20);
+  }
+}
+
+// ── Main loop ─────────────────────────────────────────────────────────────────
+let lastTime = 0;
+function loop(ts){
+  requestAnimationFrame(loop);
+  const dt = Math.min((ts - lastTime) / 1000, 0.033);
+  lastTime = ts;
+
+  // HSL time cycling (happens always)
+  if(state === 'playing') baseHue = (190 + elapsed * 8) % 360;
+  else baseHue = (baseHue + dt * 10) % 360;
+
+  update(dt);
+  updateParticles(dt);
+  updateShake(dt);
+  updateFlash(dt);
+
+  // Apply shake offset (only to world)
+  ctx.save();
+  if(state === 'playing' || state === 'gameover'){
+    ctx.translate(shakeX, shakeY);
+  }
+
+  if(state === 'start'){
+    ctx.restore();
+    ctx.save();
+    drawStart();
+  } else {
+    drawWorld();
+    ctx.restore(); // undo shake for UI
+    ctx.save();
+    drawParticles();
+    ctx.restore();
+    ctx.save();
+    drawHUD();
+    ctx.restore();
+    if(state === 'gameover'){
+      ctx.save();
+      drawGameover();
+      ctx.restore();
+    }
+  }
+
+  // Flash overlay
+  if(flashAlpha > 0){
+    ctx.fillStyle = `hsla(${flashHue},80%,70%,${flashAlpha * 0.55})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+}
+
+requestAnimationFrame(ts => { lastTime = ts; requestAnimationFrame(loop); });
+
+})();
+</script>
+</body>
+</html>

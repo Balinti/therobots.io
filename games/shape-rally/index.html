@@ -1,0 +1,1011 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Shape Rally - Free HTML5 Game</title>
+  <meta name="description" content="Play Shape Rally - Swipe to control paddles that reflect shapes, racing against a shrinking time bar.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a0a1a">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Shape Rally - Free HTML5 Game">
+  <meta property="og:description" content="Play Shape Rally - Guide colored cores into matching gates. Build combos, fill the Hype Meter, and chase the perfect score!">
+  <meta property="og:url" content="https://balinti.github.io/shape-rally/">
+  <meta property="og:image" content="https://balinti.github.io/shape-rally/og.png">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Shape Rally - Free HTML5 Game">
+  <meta name="twitter:description" content="Guide colored cores into matching gates. Build combos, fill the Hype Meter, and chase the perfect score!">
+  <meta name="twitter:image" content="https://balinti.github.io/shape-rally/og.png">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      height: 100%;
+      background: #050510;
+      color: #e0e8ff;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      overflow-x: hidden;
+    }
+    #game-wrap {
+      width: 100%;
+      max-width: 420px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    #canvas-container {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      height: 100svh;
+      max-height: 750px;
+    }
+    canvas {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      touch-action: none;
+    }
+    #info {
+      width: 100%;
+      max-width: 420px;
+      padding: 18px 20px 32px;
+      background: #0c0c20;
+      border-top: 1px solid #1a1a40;
+    }
+    #info h2 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #a0b8ff;
+      margin-bottom: 8px;
+    }
+    #info p {
+      font-size: 0.85rem;
+      line-height: 1.6;
+      color: #7080a0;
+      margin-bottom: 10px;
+    }
+    #info ul {
+      font-size: 0.82rem;
+      color: #6070a0;
+      padding-left: 18px;
+      line-height: 1.8;
+    }
+    #ad-slot {
+      width: 100%;
+      max-width: 420px;
+      min-height: 60px;
+      background: #080816;
+      border-top: 1px solid #111130;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+  </style>
+</head>
+<body>
+<div id="game-wrap">
+  <div id="canvas-container">
+    <canvas id="c"></canvas>
+  </div>
+  <div id="ad-slot">
+    <ins class="adsbygoogle"
+      style="display:block;width:320px;height:50px"
+      data-ad-client="ca-pub-4099346100621490"
+      data-ad-slot="auto"
+      data-ad-format="banner"></ins>
+  </div>
+  <div id="info">
+    <h2>How to Play Shape Rally</h2>
+    <p>
+      A colored core bounces inside the arena. Move the paddle by touching or clicking anywhere on screen.
+      Bounce the core into the gate that matches its color to score points!
+    </p>
+    <ul>
+      <li>&#127919; Match core color to the correct gate to score</li>
+      <li>&#9825; You have 3 hearts — wrong gate or missing the paddle costs one</li>
+      <li>&#9889; Fill the Hype Meter for score multipliers and a wider paddle</li>
+      <li>&#11088; Land a <strong>Perfect</strong> hit for massive bonus points &amp; slow-mo</li>
+      <li>&#128293; Build combos for even bigger multipliers</li>
+    </ul>
+  </div>
+</div>
+
+<script>
+(function() {
+'use strict';
+
+// --- URL challenge param ---
+const urlParams = new URLSearchParams(location.search);
+const challengeScore = parseInt(urlParams.get('challenge')) || 0;
+
+// --- Canvas setup ---
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const container = document.getElementById('canvas-container');
+
+let W = 0, H = 0;
+const DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+function resizeCanvas() {
+  const rect = container.getBoundingClientRect();
+  W = rect.width;
+  H = rect.height;
+  canvas.width = Math.round(W * DPR);
+  canvas.height = Math.round(H * DPR);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+resizeCanvas();
+window.addEventListener('resize', () => { resizeCanvas(); });
+
+// --- Palette ---
+const GATE_HUES = [200, 120, 330]; // cyan, green, magenta
+const GATE_NAMES = ['Cyan', 'Green', 'Magenta'];
+
+function gateColor(idx, a = 1) {
+  return `hsla(${GATE_HUES[idx]},90%,60%,${a})`;
+}
+
+// --- Storage ---
+let bestScore = parseInt(localStorage.getItem('shapeRallyBest') || '0');
+
+// --- Game State ---
+let state = 'start'; // 'start' | 'playing' | 'gameover'
+
+// Game vars
+let score = 0;
+let combo = 0;
+let perfectCount = 0;
+let hearts = 3;
+let hype = 0;
+let timeScale = 1;
+let slowMoTimer = 0;
+
+// Shake
+let shakeIntensity = 0;
+
+// Arena geometry (computed per frame)
+let ARENA_PAD = 16;
+let TOP_BAND_H = 90;
+let BOT_BAND_H = 110;
+let arenaLeft, arenaRight, arenaTop, arenaBottom;
+let gateY, gateH;
+let paddleY;
+
+// Paddle
+let paddleX = 0;
+let paddleTargetX = 0;
+let paddleW = 120;
+let paddleH = 14;
+
+// Ball
+let ball = { x: 0, y: 0, vx: 0, vy: 0, r: 12, colorIdx: 0, invuln: 0 };
+let ballSpawned = false;
+
+// Gates
+let gateSlideOffset = 0;
+let gateSlideDir = 1;
+let gateSlideOmega = 0;
+let gateSlideAmp = 0;
+let gateSlideT = 0;
+
+// Particles
+let particles = [];
+
+// Score pop texts
+let popTexts = [];
+
+// Hype flash
+let hypeFlash = 0;
+let correctFlash = 0;
+let correctFlashColor = '';
+
+// Background hue shift
+let bgHue = 220;
+let bgHueTarget = 220;
+
+// --- Derived helpers ---
+function computeGeometry() {
+  ARENA_PAD = Math.min(16, W * 0.04);
+  TOP_BAND_H = Math.min(90, H * 0.12);
+  BOT_BAND_H = Math.min(110, H * 0.145);
+  arenaLeft = ARENA_PAD;
+  arenaRight = W - ARENA_PAD;
+  arenaTop = TOP_BAND_H;
+  arenaBottom = H - BOT_BAND_H;
+  gateY = ARENA_PAD + 2;
+  gateH = TOP_BAND_H - ARENA_PAD - 4;
+  paddleY = arenaBottom - paddleH / 2;
+}
+
+function getPaddleWidth() {
+  let base = Math.max(70, Math.min(120, 120 - 0.6 * score + (hype > 0.75 ? 10 : 0)));
+  return base;
+}
+
+function getTargetSpeed() {
+  return Math.min(820, 320 + 6 * score);
+}
+
+function getNumColors() {
+  if (score < 10) return 2;
+  return 3;
+}
+
+function randomColorIdx() {
+  return Math.floor(Math.random() * getNumColors());
+}
+
+function spawnBall() {
+  ball.colorIdx = randomColorIdx();
+  ball.x = paddleX;
+  ball.y = paddleY - paddleH / 2 - ball.r - 2;
+  const angle = -Math.PI / 2 + (Math.random() - 0.5) * 0.7;
+  const speed = getTargetSpeed() * 0.7;
+  ball.vx = Math.cos(angle) * speed;
+  ball.vy = Math.sin(angle) * speed;
+  ball.invuln = 0.4;
+  ballSpawned = true;
+}
+
+function resetGame() {
+  score = 0;
+  combo = 0;
+  perfectCount = 0;
+  hearts = 3;
+  hype = 0;
+  timeScale = 1;
+  slowMoTimer = 0;
+  shakeIntensity = 0;
+  gateSlideOffset = 0;
+  gateSlideT = 0;
+  particles = [];
+  popTexts = [];
+  correctFlash = 0;
+  hypeFlash = 0;
+  paddleX = W / 2;
+  paddleTargetX = W / 2;
+  paddleW = 120;
+  ballSpawned = false;
+  bgHue = 220;
+  bgHueTarget = 220;
+}
+
+// --- Gate layout ---
+function getGates() {
+  const numColors = getNumColors();
+  const aW = arenaRight - arenaLeft;
+  const gap = 10;
+  const totalGap = gap * (numColors - 1);
+  const gw = (aW - totalGap) / numColors;
+  const gates = [];
+  // Slide after score 25
+  const slideAmp = score >= 25 ? Math.min(22, (score - 25) * 0.5) : 0;
+  const slideOmega = score >= 25 ? Math.min(1.6, 0.8 + (score - 25) * 0.02) : 0;
+  gateSlideAmp = slideAmp;
+  gateSlideOmega = slideOmega;
+
+  const slide = gateSlideAmp * Math.sin(gateSlideT * gateSlideOmega);
+
+  for (let i = 0; i < numColors; i++) {
+    const x = arenaLeft + i * (gw + gap) + slide;
+    gates.push({ x, y: gateY, w: gw, h: gateH, colorIdx: i });
+  }
+  return gates;
+}
+
+// --- Particles ---
+function spawnParticles(x, y, colorIdx, type) {
+  const hue = GATE_HUES[colorIdx];
+  const n = type === 'perfect' ? 40 : type === 'correct' ? 18 : 8;
+  for (let i = 0; i < n; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const spd = type === 'perfect' ? 80 + Math.random() * 300 : 50 + Math.random() * 180;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * spd,
+      vy: Math.sin(angle) * spd,
+      r: type === 'perfect' ? 3 + Math.random() * 4 : 2 + Math.random() * 3,
+      life: 1,
+      decay: 0.6 + Math.random() * 0.6,
+      hue: hue + (Math.random() - 0.5) * 40,
+      sat: 80 + Math.random() * 20,
+      lit: 55 + Math.random() * 20,
+      gravity: type === 'confetti' ? 120 : 30,
+      drag: 0.92,
+      isRing: false,
+    });
+  }
+  if (type === 'perfect') {
+    // Ring shockwave
+    particles.push({
+      x, y,
+      vx: 0, vy: 0,
+      r: 8, maxR: 90,
+      life: 1, decay: 1.8,
+      hue, sat: 100, lit: 70,
+      gravity: 0, drag: 1,
+      isRing: true,
+    });
+    particles.push({
+      x, y,
+      vx: 0, vy: 0,
+      r: 4, maxR: 60,
+      life: 1, decay: 2.4,
+      hue, sat: 100, lit: 80,
+      gravity: 0, drag: 1,
+      isRing: true,
+    });
+  }
+}
+
+function spawnSaveParticles(x, y) {
+  for (let i = 0; i < 10; i++) {
+    const angle = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI;
+    const spd = 60 + Math.random() * 120;
+    particles.push({
+      x, y, vx: Math.cos(angle) * spd, vy: Math.sin(angle) * spd,
+      r: 2 + Math.random() * 2, life: 1, decay: 1.2,
+      hue: 45, sat: 100, lit: 65, gravity: 30, drag: 0.9,
+      isRing: false,
+    });
+  }
+}
+
+// --- Score pop text ---
+function addPopText(x, y, text, color) {
+  popTexts.push({ x, y, text, color, life: 1, vy: -80 });
+}
+
+// --- Input handling ---
+let pointerX = -1;
+
+function handlePointerDown(e) {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = W / rect.width;
+  const px = (e.clientX - rect.left) * scaleX;
+  pointerX = px;
+  paddleTargetX = px;
+
+  if (state === 'start') {
+    state = 'playing';
+    resetGame();
+    spawnBall();
+  } else if (state === 'gameover') {
+    state = 'playing';
+    resetGame();
+    spawnBall();
+  }
+}
+
+function handlePointerMove(e) {
+  e.preventDefault();
+  if (e.buttons === 0 && e.type === 'pointermove') return;
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = W / rect.width;
+  pointerX = (e.clientX - rect.left) * scaleX;
+  if (state === 'playing') paddleTargetX = pointerX;
+}
+
+function handlePointerUp(e) {
+  e.preventDefault();
+}
+
+function handleKey(e) {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    if (state === 'start') {
+      state = 'playing';
+      resetGame();
+      spawnBall();
+    } else if (state === 'gameover') {
+      state = 'playing';
+      resetGame();
+      spawnBall();
+    }
+  }
+}
+
+canvas.addEventListener('pointerdown', handlePointerDown, { passive: false });
+canvas.addEventListener('pointermove', handlePointerMove, { passive: false });
+canvas.addEventListener('pointerup', handlePointerUp, { passive: false });
+window.addEventListener('keydown', handleKey);
+
+// --- Update ---
+let lastTime = 0;
+
+function update(now) {
+  const dtReal = Math.min((now - lastTime) / 1000, 0.05);
+  lastTime = now;
+
+  if (state !== 'playing') return;
+
+  // Slow-mo
+  if (slowMoTimer > 0) {
+    slowMoTimer -= dtReal;
+    timeScale = slowMoTimer > 0 ? 0.35 : 1;
+  } else {
+    timeScale = 1;
+  }
+  const dt = dtReal * timeScale;
+
+  computeGeometry();
+  paddleW = getPaddleWidth();
+
+  // Paddle follow
+  const paddleMaxSpeed = 900;
+  const diff = paddleTargetX - paddleX;
+  const step = Math.sign(diff) * Math.min(Math.abs(diff), paddleMaxSpeed * dt * 2.5);
+  paddleX += step;
+  paddleX = Math.max(arenaLeft + paddleW / 2, Math.min(arenaRight - paddleW / 2, paddleX));
+
+  // Gate slide timer
+  gateSlideT += dt;
+
+  // Hype drain
+  hype = Math.max(0, hype - 0.06 * dt);
+
+  // Slow-mo flash
+  if (hypeFlash > 0) hypeFlash -= dt * 3;
+  if (correctFlash > 0) correctFlash -= dt * 4;
+
+  // Shake decay
+  shakeIntensity *= Math.pow(0.05, dt);
+  if (shakeIntensity < 0.2) shakeIntensity = 0;
+
+  // Background hue lerp
+  bgHue += (bgHueTarget - bgHue) * Math.min(1, dt * 2);
+
+  // Update particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    if (p.isRing) {
+      p.r += (p.maxR - p.r) * Math.min(1, dt * 3);
+      p.life -= p.decay * dt;
+    } else {
+      p.vx *= Math.pow(p.drag, dt * 60);
+      p.vy *= Math.pow(p.drag, dt * 60);
+      p.vy += p.gravity * dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.life -= p.decay * dt;
+    }
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+
+  // Pop texts
+  for (let i = popTexts.length - 1; i >= 0; i--) {
+    const t = popTexts[i];
+    t.y += t.vy * dt;
+    t.life -= dt * 1.5;
+    if (t.life <= 0) popTexts.splice(i, 1);
+  }
+
+  // Ball update
+  if (!ballSpawned) return;
+
+  if (ball.invuln > 0) ball.invuln -= dtReal;
+
+  ball.x += ball.vx * dt;
+  ball.y += ball.vy * dt;
+
+  // Wall bounce L/R
+  if (ball.x - ball.r < arenaLeft) {
+    ball.x = arenaLeft + ball.r;
+    ball.vx = Math.abs(ball.vx);
+    shakeIntensity = Math.max(shakeIntensity, 1.5);
+  }
+  if (ball.x + ball.r > arenaRight) {
+    ball.x = arenaRight - ball.r;
+    ball.vx = -Math.abs(ball.vx);
+    shakeIntensity = Math.max(shakeIntensity, 1.5);
+  }
+
+  // Top bounce (when ball moving up, outside gates)
+  if (ball.vy < 0 && ball.y - ball.r < gateY + gateH) {
+    // Check gate collision
+    const gates = getGates();
+    let hitGate = null;
+    for (const g of gates) {
+      if (ball.x + ball.r > g.x && ball.x - ball.r < g.x + g.w &&
+          ball.y - ball.r < g.y + g.h && ball.y + ball.r > g.y) {
+        hitGate = g;
+        break;
+      }
+    }
+    if (hitGate) {
+      handleGateHit(hitGate);
+    } else if (ball.y - ball.r < arenaTop) {
+      // Top wall bounce
+      ball.y = arenaTop + ball.r;
+      ball.vy = Math.abs(ball.vy);
+      shakeIntensity = Math.max(shakeIntensity, 1.5);
+    }
+  }
+
+  // Paddle collision (ball moving down)
+  if (ball.vy > 0) {
+    const px1 = paddleX - paddleW / 2;
+    const px2 = paddleX + paddleW / 2;
+    const py1 = paddleY - paddleH / 2;
+    const py2 = paddleY + paddleH / 2;
+
+    if (ball.y + ball.r >= py1 && ball.y - ball.r <= py2 &&
+        ball.x + ball.r >= px1 && ball.x - ball.r <= px2 &&
+        ball.y - ball.r < paddleY) {
+      // Hit position t in [-1, 1]
+      const t = Math.max(-1, Math.min(1, (ball.x - paddleX) / (paddleW / 2)));
+      const angle = t * (Math.PI / 3); // max 60 deg
+      const speed = Math.min(820, Math.hypot(ball.vx, ball.vy) * 1.05 + 10);
+      ball.vx = Math.sin(angle) * speed;
+      ball.vy = -Math.cos(angle) * speed;
+      ball.y = py1 - ball.r - 1;
+
+      shakeIntensity = Math.max(shakeIntensity, 3);
+      spawnParticles(ball.x, py1, ball.colorIdx, 'hit');
+
+      // SAVE detection (edge clip)
+      if (Math.abs(t) > 0.8) {
+        hype = Math.min(1, hype + 0.25);
+        spawnSaveParticles(ball.x, py1);
+        addPopText(ball.x, py1 - 20, 'SAVE!', `hsl(45,100%,65%)`);
+      }
+    }
+
+    // Bottom miss
+    if (ball.y - ball.r > arenaBottom + 20) {
+      hearts--;
+      hype = Math.max(0, hype - 0.2);
+      combo = 0;
+      shakeIntensity = Math.max(shakeIntensity, 8);
+      addPopText(W / 2, H / 2, 'MISS', '#ff4466');
+      if (hearts <= 0) {
+        endGame();
+      } else {
+        spawnBall();
+      }
+    }
+  }
+}
+
+function handleGateHit(gate) {
+  const correct = gate.colorIdx === ball.colorIdx;
+  const speed = Math.hypot(ball.vx, ball.vy);
+  // Bounce back down
+  ball.y = gate.y + gate.h + ball.r + 1;
+  ball.vy = Math.abs(ball.vy);
+
+  if (correct) {
+    // Score
+    const comboMult = 1 + Math.floor(combo / 5);
+    const hypeMult = hype > 0.85 ? 2 : hype > 0.6 ? 1.5 : 1;
+
+    // Perfect check
+    const speedThreshold = Math.min(700, 520 + 1.5 * score);
+    const paddleT = Math.abs((ball.x - paddleX) / (paddleW / 2));
+    const perfectTWindow = Math.max(0.18, Math.min(0.32, 0.32 - 0.0015 * score));
+    const isPerfect = speed >= speedThreshold && paddleT <= perfectTWindow;
+
+    let pts = Math.round(comboMult * hypeMult);
+    if (isPerfect) {
+      pts += 5;
+      combo += 3;
+      perfectCount++;
+      slowMoTimer = 0.12;
+      timeScale = 0.35;
+      shakeIntensity = Math.max(shakeIntensity, 6);
+      spawnParticles(ball.x, gate.y + gate.h / 2, ball.colorIdx, 'perfect');
+      addPopText(ball.x, gate.y + gate.h + 20, `PERFECT! +${pts}`, `hsl(${GATE_HUES[ball.colorIdx]},100%,70%)`);
+      hype = Math.min(1, hype + 0.28);
+    } else {
+      combo++;
+      spawnParticles(ball.x, gate.y + gate.h / 2, ball.colorIdx, 'correct');
+      addPopText(ball.x, gate.y + gate.h + 20, `+${pts}`, `hsl(${GATE_HUES[ball.colorIdx]},90%,65%)`);
+      hype = Math.min(1, hype + 0.18);
+      shakeIntensity = Math.max(shakeIntensity, 2.5);
+    }
+
+    score += pts;
+    if (score > bestScore) {
+      bestScore = score;
+      localStorage.setItem('shapeRallyBest', bestScore);
+    }
+
+    correctFlash = 1;
+    correctFlashColor = gateColor(ball.colorIdx, 0.18);
+    bgHueTarget = GATE_HUES[ball.colorIdx];
+
+    // New ball color
+    ball.colorIdx = randomColorIdx();
+    ball.invuln = 0.35;
+
+  } else {
+    // Wrong gate
+    if (ball.invuln <= 0) {
+      hearts--;
+      hype = Math.max(0, hype - 0.35);
+      combo = 0;
+      shakeIntensity = Math.max(shakeIntensity, 7);
+      spawnParticles(ball.x, gate.y + gate.h / 2, ball.colorIdx, 'wrong');
+      addPopText(ball.x, gate.y + gate.h + 20, 'WRONG!', '#ff3355');
+      if (hearts <= 0) {
+        endGame();
+        return;
+      }
+    }
+    ball.invuln = 0.35;
+  }
+}
+
+function endGame() {
+  state = 'gameover';
+  shakeIntensity = 12;
+  ballSpawned = false;
+}
+
+// --- Draw ---
+function draw() {
+  computeGeometry();
+  ctx.clearRect(0, 0, W, H);
+
+  // Background gradient (tint to bgHue)
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, `hsl(${bgHue},30%,4%)`);
+  grad.addColorStop(1, `hsl(${bgHue + 30},20%,8%)`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Apply screen shake
+  ctx.save();
+  if (shakeIntensity > 0) {
+    const sx = (Math.random() - 0.5) * shakeIntensity * 2;
+    const sy = (Math.random() - 0.5) * shakeIntensity * 2;
+    ctx.translate(sx, sy);
+  }
+
+  if (state === 'start') {
+    drawStart();
+  } else if (state === 'playing') {
+    drawGame();
+  } else if (state === 'gameover') {
+    drawGame(); // draw last state beneath
+    drawGameOver();
+  }
+
+  ctx.restore();
+}
+
+function drawGame() {
+  // Correct flash overlay
+  if (correctFlash > 0) {
+    ctx.fillStyle = correctFlashColor.replace(/,[\d.]+\)$/, `,${correctFlash * 0.18})`);
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // Arena border
+  ctx.strokeStyle = `rgba(100,120,200,0.15)`;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(arenaLeft, arenaTop, arenaRight - arenaLeft, arenaBottom - arenaTop);
+
+  // Gates
+  const gates = getGates();
+  for (const g of gates) {
+    const hue = GATE_HUES[g.colorIdx];
+    // Glow
+    ctx.shadowColor = `hsl(${hue},100%,60%)`;
+    ctx.shadowBlur = 18;
+    ctx.fillStyle = `hsl(${hue},70%,18%)`;
+    ctx.fillRect(g.x, g.y, g.w, g.h);
+    // Border
+    ctx.strokeStyle = `hsl(${hue},90%,60%)`;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(g.x, g.y, g.w, g.h);
+    // Label
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = `hsl(${hue},90%,75%)`;
+    ctx.font = `bold ${Math.round(g.h * 0.35)}px system-ui`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(GATE_NAMES[g.colorIdx], g.x + g.w / 2, g.y + g.h / 2);
+    ctx.shadowBlur = 0;
+  }
+
+  // Particles
+  for (const p of particles) {
+    if (p.isRing) {
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, p.life);
+      ctx.strokeStyle = `hsl(${p.hue},${p.sat}%,${p.lit}%)`;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    } else {
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, p.life);
+      ctx.fillStyle = `hsl(${p.hue},${p.sat}%,${p.lit}%)`;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, Math.max(0.5, p.r * p.life), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  // Paddle
+  const paddleGrad = ctx.createLinearGradient(paddleX - paddleW / 2, paddleY, paddleX + paddleW / 2, paddleY);
+  const ballHue = GATE_HUES[ball.colorIdx] || 200;
+  paddleGrad.addColorStop(0, `hsl(${ballHue},70%,35%)`);
+  paddleGrad.addColorStop(0.5, `hsl(${ballHue},90%,65%)`);
+  paddleGrad.addColorStop(1, `hsl(${ballHue},70%,35%)`);
+  ctx.shadowColor = `hsl(${ballHue},100%,60%)`;
+  ctx.shadowBlur = 14;
+  ctx.fillStyle = paddleGrad;
+  ctx.beginPath();
+  ctx.roundRect(paddleX - paddleW / 2, paddleY - paddleH / 2, paddleW, paddleH, paddleH / 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Ball
+  if (ballSpawned) {
+    const bHue = GATE_HUES[ball.colorIdx];
+    // Outer glow
+    ctx.shadowColor = `hsl(${bHue},100%,65%)`;
+    ctx.shadowBlur = 24;
+    // Invuln flicker
+    if (ball.invuln > 0 && Math.floor(ball.invuln * 20) % 2 === 0) {
+      ctx.globalAlpha = 0.5;
+    }
+    ctx.fillStyle = `hsl(${bHue},90%,60%)`;
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+    ctx.fill();
+    // Inner core
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = `hsl(${bHue},100%,85%)`;
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, ball.r * 0.45, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur = 0;
+  }
+
+  // HUD
+  drawHUD();
+
+  // Pop texts
+  for (const t of popTexts) {
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, t.life);
+    ctx.fillStyle = t.color;
+    ctx.font = `bold ${Math.round(18 + t.life * 4)}px system-ui`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = t.color;
+    ctx.shadowBlur = 10;
+    ctx.fillText(t.text, t.x, t.y);
+    ctx.restore();
+  }
+}
+
+function drawHUD() {
+  // Score area
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.beginPath();
+  ctx.roundRect(arenaLeft, arenaBottom + 4, arenaRight - arenaLeft, BOT_BAND_H - 8, 10);
+  ctx.fill();
+
+  // Score
+  ctx.fillStyle = '#e0e8ff';
+  ctx.font = `bold 28px system-ui`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(score, W / 2, arenaBottom + 28);
+
+  // Best
+  ctx.fillStyle = '#5060a0';
+  ctx.font = `13px system-ui`;
+  ctx.fillText(`BEST ${bestScore}`, W / 2, arenaBottom + 52);
+
+  // Hearts
+  const heartStr = '♥'.repeat(hearts) + '♡'.repeat(3 - hearts);
+  ctx.fillStyle = hearts === 1 ? '#ff4466' : hearts === 2 ? '#ff8844' : '#ff6688';
+  ctx.font = `20px system-ui`;
+  ctx.textAlign = 'left';
+  ctx.fillText(heartStr, arenaLeft + 10, arenaBottom + 28);
+
+  // Combo
+  if (combo >= 2) {
+    ctx.fillStyle = `hsl(${40 + combo * 8},100%,65%)`;
+    ctx.font = `bold 14px system-ui`;
+    ctx.textAlign = 'right';
+    ctx.fillText(`×${combo} COMBO`, arenaRight - 10, arenaBottom + 28);
+  }
+
+  // Hype meter
+  const meterX = arenaLeft + 10;
+  const meterW = (arenaRight - arenaLeft) - 20;
+  const meterY = arenaBottom + 66;
+  const meterH = 8;
+  // Background
+  ctx.fillStyle = 'rgba(255,255,255,0.08)';
+  ctx.beginPath();
+  ctx.roundRect(meterX, meterY, meterW, meterH, 4);
+  ctx.fill();
+  // Fill
+  const hypeW = meterW * hype;
+  if (hypeW > 0) {
+    const hg = ctx.createLinearGradient(meterX, 0, meterX + meterW, 0);
+    hg.addColorStop(0, '#4488ff');
+    hg.addColorStop(0.6, '#aa44ff');
+    hg.addColorStop(1, '#ff44aa');
+    ctx.fillStyle = hg;
+    ctx.shadowColor = hype > 0.85 ? '#ff44aa' : '#4488ff';
+    ctx.shadowBlur = hype > 0.85 ? 12 : 4;
+    ctx.beginPath();
+    ctx.roundRect(meterX, meterY, hypeW, meterH, 4);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  // Hype label
+  ctx.fillStyle = hype > 0.85 ? '#ff88cc' : '#5060a0';
+  ctx.font = `10px system-ui`;
+  ctx.textAlign = 'right';
+  ctx.fillText('HYPE', meterX + meterW, meterY - 2);
+
+  // Multiplier badge
+  if (hype > 0.6) {
+    const mult = hype > 0.85 ? '×2' : '×1.5';
+    ctx.fillStyle = hype > 0.85 ? '#ff44aa' : '#aa44ff';
+    ctx.font = `bold 12px system-ui`;
+    ctx.textAlign = 'left';
+    ctx.fillText(mult, meterX, meterY - 2);
+  }
+}
+
+function drawStart() {
+  // Frosted panel
+  ctx.fillStyle = 'rgba(5,5,20,0.7)';
+  ctx.fillRect(0, 0, W, H);
+
+  const cy = H / 2;
+
+  // Title
+  ctx.fillStyle = '#c0d0ff';
+  ctx.font = `bold ${Math.round(W * 0.13)}px system-ui`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = '#4488ff';
+  ctx.shadowBlur = 30;
+  ctx.fillText('Shape Rally', W / 2, cy - 80);
+  ctx.shadowBlur = 0;
+
+  // Subtitle
+  ctx.fillStyle = '#7080c0';
+  ctx.font = `${Math.round(W * 0.055)}px system-ui`;
+  ctx.fillText('Color Gates', W / 2, cy - 40);
+
+  // Challenge
+  if (challengeScore > 0) {
+    ctx.fillStyle = '#ffaa44';
+    ctx.font = `bold ${Math.round(W * 0.05)}px system-ui`;
+    ctx.fillText(`Beat ${challengeScore}!`, W / 2, cy);
+  }
+
+  // Tap to start
+  const pulse = 0.85 + 0.15 * Math.sin(Date.now() * 0.004);
+  ctx.globalAlpha = pulse;
+  ctx.fillStyle = '#ffffff';
+  ctx.font = `bold ${Math.round(W * 0.065)}px system-ui`;
+  ctx.fillText('Tap to Start', W / 2, cy + (challengeScore > 0 ? 55 : 35));
+  ctx.globalAlpha = 1;
+
+  // How-to
+  ctx.fillStyle = '#404870';
+  ctx.font = `${Math.round(W * 0.038)}px system-ui`;
+  ctx.fillText('Tap anywhere to move the paddle', W / 2, cy + (challengeScore > 0 ? 105 : 85));
+  ctx.fillText('Send the core into the matching gate', W / 2, cy + (challengeScore > 0 ? 130 : 110));
+}
+
+function drawGameOver() {
+  ctx.fillStyle = 'rgba(5,5,20,0.82)';
+  ctx.fillRect(0, 0, W, H);
+
+  const cy = H / 2;
+
+  // Game Over title
+  ctx.fillStyle = '#ff4466';
+  ctx.font = `bold ${Math.round(W * 0.12)}px system-ui`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = '#ff2244';
+  ctx.shadowBlur = 25;
+  ctx.fillText('Game Over', W / 2, cy - 100);
+  ctx.shadowBlur = 0;
+
+  // Score
+  ctx.fillStyle = '#e0e8ff';
+  ctx.font = `bold ${Math.round(W * 0.16)}px system-ui`;
+  ctx.fillText(score, W / 2, cy - 30);
+
+  ctx.fillStyle = '#5060a0';
+  ctx.font = `${Math.round(W * 0.04)}px system-ui`;
+  ctx.fillText(`BEST: ${bestScore}`, W / 2, cy + 25);
+
+  // Stats
+  ctx.font = `${Math.round(W * 0.038)}px system-ui`;
+  ctx.fillStyle = '#404870';
+  ctx.fillText(`${perfectCount} Perfects`, W / 2, cy + 55);
+  if (combo > 0) {
+    ctx.fillText(`Max combo: ${combo}`, W / 2, cy + 78);
+  }
+
+  // Retry
+  const pulse = 0.85 + 0.15 * Math.sin(Date.now() * 0.005);
+  ctx.globalAlpha = pulse;
+  ctx.fillStyle = '#ffffff';
+  ctx.font = `bold ${Math.round(W * 0.065)}px system-ui`;
+  ctx.fillText('Tap to Retry', W / 2, cy + 125);
+  ctx.globalAlpha = 1;
+
+  // Share button (drawn as text hint)
+  ctx.fillStyle = '#304060';
+  ctx.font = `${Math.round(W * 0.038)}px system-ui`;
+  ctx.fillText('↗ tap twice to share', W / 2, cy + 165);
+}
+
+// Share functionality
+function tryShare() {
+  const url = `https://balinti.github.io/shape-rally/?challenge=${score}`;
+  const text = `I scored ${score} in Shape Rally! Can you beat me? 🎯`;
+  if (navigator.share) {
+    navigator.share({ title: 'Shape Rally', text, url }).catch(() => {});
+  } else {
+    navigator.clipboard && navigator.clipboard.writeText(`${text}\n${url}`).then(() => {
+      addPopText(W / 2, H / 3, 'Copied!', '#88ff88');
+    }).catch(() => {});
+  }
+}
+
+// Double-tap to share on game over
+let lastTapTime = 0;
+canvas.addEventListener('pointerdown', (e) => {
+  if (state === 'gameover') {
+    const now = Date.now();
+    if (now - lastTapTime < 350) {
+      tryShare();
+    }
+    lastTapTime = now;
+  }
+}, { passive: false });
+
+// --- RAF Loop ---
+function loop(now) {
+  update(now);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// Init
+resetGame();
+requestAnimationFrame((now) => {
+  lastTime = now;
+  loop(now);
+});
+
+})();
+</script>
+</body>
+</html>

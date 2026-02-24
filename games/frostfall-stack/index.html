@@ -1,0 +1,957 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Frostfall Stack - Free HTML5 Game</title>
+  <meta name="description" content="Play Frostfall Stack - Stack falling snow chunks as gravity flips between up, down, left, and right.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a1628">
+  <link rel="canonical" href="https://balinti.github.io/frostfall-stack/">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Frostfall Stack - Free HTML5 Game">
+  <meta property="og:description" content="Stack falling snow chunks as gravity flips between up, down, left, and right. How high can you go?">
+  <meta property="og:url" content="https://balinti.github.io/frostfall-stack/">
+  <meta property="og:image" content="https://balinti.github.io/frostfall-stack/preview.png">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Frostfall Stack - Free HTML5 Game">
+  <meta name="twitter:description" content="Stack falling snow chunks as gravity flips between up, down, left, and right.">
+  <meta name="twitter:image" content="https://balinti.github.io/frostfall-stack/preview.png">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #050d1a;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: flex-start;
+      overflow: hidden;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      color: #fff;
+    }
+    #game-wrap {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      height: 100vh;
+      max-height: 750px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      touch-action: none;
+      user-select: none;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    #seo-block {
+      max-width: 420px;
+      width: 100%;
+      padding: 10px 16px 6px;
+      font-size: 11px;
+      color: #556;
+      line-height: 1.5;
+      text-align: center;
+    }
+    #seo-block a { color: #7af; text-decoration: none; }
+    #seo-block a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+<div id="game-wrap">
+  <canvas id="c"></canvas>
+</div>
+<div id="seo-block">
+  <strong>Frostfall Stack</strong> — Tap or press Space/Enter to lock each slab. Gravity rotates every few blocks!
+  Land perfectly to build your combo and maximize your score.
+  <br><a href="https://balinti.github.io/frostfall-stack/" target="_blank">Play online at balinti.github.io/frostfall-stack</a>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+// ─── CANVAS SETUP ────────────────────────────────────────────────────────────
+const wrap = document.getElementById('game-wrap');
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+const MAX_DPR = 2;
+let DPR = Math.min(devicePixelRatio || 1, MAX_DPR);
+let W, H; // logical pixels
+
+function resize() {
+  const rect = wrap.getBoundingClientRect();
+  W = rect.width;
+  H = rect.height;
+  canvas.width  = Math.round(W * DPR);
+  canvas.height = Math.round(H * DPR);
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  if (state !== 'start') drawFrame();
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ─── CONSTANTS ───────────────────────────────────────────────────────────────
+const UI_TOP      = 70;   // px reserved for score UI
+const SAFE_BOTTOM = 90;   // px reserved for ad banner
+const EDGE_PAD    = 20;   // padding from playfield edges
+const SLAB_THICK  = 26;   // slab thickness in secondary axis
+const STACK_VISIBLE = 8;  // how many past slabs to render
+
+// Gravity sides: 0=Down, 1=Left, 2=Up, 3=Right
+// "side" means which edge of the playfield the stack grows toward
+const SIDE_NAMES  = ['Down','Left','Up','Right'];
+const SIDE_ARROWS = ['↓','←','↑','→'];
+
+// ─── STATE ───────────────────────────────────────────────────────────────────
+let state = 'start'; // 'start' | 'playing' | 'gameover'
+
+// Playfield
+let pf; // { x, y, w, h }
+
+// Stack
+let stack;      // array of {pos, size, color, side} objects; pos/size in main axis
+let activeSlab; // {pos, vel, size, side}
+let sideIndex;  // current gravity side
+
+// Score
+let score, combo, best;
+
+// Rotation
+let rotateEvery;   // blocks between rotations
+let blocksSinceRotate;
+let countdown;     // null | {t, phase} where phase 0=counting, done when t<=0
+let countdownActive;
+let nextSide;
+
+// Particles
+let particles;
+
+// Camera
+let shake;       // {x,y,t,dec}
+let punch;       // {s, t, dec} scale punch
+
+// Visuals
+let hue;
+let snowflakes;
+
+// Timing
+let lastTime;
+let gameoverTime;
+let retryEnabled;
+
+// Speed
+let baseSpeed;
+
+function pfRect() {
+  return {
+    x: EDGE_PAD,
+    y: UI_TOP,
+    w: W - EDGE_PAD * 2,
+    h: H - UI_TOP - SAFE_BOTTOM
+  };
+}
+
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+function lerp(a, b, t) { return a + (b - a) * t; }
+function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+function rnd(a, b) { return a + Math.random() * (b - a); }
+function rndInt(a, b) { return Math.floor(rnd(a, b + 1)); }
+
+// For a given sideIndex: which axis is "main" (the moving axis)?
+// Down/Up → X is main axis (slab moves horizontally)
+// Left/Right → Y is main axis (slab moves vertically)
+function isHoriz(si) { return si === 0 || si === 2; } // Down or Up
+
+// Playfield main axis length
+function pfMain(si) {
+  pf = pfRect();
+  return isHoriz(si) ? pf.w : pf.h;
+}
+
+// Playfield secondary axis length
+function pfSecondary(si) {
+  pf = pfRect();
+  return isHoriz(si) ? pf.h : pf.w;
+}
+
+// Convert a stack slab {pos, size, side} to screen rect
+function slabToRect(slab, layerIndex) {
+  pf = pfRect();
+  const si = slab.side;
+  const h  = isHoriz(si);
+  const secLen = h ? pf.h : pf.w;
+
+  // Secondary axis: position from anchor edge
+  // layer 0 = top of stack, grows inward
+  const secOff = SLAB_THICK * layerIndex;
+  let sx, sy, sw, sh;
+
+  if (h) {
+    // Horizontal movement: main=X secondary=Y
+    sx = pf.x + slab.pos;
+    sw = slab.size;
+    if (si === 0) { // Down: stack anchors at bottom
+      sy = pf.y + pf.h - SLAB_THICK - secOff;
+    } else { // Up: stack anchors at top
+      sy = pf.y + secOff;
+    }
+    sh = SLAB_THICK;
+  } else {
+    // Vertical movement: main=Y secondary=X
+    sy = pf.y + slab.pos;
+    sh = slab.size;
+    if (si === 1) { // Left: stack anchors at right
+      sx = pf.x + pf.w - SLAB_THICK - secOff;
+    } else { // Right: stack anchors at left
+      sx = pf.x + secOff;
+    }
+    sw = SLAB_THICK;
+  }
+  return { x: sx, y: sy, w: sw, h: sh };
+}
+
+// Active slab rect
+function activeRect() {
+  pf = pfRect();
+  const si = activeSlab.side;
+  const h  = isHoriz(si);
+
+  let sx, sy, sw, sh;
+  if (h) {
+    sx = pf.x + activeSlab.pos;
+    sw = activeSlab.size;
+    if (si === 0) {
+      // Slab comes from above, moving along x, snapping to top of stack
+      const top = stack.length > 0
+        ? slabToRect(stack[0], 0).y - SLAB_THICK
+        : pf.y + pf.h - SLAB_THICK * 2;
+      sy = pf.y + 12; // active always floats near opposite edge
+    } else {
+      sy = pf.y + pf.h - SLAB_THICK - 12;
+    }
+    sh = SLAB_THICK;
+  } else {
+    sy = pf.y + activeSlab.pos;
+    sh = activeSlab.size;
+    if (si === 1) {
+      sx = pf.x + 12;
+    } else {
+      sx = pf.x + pf.w - SLAB_THICK - 12;
+    }
+    sw = SLAB_THICK;
+  }
+  return { x: sx, y: sy, w: sw, h: sh };
+}
+
+// Perfect window: shrinks with score
+function perfectWindow() {
+  return Math.max(2, 6 - score * 0.04);
+}
+
+// Rotation frequency: block count between rotations
+function rotFreq() {
+  return Math.max(3, 8 - Math.floor(score / 8));
+}
+
+// Active speed
+function slabSpeed() {
+  return Math.min(280, 110 + score * 3.2);
+}
+
+// Color for current hue
+function slabColor(h, alpha) {
+  alpha = alpha === undefined ? 1 : alpha;
+  return `hsla(${h},70%,68%,${alpha})`;
+}
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+function initSnow() {
+  snowflakes = [];
+  for (let i = 0; i < 48; i++) {
+    snowflakes.push({
+      x: rnd(0, W), y: rnd(0, H),
+      r: rnd(1, 3.5),
+      vy: rnd(18, 50),
+      vx: rnd(-10, 10),
+      a: rnd(0.2, 0.7)
+    });
+  }
+}
+
+function initGame() {
+  pf = pfRect();
+  sideIndex = 0; // Start: Down
+  score = 0;
+  combo = 0;
+  best = parseInt(localStorage.getItem('frostfall_best') || '0');
+  particles = [];
+  shake = { x: 0, y: 0, t: 0, dec: 0 };
+  punch = { s: 1, t: 0, dec: 0 };
+  hue = 190;
+  blocksSinceRotate = 0;
+  countdown = null;
+  countdownActive = false;
+  nextSide = -1;
+  retryEnabled = false;
+  gameoverTime = 0;
+
+  // Initial stack slab
+  const mainLen = pfMain(sideIndex);
+  const initSize = mainLen * 0.55;
+  const initPos  = (mainLen - initSize) / 2;
+  stack = [{
+    pos:  initPos,
+    size: initSize,
+    color: hue,
+    side: sideIndex
+  }];
+
+  spawnActive();
+}
+
+function spawnActive() {
+  pf = pfRect();
+  const si = sideIndex;
+  const mainLen = pfMain(si);
+  const topSlab = stack[0];
+  const spawnSize = topSlab.size;
+
+  // Start from left/top edge moving right/down
+  const startPos = EDGE_PAD;
+
+  activeSlab = {
+    pos:  startPos,
+    vel:  slabSpeed(),
+    size: spawnSize,
+    side: si
+  };
+}
+
+// ─── GAME LOGIC ───────────────────────────────────────────────────────────────
+function tryLock() {
+  if (state !== 'playing') return;
+  if (countdownActive) return; // disabled during countdown
+
+  const top = stack[0];
+  if (top.side !== activeSlab.side) return; // shouldn't happen
+
+  // Overlap math
+  const a0 = top.pos, a1 = top.pos + top.size;
+  const b0 = activeSlab.pos, b1 = activeSlab.pos + activeSlab.size;
+
+  const overlapStart = Math.max(a0, b0);
+  const overlapEnd   = Math.min(a1, b1);
+  const overlap = overlapEnd - overlapStart;
+
+  if (overlap <= 0) {
+    // Miss — game over
+    triggerGameOver();
+    return;
+  }
+
+  const newPos  = overlapStart;
+  const newSize = overlap;
+  const center  = newPos + newSize / 2;
+  const topCenter = a0 + top.size / 2;
+  const offset  = Math.abs(center - topCenter);
+  const pw      = perfectWindow();
+  const isPerfect = offset <= pw;
+
+  // Trim particles (shards where trimmed off)
+  if (!isPerfect) {
+    spawnTrimParticles(top, activeSlab, overlapStart, overlapEnd);
+    combo = 0;
+  }
+
+  const finalPos  = isPerfect ? top.pos : newPos;
+  const finalSize = isPerfect ? top.size : newSize;
+
+  if (isPerfect) {
+    combo++;
+    score += 1 + combo;
+    spawnPerfectParticles(activeSlab);
+    triggerPunch(1.045, 0.18);
+    triggerShake(1.5, 0.12);
+  } else {
+    score += 1;
+    if (best < score) best = score;
+  }
+
+  if (best < score) best = score;
+  localStorage.setItem('frostfall_best', best);
+
+  // Spawn lock particles
+  spawnLockParticles(activeSlab, isPerfect);
+
+  hue = (hue + 12) % 360;
+
+  // Push new slab
+  stack.unshift({
+    pos:  finalPos,
+    size: finalSize,
+    color: hue,
+    side: sideIndex
+  });
+
+  // Trim stack length for memory
+  if (stack.length > STACK_VISIBLE + 2) stack.length = STACK_VISIBLE + 2;
+
+  blocksSinceRotate++;
+  const rf = rotFreq();
+  if (blocksSinceRotate >= rf && !countdownActive) {
+    blocksSinceRotate = 0;
+    scheduleRotation();
+  } else {
+    spawnActive();
+  }
+}
+
+function scheduleRotation() {
+  nextSide = (sideIndex + 1) % 4;
+  countdownActive = true;
+  countdown = { t: 1.2, phase: 3 }; // 3-2-1
+}
+
+function finishRotation() {
+  sideIndex = nextSide;
+  countdownActive = false;
+  countdown = null;
+
+  // Transition stack: the top slab's pos/size need to be expressed in new side's main axis
+  // We re-init with the current top slab size preserved, centered
+  const prev = stack[0];
+  pf = pfRect();
+  const newMain = pfMain(sideIndex);
+  const sz = Math.min(prev.size, newMain * 0.9);
+  const pos = (newMain - sz) / 2;
+
+  // Rebuild stack as single anchor slab in new orientation
+  stack = [{
+    pos: pos,
+    size: sz,
+    color: prev.color,
+    side: sideIndex
+  }];
+
+  spawnActive();
+}
+
+function triggerGameOver() {
+  state = 'gameover';
+  if (best < score) best = score;
+  localStorage.setItem('frostfall_best', best);
+  triggerShake(8, 0.4);
+  gameoverTime = performance.now();
+  retryEnabled = false;
+  setTimeout(() => { retryEnabled = true; }, 900);
+
+  // Big particle burst
+  const ar = activeRect();
+  for (let i = 0; i < 30; i++) {
+    spawnParticle(ar.x + ar.w/2, ar.y + ar.h/2, {
+      vx: rnd(-180, 180), vy: rnd(-200, 80),
+      life: rnd(0.5, 1.2), r: rnd(3,8),
+      color: slabColor(hue)
+    });
+  }
+}
+
+function triggerShake(mag, dur) {
+  shake.t = dur;
+  shake.dec = mag;
+}
+
+function triggerPunch(s, dur) {
+  punch.s = s;
+  punch.t = dur;
+  punch.dec = (s - 1) / dur;
+}
+
+// ─── PARTICLES ────────────────────────────────────────────────────────────────
+function spawnParticle(x, y, opts) {
+  particles.push({
+    x, y,
+    vx: opts.vx || 0, vy: opts.vy || 0,
+    life: opts.life || 0.6,
+    maxLife: opts.life || 0.6,
+    r: opts.r || 3,
+    color: opts.color || '#fff'
+  });
+}
+
+function spawnLockParticles(slab, isPerfect) {
+  const r = activeRect();
+  const cx = r.x + r.w / 2;
+  const cy = r.y + r.h / 2;
+  const n = isPerfect ? 0 : 10;
+  for (let i = 0; i < n; i++) {
+    const angle = (Math.PI * 2 * i / n) + rnd(-0.3, 0.3);
+    const spd = rnd(40, 110);
+    spawnParticle(cx, cy, {
+      vx: Math.cos(angle) * spd,
+      vy: Math.sin(angle) * spd,
+      life: rnd(0.3, 0.7),
+      r: rnd(2, 5),
+      color: slabColor(hue, 0.9)
+    });
+  }
+}
+
+function spawnPerfectParticles(slab) {
+  const r = activeRect();
+  const cx = r.x + r.w / 2;
+  const cy = r.y + r.h / 2;
+  for (let i = 0; i < 22; i++) {
+    const angle = (Math.PI * 2 * i / 22);
+    const spd = rnd(60, 190);
+    spawnParticle(cx, cy, {
+      vx: Math.cos(angle) * spd,
+      vy: Math.sin(angle) * spd - 30,
+      life: rnd(0.4, 0.9),
+      r: rnd(2, 6),
+      color: `hsl(${(hue + 40) % 360},90%,80%)`
+    });
+  }
+}
+
+function spawnTrimParticles(top, active, overlapStart, overlapEnd) {
+  // Two trim regions
+  const regions = [];
+  if (top.pos < overlapStart) regions.push({lo: top.pos, hi: overlapStart});
+  if (overlapEnd < top.pos + top.size) regions.push({lo: overlapEnd, hi: top.pos + top.size});
+
+  pf = pfRect();
+  const si = active.side;
+  const h  = isHoriz(si);
+
+  regions.forEach(reg => {
+    const n = Math.ceil((reg.hi - reg.lo) / 10) + 3;
+    for (let i = 0; i < n; i++) {
+      const t = rnd(reg.lo, reg.hi);
+      let x, y;
+      if (h) {
+        x = pf.x + t + rnd(-4, 4);
+        y = si === 0 ? (pf.y + pf.h - SLAB_THICK * stack.length - 10) : (pf.y + SLAB_THICK * stack.length + 10);
+      } else {
+        y = pf.y + t + rnd(-4, 4);
+        x = si === 1 ? (pf.x + pf.w - SLAB_THICK * stack.length - 10) : (pf.x + SLAB_THICK * stack.length + 10);
+      }
+      spawnParticle(x, y, {
+        vx: rnd(-120, 120),
+        vy: rnd(-80, 40),
+        life: rnd(0.3, 0.8),
+        r: rnd(2, 5),
+        color: `hsl(${top.color},60%,75%)`
+      });
+    }
+  });
+}
+
+// ─── DRAW ─────────────────────────────────────────────────────────────────────
+function drawFrame(dt) {
+  dt = dt || 0;
+  pf = pfRect();
+
+  // Shake offset
+  let sx = 0, sy = 0;
+  if (shake.t > 0) {
+    const mag = shake.dec * (shake.t / (shake.t + 0.01));
+    sx = rnd(-mag, mag);
+    sy = rnd(-mag, mag);
+    shake.t -= dt;
+    if (shake.t < 0) { shake.t = 0; sx = 0; sy = 0; }
+  }
+
+  // Punch scale
+  let ps = 1;
+  if (punch.t > 0) {
+    ps = punch.s;
+    punch.s = Math.max(1, punch.s - punch.dec * dt);
+    punch.t -= dt;
+    if (punch.t < 0) { punch.t = 0; punch.s = 1; }
+  }
+
+  ctx.save();
+  ctx.clearRect(0, 0, W, H);
+
+  // Background gradient
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, `hsl(${(hue + 200) % 360},30%,8%)`);
+  bg.addColorStop(1, `hsl(${(hue + 220) % 360},25%,4%)`);
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // Snowflakes
+  drawSnow(dt);
+
+  // Apply camera transforms
+  ctx.translate(W/2 + sx, H/2 + sy);
+  ctx.scale(ps, ps);
+  ctx.translate(-W/2, -H/2);
+
+  if (state === 'start') {
+    drawStartScreen();
+  } else if (state === 'playing' || state === 'gameover') {
+    drawGame(dt);
+    drawUI();
+    if (state === 'gameover') drawGameOver();
+  }
+
+  ctx.restore();
+
+  // Particles on top (no camera shake, already baked into position? Actually let's apply shake)
+  ctx.save();
+  ctx.translate(W/2 + sx, H/2 + sy);
+  ctx.scale(ps, ps);
+  ctx.translate(-W/2, -H/2);
+  drawParticles(dt);
+  ctx.restore();
+}
+
+function drawSnow(dt) {
+  ctx.save();
+  snowflakes.forEach(sf => {
+    if (dt) {
+      sf.y += sf.vy * dt;
+      sf.x += sf.vx * dt;
+      if (sf.y > H + 5) sf.y = -5;
+      if (sf.x > W + 5) sf.x = -5;
+      if (sf.x < -5) sf.x = W + 5;
+    }
+    ctx.globalAlpha = sf.a;
+    ctx.fillStyle = '#c8e8ff';
+    ctx.beginPath();
+    ctx.arc(sf.x, sf.y, sf.r, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+function drawGame(dt) {
+  pf = pfRect();
+
+  // Playfield subtle border
+  ctx.save();
+  ctx.strokeStyle = `hsla(${hue},50%,50%,0.18)`;
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(pf.x, pf.y, pf.w, pf.h);
+  ctx.restore();
+
+  // Draw stack
+  stack.forEach((slab, i) => {
+    const r = slabToRect(slab, i);
+    const alpha = Math.max(0.25, 1 - i * 0.08);
+    drawSlab(r, slab.color, alpha, i === 0);
+  });
+
+  // Draw active slab
+  if (state === 'playing' && !countdownActive) {
+    const ar = activeRect();
+    drawSlab(ar, hue, 1, false, true);
+  } else if (state === 'playing' && countdownActive) {
+    // Still draw active, dimmed
+    const ar = activeRect();
+    drawSlab(ar, hue, 0.4, false, true);
+  }
+
+  // Rotation countdown overlay
+  if (countdownActive && countdown) {
+    drawCountdown();
+  }
+}
+
+function drawSlab(r, h, alpha, isTop, isActive) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+
+  // Main fill
+  const grad = ctx.createLinearGradient(r.x, r.y, r.x, r.y + r.h);
+  grad.addColorStop(0, `hsl(${h},65%,75%)`);
+  grad.addColorStop(1, `hsl(${h},55%,50%)`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(r.x, r.y, r.w, r.h);
+
+  // Shine
+  ctx.globalAlpha = alpha * 0.35;
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(r.x + 2, r.y + 2, r.w - 4, Math.min(6, r.h * 0.3));
+
+  // Outline
+  ctx.globalAlpha = alpha;
+  ctx.strokeStyle = isActive
+    ? `hsl(${h},80%,85%)`
+    : (isTop ? `hsl(${h},70%,80%)` : `hsl(${h},50%,55%)`);
+  ctx.lineWidth = isActive ? 2 : 1.2;
+  ctx.strokeRect(r.x, r.y, r.w, r.h);
+
+  ctx.restore();
+}
+
+function drawCountdown() {
+  pf = pfRect();
+  const cx = pf.x + pf.w / 2;
+  const cy = pf.y + pf.h / 2;
+
+  // Dim overlay
+  ctx.save();
+  ctx.fillStyle = 'rgba(5,13,26,0.55)';
+  ctx.fillRect(pf.x, pf.y, pf.w, pf.h);
+
+  // Arrow for next side
+  const arrow = SIDE_ARROWS[nextSide];
+  const name  = 'Gravity: ' + SIDE_NAMES[nextSide];
+
+  ctx.fillStyle = `hsl(${hue},85%,70%)`;
+  ctx.font = 'bold 64px system-ui';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(arrow, cx, cy - 28);
+
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 18px system-ui';
+  ctx.fillText(name, cx, cy + 32);
+
+  // Countdown number
+  const n = Math.ceil(countdown.t / 0.4); // 3-2-1
+  const countNum = clamp(n, 1, 3);
+  const progress = 1 - (countdown.t % 0.4) / 0.4;
+  const numScale = 1 + (1 - progress) * 0.5;
+
+  ctx.save();
+  ctx.translate(cx, cy + 78);
+  ctx.scale(numScale, numScale);
+  ctx.fillStyle = `hsla(${hue},90%,80%,${0.5 + progress * 0.5})`;
+  ctx.font = `bold 38px system-ui`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(countNum, 0, 0);
+  ctx.restore();
+
+  ctx.restore();
+}
+
+function drawUI() {
+  // Score
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+
+  ctx.fillStyle = `hsl(${hue},70%,72%)`;
+  ctx.font = 'bold 38px system-ui';
+  ctx.fillText(score, W / 2, 10);
+
+  ctx.fillStyle = 'rgba(255,255,255,0.45)';
+  ctx.font = '13px system-ui';
+  ctx.fillText('BEST ' + best, W / 2, 52);
+
+  // Combo indicator
+  if (combo >= 2) {
+    ctx.fillStyle = `hsl(${(hue + 50) % 360},90%,72%)`;
+    ctx.font = 'bold 14px system-ui';
+    ctx.fillText('✦ PERFECT ×' + combo, W / 2, 36);
+  }
+
+  ctx.restore();
+}
+
+function drawStartScreen() {
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  // Title
+  const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 600);
+  ctx.shadowColor = `hsl(${hue},80%,65%)`;
+  ctx.shadowBlur = 18 + pulse * 10;
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 46px system-ui';
+  ctx.fillText('FROSTFALL', W/2, H/2 - 62);
+
+  ctx.font = 'bold 28px system-ui';
+  ctx.fillStyle = `hsl(${hue},75%,72%)`;
+  ctx.fillText('STACK', W/2, H/2 - 18);
+  ctx.shadowBlur = 0;
+
+  // Tap prompt
+  const tapAlpha = 0.6 + 0.4 * Math.sin(performance.now() / 500);
+  ctx.globalAlpha = tapAlpha;
+  ctx.fillStyle = '#cde';
+  ctx.font = '18px system-ui';
+  ctx.fillText('Tap to Start', W/2, H/2 + 44);
+  ctx.globalAlpha = 1;
+
+  // Gravity icons
+  ctx.fillStyle = 'rgba(255,255,255,0.3)';
+  ctx.font = '22px system-ui';
+  const icons = ['↓','←','↑','→'];
+  const sp = 44;
+  const startX = W/2 - sp * 1.5;
+  icons.forEach((ic, i) => {
+    ctx.fillStyle = `hsla(${(hue + i*40) % 360},80%,70%,0.7)`;
+    ctx.fillText(ic, startX + i * sp, H/2 + 100);
+  });
+
+  ctx.restore();
+}
+
+function drawGameOver() {
+  ctx.save();
+
+  // Backdrop
+  ctx.fillStyle = 'rgba(5,13,26,0.72)';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  ctx.fillStyle = '#ff6a6a';
+  ctx.font = 'bold 32px system-ui';
+  ctx.fillText('GAME OVER', W/2, H/2 - 72);
+
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 54px system-ui';
+  ctx.fillText(score, W/2, H/2 - 16);
+
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.font = '16px system-ui';
+  ctx.fillText('BEST  ' + best, W/2, H/2 + 34);
+
+  if (retryEnabled) {
+    const tapAlpha = 0.6 + 0.4 * Math.sin(performance.now() / 500);
+    ctx.globalAlpha = tapAlpha;
+    ctx.fillStyle = `hsl(${hue},80%,72%)`;
+    ctx.font = 'bold 20px system-ui';
+    ctx.fillText('Tap to Retry', W/2, H/2 + 82);
+    ctx.globalAlpha = 1;
+  }
+
+  ctx.restore();
+}
+
+function drawParticles(dt) {
+  particles.forEach(p => {
+    if (dt) {
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy += 220 * dt; // gravity
+      p.vx *= (1 - 1.5 * dt);
+      p.life -= dt;
+    }
+    const a = Math.max(0, p.life / p.maxLife);
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.fillStyle = p.color;
+    const s = p.r * a + 0.5;
+    ctx.fillRect(p.x - s/2, p.y - s/2, s, s);
+    ctx.restore();
+  });
+  particles = particles.filter(p => p.life > 0);
+}
+
+// ─── GAME LOOP ────────────────────────────────────────────────────────────────
+let rafId = null;
+function loop(ts) {
+  rafId = requestAnimationFrame(loop);
+  const dt = lastTime ? Math.min((ts - lastTime) / 1000, 0.05) : 0.016;
+  lastTime = ts;
+
+  hue = (hue + 4 * dt) % 360;
+
+  if (state === 'playing') {
+    // Update active slab
+    if (!countdownActive) {
+      pf = pfRect();
+      const mainLen = pfMain(sideIndex);
+      const half = activeSlab.size / 2;
+      const minPos = 0;
+      const maxPos = mainLen - activeSlab.size;
+
+      activeSlab.pos += activeSlab.vel * dt;
+      if (activeSlab.pos >= maxPos) {
+        activeSlab.pos = maxPos;
+        activeSlab.vel = -Math.abs(activeSlab.vel);
+      } else if (activeSlab.pos <= minPos) {
+        activeSlab.pos = minPos;
+        activeSlab.vel = Math.abs(activeSlab.vel);
+      }
+    }
+
+    // Countdown
+    if (countdownActive && countdown) {
+      countdown.t -= dt;
+      if (countdown.t <= 0) {
+        finishRotation();
+      }
+    }
+  }
+
+  drawFrame(dt);
+}
+
+function startLoop() {
+  if (rafId) cancelAnimationFrame(rafId);
+  lastTime = null;
+  rafId = requestAnimationFrame(loop);
+}
+
+// ─── INPUT ────────────────────────────────────────────────────────────────────
+function handleInput() {
+  if (state === 'start') {
+    state = 'playing';
+    initGame();
+    return;
+  }
+  if (state === 'gameover') {
+    if (!retryEnabled) return;
+    state = 'playing';
+    initGame();
+    return;
+  }
+  if (state === 'playing') {
+    tryLock();
+  }
+}
+
+wrap.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  handleInput();
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    handleInput();
+  }
+});
+
+// ─── BOOT ─────────────────────────────────────────────────────────────────────
+best = parseInt(localStorage.getItem('frostfall_best') || '0');
+hue = 190;
+score = 0; combo = 0;
+stack = []; particles = [];
+shake = { x: 0, y: 0, t: 0, dec: 0 };
+punch = { s: 1, t: 0, dec: 0 };
+retryEnabled = true;
+countdownActive = false; countdown = null;
+sideIndex = 0;
+blocksSinceRotate = 0;
+initSnow();
+startLoop();
+
+})();
+</script>
+</body>
+</html>

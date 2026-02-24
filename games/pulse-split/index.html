@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Pulse Split - Free HTML5 Game</title>
+  <meta name="description" content="Play Pulse Split - Tap rhythmically to control two neon orbs moving in sync but split lanes.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a0a1a">
+  <link rel="canonical" href="https://balinti.github.io/pulse-split/">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Pulse Split - Free HTML5 Game">
+  <meta property="og:description" content="Play Pulse Split - Tap rhythmically to control two neon orbs moving in sync but split lanes.">
+  <meta property="og:url" content="https://balinti.github.io/pulse-split/">
+  <meta property="og:image" content="https://balinti.github.io/pulse-split/og-image.png">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Pulse Split - Free HTML5 Game">
+  <meta name="twitter:description" content="Play Pulse Split - Tap rhythmically to control two neon orbs moving in sync but split lanes.">
+  <meta name="twitter:image" content="https://balinti.github.io/pulse-split/og-image.png">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #05050f;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      overflow: hidden;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      touch-action: none;
+    }
+    #container {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      height: 100%;
+      max-height: 750px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    #gameCanvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: pointer;
+      touch-action: none;
+    }
+    #controls-info {
+      position: absolute;
+      bottom: 6px;
+      left: 0; right: 0;
+      text-align: center;
+      color: rgba(255,255,255,0.25);
+      font-size: 11px;
+      letter-spacing: 0.05em;
+      pointer-events: none;
+      user-select: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="container">
+    <canvas id="gameCanvas"></canvas>
+    <div id="controls-info">Tap or press Space / Enter to play &bull; Split &amp; merge to pass gates</div>
+  </div>
+
+<script>
+(function(){
+'use strict';
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+const VW = 420, VH = 750;
+const LANE_L = VW * 0.27;
+const LANE_C = VW * 0.5;
+const LANE_R = VW * 0.73;
+const PLAYER_Y = VH * 0.72;
+const ORB_R_MERGED = 22;
+const ORB_R_SPLIT  = 14;
+const GATE_H = 28;
+const GATE_SPEED_BASE = 320; // px/s virtual
+const BPM = 90;
+const BEAT_MS = (60 / BPM) * 1000;
+
+// ─── Canvas Setup ────────────────────────────────────────────────────────────
+const canvas = document.getElementById('gameCanvas');
+const ctx    = canvas.getContext('2d');
+const container = document.getElementById('container');
+let dpr = 1, scaleX = 1, scaleY = 1;
+
+function resizeCanvas() {
+  const rect = container.getBoundingClientRect();
+  dpr = window.devicePixelRatio || 1;
+  canvas.width  = rect.width  * dpr;
+  canvas.height = rect.height * dpr;
+  canvas.style.width  = rect.width  + 'px';
+  canvas.style.height = rect.height + 'px';
+  scaleX = canvas.width  / VW;
+  scaleY = canvas.height / VH;
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+// ─── State ───────────────────────────────────────────────────────────────────
+let state = 'start'; // 'start' | 'playing' | 'gameover'
+let score = 0, best = 0, streak = 0, multiplier = 1;
+let distance = 0;
+let hue = 200;
+let isSplit = false;
+let splitT = 0; // 0=merged, 1=split, tweened
+let gateSpeed = GATE_SPEED_BASE;
+let gates = [];
+let particles = [];
+let beatTime = 0;
+let beatPulse = 0;
+let onBeatBonus = false;
+let shakeT = 0, shakeMag = 0;
+let failReason = '';
+let lastTS = 0;
+let frameHue = 200;
+let pulseLock = false;
+let pulseLockTimer = 0;
+let diffTimer = 0;
+let orbSplit = 0; // animation tween
+let comboText = [];
+let orbGlow = 0;
+
+// Orb positions (virtual)
+let orbX1 = LANE_C, orbX2 = LANE_C;
+let orbY  = PLAYER_Y;
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function lerp(a, b, t) { return a + (b - a) * t; }
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+function easeInOut(t) { return t < 0.5 ? 2*t*t : -1+(4-2*t)*t; }
+
+function vx(x) { return x * scaleX; }
+function vy(y) { return y * scaleY; }
+function vr(r) { return r * Math.min(scaleX, scaleY); }
+
+function loadBest() {
+  try { best = parseInt(localStorage.getItem('pulseSplitBest') || '0', 10) || 0; } catch(e){}
+}
+function saveBest() {
+  try { localStorage.setItem('pulseSplitBest', String(best)); } catch(e){}
+}
+
+function randRange(a, b) { return a + Math.random() * (b - a); }
+
+// ─── Particles ───────────────────────────────────────────────────────────────
+function spawnParticles(cx, cy, count, h, speed, life) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const spd   = randRange(speed * 0.4, speed);
+    particles.push({
+      x: cx, y: cy,
+      vx: Math.cos(angle) * spd,
+      vy: Math.sin(angle) * spd,
+      life: life, maxLife: life,
+      r: randRange(2, 5),
+      h: h + randRange(-20, 20)
+    });
+  }
+}
+
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy += 60 * dt; // slight gravity
+    p.life -= dt;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    const alpha = p.life / p.maxLife;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = `hsl(${p.h},100%,65%)`;
+    ctx.shadowColor = `hsl(${p.h},100%,65%)`;
+    ctx.shadowBlur = vr(6);
+    ctx.beginPath();
+    ctx.arc(vx(p.x), vy(p.y), vr(p.r) * alpha, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+// ─── Gate factory ────────────────────────────────────────────────────────────
+let nextGateY = -150;
+let gateQueue = [];
+const GATE_TYPES = ['single','dual'];
+
+function spawnNextGate() {
+  if (gateQueue.length > 0) {
+    const def = gateQueue.shift();
+    gates.push(createGate(def.type, def.opts));
+    nextGateY = -GATE_H - randRange(160, 240);
+    return;
+  }
+
+  // Weighted random
+  let type = 'single';
+  const r = Math.random();
+  if (diffTimer > 10) {
+    type = r < 0.45 ? 'single' : r < 0.9 ? 'dual' : (Math.random() < 0.5 ? 'narrow_single' : 'narrow_dual');
+  } else {
+    type = r < 0.5 ? 'single' : 'dual';
+  }
+
+  // Fakeouts after 15s
+  let fakeout = false;
+  if (diffTimer > 15 && Math.random() < 0.15) fakeout = true;
+
+  // Pulse lock after 20s
+  let lock = false;
+  if (diffTimer > 20 && Math.random() < 0.12) lock = true;
+
+  // Combo gate after 25s
+  if (diffTimer > 25 && Math.random() < 0.1) {
+    const t1 = Math.random() < 0.5 ? 'single' : 'dual';
+    const t2 = t1 === 'single' ? 'dual' : 'single';
+    gateQueue.push({ type: t2, opts: { fakeout: false, lock: false } });
+    nextGateY -= 70;
+    type = t1;
+  }
+
+  gates.push(createGate(type, { fakeout, lock }));
+  nextGateY = -GATE_H - randRange(160, 240);
+}
+
+function createGate(type, opts = {}) {
+  const base = { y: nextGateY, type, passed: false, hit: false,
+                  fakeout: opts.fakeout || false, lock: opts.lock || false,
+                  fakeoutTriggered: false };
+  const narrow = type === 'narrow_single' || type === 'narrow_dual';
+  const openW  = narrow ? 48 : 68;
+
+  if (type === 'single' || type === 'narrow_single') {
+    // Center opening
+    base.openings = [{ cx: LANE_C, w: openW }];
+    base.requires = 'merged';
+  } else {
+    // Two side openings
+    base.openings = [{ cx: LANE_L, w: openW }, { cx: LANE_R, w: openW }];
+    base.requires = 'split';
+  }
+  return base;
+}
+
+// ─── Beat system ─────────────────────────────────────────────────────────────
+function getBeatPhase(ts) {
+  return ((ts % BEAT_MS) / BEAT_MS);
+}
+
+function isOnBeat(ts) {
+  const phase = getBeatPhase(ts);
+  return phase < 0.15 || phase > 0.85;
+}
+
+// ─── Combo text ──────────────────────────────────────────────────────────────
+function addComboText(txt, cx, cy, h) {
+  comboText.push({ txt, x: cx, y: cy, life: 1.2, maxLife: 1.2, h });
+}
+
+// ─── Game init ───────────────────────────────────────────────────────────────
+function initGame() {
+  score = 0; streak = 0; multiplier = 1; distance = 0;
+  hue = 200; frameHue = 200;
+  isSplit = false; orbSplit = 0;
+  gates = []; particles = []; comboText = [];
+  gateQueue = [];
+  gateSpeed = GATE_SPEED_BASE;
+  diffTimer = 0;
+  pulseLock = false; pulseLockTimer = 0;
+  beatTime = 0; beatPulse = 0; onBeatBonus = false;
+  shakeT = 0; shakeMag = 0;
+  failReason = '';
+  orbGlow = 0;
+  nextGateY = -200;
+  lastTS = 0;
+  spawnNextGate();
+}
+
+// ─── Input ───────────────────────────────────────────────────────────────────
+function handleInput(ts) {
+  if (state === 'start') {
+    state = 'playing';
+    initGame();
+    lastTS = ts;
+    return;
+  }
+  if (state === 'gameover') {
+    state = 'playing';
+    initGame();
+    lastTS = ts;
+    return;
+  }
+  if (state === 'playing') {
+    if (pulseLock) {
+      addComboText('LOCKED!', LANE_C, PLAYER_Y - 60, 0);
+      shakeT = 0.3; shakeMag = 4;
+      return;
+    }
+    isSplit = !isSplit;
+    const beat = isOnBeat(ts);
+    orbGlow = 1.0;
+    if (beat) {
+      onBeatBonus = true;
+      multiplier = Math.min(multiplier + 0.5, 5);
+      spawnParticles(LANE_C, PLAYER_Y - 20, 8, frameHue, 180, 0.5);
+      addComboText('ON BEAT! x' + multiplier.toFixed(1), LANE_C, PLAYER_Y - 80, 60);
+    }
+  }
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  handleInput(performance.now());
+});
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    handleInput(performance.now());
+  }
+});
+
+// ─── Update ───────────────────────────────────────────────────────────────────
+function update(ts) {
+  const dt = Math.min((ts - lastTS) / 1000, 0.05);
+  lastTS = ts;
+  if (dt <= 0) return;
+
+  // Beat
+  beatTime += dt * 1000;
+  const phase = getBeatPhase(beatTime);
+  beatPulse = Math.pow(Math.sin(phase * Math.PI * 2), 8);
+
+  // Hue
+  frameHue = (frameHue + 15 * dt) % 360;
+
+  // Difficulty ramp
+  diffTimer += dt;
+  gateSpeed = GATE_SPEED_BASE + diffTimer * 14;
+  distance += gateSpeed * dt;
+  score = Math.floor(distance / 10 + streak * 5 * multiplier);
+
+  // Pulse lock timer
+  if (pulseLock) {
+    pulseLockTimer -= dt;
+    if (pulseLockTimer <= 0) pulseLock = false;
+  }
+
+  // Orb tween
+  const targetSplit = isSplit ? 1 : 0;
+  orbSplit = lerp(orbSplit, targetSplit, 1 - Math.pow(0.001, dt));
+  orbGlow  = Math.max(0, orbGlow - dt * 2);
+
+  // Orb positions
+  orbX1 = lerp(LANE_C, LANE_L, easeInOut(orbSplit));
+  orbX2 = lerp(LANE_C, LANE_R, easeInOut(orbSplit));
+
+  // Orb radius
+  const orbR = lerp(ORB_R_MERGED, ORB_R_SPLIT, orbSplit);
+
+  // Spawn gates
+  if (gates.length === 0 || (gates[gates.length-1].y > nextGateY + GATE_H)) {
+    spawnNextGate();
+  }
+
+  // Move gates
+  const speed = gateSpeed * dt;
+  for (let i = gates.length - 1; i >= 0; i--) {
+    const g = gates[i];
+    g.y += speed;
+
+    // Fakeout: if player approaches close, swap type at trigger point
+    if (g.fakeout && !g.fakeoutTriggered && g.y > VH * 0.45) {
+      g.fakeoutTriggered = true;
+      if (g.requires === 'merged') {
+        g.requires = 'split';
+        g.openings = [{ cx: LANE_L, w: 68 }, { cx: LANE_R, w: 68 }];
+      } else {
+        g.requires = 'merged';
+        g.openings = [{ cx: LANE_C, w: 68 }];
+      }
+      addComboText('FAKEOUT!', LANE_C, g.y - 20, 30);
+    }
+
+    // Pulse lock gate
+    if (g.lock && !g.passed && !g.hit && g.y > VH * 0.35 && g.y < VH * 0.6) {
+      if (!pulseLock) {
+        pulseLock = true;
+        pulseLockTimer = 1.5;
+      }
+    }
+
+    // Check pass / hit
+    const gTop = g.y - GATE_H / 2;
+    const gBot = g.y + GATE_H / 2;
+    const playerPassed = gBot >= PLAYER_Y - orbR && gTop <= PLAYER_Y + orbR;
+
+    if (!g.passed && !g.hit && playerPassed) {
+      // Check collision
+      const survived = checkGate(g, orbR);
+      if (survived) {
+        g.passed = true;
+        streak++;
+        multiplier = Math.min(1 + Math.floor(streak / 3) * 0.5, 5);
+        const bonus = Math.round(100 * multiplier);
+        score += bonus;
+        spawnParticles(LANE_C, g.y, 12, frameHue, 200, 0.6);
+        // Clutch bonus
+        const gapY = Math.abs(g.y - PLAYER_Y);
+        if (gapY < 20) {
+          score += 50;
+          addComboText('CLUTCH! +50', LANE_C, g.y + 10, 120);
+        }
+        addComboText('x' + multiplier.toFixed(1) + ' +' + bonus, LANE_C, g.y - 10, frameHue);
+      } else {
+        g.hit = true;
+        triggerDeath(g);
+      }
+    }
+
+    // Remove off-screen
+    if (g.y > VH + 60) gates.splice(i, 1);
+  }
+
+  // Particles
+  updateParticles(dt);
+
+  // Shake
+  if (shakeT > 0) shakeT = Math.max(0, shakeT - dt);
+
+  // Combo text
+  for (let i = comboText.length - 1; i >= 0; i--) {
+    comboText[i].life -= dt;
+    comboText[i].y   -= 30 * dt;
+    if (comboText[i].life <= 0) comboText.splice(i, 1);
+  }
+}
+
+function checkGate(g, orbR) {
+  const form = orbSplit > 0.5 ? 'split' : 'merged';
+  if (form !== g.requires) {
+    failReason = 'Wrong form for gate!';
+    return false;
+  }
+  // Collision with walls
+  if (form === 'merged') {
+    const op = g.openings[0];
+    const left  = op.cx - op.w / 2;
+    const right = op.cx + op.w / 2;
+    if (LANE_C - orbR < left || LANE_C + orbR > right) {
+      failReason = 'Too wide for opening!';
+      return false;
+    }
+  } else {
+    // Two orbs must fit two openings
+    for (let i = 0; i < 2; i++) {
+      const op = g.openings[i];
+      const ox = i === 0 ? orbX1 : orbX2;
+      const left  = op.cx - op.w / 2;
+      const right = op.cx + op.w / 2;
+      if (ox - orbR < left || ox + orbR > right) {
+        failReason = 'Orb missed the opening!';
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+function triggerDeath(g) {
+  if (score > best) { best = score; saveBest(); }
+  shakeMag = 14; shakeT = 0.6;
+  spawnParticles(orbX1, PLAYER_Y, 20, 0,   300, 1.0);
+  spawnParticles(orbX2, PLAYER_Y, 20, 200, 300, 1.0);
+  setTimeout(() => { state = 'gameover'; }, 700);
+}
+
+// ─── Draw ─────────────────────────────────────────────────────────────────────
+function draw(ts) {
+  ctx.save();
+
+  // Shake
+  let sx = 0, sy = 0;
+  if (shakeT > 0) {
+    const mag = shakeMag * (shakeT / 0.6);
+    sx = (Math.random() - 0.5) * 2 * vr(mag);
+    sy = (Math.random() - 0.5) * 2 * vr(mag);
+    ctx.translate(sx, sy);
+  }
+
+  // Background
+  const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+  grad.addColorStop(0, `hsl(${frameHue}, 30%, 5%)`);
+  grad.addColorStop(1, `hsl(${(frameHue+60)%360}, 20%, 8%)`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Tunnel lines
+  drawTunnel();
+
+  // Beat ring
+  if (state === 'playing' || state === 'gameover') {
+    const ringAlpha = beatPulse * 0.12;
+    ctx.save();
+    ctx.globalAlpha = ringAlpha;
+    ctx.strokeStyle = `hsl(${frameHue},100%,70%)`;
+    ctx.lineWidth = vr(2);
+    ctx.beginPath();
+    ctx.arc(vx(LANE_C), vy(PLAYER_Y), vr(40 + beatPulse * 15), 0, Math.PI*2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Gates
+  if (state === 'playing') drawGates();
+
+  // Particles
+  drawParticles();
+
+  // Orbs
+  if (state === 'playing') drawOrbs();
+
+  // Pulse lock indicator
+  if (pulseLock && state === 'playing') {
+    ctx.save();
+    ctx.globalAlpha = 0.6 + 0.4 * Math.sin(ts * 0.01);
+    ctx.strokeStyle = `hsl(0,100%,60%)`;
+    ctx.lineWidth = vr(3);
+    ctx.setLineDash([vr(8), vr(6)]);
+    ctx.strokeRect(vx(20), vy(PLAYER_Y - 50), vx(VW - 40), vy(100));
+    ctx.restore();
+    drawText('PULSE LOCKED', vx(LANE_C), vy(PLAYER_Y - 60), vr(12), `hsl(0,100%,70%)`, 'center', 'bold');
+  }
+
+  // Combo text
+  for (const ct of comboText) {
+    const alpha = clamp(ct.life / ct.maxLife, 0, 1);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.font = `bold ${vr(15)}px 'Segoe UI', sans-serif`;
+    ctx.fillStyle = `hsl(${ct.h},100%,75%)`;
+    ctx.textAlign = 'center';
+    ctx.shadowColor = `hsl(${ct.h},100%,60%)`;
+    ctx.shadowBlur = vr(8);
+    ctx.fillText(ct.txt, vx(ct.x), vy(ct.y));
+    ctx.restore();
+  }
+
+  // HUD
+  if (state === 'playing') drawHUD();
+
+  // Screens
+  if (state === 'start')    drawStart();
+  if (state === 'gameover') drawGameOver();
+
+  ctx.restore();
+}
+
+function drawTunnel() {
+  const lx = vx(VW * 0.08);
+  const rx = vx(VW * 0.92);
+  ctx.save();
+  ctx.strokeStyle = `hsla(${frameHue},60%,40%,0.3)`;
+  ctx.lineWidth = vr(1.5);
+  ctx.beginPath(); ctx.moveTo(lx, 0); ctx.lineTo(lx, canvas.height); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(rx, 0); ctx.lineTo(rx, canvas.height); ctx.stroke();
+  // Center dashes
+  ctx.setLineDash([vr(12), vr(12)]);
+  ctx.strokeStyle = `hsla(${frameHue},40%,40%,0.15)`;
+  ctx.beginPath(); ctx.moveTo(vx(LANE_C), 0); ctx.lineTo(vx(LANE_C), canvas.height); ctx.stroke();
+  ctx.restore();
+}
+
+function drawGates() {
+  for (const g of gates) {
+    const cy = g.y;
+    const h = GATE_H;
+    const wallColor = g.hit ? `hsl(0,100%,50%)` :
+                      g.requires === 'merged' ? `hsl(${frameHue},90%,60%)` :
+                                                `hsl(${(frameHue+140)%360},90%,60%)`;
+    ctx.save();
+    ctx.shadowColor = wallColor;
+    ctx.shadowBlur  = vr(10);
+    ctx.fillStyle   = wallColor;
+
+    // Draw walls (tunnel walls minus openings)
+    const tunnelL = VW * 0.08;
+    const tunnelR = VW * 0.92;
+
+    // collect opening segments
+    const openings = g.openings.slice().sort((a,b) => a.cx - b.cx);
+    let prev = tunnelL;
+    for (const op of openings) {
+      const opL = op.cx - op.w / 2;
+      const opR = op.cx + op.w / 2;
+      if (prev < opL) {
+        ctx.fillRect(vx(prev), vy(cy - h/2), vx(opL - prev), vy(h));
+      }
+      prev = opR;
+    }
+    if (prev < tunnelR) {
+      ctx.fillRect(vx(prev), vy(cy - h/2), vx(tunnelR - prev), vy(h));
+    }
+
+    // Opening glow lines
+    ctx.globalAlpha = 0.4;
+    ctx.shadowBlur  = vr(16);
+    for (const op of openings) {
+      ctx.beginPath();
+      ctx.moveTo(vx(op.cx - op.w/2), vy(cy));
+      ctx.lineTo(vx(op.cx + op.w/2), vy(cy));
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth   = vr(1);
+      ctx.stroke();
+    }
+
+    // Gate type label
+    ctx.globalAlpha = 0.7;
+    ctx.shadowBlur  = 0;
+    const label = g.requires === 'merged' ? '●' : '◉ ◉';
+    ctx.font      = `bold ${vr(11)}px 'Segoe UI', sans-serif`;
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.fillText(label, vx(LANE_C), vy(cy + h/2 + 14));
+
+    ctx.restore();
+  }
+}
+
+function drawOrbs() {
+  const orbR = lerp(ORB_R_MERGED, ORB_R_SPLIT, orbSplit);
+  const glow = orbGlow;
+
+  // Beam between orbs when split
+  if (orbSplit > 0.05) {
+    ctx.save();
+    ctx.globalAlpha = orbSplit * 0.6;
+    const beamGrad = ctx.createLinearGradient(vx(orbX1), vy(PLAYER_Y), vx(orbX2), vy(PLAYER_Y));
+    beamGrad.addColorStop(0, `hsl(${frameHue},100%,70%)`);
+    beamGrad.addColorStop(0.5, '#fff');
+    beamGrad.addColorStop(1, `hsl(${(frameHue+60)%360},100%,70%)`);
+    ctx.strokeStyle = beamGrad;
+    ctx.lineWidth   = vr(3 * orbSplit);
+    ctx.shadowColor = `hsl(${frameHue},100%,70%)`;
+    ctx.shadowBlur  = vr(10);
+    ctx.beginPath();
+    ctx.moveTo(vx(orbX1), vy(PLAYER_Y));
+    ctx.lineTo(vx(orbX2), vy(PLAYER_Y));
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Draw each orb
+  const drawOrb = (ox) => {
+    const r = vr(orbR);
+    const og = ctx.createRadialGradient(vx(ox) - r*0.3, vy(PLAYER_Y) - r*0.3, 0, vx(ox), vy(PLAYER_Y), r);
+    og.addColorStop(0, '#fff');
+    og.addColorStop(0.4, `hsl(${frameHue},100%,75%)`);
+    og.addColorStop(1, `hsl(${(frameHue+40)%360},100%,50%)`);
+    ctx.save();
+    ctx.shadowColor = `hsl(${frameHue},100%,65%)`;
+    ctx.shadowBlur  = vr(18 + glow * 20 + beatPulse * 6);
+    ctx.beginPath();
+    ctx.arc(vx(ox), vy(PLAYER_Y), r * (1 + glow * 0.15 + beatPulse * 0.05), 0, Math.PI*2);
+    ctx.fillStyle = og;
+    ctx.fill();
+    ctx.restore();
+  };
+
+  drawOrb(orbX1);
+  if (orbSplit > 0.05) drawOrb(orbX2);
+}
+
+function drawHUD() {
+  // Score
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.font = `bold ${vr(28)}px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = '#fff';
+  ctx.shadowColor = `hsl(${frameHue},100%,65%)`;
+  ctx.shadowBlur  = vr(10);
+  ctx.fillText(score, vx(LANE_C), vy(52));
+
+  // Best
+  ctx.font      = `${vr(12)}px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = `hsla(${frameHue},60%,70%,0.7)`;
+  ctx.shadowBlur = 0;
+  ctx.fillText('BEST ' + best, vx(LANE_C), vy(70));
+
+  // Multiplier bar
+  if (multiplier > 1) {
+    ctx.font      = `bold ${vr(13)}px 'Segoe UI', sans-serif`;
+    ctx.fillStyle = `hsl(${(frameHue+120)%360},100%,70%)`;
+    ctx.shadowColor = `hsl(${(frameHue+120)%360},100%,65%)`;
+    ctx.shadowBlur  = vr(8);
+    ctx.fillText('×' + multiplier.toFixed(1), vx(VW - 40), vy(52));
+  }
+
+  // Streak
+  if (streak > 2) {
+    ctx.font      = `${vr(11)}px 'Segoe UI', sans-serif`;
+    ctx.fillStyle = `hsla(${frameHue},80%,70%,0.8)`;
+    ctx.shadowBlur = 0;
+    ctx.fillText('STREAK ' + streak, vx(40), vy(52));
+  }
+
+  // Beat indicator
+  const bi = beatPulse;
+  ctx.globalAlpha = 0.3 + bi * 0.5;
+  ctx.fillStyle   = `hsl(${frameHue},100%,70%)`;
+  ctx.beginPath();
+  ctx.arc(vx(20), vy(VH - 30), vr(5 + bi * 4), 0, Math.PI*2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawText(txt, x, y, size, color, align, weight) {
+  ctx.save();
+  ctx.font      = `${weight||'normal'} ${size}px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = color;
+  ctx.textAlign = align || 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(txt, x, y);
+  ctx.restore();
+}
+
+function drawStart() {
+  // Overlay
+  ctx.save();
+  ctx.fillStyle = 'rgba(5,5,15,0.55)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Title
+  const tx = vx(LANE_C), ty = vy(VH * 0.36);
+  ctx.font      = `900 ${vr(54)}px 'Segoe UI', sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = `hsl(${frameHue},100%,65%)`;
+  ctx.shadowBlur  = vr(30);
+  const tg = ctx.createLinearGradient(tx - vr(120), ty, tx + vr(120), ty);
+  tg.addColorStop(0, `hsl(${frameHue},100%,70%)`);
+  tg.addColorStop(1, `hsl(${(frameHue+80)%360},100%,75%)`);
+  ctx.fillStyle = tg;
+  ctx.fillText('PULSE', tx, ty - vy(30));
+  ctx.fillText('SPLIT', tx, ty + vy(30));
+
+  // Subtitle
+  ctx.shadowBlur = 0;
+  ctx.font      = `${vr(14)}px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = `hsla(${frameHue},60%,80%,0.7)`;
+  ctx.fillText('Split & Merge to Pass the Gates', tx, vy(VH * 0.36) + vy(80));
+
+  // Tap to start
+  const pulse = 0.7 + 0.3 * Math.sin(performance.now() * 0.003);
+  ctx.globalAlpha = pulse;
+  ctx.font      = `bold ${vr(18)}px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = '#fff';
+  ctx.shadowColor = `hsl(${frameHue},100%,65%)`;
+  ctx.shadowBlur  = vr(14);
+  ctx.fillText('Tap to Start', tx, vy(VH * 0.62));
+
+  // Mini instructions
+  ctx.globalAlpha = 0.5;
+  ctx.shadowBlur  = 0;
+  ctx.font        = `${vr(12)}px 'Segoe UI', sans-serif`;
+  ctx.fillStyle   = '#aaa';
+  ctx.fillText('● = MERGE  |  ◉ ◉ = SPLIT', tx, vy(VH * 0.7));
+  ctx.fillText('Tap to toggle form', tx, vy(VH * 0.74));
+
+  ctx.restore();
+}
+
+function drawGameOver() {
+  ctx.save();
+  ctx.fillStyle = 'rgba(5,5,15,0.72)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const tx = vx(LANE_C);
+
+  // Game Over
+  ctx.font      = `900 ${vr(42)}px 'Segoe UI', sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = `hsl(0,100%,65%)`;
+  ctx.shadowColor = `hsl(0,100%,50%)`;
+  ctx.shadowBlur  = vr(20);
+  ctx.fillText('GAME OVER', tx, vy(VH * 0.3));
+
+  // Fail reason
+  if (failReason) {
+    ctx.shadowBlur = 0;
+    ctx.font      = `${vr(13)}px 'Segoe UI', sans-serif`;
+    ctx.fillStyle = 'rgba(255,120,100,0.85)';
+    ctx.fillText(failReason, tx, vy(VH * 0.3 + 44));
+  }
+
+  // Score
+  ctx.shadowBlur  = vr(10);
+  ctx.shadowColor = `hsl(${frameHue},100%,65%)`;
+  ctx.font        = `bold ${vr(46)}px 'Segoe UI', sans-serif`;
+  ctx.fillStyle   = '#fff';
+  ctx.fillText(score, tx, vy(VH * 0.48));
+
+  ctx.shadowBlur = 0;
+  ctx.font      = `${vr(13)}px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = `hsla(${frameHue},60%,70%,0.7)`;
+  ctx.fillText('BEST  ' + best, tx, vy(VH * 0.48 + 38));
+
+  // Tap to retry
+  const pulse = 0.65 + 0.35 * Math.sin(performance.now() * 0.003);
+  ctx.globalAlpha = pulse;
+  ctx.font        = `bold ${vr(18)}px 'Segoe UI', sans-serif`;
+  ctx.fillStyle   = '#fff';
+  ctx.shadowColor = `hsl(${frameHue},100%,65%)`;
+  ctx.shadowBlur  = vr(14);
+  ctx.fillText('Tap to Retry', tx, vy(VH * 0.65));
+
+  ctx.restore();
+}
+
+// ─── Main loop ───────────────────────────────────────────────────────────────
+function loop(ts) {
+  if (state === 'playing') update(ts);
+  // Always animate start/gameover screens for visual polish
+  frameHue = (frameHue + 0.02) % 360;
+  if (state !== 'playing') {
+    // gentle hue rotation even on menus
+    frameHue = (frameHue + 0.04) % 360;
+    beatPulse = Math.pow(Math.abs(Math.sin(ts * 0.0008 * Math.PI)), 6);
+  }
+  draw(ts);
+  requestAnimationFrame(loop);
+}
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+loadBest();
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

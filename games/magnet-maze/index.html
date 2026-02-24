@@ -1,0 +1,1021 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Magnet Maze - Free HTML5 Game</title>
+<meta name="description" content="Play Magnet Maze - Swipe to guide the ball along a zigzag path while magnetic fields pull or repel it.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0d0d1a">
+
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="Magnet Maze - Free HTML5 Game">
+<meta property="og:description" content="Play Magnet Maze - Swipe to guide the ball along a zigzag path while magnetic fields pull or repel it.">
+<meta property="og:url" content="https://balinti.github.io/magnet-maze/">
+<meta property="og:image" content="https://balinti.github.io/magnet-maze/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Magnet Maze - Free HTML5 Game">
+<meta name="twitter:description" content="Snap through magnetic gates in this addictive zigzag runner!">
+<meta name="twitter:image" content="https://balinti.github.io/magnet-maze/og.png">
+
+<link rel="canonical" href="https://balinti.github.io/magnet-maze/">
+
+<!-- AdSense -->
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+<!-- JSON-LD Structured Data -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Magnet Maze",
+  "applicationCategory": "GameApplication",
+  "operatingSystem": "Web Browser",
+  "description": "Play Magnet Maze - Swipe to guide the ball along a zigzag path while magnetic fields pull or repel it.",
+  "url": "https://balinti.github.io/magnet-maze/",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD"
+  }
+}
+</script>
+
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 100%; height: 100%;
+    background: #0d0d1a;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  #wrap {
+    position: relative;
+    width: min(420px, 100vw);
+    height: min(750px, 100vh);
+    aspect-ratio: 420 / 750;
+    background: #0d0d1a;
+    overflow: hidden;
+  }
+  canvas {
+    position: absolute; top: 0; left: 0;
+    width: 100%; height: 100%;
+    display: block;
+  }
+  #ui {
+    position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+    pointer-events: none;
+    display: flex; flex-direction: column;
+  }
+  #hud {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    padding: 14px 18px 0;
+  }
+  .hud-block { text-align: center; }
+  .hud-label {
+    font-size: 10px; font-weight: 700; letter-spacing: 1.5px;
+    color: rgba(255,255,255,0.4); text-transform: uppercase;
+  }
+  .hud-val {
+    font-size: 26px; font-weight: 900; color: #fff;
+    line-height: 1.1; letter-spacing: -0.5px;
+  }
+  #combo-hud {
+    font-size: 11px; font-weight: 700; color: #fff;
+    opacity: 0; text-align: center;
+    transition: opacity 0.2s;
+  }
+  #combo-hud.visible { opacity: 1; }
+
+  /* Overlays */
+  .overlay {
+    position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: rgba(13,13,26,0.88);
+    pointer-events: auto;
+    transition: opacity 0.25s;
+  }
+  .overlay.hidden { opacity: 0; pointer-events: none; }
+
+  .game-title {
+    font-size: 46px; font-weight: 900; letter-spacing: -1px;
+    background: linear-gradient(135deg, #4af, #f4a, #fa4);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+    text-align: center; line-height: 1;
+    margin-bottom: 6px;
+  }
+  .subtitle {
+    font-size: 13px; color: rgba(255,255,255,0.5);
+    text-align: center; margin-bottom: 36px; letter-spacing: 0.5px;
+  }
+  .tap-prompt {
+    font-size: 18px; font-weight: 800; color: #fff;
+    letter-spacing: 0.5px; text-align: center;
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.55; transform: scale(0.97); }
+  }
+  .howto {
+    margin-top: 14px; font-size: 12px; color: rgba(255,255,255,0.38);
+    text-align: center; max-width: 260px; line-height: 1.5;
+  }
+
+  /* Game over */
+  .go-title {
+    font-size: 34px; font-weight: 900; color: #fff;
+    margin-bottom: 28px; letter-spacing: -0.5px;
+  }
+  .go-row {
+    display: flex; gap: 40px; margin-bottom: 28px;
+  }
+  .go-block { text-align: center; }
+  .go-label { font-size: 10px; font-weight: 700; letter-spacing: 1.5px;
+    color: rgba(255,255,255,0.4); text-transform: uppercase; }
+  .go-val { font-size: 38px; font-weight: 900; color: #fff; line-height: 1.1; }
+  .go-stat { font-size: 12px; color: rgba(255,255,255,0.45); margin-bottom: 26px; }
+
+  .btn-primary {
+    background: linear-gradient(135deg, #44aaff, #aa44ff);
+    border: none; border-radius: 50px;
+    font-size: 17px; font-weight: 800; color: #fff;
+    padding: 14px 48px; cursor: pointer;
+    letter-spacing: 0.3px;
+    box-shadow: 0 4px 20px rgba(100,100,255,0.4);
+    transition: transform 0.12s, box-shadow 0.12s;
+  }
+  .btn-primary:active { transform: scale(0.95); box-shadow: 0 2px 10px rgba(100,100,255,0.3); }
+
+  .btn-share {
+    margin-top: 12px; background: transparent;
+    border: 1.5px solid rgba(255,255,255,0.25); border-radius: 50px;
+    font-size: 13px; font-weight: 700; color: rgba(255,255,255,0.6);
+    padding: 9px 30px; cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .btn-share:hover { border-color: rgba(255,255,255,0.5); color: #fff; }
+
+  .go-tip {
+    margin-top: 20px; font-size: 11px; color: rgba(255,255,255,0.3);
+    text-align: center; max-width: 240px; line-height: 1.4;
+  }
+
+  #copied-msg {
+    position: absolute; bottom: 30px; left: 50%;
+    transform: translateX(-50%);
+    background: rgba(255,255,255,0.12);
+    border-radius: 20px; padding: 7px 18px;
+    font-size: 12px; color: rgba(255,255,255,0.7);
+    opacity: 0; transition: opacity 0.3s; pointer-events: none;
+    white-space: nowrap;
+  }
+  #copied-msg.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+
+  <div id="ui">
+    <div id="hud">
+      <div class="hud-block">
+        <div class="hud-label">Score</div>
+        <div class="hud-val" id="score-hud">0</div>
+      </div>
+      <div id="combo-hud" class="hud-block">
+        <span id="combo-text">COMBO x1</span>
+      </div>
+      <div class="hud-block">
+        <div class="hud-label">Best</div>
+        <div class="hud-val" id="best-hud">0</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Start overlay -->
+  <div class="overlay" id="start-overlay">
+    <div class="game-title">Magnet<br>Maze</div>
+    <div class="subtitle">Snap Gates</div>
+    <div class="tap-prompt">Tap to Start</div>
+    <div class="howto">Tap to flip direction &bull; Snap through magnetic gates &bull; Blue attracts, Red repels</div>
+  </div>
+
+  <!-- Game over overlay -->
+  <div class="overlay hidden" id="gameover-overlay">
+    <div class="go-title">Game Over</div>
+    <div class="go-row">
+      <div class="go-block">
+        <div class="go-label">Score</div>
+        <div class="go-val" id="go-score">0</div>
+      </div>
+      <div class="go-block">
+        <div class="go-label">Best</div>
+        <div class="go-val" id="go-best">0</div>
+      </div>
+    </div>
+    <div class="go-stat" id="go-combo">Max Combo: 0</div>
+    <button class="btn-primary" id="retry-btn">Tap to Retry</button>
+    <button class="btn-share" id="share-btn">Share Score</button>
+    <div class="go-tip" id="go-tip">Tip: Chain gates for a combo multiplier!</div>
+  </div>
+
+  <div id="copied-msg">Link copied!</div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+// ── Constants ────────────────────────────────────────────────────────────────
+const STORAGE_KEY = 'mm_snapgates_best';
+const W = 420, H = 750;
+const BALL_R = 8;
+const BASE_SPEED = 220;
+const SPEED_RAMP = 6.5;
+const MAX_SPEED = 420;
+const TRACK_HALF_BASE = 18;
+const TRACK_HALF_MIN = 14;
+const TRACK_TIGHTEN = 0.05;
+const LANE_INSIDE = 6;
+const LANE_OUTSIDE = 14;
+const TILE_SCORE_DIST = 46;
+const SNAP_DURATION = 0.10;
+const TIPS = [
+  'Chain gates for a combo multiplier!',
+  'Blue gates attract – great for shortcuts!',
+  'Red gates repel but score more points!',
+  'Graze the red ring edge for bonus points!',
+  'Stay in rhythm – trust the zigzag!'
+];
+
+// ── Canvas setup ─────────────────────────────────────────────────────────────
+const wrap = document.getElementById('wrap');
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+let dpr = Math.min(2, devicePixelRatio || 1);
+function resizeCanvas() {
+  dpr = Math.min(2, devicePixelRatio || 1);
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+resizeCanvas();
+
+// ── State ────────────────────────────────────────────────────────────────────
+let state = 'start'; // 'start' | 'playing' | 'gameover'
+let score = 0, best = parseInt(localStorage.getItem(STORAGE_KEY)) || 0;
+let gameTime = 0;
+let distAccum = 0;
+let shake = 0, shakeDx = 0, shakeDy = 0;
+let hitStop = 0;
+let hue = 180;
+let maxCombo = 0;
+
+// Ball
+const ball = {
+  x: W / 2, y: H / 2,
+  dx: 0.7071, dy: -0.7071,
+  laneOffset: 0, laneTarget: 0,
+  snapT: 0, snapFrom: 0,
+  speed: BASE_SPEED
+};
+
+// Gates
+let gates = [];
+let gateDistTracker = 0; // tracks distance since last gate
+
+// Particles
+let particles = [];
+
+// Score popups
+let popups = [];
+
+// Combo
+let combo = 0;
+
+// Track: centerline defined by ball path
+// We store recent track segment for rendering and collision
+// Track is a series of segments: each has start, dir, and accumulated dist
+let trackSegments = [];
+let trackHead = { x: W/2, y: H/2 };
+let trackDx = 0.7071, trackDy = -0.7071;
+let trackSegDist = 0;
+const SEGMENT_LEN = 80; // px per segment before a potential turn
+
+// ── UI refs ──────────────────────────────────────────────────────────────────
+const scoreHud = document.getElementById('score-hud');
+const bestHud = document.getElementById('best-hud');
+const comboHud = document.getElementById('combo-hud');
+const comboText = document.getElementById('combo-text');
+const startOverlay = document.getElementById('start-overlay');
+const gameoverOverlay = document.getElementById('gameover-overlay');
+const goScore = document.getElementById('go-score');
+const goBest = document.getElementById('go-best');
+const goCombo = document.getElementById('go-combo');
+const goTip = document.getElementById('go-tip');
+const retryBtn = document.getElementById('retry-btn');
+const shareBtn = document.getElementById('share-btn');
+const copiedMsg = document.getElementById('copied-msg');
+
+bestHud.textContent = best;
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+function lerp(a, b, t) { return a + (b - a) * t; }
+function cubicOut(t) { return 1 - Math.pow(1 - t, 3); }
+function dist2(ax, ay, bx, by) {
+  const dx = ax - bx, dy = ay - by;
+  return Math.sqrt(dx*dx + dy*dy);
+}
+function rng(lo, hi) { return lo + Math.random() * (hi - lo); }
+
+// ── Difficulty ───────────────────────────────────────────────────────────────
+function getSpeed(t) { return clamp(BASE_SPEED + SPEED_RAMP * t, BASE_SPEED, MAX_SPEED); }
+function getTrackHalf(t) { return clamp(TRACK_HALF_BASE - TRACK_TIGHTEN * t, TRACK_HALF_MIN, TRACK_HALF_BASE); }
+function getGateSpacing(t) { return clamp(520 - 6 * t, 240, 520); }
+function getGateRadius(t) { return clamp(34 - 0.18 * t, 24, 34); }
+function getPRed(t) { return clamp(0.30 + 0.008 * t, 0.30, 0.55); }
+function getComboMult(c) { return clamp(1 + 0.15 * c, 1, 2.5); }
+
+// ── Track Management ─────────────────────────────────────────────────────────
+function initTrack() {
+  trackSegments = [];
+  trackHead.x = W / 2;
+  trackHead.y = H / 2;
+  trackDx = 0.7071;
+  trackDy = -0.7071;
+  trackSegDist = 0;
+
+  // Pre-generate some segments so canvas is filled on start
+  for (let i = 0; i < 30; i++) {
+    advanceTrack(SEGMENT_LEN);
+  }
+}
+
+function advanceTrack(dist) {
+  const nx = trackHead.x + trackDx * dist;
+  const ny = trackHead.y + trackDy * dist;
+
+  trackSegments.push({
+    x0: trackHead.x, y0: trackHead.y,
+    x1: nx, y1: ny,
+    dx: trackDx, dy: trackDy
+  });
+
+  // Keep segments manageable
+  if (trackSegments.length > 60) trackSegments.shift();
+
+  trackHead.x = nx;
+  trackHead.y = ny;
+}
+
+// ── Game Init ────────────────────────────────────────────────────────────────
+function initGame() {
+  score = 0;
+  gameTime = 0;
+  distAccum = 0;
+  shake = 0; shakeDx = 0; shakeDy = 0;
+  hitStop = 0;
+  hue = 180;
+  combo = 0;
+  maxCombo = 0;
+  gates = [];
+  particles = [];
+  popups = [];
+  gateDistTracker = 0;
+
+  ball.x = W / 2;
+  ball.y = H / 2;
+  ball.dx = 0.7071;
+  ball.dy = -0.7071;
+  ball.laneOffset = 0;
+  ball.laneTarget = 0;
+  ball.snapT = 1;
+  ball.snapFrom = 0;
+  ball.speed = BASE_SPEED;
+
+  initTrack();
+  spawnGateAhead();
+
+  scoreHud.textContent = 0;
+  bestHud.textContent = best;
+  comboHud.classList.remove('visible');
+}
+
+// ── Gate Spawning ─────────────────────────────────────────────────────────────
+function spawnGateAhead() {
+  const t = gameTime;
+  const r = getGateRadius(t);
+  const isRed = Math.random() < getPRed(t);
+
+  // Place gate on track ahead
+  const ahead = 250;
+  const px = ball.x + ball.dx * ahead + ball.dy * rng(-12, 12);
+  const py = ball.y + ball.dy * ahead - ball.dx * rng(-12, 12);
+
+  // Clamp to canvas with padding
+  const gx = clamp(px, r + 20, W - r - 20);
+  const gy = clamp(py, r + 60, H - r - 20);
+
+  gates.push({
+    x: gx, y: gy,
+    r: r,
+    type: isRed ? 'red' : 'blue',
+    triggered: false,
+    age: 0,
+    pulseT: 0
+  });
+  gateDistTracker = 0;
+}
+
+// ── Particles ─────────────────────────────────────────────────────────────────
+function spawnParticles(x, y, count, hueStart, hueRange, speedScale) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const spd = rng(40, 140) * speedScale;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * spd,
+      vy: Math.sin(angle) * spd,
+      r: rng(2.5, 5.5),
+      life: 0,
+      maxLife: rng(0.45, 0.85),
+      hue: hueStart + Math.random() * hueRange,
+      sat: rng(70, 100),
+      lit: rng(55, 80)
+    });
+  }
+}
+
+// ── Score Popup ───────────────────────────────────────────────────────────────
+function spawnPopup(x, y, text, color) {
+  popups.push({ x, y, text, color, life: 0, maxLife: 0.8, vy: -55 });
+}
+
+// ── Screen Shake ──────────────────────────────────────────────────────────────
+function addShake(mag, cap) {
+  shake = clamp(shake + mag, 0, cap);
+  const a = Math.random() * Math.PI * 2;
+  shakeDx = Math.cos(a);
+  shakeDy = Math.sin(a);
+}
+
+// ── Input ─────────────────────────────────────────────────────────────────────
+function handleTap() {
+  if (state === 'start') {
+    state = 'playing';
+    initGame();
+    startOverlay.classList.add('hidden');
+    return;
+  }
+  if (state === 'gameover') return;
+  if (state === 'playing') {
+    // Flip y direction
+    ball.dy = -ball.dy;
+  }
+}
+
+wrap.addEventListener('pointerdown', function(e) {
+  e.preventDefault();
+  handleTap();
+}, { passive: false });
+
+document.addEventListener('keydown', function(e) {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    handleTap();
+  }
+});
+
+retryBtn.addEventListener('pointerdown', function(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  startGame();
+});
+
+shareBtn.addEventListener('pointerdown', function(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  doShare();
+});
+
+function startGame() {
+  state = 'playing';
+  initGame();
+  gameoverOverlay.classList.add('hidden');
+}
+
+function doShare() {
+  const url = `https://balinti.github.io/magnet-maze/?ref=share&score=${score}`;
+  const text = `I scored ${score} in Magnet Maze! Can you beat me?\n${url}`;
+  if (navigator.share) {
+    navigator.share({ title: 'Magnet Maze', text: `I scored ${score} in Magnet Maze! Can you beat me?`, url });
+  } else {
+    navigator.clipboard.writeText(text).then(() => {
+      copiedMsg.classList.add('show');
+      setTimeout(() => copiedMsg.classList.remove('show'), 2000);
+    }).catch(() => {});
+  }
+}
+
+// ── Game Over ─────────────────────────────────────────────────────────────────
+function triggerGameOver() {
+  state = 'gameover';
+  if (score > best) {
+    best = score;
+    localStorage.setItem(STORAGE_KEY, best);
+  }
+  addShake(16, 16);
+  spawnParticles(ball.x, ball.y, 28, hue, 60, 1.2);
+
+  goScore.textContent = score;
+  goBest.textContent = best;
+  goCombo.textContent = `Max Combo: ${maxCombo}`;
+  goTip.textContent = 'Tip: ' + TIPS[Math.floor(Math.random() * TIPS.length)];
+  bestHud.textContent = best;
+
+  gameoverOverlay.classList.remove('hidden');
+}
+
+// ── Collision: Ball vs Track ──────────────────────────────────────────────────
+// We define the track as the ball's path with a half-width.
+// We use a simplified approach: check if the ball's current position
+// is within the track bounds based on its movement vector.
+// The "track" is the ball's diagonal path. We measure lateral deviation.
+// perpendicular to (dx, dy) is (-dy, dx)
+function checkTrackCollision() {
+  const halfW = getTrackHalf(gameTime);
+  // Lateral deviation from ball's intended line
+  const perp = { x: -ball.dy, y: ball.dx };
+  // The ball should be near offset=0 on the centerline
+  // laneOffset already accounts for snapping
+  const lateralDev = Math.abs(ball.laneOffset);
+  // Death if ball offset exceeds track half
+  if (lateralDev > halfW + BALL_R * 0.5) {
+    return true; // dead
+  }
+  return false;
+}
+
+// ── Update ────────────────────────────────────────────────────────────────────
+let lastTime = null;
+function update(ts) {
+  if (lastTime === null) lastTime = ts;
+  let dt = (ts - lastTime) / 1000;
+  lastTime = ts;
+  dt = Math.min(dt, 1/30);
+
+  if (hitStop > 0) {
+    hitStop -= dt;
+    if (hitStop < 0) hitStop = 0;
+    // Still render
+    render();
+    requestAnimationFrame(update);
+    return;
+  }
+
+  if (state !== 'playing') {
+    // Still animate particles/shake in other states
+    updateParticles(dt);
+    updateShake(dt);
+    render();
+    requestAnimationFrame(update);
+    return;
+  }
+
+  gameTime += dt;
+  hue = (hue + 18 * dt) % 360;
+
+  // Ball speed
+  ball.speed = getSpeed(gameTime);
+
+  // Move ball
+  const moveX = ball.dx * ball.speed * dt;
+  const moveY = ball.dy * ball.speed * dt;
+  ball.x += moveX;
+  ball.y += moveY;
+
+  // Track distance for scoring
+  const moveDist = Math.sqrt(moveX*moveX + moveY*moveY);
+  distAccum += moveDist;
+  gateDistTracker += moveDist;
+
+  while (distAccum >= TILE_SCORE_DIST) {
+    distAccum -= TILE_SCORE_DIST;
+    score++;
+    scoreHud.textContent = score;
+  }
+
+  // Lane snap animation
+  if (ball.snapT < 1) {
+    ball.snapT = Math.min(1, ball.snapT + dt / SNAP_DURATION);
+    ball.laneOffset = lerp(ball.snapFrom, ball.laneTarget, cubicOut(ball.snapT));
+  } else {
+    ball.laneOffset = ball.laneTarget;
+  }
+
+  // Bounce off canvas edges - flip appropriate direction
+  const perp = { x: -ball.dy, y: ball.dx };
+  const effectiveX = ball.x + perp.x * ball.laneOffset;
+  const effectiveY = ball.y + perp.y * ball.laneOffset;
+
+  if (effectiveX - BALL_R < 0 || effectiveX + BALL_R > W) {
+    ball.dx = -ball.dx;
+    ball.laneOffset = 0;
+    ball.laneTarget = 0;
+    ball.snapT = 1;
+  }
+  if (effectiveY - BALL_R < 0 || effectiveY + BALL_R > H) {
+    ball.dy = -ball.dy;
+    ball.laneOffset = 0;
+    ball.laneTarget = 0;
+    ball.snapT = 1;
+  }
+
+  // Clamp ball to canvas
+  ball.x = clamp(ball.x, BALL_R, W - BALL_R);
+  ball.y = clamp(ball.y, BALL_R, H - BALL_R);
+
+  // Gate distance-based spawn
+  if (gateDistTracker >= getGateSpacing(gameTime)) {
+    spawnGateAhead();
+  }
+
+  // Gates update
+  const perp2 = { x: -ball.dy, y: ball.dx };
+  const bx = ball.x + perp2.x * ball.laneOffset;
+  const by = ball.y + perp2.y * ball.laneOffset;
+
+  for (let i = gates.length - 1; i >= 0; i--) {
+    const g = gates[i];
+    g.age += dt;
+    g.pulseT += dt * 2.5;
+
+    if (!g.triggered) {
+      const d = dist2(bx, by, g.x, g.y);
+
+      // Near-miss on red gate (grazing edge)
+      if (g.type === 'red' && Math.abs(d - g.r) <= 4 && d > g.r * 0.5) {
+        if (!g.nearMissed) {
+          g.nearMissed = true;
+          const bonus = 2;
+          score += bonus;
+          scoreHud.textContent = score;
+          spawnPopup(g.x, g.y - g.r - 10, '+' + bonus + ' GRAZE!', '#ff8844');
+          spawnParticles(bx, by, 10, 20, 40, 0.8);
+          addShake(3.5, 10);
+        }
+      }
+
+      // Gate trigger: ball center enters ring
+      if (d < g.r) {
+        g.triggered = true;
+        hitStop = 0.06;
+
+        let bonus = g.type === 'blue' ? 3 : 6;
+        const mult = getComboMult(combo);
+        const totalBonus = Math.round(bonus * mult);
+        score += totalBonus;
+        scoreHud.textContent = score;
+
+        combo++;
+        if (combo > maxCombo) maxCombo = combo;
+
+        // Snap ball lane
+        ball.snapFrom = ball.laneOffset;
+        if (g.type === 'blue') {
+          ball.laneTarget = LANE_INSIDE * (Math.random() < 0.5 ? 1 : -1);
+          addShake(2.5, 8);
+          spawnParticles(g.x, g.y, 14, 200, 40, 0.9);
+        } else {
+          ball.laneTarget = LANE_OUTSIDE * (Math.random() < 0.5 ? 1 : -1);
+          addShake(5, 12);
+          spawnParticles(g.x, g.y, 18, 0, 40, 1.1);
+        }
+        ball.snapT = 0;
+
+        const multStr = mult > 1.05 ? ' x' + mult.toFixed(1) : '';
+        spawnPopup(g.x, g.y - g.r - 12, '+' + totalBonus + multStr,
+          g.type === 'blue' ? '#44aaff' : '#ff4455');
+
+        // Update combo HUD
+        comboText.textContent = 'COMBO x' + combo;
+        comboHud.classList.add('visible');
+
+        gates.splice(i, 1);
+        continue;
+      }
+    }
+
+    // Remove old gates
+    if (g.age > 8) {
+      // Missed gate resets combo
+      if (!g.triggered) {
+        combo = 0;
+        comboHud.classList.remove('visible');
+      }
+      gates.splice(i, 1);
+    }
+  }
+
+  // Combo HUD fade when combo=0
+  if (combo === 0) {
+    comboHud.classList.remove('visible');
+  }
+
+  updateParticles(dt);
+  updatePopups(dt);
+  updateShake(dt);
+
+  render();
+  requestAnimationFrame(update);
+}
+
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.life += dt;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vx *= (1 - 4.5 * dt);
+    p.vy *= (1 - 4.5 * dt);
+    if (p.life >= p.maxLife) particles.splice(i, 1);
+  }
+}
+
+function updatePopups(dt) {
+  for (let i = popups.length - 1; i >= 0; i--) {
+    const p = popups[i];
+    p.life += dt;
+    p.y += p.vy * dt;
+    p.vy *= (1 - 3.5 * dt);
+    if (p.life >= p.maxLife) popups.splice(i, 1);
+  }
+}
+
+function updateShake(dt) {
+  shake = Math.max(0, shake - 22 * dt);
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function render() {
+  ctx.clearRect(0, 0, W, H);
+
+  // Background gradient
+  const bg = ctx.createLinearGradient(0, 0, W, H);
+  bg.addColorStop(0, `hsl(${hue}, 30%, 6%)`);
+  bg.addColorStop(1, `hsl(${(hue+60)%360}, 25%, 9%)`);
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // Apply shake to world
+  const sx = shake > 0 ? Math.round(shakeDx * shake * (Math.random() * 0.6 + 0.7)) : 0;
+  const sy = shake > 0 ? Math.round(shakeDy * shake * (Math.random() * 0.6 + 0.7)) : 0;
+  ctx.save();
+  ctx.translate(sx, sy);
+
+  if (state === 'playing' || state === 'gameover') {
+    drawTrack();
+    drawGates();
+    drawParticles();
+    drawBall();
+    drawPopups();
+  }
+
+  ctx.restore();
+}
+
+function drawTrack() {
+  const halfW = getTrackHalf(gameTime);
+  const perp = { x: -ball.dy, y: ball.dx };
+
+  // Draw a subtle track stripe following the ball's current direction
+  // Use a long line through the ball position with the current direction
+  const len = Math.sqrt(W*W + H*H) * 2;
+  const cx = ball.x, cy = ball.y;
+
+  // Track center line
+  const tx0 = cx - ball.dx * len;
+  const ty0 = cy - ball.dy * len;
+  const tx1 = cx + ball.dx * len;
+  const ty1 = cy + ball.dy * len;
+
+  // Gradient along direction
+  ctx.save();
+  ctx.strokeStyle = `hsla(${hue}, 60%, 50%, 0.08)`;
+  ctx.lineWidth = halfW * 2;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(tx0, ty0);
+  ctx.lineTo(tx1, ty1);
+  ctx.stroke();
+
+  // Track edges
+  ctx.strokeStyle = `hsla(${hue}, 70%, 60%, 0.18)`;
+  ctx.lineWidth = 1.5;
+
+  // Left edge
+  const ex0l = tx0 + perp.x * halfW;
+  const ey0l = ty0 + perp.y * halfW;
+  const ex1l = tx1 + perp.x * halfW;
+  const ey1l = ty1 + perp.y * halfW;
+  ctx.beginPath();
+  ctx.moveTo(ex0l, ey0l);
+  ctx.lineTo(ex1l, ey1l);
+  ctx.stroke();
+
+  // Right edge
+  const ex0r = tx0 - perp.x * halfW;
+  const ey0r = ty0 - perp.y * halfW;
+  const ex1r = tx1 - perp.x * halfW;
+  const ey1r = ty1 - perp.y * halfW;
+  ctx.beginPath();
+  ctx.moveTo(ex0r, ey0r);
+  ctx.lineTo(ex1r, ey1r);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function drawGates() {
+  for (const g of gates) {
+    if (g.triggered) continue;
+    const pulse = Math.sin(g.pulseT) * 0.12;
+
+    ctx.save();
+    ctx.translate(g.x, g.y);
+
+    const isBlue = g.type === 'blue';
+    const baseHue = isBlue ? 210 : 0;
+    const accentHue = isBlue ? 190 : 15;
+
+    // Outer glow
+    const glowGrad = ctx.createRadialGradient(0, 0, g.r * 0.6, 0, 0, g.r * 1.5);
+    glowGrad.addColorStop(0, `hsla(${baseHue}, 90%, 60%, ${0.0})`);
+    glowGrad.addColorStop(1, `hsla(${baseHue}, 90%, 60%, ${0.12 + pulse * 0.1})`);
+    ctx.fillStyle = glowGrad;
+    ctx.beginPath();
+    ctx.arc(0, 0, g.r * 1.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Ring fill (subtle)
+    ctx.fillStyle = `hsla(${baseHue}, 80%, 50%, ${0.08 + pulse * 0.06})`;
+    ctx.beginPath();
+    ctx.arc(0, 0, g.r, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Ring stroke
+    ctx.strokeStyle = `hsla(${baseHue}, 90%, 65%, ${0.85 + pulse * 0.15})`;
+    ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    ctx.arc(0, 0, g.r, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Inner ring detail
+    ctx.strokeStyle = `hsla(${accentHue}, 100%, 80%, 0.35)`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(0, 0, g.r * 0.72, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Icon: + for blue, − for red
+    ctx.fillStyle = `hsla(${baseHue}, 90%, 80%, 0.95)`;
+    ctx.font = `bold ${Math.round(g.r * 0.68)}px -apple-system, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(isBlue ? '+' : '−', 0, 0);
+
+    // Direction preview arrow
+    const arrLen = g.r * 0.52;
+    const snapDir = isBlue ? -1 : 1;
+    // Arrow perpendicular to ball direction
+    const perpX = -ball.dy;
+    const perpY = ball.dx;
+    ctx.strokeStyle = `hsla(${baseHue}, 90%, 75%, 0.7)`;
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    const ax = perpX * snapDir * (g.r + 10);
+    const ay = perpY * snapDir * (g.r + 10);
+    ctx.beginPath();
+    ctx.moveTo(ax - perpX * snapDir * arrLen, ay - perpY * snapDir * arrLen);
+    ctx.lineTo(ax, ay);
+    // Arrowhead
+    const ah = 6;
+    const angle = Math.atan2(perpY * snapDir, perpX * snapDir);
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(ax - Math.cos(angle - 0.5) * ah, ay - Math.sin(angle - 0.5) * ah);
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(ax - Math.cos(angle + 0.5) * ah, ay - Math.sin(angle + 0.5) * ah);
+    ctx.stroke();
+
+    // Type label
+    ctx.fillStyle = `hsla(${baseHue}, 80%, 70%, 0.7)`;
+    ctx.font = `bold 9px -apple-system, sans-serif`;
+    ctx.fillText(isBlue ? 'ATTRACT' : 'REPEL', 0, g.r + 14);
+
+    ctx.restore();
+  }
+}
+
+function drawBall() {
+  const perp = { x: -ball.dy, y: ball.dx };
+  const bx = ball.x + perp.x * ball.laneOffset;
+  const by = ball.y + perp.y * ball.laneOffset;
+
+  ctx.save();
+  ctx.translate(bx, by);
+
+  // Trail effect
+  const trailLen = 5;
+  for (let i = 0; i < trailLen; i++) {
+    const t = i / trailLen;
+    const tx = -ball.dx * (trailLen - i) * 5;
+    const ty = -ball.dy * (trailLen - i) * 5;
+    ctx.beginPath();
+    ctx.arc(tx, ty, BALL_R * (0.3 + t * 0.5), 0, Math.PI * 2);
+    ctx.fillStyle = `hsla(${hue}, 80%, 65%, ${0.08 * t})`;
+    ctx.fill();
+  }
+
+  // Ball glow
+  const grd = ctx.createRadialGradient(0, 0, 0, 0, 0, BALL_R * 2.2);
+  grd.addColorStop(0, `hsla(${hue}, 85%, 75%, 0.25)`);
+  grd.addColorStop(1, `hsla(${hue}, 85%, 65%, 0)`);
+  ctx.fillStyle = grd;
+  ctx.beginPath();
+  ctx.arc(0, 0, BALL_R * 2.2, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Ball body
+  const ballGrd = ctx.createRadialGradient(-BALL_R * 0.3, -BALL_R * 0.3, BALL_R * 0.1,
+                                            0, 0, BALL_R);
+  ballGrd.addColorStop(0, `hsl(${hue}, 90%, 85%)`);
+  ballGrd.addColorStop(1, `hsl(${hue}, 75%, 55%)`);
+  ctx.fillStyle = ballGrd;
+  ctx.beginPath();
+  ctx.arc(0, 0, BALL_R, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Shine
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.beginPath();
+  ctx.arc(-BALL_R * 0.28, -BALL_R * 0.28, BALL_R * 0.32, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    const t = p.life / p.maxLife;
+    const alpha = (1 - t) * 0.9;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r * (1 - t * 0.5), 0, Math.PI * 2);
+    ctx.fillStyle = `hsla(${p.hue}, ${p.sat}%, ${p.lit}%, ${alpha})`;
+    ctx.fill();
+  }
+}
+
+function drawPopups() {
+  for (const p of popups) {
+    const t = p.life / p.maxLife;
+    const alpha = t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3;
+    const scale = t < 0.15 ? t / 0.15 : 1;
+
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.scale(scale, scale);
+    ctx.globalAlpha = alpha;
+    ctx.font = 'bold 15px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillText(p.text, 1, 1);
+
+    ctx.fillStyle = p.color || '#fff';
+    ctx.fillText(p.text, 0, 0);
+    ctx.restore();
+  }
+}
+
+// ── Start Loop ────────────────────────────────────────────────────────────────
+requestAnimationFrame(update);
+
+})();
+</script>
+</body>
+</html>

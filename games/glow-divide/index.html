@@ -1,0 +1,1018 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Glow Divide - Free HTML5 Game</title>
+<meta name="description" content="Play Glow Divide - Tap to split your glowing snake and collect energy orbs in a pulsating neon city.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0a0a1a">
+<link rel="canonical" href="https://balinti.github.io/glow-divide/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Glow Divide - Free HTML5 Game">
+<meta property="og:description" content="Play Glow Divide - Tap to split your glowing snake and collect energy orbs in a pulsating neon city.">
+<meta property="og:url" content="https://balinti.github.io/glow-divide/">
+<meta property="og:image" content="https://balinti.github.io/glow-divide/preview.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Glow Divide - Free HTML5 Game">
+<meta name="twitter:description" content="Play Glow Divide - Tap to split your glowing snake and collect energy orbs in a pulsating neon city.">
+<meta name="twitter:image" content="https://balinti.github.io/glow-divide/preview.png">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    background: #050510;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  #wrap {
+    position: relative;
+    width: 100%;
+    max-width: 420px;
+    height: 100%;
+    max-height: 750px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    cursor: pointer;
+  }
+  #share-btn {
+    position: absolute;
+    bottom: 120px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.3);
+    color: #fff;
+    padding: 8px 22px;
+    border-radius: 20px;
+    font-size: 14px;
+    font-family: sans-serif;
+    cursor: pointer;
+    display: none;
+    letter-spacing: 1px;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    transition: background 0.2s;
+    z-index: 10;
+  }
+  #share-btn:hover { background: rgba(255,255,255,0.2); }
+  #copy-toast {
+    position: absolute;
+    bottom: 165px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,255,150,0.2);
+    border: 1px solid rgba(0,255,150,0.4);
+    color: #0f9;
+    padding: 5px 16px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-family: sans-serif;
+    display: none;
+    z-index: 10;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <button id="share-btn">&#x1F517; Share</button>
+  <div id="copy-toast">Link copied!</div>
+</div>
+<script>
+(function(){
+'use strict';
+
+// ── Constants ──────────────────────────────────────────────
+const W_LOGIC = 420, H_LOGIC = 750;
+const LANES = 4;
+const LANE_W = W_LOGIC / LANES;           // 105
+const RIBBON_W = LANE_W * 0.52;
+const RIBBON_SEG = 18;
+const RIBBON_SEG_H = 14;
+const SCROLL_BASE = 220;                  // px/s at start
+const SCROLL_MAX  = 480;
+const ACCEL = 6;                          // px/s² increase
+const ORB_R = 13;
+const GATE_H = 32;
+const GATE_W = LANE_W * 1.9;
+const BLOCKER_H = 24;
+const BLOCKER_W = LANE_W * 0.82;
+const SPLIT_DUR = 0.8;                    // seconds
+const SPAWN_ROW_BASE = 180;               // px between rows at start
+const SPAWN_ROW_MIN  = 100;
+const MIN_REACTION_PX = 160;
+const BEAT_WINDOW = 0.22;                 // seconds for combo beat
+const COMBO_DECAY_TIME = 1.8;            // seconds until combo drops
+const MAX_PARTICLES = 240;
+const LS_SCORE = 'gd_highScore';
+const LS_COMBO = 'gd_bestCombo';
+const GAME_URL = 'https://balinti.github.io/glow-divide/';
+const DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+// ── Canvas setup ──────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+function resize() {
+  const wrap = document.getElementById('wrap');
+  const wr = wrap.getBoundingClientRect();
+  canvas.width  = Math.round(wr.width  * DPR);
+  canvas.height = Math.round(wr.height * DPR);
+  canvas.style.width  = wr.width  + 'px';
+  canvas.style.height = wr.height + 'px';
+  scaleX = canvas.width  / W_LOGIC;
+  scaleY = canvas.height / H_LOGIC;
+}
+let scaleX = 1, scaleY = 1;
+window.addEventListener('resize', () => { resize(); });
+resize();
+
+// ── State ─────────────────────────────────────────────────
+let state = 'start';   // start | playing | gameover
+let score = 0, combo = 1, comboTimer = 0;
+let bestScore = +localStorage.getItem(LS_SCORE) || 0;
+let bestCombo = +localStorage.getItem(LS_COMBO) || 0;
+let multiplier = 1;
+let hue = 160;
+let elapsed = 0;
+let scrollSpeed = SCROLL_BASE;
+let worldY = 0;         // how far the world has scrolled
+let spawnRowSpacing = SPAWN_ROW_BASE;
+let lastSpawnY = -200;  // world Y of last spawned row
+let shakeAmt = 0;
+let splitActive = false, splitTimer = 0;
+let playerLane = 1;     // 0-3
+let splitLane  = 2;     // second lane during split
+let deathAnimT = 0, dying = false;
+let beatPhase = 0;      // tracks beat windows
+
+// Ribbon segments
+let segments = [];    // {lane, y (screen), color}
+let segHead = 0;      // screen Y of ribbon top
+
+// Entities
+let orbs = [], blockers = [], gates = [];
+
+// Particles
+let particles = [];
+let pPool = [];
+for (let i = 0; i < MAX_PARTICLES; i++) pPool.push(mkParticle());
+
+// Skyline
+let skyline = [];
+
+// ── Helpers ───────────────────────────────────────────────
+function laneX(l) { return LANE_W * l + LANE_W * 0.5; }
+
+function mkParticle() {
+  return {active:false, x:0,y:0, vx:0,vy:0, life:0,maxLife:1, r:3, hue:0, alpha:1, type:'dot'};
+}
+function spawnParticle(x, y, vx, vy, life, r, h, type) {
+  let p = null;
+  for (let i = 0; i < pPool.length; i++) {
+    if (!pPool[i].active) { p = pPool[i]; break; }
+  }
+  if (!p) return;
+  p.active = true; p.x = x; p.y = y;
+  p.vx = vx; p.vy = vy;
+  p.life = life; p.maxLife = life;
+  p.r = r; p.hue = h; p.type = type || 'dot';
+  p.alpha = 1;
+}
+
+function burst(x, y, h, count) {
+  for (let i = 0; i < count; i++) {
+    const a = (Math.PI*2 * i / count) + Math.random()*0.3;
+    const spd = 40 + Math.random()*80;
+    spawnParticle(x, y, Math.cos(a)*spd, Math.sin(a)*spd,
+      0.4+Math.random()*0.4, 2+Math.random()*4, h, 'dot');
+  }
+}
+function deathBurst(x, y) {
+  for (let i = 0; i < 40; i++) {
+    const a = Math.random()*Math.PI*2;
+    const spd = 30 + Math.random()*120;
+    spawnParticle(x, y, Math.cos(a)*spd, Math.sin(a)*spd,
+      0.5+Math.random()*0.8, 3+Math.random()*6, hue, 'dot');
+  }
+}
+function comboRing(x, y, h) {
+  spawnParticle(x, y, 0, 0, 0.5, 30, h, 'ring');
+}
+
+function buildSkyline() {
+  skyline = [];
+  const count = 14;
+  for (let i = 0; i < count; i++) {
+    skyline.push({
+      x: (i / count) * W_LOGIC + Math.random() * (W_LOGIC / count),
+      w: 12 + Math.random() * 22,
+      h: 40 + Math.random() * 80,
+      windows: []
+    });
+    const bld = skyline[skyline.length-1];
+    const wrows = Math.floor(bld.h / 14);
+    const wcols = Math.floor(bld.w / 10);
+    for (let r = 0; r < wrows; r++) {
+      for (let c = 0; c < wcols; c++) {
+        if (Math.random() < 0.5)
+          bld.windows.push({rx: c*10+2, ry: r*14+4, lit: Math.random()<0.6});
+      }
+    }
+  }
+}
+
+function initGame() {
+  score = 0; combo = 1; comboTimer = 0;
+  multiplier = 1; hue = 160;
+  elapsed = 0; worldY = 0;
+  scrollSpeed = SCROLL_BASE;
+  spawnRowSpacing = SPAWN_ROW_BASE;
+  lastSpawnY = -200;
+  shakeAmt = 0; splitActive = false; splitTimer = 0;
+  playerLane = 1; splitLane = 2;
+  deathAnimT = 0; dying = false; beatPhase = 0;
+  orbs = []; blockers = []; gates = [];
+  particles.length = 0;
+  for (let p of pPool) p.active = false;
+  // Init ribbon
+  segments = [];
+  segHead = H_LOGIC * 0.55;
+  for (let i = 0; i < RIBBON_SEG; i++) {
+    segments.push({ lane: playerLane, y: segHead + i * RIBBON_SEG_H });
+  }
+  buildSkyline();
+  document.getElementById('share-btn').style.display = 'none';
+}
+
+// ── Spawn logic ────────────────────────────────────────────
+function spawnRow() {
+  // Compute valid patterns to ensure fairness
+  const spawnY = lastSpawnY - spawnRowSpacing;
+  lastSpawnY = spawnY;
+  const roll = Math.random();
+
+  if (elapsed > 20 && roll < 0.12) {
+    // Gate row
+    const gateType = Math.random() < 0.55 ? 'mult' : 'shrink';
+    // Gates span 2 lanes; pick a random start lane 0..2
+    const gl = Math.floor(Math.random() * 3);
+    gates.push({ x: laneX(gl) + LANE_W*0.5 - GATE_W*0.5, y: spawnY, w: GATE_W, h: GATE_H, type: gateType, hit: false });
+    return;
+  }
+
+  if (roll < 0.45) {
+    // Orb(s) in 1-3 lanes
+    const count = 1 + Math.floor(Math.random() * 3);
+    const lanes = shuffleArray([0,1,2,3]).slice(0, count);
+    for (const l of lanes) {
+      orbs.push({ x: laneX(l), y: spawnY, r: ORB_R, hit: false, hue: (hue + l*30) % 360 });
+    }
+    return;
+  }
+
+  // Blocker row - guarantee at least 1 safe lane
+  const numBlockers = Math.random() < 0.4 ? 1 : (Math.random() < 0.6 ? 2 : 3);
+  const blocked = shuffleArray([0,1,2,3]).slice(0, numBlockers);
+  // Ensure at least 1 pair of adjacent lanes free (for split to pass)
+  const free = [0,1,2,3].filter(l => !blocked.includes(l));
+  let hasAdjacentFree = false;
+  for (let l = 0; l < 3; l++) {
+    if (free.includes(l) && free.includes(l+1)) { hasAdjacentFree = true; break; }
+  }
+  // If we'd block all adjacent pairs AND it's a split-hostile row, reduce blockers
+  if (!hasAdjacentFree && numBlockers > 1) {
+    blocked.pop(); // remove one blocker
+  }
+  for (const l of blocked) {
+    blockers.push({
+      x: laneX(l) - BLOCKER_W/2, y: spawnY,
+      w: BLOCKER_W, h: BLOCKER_H, hit: false
+    });
+  }
+}
+
+function shuffleArray(a) {
+  const b = a.slice();
+  for (let i = b.length-1; i > 0; i--) {
+    const j = Math.floor(Math.random()*(i+1));
+    [b[i],b[j]] = [b[j],b[i]];
+  }
+  return b;
+}
+
+// ── Collision ──────────────────────────────────────────────
+function circleAABB(cx, cy, cr, rx, ry, rw, rh) {
+  const nearX = Math.max(rx, Math.min(cx, rx+rw));
+  const nearY = Math.max(ry, Math.min(cy, ry+rh));
+  const dx = cx - nearX, dy = cy - nearY;
+  return dx*dx + dy*dy < cr*cr;
+}
+
+function getPlayerRects() {
+  const hw = RIBBON_W/2;
+  const headY = segHead;
+  if (splitActive) {
+    return [
+      { x: laneX(playerLane)-hw, y: headY-RIBBON_SEG_H, w: RIBBON_W, h: RIBBON_SEG_H*2 },
+      { x: laneX(splitLane)-hw,  y: headY-RIBBON_SEG_H, w: RIBBON_W, h: RIBBON_SEG_H*2 }
+    ];
+  }
+  return [{ x: laneX(playerLane)-hw, y: headY-RIBBON_SEG_H, w: RIBBON_W, h: RIBBON_SEG_H*2 }];
+}
+
+// ── Input ──────────────────────────────────────────────────
+function handleInput() {
+  if (state === 'start') { initGame(); state = 'playing'; return; }
+  if (state === 'gameover') { initGame(); state = 'playing'; return; }
+  if (state === 'playing') {
+    if (!splitActive) {
+      splitActive = true;
+      splitTimer = SPLIT_DUR;
+      // Choose adjacent split lane
+      splitLane = playerLane < LANES-1 ? playerLane+1 : playerLane-1;
+    }
+  }
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  handleInput();
+}, {passive: false});
+
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    handleInput();
+  }
+});
+
+// Prevent scroll
+document.addEventListener('touchmove', e => e.preventDefault(), {passive:false});
+
+// ── Update ─────────────────────────────────────────────────
+let lastTime = 0;
+function update(dt) {
+  if (dt > 0.1) dt = 0.1;
+  if (dying) {
+    deathAnimT += dt;
+    shakeAmt = Math.max(0, shakeAmt - dt * 8);
+    return;
+  }
+
+  elapsed += dt;
+  hue = (hue + dt * 15) % 360;
+  beatPhase += dt;
+
+  // Increase speed
+  scrollSpeed = Math.min(SCROLL_MAX, SCROLL_BASE + elapsed * ACCEL);
+  spawnRowSpacing = Math.max(SPAWN_ROW_MIN, SPAWN_ROW_BASE - elapsed * 0.8);
+
+  // Scroll world
+  const dy = scrollSpeed * dt;
+  worldY += dy;
+
+  // Shift all entity Y downward (they move with the world)
+  for (const o of orbs) o.y += dy;
+  for (const b of blockers) b.y += dy;
+  for (const g of gates) g.y += dy;
+
+  // Move ribbon head slightly upward (player auto-runs)
+  // Actually ribbon stays at fixed position; world scrolls
+  // Segments trail behind head
+  // Push new head segment
+  segments.unshift({ lane: splitActive ? playerLane : playerLane, y: segHead });
+  if (splitActive) {
+    // we track the split as visual; head stays at same Y
+  }
+  if (segments.length > RIBBON_SEG + 4) segments.pop();
+
+  // Split timer
+  if (splitActive) {
+    splitTimer -= dt;
+    if (splitTimer <= 0) {
+      splitActive = false;
+      // After merge: player could drift lane; keep main lane
+    }
+  }
+
+  // Combo decay
+  if (combo > 1) {
+    comboTimer -= dt;
+    if (comboTimer <= 0) {
+      combo = 1;
+    }
+  }
+
+  // Screen shake decay
+  shakeAmt = Math.max(0, shakeAmt - dt * 12);
+
+  // Spawn rows
+  while (lastSpawnY > worldY - H_LOGIC - spawnRowSpacing) {
+    spawnRow();
+  }
+
+  // Ensure initial rows filled
+  if (orbs.length + blockers.length + gates.length < 3 && elapsed < 0.5) {
+    lastSpawnY = worldY - 300;
+    spawnRow(); spawnRow();
+  }
+
+  const rects = getPlayerRects();
+  const headY = segHead;
+
+  // Orb collision
+  for (const o of orbs) {
+    if (o.hit) continue;
+    for (const r of rects) {
+      if (circleAABB(o.x, o.y, o.r, r.x, r.y, r.w, r.h)) {
+        o.hit = true;
+        // Check beat window
+        const beatFrac = (beatPhase % (spawnRowSpacing / scrollSpeed));
+        const onBeat = beatFrac < BEAT_WINDOW || beatFrac > (spawnRowSpacing / scrollSpeed) - BEAT_WINDOW;
+        if (onBeat) {
+          combo = Math.min(combo + 1, 16);
+          comboTimer = COMBO_DECAY_TIME;
+          if (combo > bestCombo) { bestCombo = combo; localStorage.setItem(LS_COMBO, bestCombo); }
+          comboRing(o.x, o.y, o.hue);
+        } else {
+          comboTimer = COMBO_DECAY_TIME;
+        }
+        const pts = 1 * multiplier * combo;
+        score += pts;
+        if (score > bestScore) { bestScore = score; localStorage.setItem(LS_SCORE, bestScore); }
+        burst(o.x, o.y, o.hue, 10);
+        break;
+      }
+    }
+  }
+
+  // Blocker collision
+  for (const b of blockers) {
+    if (b.hit) continue;
+    if (b.y > H_LOGIC + 40) continue;  // off screen bottom
+    for (const r of rects) {
+      if (circleAABB(laneX(playerLane), headY, RIBBON_W*0.38,
+          b.x, b.y, b.w, b.h) ||
+          (splitActive && circleAABB(laneX(splitLane), headY, RIBBON_W*0.38,
+          b.x, b.y, b.w, b.h))) {
+        // Die
+        b.hit = true;
+        dying = true;
+        shakeAmt = 12;
+        deathBurst(laneX(playerLane), headY);
+        if (splitActive) deathBurst(laneX(splitLane), headY);
+        setTimeout(() => {
+          state = 'gameover';
+          document.getElementById('share-btn').style.display = 'block';
+        }, 900);
+        return;
+      }
+    }
+  }
+
+  // Gate collision
+  for (const g of gates) {
+    if (g.hit) continue;
+    const gCx = g.x + g.w/2, gCy = g.y + g.h/2;
+    // Check head overlap
+    const headInGate = headY > g.y - 4 && headY < g.y + g.h + 4;
+    if (headInGate) {
+      if (g.type === 'mult') {
+        if (splitActive) {
+          g.hit = true;
+          multiplier = Math.min(multiplier + 1, 8);
+          burst(gCx, gCy, 200, 18);
+          comboRing(gCx, gCy, 200);
+        }
+      } else if (g.type === 'shrink') {
+        g.hit = true;
+        score += 5 * multiplier;
+        burst(gCx, gCy, 50, 14);
+      }
+    }
+  }
+
+  // Near-miss detection (blocker very close)
+  for (const b of blockers) {
+    if (b.hit) continue;
+    const bCx = b.x + b.w/2;
+    const isNearLane = Math.abs(bCx - laneX(playerLane)) < LANE_W * 0.9;
+    if (isNearLane && Math.abs(b.y - headY) < 30) {
+      shakeAmt = Math.max(shakeAmt, 3);
+    }
+  }
+
+  // Update particles
+  for (const p of pPool) {
+    if (!p.active) continue;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy += 60 * dt; // gravity
+    p.life -= dt;
+    p.alpha = p.life / p.maxLife;
+    if (p.type === 'ring') p.r += 80 * dt;
+    if (p.life <= 0) p.active = false;
+  }
+
+  // Cull off-screen entities
+  orbs     = orbs.filter(o => o.y < H_LOGIC + 60);
+  blockers = blockers.filter(b => b.y < H_LOGIC + 60);
+  gates    = gates.filter(g => g.y < H_LOGIC + 60);
+}
+
+// ── Draw ───────────────────────────────────────────────────
+function drawLayeredCircle(x, y, r, h, a) {
+  // Outer glow
+  ctx.beginPath();
+  ctx.arc(x, y, r*1.7, 0, Math.PI*2);
+  ctx.fillStyle = `hsla(${h},100%,60%,${a*0.18})`;
+  ctx.fill();
+  // Mid
+  ctx.beginPath();
+  ctx.arc(x, y, r*1.2, 0, Math.PI*2);
+  ctx.fillStyle = `hsla(${h},100%,65%,${a*0.5})`;
+  ctx.fill();
+  // Core
+  ctx.beginPath();
+  ctx.arc(x, y, r*0.7, 0, Math.PI*2);
+  ctx.fillStyle = `hsla(${h},100%,85%,${a})`;
+  ctx.fill();
+}
+
+function drawLayeredRect(x, y, w, h, hue, alpha, radius) {
+  const r = radius || 6;
+  // Glow layer
+  ctx.beginPath();
+  roundRect(ctx, x-4, y-4, w+8, h+8, r+3);
+  ctx.fillStyle = `hsla(${hue},100%,55%,${alpha*0.15})`;
+  ctx.fill();
+  // Main
+  ctx.beginPath();
+  roundRect(ctx, x, y, w, h, r);
+  ctx.fillStyle = `hsla(${hue},100%,45%,${alpha*0.85})`;
+  ctx.fill();
+  // Highlight
+  ctx.beginPath();
+  roundRect(ctx, x+2, y+2, w-4, 4, 2);
+  ctx.fillStyle = `hsla(${hue},100%,80%,${alpha*0.6})`;
+  ctx.fill();
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.moveTo(x+r, y);
+  ctx.lineTo(x+w-r, y);
+  ctx.quadraticCurveTo(x+w, y, x+w, y+r);
+  ctx.lineTo(x+w, y+h-r);
+  ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+  ctx.lineTo(x+r, y+h);
+  ctx.quadraticCurveTo(x, y+h, x, y+h-r);
+  ctx.lineTo(x, y+r);
+  ctx.quadraticCurveTo(x, y, x+r, y);
+  ctx.closePath();
+}
+
+function drawSkyline() {
+  // Faint city silhouette at bottom
+  ctx.fillStyle = 'rgba(30,20,60,0.55)';
+  for (const b of skyline) {
+    ctx.fillRect(b.x, H_LOGIC - b.h, b.w, b.h);
+    // Windows
+    for (const w of b.windows) {
+      ctx.fillStyle = w.lit
+        ? `hsla(${hue},60%,70%,0.35)`
+        : 'rgba(0,0,0,0.2)';
+      ctx.fillRect(b.x + w.rx, H_LOGIC - b.h + w.ry, 5, 8);
+    }
+    ctx.fillStyle = 'rgba(30,20,60,0.55)';
+  }
+}
+
+function drawParallaxLines() {
+  // Vertical parallax lane dividers scrolling
+  const lineAlpha = 0.07;
+  ctx.strokeStyle = `hsla(${hue},80%,60%,${lineAlpha})`;
+  ctx.lineWidth = 1;
+  for (let l = 1; l < LANES; l++) {
+    const lx = l * LANE_W;
+    ctx.beginPath();
+    ctx.moveTo(lx, 0);
+    ctx.lineTo(lx, H_LOGIC);
+    ctx.stroke();
+  }
+  // Horizontal scroll lines
+  const lineSpacing = 80;
+  const offset = worldY % lineSpacing;
+  ctx.strokeStyle = `hsla(${hue},80%,50%,0.05)`;
+  for (let y = -lineSpacing + offset; y < H_LOGIC + lineSpacing; y += lineSpacing) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(W_LOGIC, y);
+    ctx.stroke();
+  }
+}
+
+function drawRibbon() {
+  if (dying && deathAnimT > 0.3) return;
+
+  const alpha = dying ? Math.max(0, 1 - deathAnimT * 3) : 1;
+  if (alpha <= 0) return;
+
+  const hw = RIBBON_W / 2;
+
+  // Draw main ribbon
+  const mainLane = playerLane;
+  const mainX = laneX(mainLane);
+  for (let i = 0; i < Math.min(segments.length, RIBBON_SEG); i++) {
+    const frac = i / RIBBON_SEG;
+    const segAlpha = (1 - frac * 0.7) * alpha;
+    const segH = hue;
+    const y = segHead + i * RIBBON_SEG_H;
+    const w = RIBBON_W * (1 - frac * 0.35);
+    // Outer glow
+    ctx.beginPath();
+    roundRect(ctx, mainX - w/2 - 5, y - RIBBON_SEG_H/2 - 3, w+10, RIBBON_SEG_H+2, 4);
+    ctx.fillStyle = `hsla(${segH},100%,60%,${segAlpha*0.12})`;
+    ctx.fill();
+    // Core
+    ctx.beginPath();
+    roundRect(ctx, mainX - w/2, y - RIBBON_SEG_H/2, w, RIBBON_SEG_H-2, 3);
+    ctx.fillStyle = `hsla(${segH},100%,${60 + (1-frac)*20}%,${segAlpha*0.9})`;
+    ctx.fill();
+  }
+
+  // Draw head glow
+  ctx.beginPath();
+  ctx.arc(mainX, segHead, RIBBON_W*0.52, 0, Math.PI*2);
+  ctx.fillStyle = `hsla(${hue},100%,75%,${alpha*0.85})`;
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(mainX, segHead, RIBBON_W*0.28, 0, Math.PI*2);
+  ctx.fillStyle = `hsla(${hue},100%,95%,${alpha})`;
+  ctx.fill();
+
+  // Split half
+  if (splitActive) {
+    const frac = 1 - splitTimer / SPLIT_DUR;
+    const sx = laneX(splitLane);
+    for (let i = 0; i < Math.min(segments.length, RIBBON_SEG); i++) {
+      const sf = i / RIBBON_SEG;
+      const segAlpha = (1 - sf * 0.7) * alpha;
+      const y = segHead + i * RIBBON_SEG_H;
+      const w = RIBBON_W * (1 - sf * 0.35);
+      ctx.beginPath();
+      roundRect(ctx, sx - w/2 - 4, y - RIBBON_SEG_H/2 - 2, w+8, RIBBON_SEG_H+1, 4);
+      ctx.fillStyle = `hsla(${(hue+40)%360},100%,60%,${segAlpha*0.12})`;
+      ctx.fill();
+      ctx.beginPath();
+      roundRect(ctx, sx - w/2, y - RIBBON_SEG_H/2, w, RIBBON_SEG_H-2, 3);
+      ctx.fillStyle = `hsla(${(hue+40)%360},100%,65%,${segAlpha*0.85})`;
+      ctx.fill();
+    }
+    ctx.beginPath();
+    ctx.arc(sx, segHead, RIBBON_W*0.52, 0, Math.PI*2);
+    ctx.fillStyle = `hsla(${(hue+40)%360},100%,75%,${alpha*0.8})`;
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(sx, segHead, RIBBON_W*0.28, 0, Math.PI*2);
+    ctx.fillStyle = `hsla(${(hue+40)%360},100%,95%,${alpha})`;
+    ctx.fill();
+  }
+}
+
+function drawOrbs() {
+  for (const o of orbs) {
+    if (o.hit) continue;
+    if (o.y < -40 || o.y > H_LOGIC + 40) continue;
+    drawLayeredCircle(o.x, o.y, o.r, o.hue, 1);
+    // Inner spin effect
+    ctx.beginPath();
+    ctx.arc(o.x, o.y, o.r*0.5, 0, Math.PI * 1.4);
+    ctx.strokeStyle = `hsla(${o.hue},100%,95%,0.6)`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+}
+
+function drawBlockers() {
+  for (const b of blockers) {
+    if (b.hit) continue;
+    if (b.y < -40 || b.y > H_LOGIC + 40) continue;
+    // Red blocker
+    drawLayeredRect(b.x, b.y, b.w, b.h, 0, 1, 5);
+    // Cross mark
+    const cx = b.x + b.w/2, cy = b.y + b.h/2;
+    ctx.strokeStyle = 'rgba(255,200,200,0.8)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(cx-6, cy-6); ctx.lineTo(cx+6, cy+6);
+    ctx.moveTo(cx+6, cy-6); ctx.lineTo(cx-6, cy+6);
+    ctx.stroke();
+  }
+}
+
+function drawGates() {
+  for (const g of gates) {
+    if (g.hit) continue;
+    if (g.y < -50 || g.y > H_LOGIC + 50) continue;
+    const gHue = g.type === 'mult' ? 210 : 50;
+    const label = g.type === 'mult' ? '×' + (multiplier+1) : '-LEN +SCORE';
+    // Gate frame
+    ctx.beginPath();
+    roundRect(ctx, g.x - 4, g.y - 4, g.w + 8, g.h + 8, 6);
+    ctx.fillStyle = `hsla(${gHue},90%,50%,0.12)`;
+    ctx.fill();
+    ctx.beginPath();
+    roundRect(ctx, g.x, g.y, g.w, g.h, 5);
+    ctx.strokeStyle = `hsla(${gHue},100%,60%,0.85)`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = `hsla(${gHue},100%,75%,0.9)`;
+    ctx.font = `bold ${g.type === 'mult' ? 18 : 11}px monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, g.x + g.w/2, g.y + g.h/2);
+    // Animated top/bottom bars
+    const pulse = 0.5 + 0.5*Math.sin(elapsed*6);
+    ctx.strokeStyle = `hsla(${gHue},100%,70%,${0.4+pulse*0.4})`;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(g.x, g.y); ctx.lineTo(g.x + g.w, g.y);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(g.x, g.y+g.h); ctx.lineTo(g.x+g.w, g.y+g.h);
+    ctx.stroke();
+  }
+}
+
+function drawParticles() {
+  for (const p of pPool) {
+    if (!p.active) continue;
+    ctx.globalAlpha = Math.max(0, p.alpha);
+    if (p.type === 'ring') {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+      ctx.strokeStyle = `hsl(${p.hue},100%,70%)`;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    } else {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+      ctx.fillStyle = `hsl(${p.hue},100%,70%)`;
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawHUD() {
+  // Score
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = `hsla(${hue},100%,75%,0.95)`;
+  ctx.font = 'bold 32px monospace';
+  ctx.fillText(score, W_LOGIC/2, 18);
+
+  // Combo
+  if (combo > 1) {
+    const pulse = 0.85 + 0.15*Math.sin(elapsed*8);
+    ctx.save();
+    ctx.translate(W_LOGIC/2, 58);
+    ctx.scale(pulse, pulse);
+    ctx.fillStyle = `hsla(${(hue+60)%360},100%,70%,0.9)`;
+    ctx.font = `bold ${14 + combo}px monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`×${combo} COMBO`, 0, 0);
+    ctx.restore();
+  }
+
+  // Multiplier indicator
+  if (multiplier > 1) {
+    ctx.fillStyle = `hsla(210,100%,70%,0.8)`;
+    ctx.font = 'bold 13px monospace';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(`×${multiplier} MULT`, 8, 18);
+  }
+
+  // Split indicator bar
+  if (splitActive) {
+    const frac = splitTimer / SPLIT_DUR;
+    ctx.fillStyle = `hsla(${(hue+40)%360},100%,60%,0.25)`;
+    ctx.fillRect(0, H_LOGIC - 8, W_LOGIC, 8);
+    ctx.fillStyle = `hsla(${(hue+40)%360},100%,70%,0.8)`;
+    ctx.fillRect(0, H_LOGIC - 8, W_LOGIC * frac, 8);
+  }
+
+  // Best score (small)
+  ctx.textAlign = 'right';
+  ctx.font = '11px monospace';
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.fillText(`BEST:${bestScore}`, W_LOGIC - 6, 18);
+}
+
+function drawStartScreen() {
+  // Gradient background
+  const grad = ctx.createLinearGradient(0, 0, 0, H_LOGIC);
+  grad.addColorStop(0, '#050515');
+  grad.addColorStop(1, '#0a0520');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W_LOGIC, H_LOGIC);
+
+  drawSkyline();
+  drawParallaxLines();
+
+  // Title
+  const pulse = 0.95 + 0.05*Math.sin(elapsed*2);
+  ctx.save();
+  ctx.translate(W_LOGIC/2, H_LOGIC*0.32);
+  ctx.scale(pulse, pulse);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  // Shadow
+  ctx.fillStyle = `hsla(${hue},100%,40%,0.4)`;
+  ctx.font = 'bold 52px monospace';
+  ctx.fillText('GLOW', 2, 2);
+  ctx.fillText('DIVIDE', 2, 58);
+
+  // Main
+  ctx.fillStyle = `hsl(${hue},100%,72%)`;
+  ctx.fillText('GLOW', 0, 0);
+  ctx.fillStyle = `hsl(${(hue+40)%360},100%,72%)`;
+  ctx.fillText('DIVIDE', 0, 58);
+
+  ctx.restore();
+
+  // Tagline
+  ctx.textAlign = 'center';
+  ctx.font = '14px monospace';
+  ctx.fillStyle = 'rgba(200,200,255,0.6)';
+  ctx.fillText('Split. Collect. Survive.', W_LOGIC/2, H_LOGIC*0.55);
+
+  // Tap to start
+  const blink = Math.sin(elapsed*3) > 0;
+  if (blink) {
+    ctx.fillStyle = `hsla(${hue},100%,75%,0.9)`;
+    ctx.font = 'bold 18px monospace';
+    ctx.fillText('TAP TO START', W_LOGIC/2, H_LOGIC*0.65);
+  }
+
+  // Instructions
+  ctx.font = '12px monospace';
+  ctx.fillStyle = 'rgba(180,180,220,0.55)';
+  ctx.fillText('Tap = Split lanes · Collect orbs · Avoid red blocks', W_LOGIC/2, H_LOGIC*0.73);
+
+  // Decorative orbs
+  for (let i = 0; i < 4; i++) {
+    const ox = LANE_W*i + LANE_W/2;
+    const oy = H_LOGIC*0.84 + Math.sin(elapsed*2 + i)*10;
+    drawLayeredCircle(ox, oy, 10, (hue + i*40)%360, 0.7);
+  }
+}
+
+function drawGameOverScreen() {
+  // Semi-transparent overlay
+  ctx.fillStyle = 'rgba(5,5,20,0.82)';
+  ctx.fillRect(0, 0, W_LOGIC, H_LOGIC);
+
+  const cx = W_LOGIC/2;
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  // GAME OVER
+  ctx.fillStyle = `hsl(0,100%,65%)`;
+  ctx.font = 'bold 40px monospace';
+  ctx.fillText('GAME OVER', cx, H_LOGIC*0.28);
+
+  // Score
+  ctx.font = 'bold 52px monospace';
+  ctx.fillStyle = `hsl(${hue},100%,72%)`;
+  ctx.fillText(score, cx, H_LOGIC*0.42);
+
+  ctx.font = '14px monospace';
+  ctx.fillStyle = 'rgba(200,200,255,0.55)';
+  ctx.fillText('SCORE', cx, H_LOGIC*0.48);
+
+  // Best
+  ctx.font = 'bold 22px monospace';
+  ctx.fillStyle = 'rgba(200,255,200,0.75)';
+  ctx.fillText('BEST: ' + bestScore, cx, H_LOGIC*0.56);
+
+  ctx.font = '16px monospace';
+  ctx.fillStyle = `hsl(${(hue+60)%360},90%,65%)`;
+  ctx.fillText('BEST COMBO: ×' + bestCombo, cx, H_LOGIC*0.62);
+
+  // Tap to retry
+  const blink = Math.sin(elapsed*3) > 0;
+  if (blink) {
+    ctx.fillStyle = `hsla(${hue},100%,75%,0.9)`;
+    ctx.font = 'bold 18px monospace';
+    ctx.fillText('TAP TO RETRY', cx, H_LOGIC*0.82);
+  }
+}
+
+function draw() {
+  const sw = canvas.width, sh = canvas.height;
+  ctx.clearRect(0, 0, sw, sh);
+  ctx.save();
+  ctx.scale(scaleX, scaleY);
+
+  // Screen shake
+  if (shakeAmt > 0) {
+    const sx = (Math.random()-0.5) * shakeAmt * 2;
+    const sy = (Math.random()-0.5) * shakeAmt * 2;
+    ctx.translate(sx, sy);
+  }
+
+  if (state === 'start') {
+    drawStartScreen();
+  } else {
+    // Background
+    const grad = ctx.createLinearGradient(0, 0, 0, H_LOGIC);
+    grad.addColorStop(0, '#060518');
+    grad.addColorStop(1, '#0c0825');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W_LOGIC, H_LOGIC);
+
+    drawSkyline();
+    drawParallaxLines();
+    drawGates();
+    drawBlockers();
+    drawOrbs();
+    drawRibbon();
+    drawParticles();
+    drawHUD();
+
+    if (state === 'gameover') {
+      drawGameOverScreen();
+    }
+  }
+
+  ctx.restore();
+}
+
+// ── Game loop ──────────────────────────────────────────────
+function loop(ts) {
+  const dt = Math.min((ts - lastTime) / 1000, 0.1);
+  lastTime = ts;
+
+  if (state === 'playing' || (state === 'gameover' && dying)) {
+    update(dt);
+  } else if (state === 'start' || state === 'gameover') {
+    elapsed += dt;
+    hue = (hue + dt * 10) % 360;
+    // Update particles on these screens too
+    for (const p of pPool) {
+      if (!p.active) continue;
+      p.x += p.vx * dt; p.y += p.vy * dt;
+      p.vy += 60 * dt;
+      p.life -= dt; p.alpha = p.life / p.maxLife;
+      if (p.type === 'ring') p.r += 80 * dt;
+      if (p.life <= 0) p.active = false;
+    }
+  }
+
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// ── Share button ───────────────────────────────────────────
+document.getElementById('share-btn').addEventListener('click', async (e) => {
+  e.stopPropagation();
+  const text = `I scored ${score} in Glow Divide! Can you beat me?`;
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: 'Glow Divide', text, url: GAME_URL });
+    } catch {}
+  } else {
+    try {
+      await navigator.clipboard.writeText(GAME_URL);
+      const toast = document.getElementById('copy-toast');
+      toast.style.display = 'block';
+      setTimeout(() => toast.style.display = 'none', 2000);
+    } catch {}
+  }
+});
+
+// ── Boot ───────────────────────────────────────────────────
+buildSkyline();
+requestAnimationFrame((ts) => { lastTime = ts; requestAnimationFrame(loop); });
+
+})();
+</script>
+</body>
+</html>

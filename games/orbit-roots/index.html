@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Orbit Roots - Free HTML5 Game</title>
+<meta name="description" content="Play Orbit Roots - Tap to link dots while gravity rotates, making you navigate jungle roots from all angles.">
+<meta name="theme-color" content="#0a1628">
+<link rel="canonical" href="https://balinti.github.io/orbit-roots/">
+<meta property="og:title" content="Orbit Roots - Free HTML5 Game">
+<meta property="og:description" content="Play Orbit Roots - Tap to link dots while gravity rotates, making you navigate jungle roots from all angles.">
+<meta property="og:url" content="https://balinti.github.io/orbit-roots/">
+<meta property="og:image" content="https://balinti.github.io/orbit-roots/og-image.png">
+<meta property="og:type" content="website">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#060e1a;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;touch-action:none;user-select:none;-webkit-user-select:none}
+#wrap{position:relative;width:100%;max-width:420px;height:100vh;max-height:750px;margin:0 auto;overflow:hidden;background:#0a1628}
+canvas{display:block;width:100%;height:100%}
+#hud{position:absolute;top:0;left:0;width:100%;pointer-events:none;z-index:2}
+#score-display{position:absolute;top:18px;left:50%;transform:translateX(-50%);font-size:28px;font-weight:800;color:#fff;text-shadow:0 2px 12px rgba(0,0,0,.6);letter-spacing:2px;opacity:0;transition:opacity .3s}
+#score-display.visible{opacity:1}
+#combo-display{position:absolute;top:52px;left:50%;transform:translateX(-50%);font-size:15px;font-weight:700;color:#ffd700;text-shadow:0 1px 8px rgba(255,215,0,.4);opacity:0;transition:opacity .25s}
+#combo-display.visible{opacity:1}
+#start-screen,#gameover-screen{position:absolute;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:3;pointer-events:none;opacity:0;transition:opacity .4s}
+#start-screen.visible,#gameover-screen.visible{opacity:1;pointer-events:auto}
+.screen-title{font-size:38px;font-weight:900;color:#fff;text-shadow:0 0 30px rgba(100,220,160,.5),0 4px 20px rgba(0,0,0,.5);letter-spacing:3px;margin-bottom:8px}
+.screen-subtitle{font-size:13px;color:rgba(255,255,255,.5);letter-spacing:4px;text-transform:uppercase;margin-bottom:40px}
+.screen-prompt{font-size:17px;color:rgba(255,255,255,.7);animation:pulse 1.8s ease-in-out infinite}
+.go-score{font-size:52px;font-weight:900;color:#fff;text-shadow:0 0 20px rgba(100,220,160,.5);margin-bottom:4px}
+.go-label{font-size:13px;color:rgba(255,255,255,.4);letter-spacing:3px;text-transform:uppercase;margin-bottom:20px}
+.go-best{font-size:16px;color:rgba(255,255,255,.5);margin-bottom:36px}
+.go-best span{color:#ffd700;font-weight:700}
+@keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="gc"></canvas>
+  <div id="hud">
+    <div id="score-display">0</div>
+    <div id="combo-display">x1</div>
+  </div>
+  <div id="start-screen" class="visible">
+    <div class="screen-title">ORBIT ROOTS</div>
+    <div class="screen-subtitle">Tap-to-Swing Runner</div>
+    <div class="screen-prompt">Tap to Start</div>
+  </div>
+  <div id="gameover-screen">
+    <div class="go-label">SCORE</div>
+    <div class="go-score" id="go-score">0</div>
+    <div class="go-best">BEST: <span id="go-best">0</span></div>
+    <div class="screen-prompt">Tap to Retry</div>
+  </div>
+</div>
+<script>
+(()=>{
+'use strict';
+
+/* ── Canvas Setup ── */
+const cvs=document.getElementById('gc');
+const ctx=cvs.getContext('2d');
+const wrap=document.getElementById('wrap');
+const scoreEl=document.getElementById('score-display');
+const comboEl=document.getElementById('combo-display');
+const startScreen=document.getElementById('start-screen');
+const goScreen=document.getElementById('gameover-screen');
+const goScoreEl=document.getElementById('go-score');
+const goBestEl=document.getElementById('go-best');
+
+let W,H,dpr;
+function resize(){
+  const r=wrap.getBoundingClientRect();
+  W=r.width; H=r.height;
+  dpr=Math.min(window.devicePixelRatio||1,2);
+  cvs.width=W*dpr; cvs.height=H*dpr;
+  cvs.style.width=W+'px'; cvs.style.height=H+'px';
+}
+window.addEventListener('resize',resize);
+resize();
+
+/* ── Helpers ── */
+const rand=(a,b)=>a+Math.random()*(b-a);
+const randInt=(a,b)=>Math.floor(rand(a,b+1));
+const lerp=(a,b,t)=>a+(b-a)*t;
+const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
+const dist=(x1,y1,x2,y2)=>Math.hypot(x2-x1,y2-y1);
+
+/* ── State ── */
+let state='start'; // start | playing | gameover
+let score=0, bestScore=0, combo=0, multiplier=1;
+let gameTime=0, scrollSpeed=0, scrollX=0;
+let shakeX=0, shakeY=0, shakeMag=0, shakeDecay=0;
+let slowMo=1, slowMoTimer=0;
+let hueBase=140;
+let deathFreeze=0;
+
+/* ── Load best score ── */
+try{ bestScore=parseInt(localStorage.getItem('or_best'))||0; }catch(e){}
+
+/* ── Player (Seed) ── */
+const seed={
+  x:0, y:0, vx:0, vy:0,
+  radius:8,
+  attached:false,
+  attachNode:null,
+  angle:0, angVel:0, ropeLen:0,
+  trail:[],
+  alive:true,
+  glowHue:140
+};
+
+/* ── World Objects ── */
+let nodes=[];   // root nodes to latch onto
+let thorns=[];  // hazards
+let particles=[];
+let bgStars=[];
+
+/* ── Node Types ── */
+const NODE_NORMAL=0, NODE_GOLD=1, NODE_BROKEN=2;
+
+/* ── Constants ── */
+const GRAVITY=0.35;
+const BASE_SCROLL=2.2;
+const SWING_DAMPING=0.997;
+const ROPE_STIFFNESS=0.06;
+const LATCH_RANGE=120;
+const NODE_RADIUS=12;
+const THORN_RADIUS=14;
+const PERFECT_WINDOW=0.35; // seconds for perfect latch timing
+const BROKEN_HOLD=0.4; // seconds before broken node snaps
+
+/* ── Init background stars ── */
+function initBgStars(){
+  bgStars=[];
+  for(let i=0;i<60;i++){
+    bgStars.push({x:rand(0,800),y:rand(0,H),size:rand(0.5,2),alpha:rand(0.1,0.4),speed:rand(0.2,0.8)});
+  }
+}
+initBgStars();
+
+/* ── Spawn Functions ── */
+function spawnInitialNodes(){
+  nodes=[];
+  const startX=W*0.5;
+  // Place first node near player
+  nodes.push({x:startX+80,y:H*0.5,type:NODE_NORMAL,radius:NODE_RADIUS,alive:true,holdTimer:0,pulsePhase:rand(0,Math.PI*2)});
+  // Spawn a chain of nodes ahead
+  for(let i=1;i<12;i++){
+    spawnNextNode(nodes[nodes.length-1]);
+  }
+}
+
+function spawnNextNode(prev){
+  const difficulty=Math.min(gameTime/60,1); // 0→1 over 60s
+  const gapX=rand(90,150+difficulty*40);
+  const gapY=rand(-80-difficulty*30,80+difficulty*30);
+  const nx=prev.x+gapX;
+  let ny=clamp(prev.y+gapY, 80, H-80);
+
+  // Snake pattern after 45s
+  if(gameTime>45){
+    const snake=Math.sin(nx*0.008)*80*difficulty;
+    ny=clamp(H*0.5+snake+rand(-40,40),80,H-80);
+  }
+
+  // Node type
+  let type=NODE_NORMAL;
+  if(gameTime>10 && Math.random()<0.12+difficulty*0.08) type=NODE_GOLD;
+  if(gameTime>15 && Math.random()<0.08+difficulty*0.06) type=NODE_BROKEN;
+
+  nodes.push({
+    x:nx, y:ny, type, radius:NODE_RADIUS, alive:true, holdTimer:0,
+    pulsePhase:rand(0,Math.PI*2)
+  });
+}
+
+function spawnThorn(refNode){
+  if(gameTime<5) return;
+  const difficulty=Math.min(gameTime/60,1);
+  if(Math.random()>0.25+difficulty*0.35) return;
+
+  const ox=rand(30,80)*(Math.random()>0.5?1:-1);
+  const oy=rand(30,80)*(Math.random()>0.5?1:-1);
+  thorns.push({
+    x:refNode.x+ox,
+    y:clamp(refNode.y+oy,40,H-40),
+    radius:THORN_RADIUS,
+    angle:rand(0,Math.PI*2),
+    rotSpeed:rand(-2,2)
+  });
+}
+
+/* ── Particles ── */
+function emitParticles(x,y,count,hue,speed,life){
+  for(let i=0;i<count;i++){
+    const a=rand(0,Math.PI*2);
+    const s=rand(speed*0.3,speed);
+    particles.push({
+      x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,
+      life:rand(life*0.5,life),maxLife:life,
+      size:rand(1.5,4),hue,alpha:1
+    });
+  }
+}
+
+function emitRing(x,y,hue){
+  particles.push({
+    x,y,vx:0,vy:0,life:0.5,maxLife:0.5,
+    size:5,hue,alpha:1,ring:true,ringRadius:5
+  });
+}
+
+/* ── Shake ── */
+function triggerShake(mag,decay){
+  shakeMag=mag; shakeDecay=decay;
+}
+
+/* ── Slow Mo ── */
+function triggerSlowMo(dur){
+  slowMo=0.3; slowMoTimer=dur;
+}
+
+/* ── Find nearest latchable node ahead ── */
+function findNearestNode(){
+  let best=null, bestDist=Infinity;
+  for(const n of nodes){
+    if(!n.alive) continue;
+    const dx=n.x-seed.x;
+    if(dx<-20) continue; // must be ahead or roughly same x
+    const d=dist(seed.x,seed.y,n.x,n.y);
+    if(d<LATCH_RANGE && d<bestDist){
+      bestDist=d; best=n;
+    }
+  }
+  return best;
+}
+
+/* ── Latch ── */
+function latchToNode(node){
+  if(!node||!node.alive) return;
+  seed.attached=true;
+  seed.attachNode=node;
+  seed.ropeLen=dist(seed.x,seed.y,node.x,node.y);
+  seed.angle=Math.atan2(seed.y-node.y,seed.x-node.x);
+
+  // Angular velocity from linear velocity
+  const tangent=Math.atan2(seed.vy,seed.vx);
+  const relAngle=tangent-seed.angle;
+  const speed=Math.hypot(seed.vx,seed.vy);
+  seed.angVel=speed*Math.sin(relAngle)/(seed.ropeLen||1);
+  seed.angVel=clamp(seed.angVel,-0.15,0.15);
+
+  // Check perfect latch
+  const timeSinceRelease=gameTime-lastReleaseTime;
+  if(timeSinceRelease<PERFECT_WINDOW && combo>=0){
+    combo++;
+    multiplier=1+Math.floor(combo/3)*0.5;
+    multiplier=Math.min(multiplier,5);
+    emitParticles(node.x,node.y,20,50,5,0.6);
+    emitRing(node.x,node.y,50);
+    triggerSlowMo(0.08);
+    triggerShake(3,0.85);
+  } else {
+    combo=0; multiplier=1;
+  }
+
+  emitParticles(node.x,node.y,10,seed.glowHue,3,0.4);
+  triggerShake(1.5,0.9);
+  node.holdTimer=0;
+}
+
+let lastReleaseTime=0;
+
+/* ── Release from node ── */
+function releaseFromNode(){
+  if(!seed.attached) return;
+  const n=seed.attachNode;
+  // Convert angular motion back to linear
+  seed.vx=-Math.sin(seed.angle)*seed.angVel*seed.ropeLen;
+  seed.vy=Math.cos(seed.angle)*seed.angVel*seed.ropeLen;
+
+  // Add small forward boost
+  seed.vx+=scrollSpeed*0.3;
+
+  seed.attached=false;
+  seed.attachNode=null;
+  lastReleaseTime=gameTime;
+}
+
+/* ── Auto-release logic ── */
+function shouldAutoRelease(){
+  if(!seed.attached) return false;
+  const n=seed.attachNode;
+  // Broken node: release after short hold
+  if(n.type===NODE_BROKEN && n.holdTimer>BROKEN_HOLD) return true;
+
+  // Auto-release when moving forward and there's a next node
+  // Release when angle is roughly pointing forward-up (between -90° and 30° from horizontal right)
+  const forwardVx=-Math.sin(seed.angle)*seed.angVel*seed.ropeLen;
+  if(forwardVx>scrollSpeed*0.8){
+    // Check if there's a valid next node ahead
+    for(const nd of nodes){
+      if(!nd.alive || nd===n) continue;
+      if(nd.x>n.x+40 && dist(seed.x,seed.y,nd.x,nd.y)<LATCH_RANGE*1.5) return true;
+    }
+  }
+  return false;
+}
+
+/* ── Game Reset ── */
+function resetGame(){
+  score=0; combo=0; multiplier=1;
+  gameTime=0; scrollX=0;
+  scrollSpeed=BASE_SCROLL;
+  shakeX=0; shakeY=0; shakeMag=0;
+  slowMo=1; slowMoTimer=0;
+  deathFreeze=0;
+  hueBase=140;
+  particles=[];
+  thorns=[];
+  lastReleaseTime=0;
+
+  seed.x=W*0.3; seed.y=H*0.5;
+  seed.vx=2; seed.vy=0;
+  seed.attached=false; seed.attachNode=null;
+  seed.trail=[]; seed.alive=true;
+  seed.glowHue=140;
+
+  spawnInitialNodes();
+  initBgStars();
+}
+
+/* ── Die ── */
+function die(){
+  if(!seed.alive) return;
+  seed.alive=false;
+  seed.attached=false;
+  emitParticles(seed.x,seed.y,40,0,6,0.8);
+  triggerShake(10,0.88);
+  deathFreeze=0.15;
+
+  // Save score
+  if(score>bestScore){
+    bestScore=score;
+    try{ localStorage.setItem('or_best',bestScore.toString()); }catch(e){}
+  }
+
+  setTimeout(()=>{
+    state='gameover';
+    goScoreEl.textContent=score;
+    goBestEl.textContent=bestScore;
+    goScreen.classList.add('visible');
+    scoreEl.classList.remove('visible');
+    comboEl.classList.remove('visible');
+  },600);
+}
+
+/* ── Input ── */
+function handleTap(){
+  if(state==='start'){
+    state='playing';
+    startScreen.classList.remove('visible');
+    scoreEl.classList.add('visible');
+    comboEl.classList.add('visible');
+    resetGame();
+    return;
+  }
+  if(state==='gameover'){
+    goScreen.classList.remove('visible');
+    state='playing';
+    scoreEl.classList.add('visible');
+    comboEl.classList.add('visible');
+    resetGame();
+    return;
+  }
+  if(state==='playing' && seed.alive){
+    if(seed.attached){
+      releaseFromNode();
+    } else {
+      const node=findNearestNode();
+      if(node) latchToNode(node);
+    }
+  }
+}
+
+wrap.addEventListener('pointerdown',(e)=>{e.preventDefault();handleTap();});
+document.addEventListener('keydown',(e)=>{
+  if(e.code==='Space'||e.code==='Enter'){e.preventDefault();handleTap();}
+});
+
+/* ── Update ── */
+let lastTime=0;
+function update(dt){
+  if(deathFreeze>0){deathFreeze-=dt;return;}
+
+  // Slow-mo
+  if(slowMoTimer>0){slowMoTimer-=dt;if(slowMoTimer<=0)slowMo=1;}
+  const adt=dt*slowMo;
+
+  gameTime+=adt;
+  hueBase=(hueBase+adt*15)%360;
+  seed.glowHue=(hueBase+60)%360;
+
+  // Difficulty ramp
+  scrollSpeed=BASE_SCROLL+gameTime*0.02;
+  scrollSpeed=Math.min(scrollSpeed,6);
+  scrollX+=scrollSpeed*adt*60;
+
+  // Score
+  if(seed.alive){
+    score+=Math.floor(scrollSpeed*multiplier*adt*10);
+    scoreEl.textContent=score;
+    if(multiplier>1){
+      comboEl.textContent='x'+multiplier.toFixed(1);
+      comboEl.classList.add('visible');
+    } else {
+      comboEl.classList.remove('visible');
+    }
+  }
+
+  // Move all world objects left
+  const shift=scrollSpeed*adt*60;
+  for(const n of nodes){n.x-=shift;}
+  for(const t of thorns){t.x-=shift;}
+  for(const p of particles){p.x-=shift*0.7;} // parallax
+  for(const s of bgStars){
+    s.x-=s.speed*adt*60;
+    if(s.x<-10){s.x=W+10;s.y=rand(0,H);}
+  }
+
+  // Seed physics
+  if(seed.alive){
+    if(seed.attached && seed.attachNode){
+      const n=seed.attachNode;
+      n.holdTimer+=adt;
+
+      // Pendulum
+      const grav=GRAVITY*adt*60;
+      const gravTorque=grav*Math.cos(seed.angle)/Math.max(seed.ropeLen,20);
+      seed.angVel+=gravTorque;
+      seed.angVel*=SWING_DAMPING;
+      seed.angle+=seed.angVel;
+
+      seed.x=n.x+Math.cos(seed.angle)*seed.ropeLen;
+      seed.y=n.y+Math.sin(seed.angle)*seed.ropeLen;
+
+      // Seed also shifts with world scroll
+      // (node already shifted, so seed follows via attachment)
+
+      // Auto-release
+      if(shouldAutoRelease()) releaseFromNode();
+
+    } else {
+      // Free fall
+      seed.vy+=GRAVITY*adt*60;
+      seed.x+=seed.vx*adt*60 - shift; // subtract scroll so seed stays if moving forward
+      seed.y+=seed.vy*adt*60;
+    }
+
+    // Trail
+    seed.trail.push({x:seed.x,y:seed.y,alpha:1});
+    if(seed.trail.length>20) seed.trail.shift();
+    for(const t of seed.trail) t.alpha-=adt*3;
+
+    // Bounds check
+    if(seed.y<-30||seed.y>H+30||seed.x<-60){
+      die();
+    }
+
+    // Collision with thorns
+    for(const t of thorns){
+      const d=dist(seed.x,seed.y,t.x,t.y);
+      if(d<seed.radius+t.radius){
+        die();
+      } else if(d<seed.radius+t.radius+15){
+        // Near miss
+        triggerShake(1,0.92);
+      }
+    }
+  }
+
+  // Remove off-screen nodes, spawn new ones
+  nodes=nodes.filter(n=>n.x>-50);
+  while(nodes.length<12){
+    const last=nodes[nodes.length-1];
+    spawnNextNode(last);
+    spawnThorn(nodes[nodes.length-1]);
+  }
+
+  // Remove off-screen thorns
+  thorns=thorns.filter(t=>t.x>-50);
+  for(const t of thorns) t.angle+=t.rotSpeed*adt;
+
+  // Particles
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    p.life-=adt;
+    if(p.life<=0){particles.splice(i,1);continue;}
+    if(p.ring){
+      p.ringRadius+=adt*200;
+      p.alpha=p.life/p.maxLife;
+    } else {
+      p.x+=p.vx*adt*60;
+      p.y+=p.vy*adt*60;
+      p.vy+=0.1*adt*60;
+      p.alpha=p.life/p.maxLife;
+      p.size*=0.99;
+    }
+  }
+
+  // Shake
+  if(shakeMag>0.1){
+    shakeX=(Math.random()-0.5)*shakeMag*2;
+    shakeY=(Math.random()-0.5)*shakeMag*2;
+    shakeMag*=shakeDecay;
+  } else {
+    shakeX=0;shakeY=0;shakeMag=0;
+  }
+}
+
+/* ── Draw ── */
+function draw(){
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,W,H);
+
+  // Apply shake
+  ctx.save();
+  ctx.translate(shakeX,shakeY);
+
+  // Background gradient
+  const bgGrad=ctx.createLinearGradient(0,0,0,H);
+  const h1=(hueBase+180)%360, h2=(hueBase+220)%360;
+  bgGrad.addColorStop(0,`hsl(${h1},40%,8%)`);
+  bgGrad.addColorStop(1,`hsl(${h2},50%,5%)`);
+  ctx.fillStyle=bgGrad;
+  ctx.fillRect(-20,-20,W+40,H+40);
+
+  // Stars
+  for(const s of bgStars){
+    ctx.globalAlpha=s.alpha;
+    ctx.fillStyle='#fff';
+    ctx.beginPath();
+    ctx.arc(s.x,s.y,s.size,0,Math.PI*2);
+    ctx.fill();
+  }
+  ctx.globalAlpha=1;
+
+  // Draw rope if attached
+  if(seed.alive && seed.attached && seed.attachNode){
+    const n=seed.attachNode;
+    ctx.strokeStyle=`hsla(${seed.glowHue},70%,60%,0.4)`;
+    ctx.lineWidth=2;
+    ctx.setLineDash([4,4]);
+    ctx.beginPath();
+    ctx.moveTo(seed.x,seed.y);
+    ctx.lineTo(n.x,n.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Draw nodes
+  for(const n of nodes){
+    if(n.x<-20||n.x>W+20) continue;
+    const pulse=Math.sin(gameTime*4+n.pulsePhase)*0.15+1;
+    const r=n.radius*pulse;
+    let hue=hueBase, sat=60, lit=55;
+    if(n.type===NODE_GOLD){hue=45;sat=90;lit=60;}
+    if(n.type===NODE_BROKEN){hue=0;sat=40;lit=40;}
+
+    // Glow
+    ctx.shadowColor=`hsl(${hue},${sat}%,${lit}%)`;
+    ctx.shadowBlur=15;
+
+    // Outer ring
+    ctx.strokeStyle=`hsla(${hue},${sat}%,${lit}%,0.5)`;
+    ctx.lineWidth=2;
+    ctx.beginPath();
+    ctx.arc(n.x,n.y,r+6,0,Math.PI*2);
+    ctx.stroke();
+
+    // Core
+    ctx.fillStyle=`hsl(${hue},${sat}%,${lit}%)`;
+    ctx.beginPath();
+    ctx.arc(n.x,n.y,r,0,Math.PI*2);
+    ctx.fill();
+
+    // Inner highlight
+    ctx.fillStyle=`hsla(${hue},${sat}%,${lit+25}%,0.5)`;
+    ctx.beginPath();
+    ctx.arc(n.x-r*0.2,n.y-r*0.2,r*0.4,0,Math.PI*2);
+    ctx.fill();
+
+    ctx.shadowBlur=0;
+
+    // Gold sparkle
+    if(n.type===NODE_GOLD){
+      ctx.fillStyle=`hsla(45,100%,80%,${0.3+Math.sin(gameTime*8+n.pulsePhase)*0.3})`;
+      ctx.beginPath();
+      ctx.arc(n.x,n.y,r+10,0,Math.PI*2);
+      ctx.fill();
+    }
+
+    // Broken: cracks
+    if(n.type===NODE_BROKEN){
+      ctx.strokeStyle='rgba(255,100,80,0.6)';
+      ctx.lineWidth=1.5;
+      ctx.beginPath();
+      ctx.moveTo(n.x-r*0.5,n.y-r*0.3);
+      ctx.lineTo(n.x+r*0.2,n.y+r*0.1);
+      ctx.lineTo(n.x+r*0.5,n.y+r*0.4);
+      ctx.stroke();
+    }
+  }
+
+  // Draw thorns
+  for(const t of thorns){
+    if(t.x<-30||t.x>W+30) continue;
+    ctx.save();
+    ctx.translate(t.x,t.y);
+    ctx.rotate(t.angle);
+
+    const spikes=5;
+    const outer=t.radius;
+    const inner=t.radius*0.45;
+    ctx.fillStyle=`hsl(${(hueBase+120)%360},60%,35%)`;
+    ctx.shadowColor=`hsl(${(hueBase+120)%360},80%,50%)`;
+    ctx.shadowBlur=8;
+    ctx.beginPath();
+    for(let i=0;i<spikes*2;i++){
+      const r2=i%2===0?outer:inner;
+      const a=(i*Math.PI)/spikes;
+      const px=Math.cos(a)*r2;
+      const py=Math.sin(a)*r2;
+      if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.shadowBlur=0;
+
+    // Core
+    ctx.fillStyle=`hsl(${(hueBase+120)%360},50%,25%)`;
+    ctx.beginPath();
+    ctx.arc(0,0,inner*0.7,0,Math.PI*2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  // Draw trail
+  for(let i=0;i<seed.trail.length;i++){
+    const t=seed.trail[i];
+    if(t.alpha<=0) continue;
+    ctx.globalAlpha=t.alpha*0.4;
+    ctx.fillStyle=`hsl(${seed.glowHue},70%,60%)`;
+    ctx.beginPath();
+    ctx.arc(t.x,t.y,seed.radius*(0.3+t.alpha*0.5),0,Math.PI*2);
+    ctx.fill();
+  }
+  ctx.globalAlpha=1;
+
+  // Draw seed
+  if(seed.alive){
+    // Glow
+    ctx.shadowColor=`hsl(${seed.glowHue},80%,70%)`;
+    ctx.shadowBlur=20;
+
+    // Main body
+    ctx.fillStyle=`hsl(${seed.glowHue},75%,65%)`;
+    ctx.beginPath();
+    ctx.arc(seed.x,seed.y,seed.radius,0,Math.PI*2);
+    ctx.fill();
+
+    // Inner bright
+    ctx.fillStyle=`hsl(${seed.glowHue},60%,85%)`;
+    ctx.beginPath();
+    ctx.arc(seed.x-2,seed.y-2,seed.radius*0.45,0,Math.PI*2);
+    ctx.fill();
+
+    ctx.shadowBlur=0;
+
+    // Aura ring
+    const auraSize=seed.radius+5+Math.sin(gameTime*6)*3;
+    ctx.strokeStyle=`hsla(${seed.glowHue},70%,65%,0.3)`;
+    ctx.lineWidth=1.5;
+    ctx.beginPath();
+    ctx.arc(seed.x,seed.y,auraSize,0,Math.PI*2);
+    ctx.stroke();
+  }
+
+  // Particles
+  for(const p of particles){
+    if(p.ring){
+      ctx.globalAlpha=p.alpha*0.6;
+      ctx.strokeStyle=`hsl(${p.hue},80%,65%)`;
+      ctx.lineWidth=2;
+      ctx.beginPath();
+      ctx.arc(p.x,p.y,p.ringRadius,0,Math.PI*2);
+      ctx.stroke();
+    } else {
+      ctx.globalAlpha=p.alpha;
+      ctx.fillStyle=`hsl(${p.hue},80%,65%)`;
+      ctx.beginPath();
+      ctx.arc(p.x,p.y,p.size,0,Math.PI*2);
+      ctx.fill();
+    }
+  }
+  ctx.globalAlpha=1;
+
+  // Latch range indicator (subtle)
+  if(seed.alive && !seed.attached && state==='playing'){
+    const nearest=findNearestNode();
+    if(nearest){
+      const d=dist(seed.x,seed.y,nearest.x,nearest.y);
+      const alpha=clamp(1-d/LATCH_RANGE,0,0.3);
+      if(alpha>0.02){
+        ctx.strokeStyle=`hsla(${seed.glowHue},60%,60%,${alpha})`;
+        ctx.lineWidth=1;
+        ctx.setLineDash([3,5]);
+        ctx.beginPath();
+        ctx.moveTo(seed.x,seed.y);
+        ctx.lineTo(nearest.x,nearest.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+  }
+
+  // Vignette
+  const vigGrad=ctx.createRadialGradient(W/2,H/2,W*0.3,W/2,H/2,W*0.8);
+  vigGrad.addColorStop(0,'rgba(0,0,0,0)');
+  vigGrad.addColorStop(1,'rgba(0,0,0,0.4)');
+  ctx.fillStyle=vigGrad;
+  ctx.fillRect(-20,-20,W+40,H+40);
+
+  ctx.restore();
+}
+
+/* ── Game Loop ── */
+function loop(ts){
+  requestAnimationFrame(loop);
+  if(!lastTime) lastTime=ts;
+  let dt=(ts-lastTime)/1000;
+  lastTime=ts;
+  dt=Math.min(dt,0.05); // cap delta
+
+  if(state==='playing'){
+    update(dt);
+  }
+
+  draw();
+}
+
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

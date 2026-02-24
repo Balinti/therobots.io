@@ -1,0 +1,1033 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Reef Rush: Tap·Tide – Match Sea Creatures Puzzle Game</title>
+  <meta name="description" content="Reef Rush: Tap·Tide is a fast-paced sea creature matching puzzle game. Tap clusters, defuse mines, race the clock! Free to play in your browser.">
+  <meta name="keywords" content="reef rush, puzzle game, match game, sea creatures, HTML5 game, casual game, browser game">
+  <meta name="author" content="Reef Rush">
+  <link rel="canonical" href="https://balinti.github.io/reef-rush/">
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="Reef Rush: Tap·Tide – Match Sea Creatures Puzzle Game">
+  <meta property="og:description" content="Tap clusters of sea creatures, defuse mines, and race the 30-second clock in this addictive reef puzzle game!">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://balinti.github.io/reef-rush/">
+  <meta property="og:image" content="https://balinti.github.io/reef-rush/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:site_name" content="Reef Rush">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Reef Rush: Tap·Tide">
+  <meta name="twitter:description" content="Match sea creatures, defuse mines, race the clock! 30-second score attack.">
+  <meta name="twitter:image" content="https://balinti.github.io/reef-rush/og-image.png">
+
+  <meta name="theme-color" content="#0a1628">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #040d1a;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      overflow: hidden;
+      touch-action: none;
+    }
+    #game-wrap {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      height: 100vh;
+      max-height: 750px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: pointer;
+    }
+    /* SEO text below canvas – visually hidden but indexable */
+    #seo-text {
+      position: absolute;
+      width: 1px; height: 1px;
+      overflow: hidden;
+      clip: rect(0,0,0,0);
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+<div id="game-wrap">
+  <canvas id="c"></canvas>
+</div>
+
+<!-- SEO indexable content -->
+<section id="seo-text" aria-hidden="true">
+  <h1>Reef Rush: Tap·Tide</h1>
+  <p>Reef Rush is a free browser puzzle game where you tap clusters of matching sea creatures to score points. Race the 30-second clock and defuse underwater mines before they explode!</p>
+  <p>Challenge yourself to beat your high score in this colorful, fast-paced match-and-pop game inspired by the ocean reef.</p>
+  <h2>How to Play</h2>
+  <ul>
+    <li>Tap any sea creature to pop the largest connected cluster of that type.</li>
+    <li>Bigger clusters = more points and multiplier streaks.</li>
+    <li>Mines count down – pop adjacent tiles to defuse them for bonus points.</li>
+    <li>Survive the full 30 seconds for a time-win bonus!</li>
+    <li>Use Space or Enter on keyboard; tap or click on mobile/desktop.</li>
+  </ul>
+</section>
+
+<script>
+'use strict';
+// ─── Constants ───────────────────────────────────────────────────────────────
+const COLS = 7, ROWS = 8;
+const GAME_DURATION = 30; // seconds
+const LS_KEY = 'reef_best';
+
+// Creature types: emoji + HSL hue
+const CREATURES = [
+  { emoji: '🐠', hue: 25 },   // 0 clownfish
+  { emoji: '🐙', hue: 280 },  // 1 octopus
+  { emoji: '🦀', hue: 10 },   // 2 crab
+  { emoji: '🐚', hue: 50 },   // 3 shell
+  { emoji: '🐡', hue: 195 },  // 4 puffer
+];
+const N_TYPES = CREATURES.length;
+
+// ─── Canvas / DPR setup ──────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const DPR = Math.min(window.devicePixelRatio || 1, 3);
+
+let CW, CH; // CSS pixel dimensions
+function resize() {
+  const wrap = document.getElementById('game-wrap');
+  CW = wrap.clientWidth;
+  CH = wrap.clientHeight;
+  canvas.width  = Math.round(CW * DPR);
+  canvas.height = Math.round(CH * DPR);
+  canvas.style.width  = CW + 'px';
+  canvas.style.height = CH + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener('resize', () => { resize(); });
+resize();
+
+// ─── Game State ──────────────────────────────────────────────────────────────
+const STATE = { START: 0, PLAYING: 1, GAMEOVER: 2 };
+let state = STATE.START;
+
+// Board: 2D array [row][col] = { type, animY, wetShine, spawning }
+let board = [];
+// Mines: array of { col, row, timer, flashT, defusing }
+let mines = [];
+
+let score = 0;
+let best  = parseInt(localStorage.getItem(LS_KEY) || '0', 10);
+let streak = 0;
+let minesDefused = 0;
+let runT = 0;      // seconds elapsed this run
+let timeLeft = GAME_DURATION;
+let gameoverReason = '';
+let gameoverWin = false;
+
+// Spawn scheduling
+let nextSpawnT = 0; // seconds until next mine spawn
+
+// ─── Visual state ────────────────────────────────────────────────────────────
+let bgHue = 210;
+let shakeX = 0, shakeY = 0, shakeMag = 0, shakeDur = 0, shakeT = 0;
+let vignetteAlpha = 0; // red vignette for mines at 1
+
+// Particles
+let particles = [];
+// Floating score popups
+let popups = [];
+
+// ─── Timing ──────────────────────────────────────────────────────────────────
+let lastTime = 0;
+let animId;
+
+// ─── Layout helpers ──────────────────────────────────────────────────────────
+function cellSize() {
+  const s = Math.min(Math.floor((CW - 16) / COLS), Math.floor((CH * 0.68) / ROWS));
+  return s;
+}
+function boardOffsetX() { return Math.floor((CW - COLS * cellSize()) / 2); }
+function boardOffsetY() { return Math.floor(CH * 0.15); }
+
+// ─── Board helpers ───────────────────────────────────────────────────────────
+function initBoard() {
+  board = [];
+  for (let r = 0; r < ROWS; r++) {
+    board[r] = [];
+    for (let c = 0; c < COLS; c++) {
+      board[r][c] = makeCell(Math.floor(Math.random() * N_TYPES));
+    }
+  }
+}
+
+function makeCell(type) {
+  return { type, animY: 0, wetShine: 0, spawning: false };
+}
+
+function cellAt(r, c) {
+  if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return null;
+  return board[r][c];
+}
+
+// ─── Cluster finding ─────────────────────────────────────────────────────────
+// BFS flood fill for connected cells of given type
+function getCluster(startR, startC, type) {
+  const visited = new Set();
+  const queue = [];
+  const key = (r, c) => r * 100 + c;
+  if (board[startR][startC].type !== type) return [];
+  queue.push([startR, startC]);
+  visited.add(key(startR, startC));
+  const result = [];
+  while (queue.length) {
+    const [r, c] = queue.shift();
+    result.push([r, c]);
+    const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
+    for (const [dr, dc] of dirs) {
+      const nr = r + dr, nc = c + dc;
+      if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) continue;
+      const k = key(nr, nc);
+      if (visited.has(k)) continue;
+      if (board[nr][nc].type !== type) continue;
+      visited.add(k);
+      queue.push([nr, nc]);
+    }
+  }
+  return result;
+}
+
+// Find the largest cluster of the tapped type across the whole board
+// Tie-break: cluster containing or closest to tapped cell wins
+function findBestCluster(tapR, tapC, type) {
+  const visited = new Set();
+  const key = (r, c) => r * 100 + c;
+  let best = null;
+
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (board[r][c].type !== type) continue;
+      const k = key(r, c);
+      if (visited.has(k)) continue;
+      const cluster = getCluster(r, c, type);
+      cluster.forEach(([cr, cc]) => visited.add(key(cr, cc)));
+      if (!best) { best = cluster; continue; }
+      if (cluster.length > best.length) { best = cluster; continue; }
+      if (cluster.length === best.length) {
+        // Tie: prefer cluster containing tapped cell
+        const hasTap = cluster.some(([cr, cc]) => cr === tapR && cc === tapC);
+        const bestHasTap = best.some(([cr, cc]) => cr === tapR && cc === tapC);
+        if (hasTap && !bestHasTap) { best = cluster; continue; }
+        if (!hasTap && bestHasTap) continue;
+        // Both or neither: prefer closer to tapped cell
+        const dist = (cl) => Math.min(...cl.map(([cr, cc]) => Math.abs(cr - tapR) + Math.abs(cc - tapC)));
+        if (dist(cluster) < dist(best)) best = cluster;
+      }
+    }
+  }
+  return best || [];
+}
+
+// ─── Mine adjacency ──────────────────────────────────────────────────────────
+function adjacentMines(cells) {
+  // For each popped cell, find any adjacent mine
+  const mineSet = new Map(); // mine index -> reduction count
+  for (const [r, c] of cells) {
+    const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
+    for (const [dr, dc] of dirs) {
+      const nr = r + dr, nc = c + dc;
+      mines.forEach((mine, i) => {
+        if (mine.row === nr && mine.col === nc) {
+          mineSet.set(i, (mineSet.get(i) || 0) + 1);
+        }
+      });
+    }
+  }
+  return mineSet;
+}
+
+// ─── Gravity / refill ────────────────────────────────────────────────────────
+function applyGravity() {
+  for (let c = 0; c < COLS; c++) {
+    // Compact non-null cells downward
+    let write = ROWS - 1;
+    for (let r = ROWS - 1; r >= 0; r--) {
+      if (board[r][c] !== null) {
+        board[write][c] = board[r][c];
+        if (write !== r) board[r][c] = null;
+        write--;
+      }
+    }
+    // Fill top with new cells
+    let dropDist = 0;
+    for (let r = write; r >= 0; r--) {
+      dropDist++;
+      const newCell = makeCell(Math.floor(Math.random() * N_TYPES));
+      newCell.animY = -dropDist * cellSize(); // start above
+      newCell.wetShine = 1.0;
+      newCell.spawning = true;
+      board[r][c] = newCell;
+    }
+  }
+}
+
+// ─── Pop action ──────────────────────────────────────────────────────────────
+function popCluster(tapR, tapC) {
+  if (state !== STATE.PLAYING) return;
+  const type = board[tapR][tapC].type;
+  const cluster = findBestCluster(tapR, tapC, type);
+  const n = cluster.length;
+  if (n < 1) return;
+
+  // Spawn bubble particles for each popped cell
+  const cs = cellSize();
+  const ox = boardOffsetX(), oy = boardOffsetY();
+  for (const [r, c] of cluster) {
+    const cx = ox + c * cs + cs / 2;
+    const cy = oy + r * cs + cs / 2;
+    spawnBubbles(cx, cy, CREATURES[type].hue, 8);
+    board[r][c] = null;
+  }
+
+  // Check adjacent mines and reduce their timers
+  const mineHits = adjacentMines(cluster);
+  let defuseCount = 0;
+  let anyDefused = false;
+  let mineDefuseBonus = 0;
+
+  mineHits.forEach((reduction, i) => {
+    const capped = Math.min(reduction, 3);
+    const mine = mines[i];
+    if (!mine || mine.defusing) return;
+    mine.timer -= capped;
+    if (mine.timer <= 0) {
+      // Defuse!
+      mine.defusing = true;
+      anyDefused = true;
+      defuseCount++;
+      minesDefused++;
+      const dcx = ox + mine.col * cs + cs / 2;
+      const dcy = oy + mine.row * cs + cs / 2;
+      triggerDefuse(dcx, dcy);
+      const bonus = 250 + 50 * Math.floor(runT / 10);
+      mineDefuseBonus += bonus;
+      spawnPopup(dcx, dcy - cs, '+' + bonus + ' DEFUSE!', '#ff0', 22);
+      doShake(7, 0.35);
+    }
+  });
+
+  // Remove defused mines
+  mines = mines.filter(m => !m.defusing);
+
+  // Score
+  const base = Math.floor(8 * n * n + 20 * n);
+  // Streak update
+  if (n >= 6 || anyDefused) {
+    streak++;
+  } else if (n <= 2 && !anyDefused) {
+    streak = 0;
+  }
+  const mult = Math.min(1 + 0.15 * streak, 4.0);
+  const points = Math.floor(base * mult) + mineDefuseBonus;
+  score += points;
+
+  // Popup for cluster score
+  const popR = cluster[0][0], popC = cluster[0][1];
+  const pcx = ox + popC * cs + cs / 2;
+  const pcy = oy + popR * cs + cs / 2;
+  const label = '+' + Math.floor(base * mult) + (streak > 1 ? ' x' + mult.toFixed(2) : '');
+  spawnPopup(pcx, pcy - 10, label, '#fff', 16);
+
+  // Screen shake for big pops
+  if (n >= 8) doShake(4, 0.25);
+  else if (n >= 6) doShake(2, 0.18);
+
+  // Gravity
+  applyGravity();
+
+  // Update best
+  if (score > best) {
+    best = score;
+    localStorage.setItem(LS_KEY, best);
+  }
+}
+
+// ─── Mine logic ──────────────────────────────────────────────────────────────
+function spawnMine() {
+  // Pick random empty (non-mine) cell
+  const usedCells = new Set(mines.map(m => m.row * 100 + m.col));
+  const available = [];
+  for (let r = 0; r < ROWS; r++)
+    for (let c = 0; c < COLS; c++)
+      if (!usedCells.has(r * 100 + c)) available.push([r, c]);
+  if (!available.length) return;
+
+  const [r, c] = available[Math.floor(Math.random() * available.length)];
+
+  // Determine timer
+  const p2 = Math.min(Math.max((runT - 5) / 20, 0), 0.55);
+  const p1 = Math.min(Math.max((runT - 25) / 10, 0), 0.20);
+  const rng = Math.random();
+  let timer;
+  if (rng < p1) timer = 1;
+  else if (rng < p1 + p2) timer = 2;
+  else timer = 3;
+
+  mines.push({ col: c, row: r, timer, flashT: 0, defusing: false, startTimer: timer });
+}
+
+function tickMines(dt) {
+  // Each mine has an internal tick: once per second decrement
+  // We track using mine.tickAcc
+  for (const mine of mines) {
+    if (mine.defusing) continue;
+    mine.tickAcc = (mine.tickAcc || 0) + dt;
+    mine.flashT += dt;
+    if (mine.tickAcc >= 1.0) {
+      mine.tickAcc -= 1.0;
+      mine.timer--;
+      if (mine.timer <= 0) {
+        // Explosion! Game over
+        const cs = cellSize();
+        const ox = boardOffsetX(), oy = boardOffsetY();
+        const ex = ox + mine.col * cs + cs / 2;
+        const ey = oy + mine.row * cs + cs / 2;
+        triggerExplosion(ex, ey);
+        doShake(18, 0.7);
+        endGame('Mine exploded!', false);
+        return;
+      }
+    }
+  }
+}
+
+// ─── Game flow ───────────────────────────────────────────────────────────────
+function startGame() {
+  score = 0;
+  streak = 0;
+  minesDefused = 0;
+  runT = 0;
+  timeLeft = GAME_DURATION;
+  mines = [];
+  particles = [];
+  popups = [];
+  shakeMag = 0;
+  vignetteAlpha = 0;
+  nextSpawnT = 2.4; // first mine after 2.4s
+  initBoard();
+  state = STATE.PLAYING;
+}
+
+function endGame(reason, win) {
+  gameoverReason = reason;
+  gameoverWin = win;
+  state = STATE.GAMEOVER;
+  if (score > best) {
+    best = score;
+    localStorage.setItem(LS_KEY, best);
+  }
+}
+
+// ─── Shake ───────────────────────────────────────────────────────────────────
+function doShake(mag, dur) {
+  shakeMag = Math.max(shakeMag, mag);
+  shakeDur = Math.max(shakeDur, dur);
+  shakeT = 0;
+}
+
+function updateShake(dt) {
+  if (shakeMag <= 0) return;
+  shakeT += dt;
+  const progress = shakeT / Math.max(shakeDur, 0.01);
+  const decay = Math.max(0, 1 - progress);
+  shakeX = (Math.random() * 2 - 1) * shakeMag * decay;
+  shakeY = (Math.random() * 2 - 1) * shakeMag * decay;
+  if (progress >= 1) { shakeMag = 0; shakeX = 0; shakeY = 0; }
+}
+
+// ─── Particles ───────────────────────────────────────────────────────────────
+function spawnBubbles(x, y, hue, count) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 40 + Math.random() * 80;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 30,
+      life: 0.6 + Math.random() * 0.4,
+      maxLife: 0,
+      r: 3 + Math.random() * 5,
+      hue: hue + (Math.random() - 0.5) * 40,
+      alpha: 1,
+      type: 'bubble'
+    });
+    particles[particles.length - 1].maxLife = particles[particles.length - 1].life;
+  }
+}
+
+function triggerDefuse(x, y) {
+  // Burst + shock ring
+  for (let i = 0; i < 20; i++) {
+    const angle = (i / 20) * Math.PI * 2;
+    const speed = 60 + Math.random() * 120;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 0.8, maxLife: 0.8,
+      r: 4 + Math.random() * 6,
+      hue: 60 + Math.random() * 40,
+      alpha: 1, type: 'defuse'
+    });
+  }
+  // Shock ring
+  particles.push({ x, y, life: 0.5, maxLife: 0.5, radius: 0, maxRadius: 80, hue: 60, type: 'ring' });
+}
+
+function triggerExplosion(x, y) {
+  for (let i = 0; i < 30; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 80 + Math.random() * 160;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 1.0, maxLife: 1.0,
+      r: 4 + Math.random() * 8,
+      hue: Math.random() * 40,
+      alpha: 1, type: 'explode'
+    });
+  }
+  particles.push({ x, y, life: 0.6, maxLife: 0.6, radius: 0, maxRadius: 120, hue: 10, type: 'ring' });
+}
+
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.life -= dt;
+    if (p.life <= 0) { particles.splice(i, 1); continue; }
+    if (p.type === 'ring') continue;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy += 60 * dt; // gravity on bubbles
+    p.alpha = p.life / p.maxLife;
+  }
+}
+
+// ─── Score popups ────────────────────────────────────────────────────────────
+function spawnPopup(x, y, text, color, size) {
+  popups.push({ x, y, text, color, size: size || 16, life: 1.2, maxLife: 1.2, vy: -40 });
+}
+
+function updatePopups(dt) {
+  for (let i = popups.length - 1; i >= 0; i--) {
+    const p = popups[i];
+    p.life -= dt;
+    if (p.life <= 0) { popups.splice(i, 1); continue; }
+    p.y += p.vy * dt;
+  }
+}
+
+// ─── Input ───────────────────────────────────────────────────────────────────
+canvas.addEventListener('pointerdown', onPointer);
+window.addEventListener('keydown', onKey);
+
+function onPointer(e) {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const px = (e.clientX - rect.left);
+  const py = (e.clientY - rect.top);
+  handleInput(px, py);
+}
+
+function onKey(e) {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    if (state === STATE.START || state === STATE.GAMEOVER) {
+      if (state === STATE.GAMEOVER) startGame();
+      else startGame();
+      return;
+    }
+  }
+  if (e.code === 'KeyR' && state === STATE.GAMEOVER) {
+    startGame();
+  }
+}
+
+function handleInput(px, py) {
+  if (state === STATE.START) { startGame(); return; }
+  if (state === STATE.GAMEOVER) {
+    // Check share button
+    const sw = Math.min(CW - 40, 220);
+    const sh = 48;
+    const sx = (CW - sw) / 2;
+    const sy = CH * 0.68;
+    if (px >= sx && px <= sx + sw && py >= sy && py <= sy + sh) {
+      doShare();
+      return;
+    }
+    // Check retry button
+    const rw = Math.min(CW - 40, 220);
+    const rh = 48;
+    const rx = (CW - rw) / 2;
+    const ry = CH * 0.58;
+    if (px >= rx && px <= rx + rw && py >= ry && py <= ry + rh) {
+      startGame(); return;
+    }
+    startGame(); return;
+  }
+  if (state !== STATE.PLAYING) return;
+
+  // Map to board cell
+  const cs = cellSize();
+  const ox = boardOffsetX(), oy = boardOffsetY();
+  const col = Math.floor((px - ox) / cs);
+  const row = Math.floor((py - oy) / cs);
+  if (row < 0 || row >= ROWS || col < 0 || col >= COLS) return;
+  if (!board[row][col]) return;
+  popCluster(row, col);
+}
+
+// ─── Share ───────────────────────────────────────────────────────────────────
+function doShare() {
+  const url = window.location.href;
+  const text = `I scored ${score} in Reef Rush: Tap·Tide! Can you beat me? 🐠💣`;
+  if (navigator.share) {
+    navigator.share({ title: 'Reef Rush', text, url }).catch(() => {});
+  } else {
+    navigator.clipboard.writeText(text + '\n' + url).catch(() => {
+      prompt('Copy this to share:', text + '\n' + url);
+    });
+  }
+}
+
+// ─── Drawing ─────────────────────────────────────────────────────────────────
+function drawBackground(t) {
+  bgHue = (bgHue + 0.04) % 360;
+  const g = ctx.createLinearGradient(0, 0, 0, CH);
+  g.addColorStop(0, `hsl(${bgHue}, 70%, 6%)`);
+  g.addColorStop(1, `hsl(${(bgHue + 40) % 360}, 60%, 12%)`);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, CW, CH);
+}
+
+function drawCell(r, c, cell, cs, ox, oy) {
+  if (!cell) return;
+  const x = ox + c * cs + cell.animY * 0; // animY is vertical, not horizontal
+  let drawY = oy + r * cs;
+
+  // Animate spawning cells
+  if (cell.spawning) {
+    drawY += cell.animY;
+    if (cell.animY < 0) {
+      cell.animY = Math.min(cell.animY + cs * 8 * 0.016, 0); // approximate; real dt used in update
+    }
+    if (cell.animY >= 0) { cell.animY = 0; cell.spawning = false; }
+  }
+
+  const pad = 3;
+  const s = cs - pad * 2;
+
+  // Tile background
+  const creature = CREATURES[cell.type];
+  const tileHue = (creature.hue + bgHue * 0.15) % 360;
+  ctx.fillStyle = `hsla(${tileHue}, 55%, 25%, 0.85)`;
+  roundRect(ctx, ox + c * cs + pad, drawY + pad, s, s, 10);
+  ctx.fill();
+
+  // Wet shine overlay on spawning cells
+  if (cell.wetShine > 0) {
+    ctx.fillStyle = `hsla(200, 80%, 80%, ${cell.wetShine * 0.4})`;
+    roundRect(ctx, ox + c * cs + pad, drawY + pad, s, s, 10);
+    ctx.fill();
+    cell.wetShine = Math.max(0, cell.wetShine - 0.016 * 2);
+  }
+
+  // Emoji
+  const fontSize = Math.floor(s * 0.55);
+  ctx.font = `${fontSize}px serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(creature.emoji, ox + c * cs + cs / 2, drawY + cs / 2);
+}
+
+function drawMine(mine, cs, ox, oy) {
+  const x = ox + mine.col * cs;
+  const y = oy + mine.row * cs;
+  const pad = 2;
+  const s = cs - pad * 2;
+
+  // Pulsing red for timer=1
+  let pulse = 1;
+  if (mine.timer === 1) {
+    pulse = 0.75 + 0.25 * Math.abs(Math.sin(mine.flashT * Math.PI * 3));
+  }
+
+  ctx.fillStyle = `hsla(${mine.timer === 1 ? 0 : mine.timer === 2 ? 30 : 200}, 80%, ${mine.timer === 1 ? 45 * pulse : 30}%, 0.9)`;
+  roundRect(ctx, x + pad, y + pad, s, s, 10);
+  ctx.fill();
+
+  // Border
+  ctx.strokeStyle = mine.timer === 1 ? `rgba(255,60,60,${pulse})` : 'rgba(255,255,255,0.3)';
+  ctx.lineWidth = mine.timer === 1 ? 2.5 : 1.5;
+  roundRect(ctx, x + pad, y + pad, s, s, 10);
+  ctx.stroke();
+
+  // Bomb icon
+  const fontSize = Math.floor(s * 0.45);
+  ctx.font = `${fontSize}px serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('💣', x + cs / 2, y + cs / 2 - cs * 0.08);
+
+  // Countdown number
+  const numSize = Math.floor(s * 0.3);
+  ctx.font = `bold ${numSize}px sans-serif`;
+  ctx.fillStyle = mine.timer === 1 ? `rgba(255,80,80,${pulse})` : '#fff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(mine.timer, x + cs / 2, y + cs * 0.72);
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    if (p.type === 'ring') {
+      const progress = 1 - p.life / p.maxLife;
+      const radius = p.maxRadius * progress;
+      ctx.strokeStyle = `hsla(${p.hue}, 80%, 60%, ${p.life / p.maxLife})`;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+      ctx.stroke();
+      continue;
+    }
+    ctx.globalAlpha = Math.max(0, p.alpha);
+    ctx.fillStyle = `hsl(${p.hue}, 70%, 60%)`;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r * (p.life / p.maxLife), 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawPopups() {
+  for (const p of popups) {
+    const alpha = p.life / p.maxLife;
+    ctx.globalAlpha = alpha;
+    ctx.font = `bold ${p.size}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = p.color;
+    ctx.shadowColor = 'rgba(0,0,0,0.8)';
+    ctx.shadowBlur = 4;
+    ctx.fillText(p.text, p.x, p.y);
+    ctx.shadowBlur = 0;
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawHUD() {
+  // Score
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.font = 'bold 14px sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  ctx.fillText('SCORE', 16, 10);
+  ctx.font = 'bold 26px sans-serif';
+  ctx.fillStyle = '#fff';
+  ctx.fillText(score, 16, 26);
+
+  // Best
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 12px sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.fillText('BEST', CW / 2, 10);
+  ctx.font = 'bold 20px sans-serif';
+  ctx.fillStyle = `hsl(${bgHue + 60}, 90%, 75%)`;
+  ctx.fillText(best, CW / 2, 26);
+
+  // Time
+  ctx.textAlign = 'right';
+  ctx.font = 'bold 14px sans-serif';
+  ctx.fillStyle = timeLeft <= 5 ? `hsl(0,80%,60%)` : 'rgba(255,255,255,0.6)';
+  ctx.fillText('TIME', CW - 16, 10);
+  ctx.font = 'bold 26px sans-serif';
+  ctx.fillStyle = timeLeft <= 5 ? `hsl(0,80%,70%)` : '#fff';
+  ctx.fillText(timeLeft.toFixed(0), CW - 16, 26);
+
+  // Streak / Multiplier
+  if (streak > 0) {
+    const mult = Math.min(1 + 0.15 * streak, 4.0);
+    ctx.textAlign = 'center';
+    ctx.font = `bold ${14 + Math.min(streak, 6)}px sans-serif`;
+    ctx.fillStyle = `hsl(${bgHue + 120}, 90%, 70%)`;
+    ctx.fillText(`🔥 x${mult.toFixed(2)} STREAK ${streak}`, CW / 2, CH * 0.12);
+  }
+
+  // Mine count warning
+  if (mines.length > 0) {
+    const minTime = Math.min(...mines.map(m => m.timer));
+    if (minTime === 1) {
+      const pulse = 0.6 + 0.4 * Math.abs(Math.sin(Date.now() / 200));
+      ctx.textAlign = 'center';
+      ctx.font = 'bold 13px sans-serif';
+      ctx.fillStyle = `rgba(255,60,60,${pulse})`;
+      ctx.fillText('⚠ MINE CRITICAL!', CW / 2, CH - 24);
+    }
+  }
+}
+
+// ─── Vignette for critical mines ─────────────────────────────────────────────
+function drawVignette() {
+  const hasCritical = mines.some(m => m.timer === 1 && !m.defusing);
+  if (hasCritical) {
+    vignetteAlpha = Math.min(vignetteAlpha + 0.05, 0.35);
+  } else {
+    vignetteAlpha = Math.max(vignetteAlpha - 0.05, 0);
+  }
+  if (vignetteAlpha <= 0) return;
+  const g = ctx.createRadialGradient(CW / 2, CH / 2, CH * 0.3, CW / 2, CH / 2, CH * 0.8);
+  g.addColorStop(0, 'rgba(0,0,0,0)');
+  g.addColorStop(1, `rgba(180,0,0,${vignetteAlpha})`);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, CW, CH);
+}
+
+// ─── Screen states ───────────────────────────────────────────────────────────
+function drawStart() {
+  drawBackground(0);
+
+  // Title
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  const titleY = CH * 0.28;
+  ctx.font = `bold ${Math.floor(CW * 0.13)}px sans-serif`;
+  ctx.fillStyle = `hsl(${bgHue + 40}, 90%, 75%)`;
+  ctx.shadowColor = `hsl(${bgHue}, 80%, 50%)`;
+  ctx.shadowBlur = 20;
+  ctx.fillText('🐚 Reef Rush', CW / 2, titleY);
+  ctx.shadowBlur = 0;
+
+  ctx.font = `bold ${Math.floor(CW * 0.065)}px sans-serif`;
+  ctx.fillStyle = `hsl(${bgHue + 80}, 80%, 70%)`;
+  ctx.fillText('Tap·Tide', CW / 2, titleY + Math.floor(CW * 0.12));
+
+  // Subtitle
+  ctx.font = `${Math.floor(CW * 0.042)}px sans-serif`;
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  ctx.fillText('Match clusters · Defuse mines · 30s!', CW / 2, CH * 0.48);
+
+  // Creature preview
+  const creatureY = CH * 0.56;
+  ctx.font = `${Math.floor(CW * 0.1)}px serif`;
+  const spread = CW * 0.64;
+  CREATURES.forEach((cr, i) => {
+    const x = CW / 2 - spread / 2 + (spread / (N_TYPES - 1)) * i;
+    const bounce = Math.sin(Date.now() / 400 + i * 1.2) * 6;
+    ctx.fillText(cr.emoji, x, creatureY + bounce);
+  });
+
+  // Tap to start
+  const pulse = 0.5 + 0.5 * Math.abs(Math.sin(Date.now() / 600));
+  ctx.font = `bold ${Math.floor(CW * 0.055)}px sans-serif`;
+  ctx.fillStyle = `rgba(255,255,255,${0.6 + pulse * 0.4})`;
+  ctx.fillText('Tap to Start', CW / 2, CH * 0.76);
+
+  // Best score
+  if (best > 0) {
+    ctx.font = `${Math.floor(CW * 0.038)}px sans-serif`;
+    ctx.fillStyle = `hsl(${bgHue + 60}, 80%, 65%)`;
+    ctx.fillText(`Best: ${best}`, CW / 2, CH * 0.86);
+  }
+}
+
+function drawPlaying(dt) {
+  drawBackground(runT);
+  drawVignette();
+
+  const cs = cellSize();
+  const ox = boardOffsetX(), oy = boardOffsetY();
+
+  // Update spawning animations with real dt
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const cell = board[r][c];
+      if (cell && cell.spawning) {
+        cell.animY = Math.min(cell.animY + cs * 12 * dt, 0);
+        if (cell.animY >= 0) { cell.animY = 0; cell.spawning = false; cell.wetShine = 0; }
+      }
+      if (cell && cell.wetShine > 0) {
+        cell.wetShine = Math.max(0, cell.wetShine - dt * 2);
+      }
+    }
+  }
+
+  // Draw cells
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      drawCell(r, c, board[r][c], cs, ox, oy);
+    }
+  }
+
+  // Draw mines ON TOP
+  for (const mine of mines) {
+    drawMine(mine, cs, ox, oy);
+  }
+
+  drawParticles();
+  drawPopups();
+  drawHUD();
+}
+
+function drawGameover() {
+  drawBackground(runT);
+  drawParticles();
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  const headY = CH * 0.2;
+
+  // Title
+  ctx.font = `bold ${Math.floor(CW * 0.09)}px sans-serif`;
+  ctx.fillStyle = gameoverWin ? `hsl(60,90%,70%)` : `hsl(0,80%,65%)`;
+  ctx.shadowColor = gameoverWin ? `hsl(60,70%,40%)` : `hsl(0,70%,40%)`;
+  ctx.shadowBlur = 16;
+  ctx.fillText(gameoverWin ? '🏆 Time!s Up!' : '💥 Boom!', CW / 2, headY);
+  ctx.shadowBlur = 0;
+
+  // Reason
+  ctx.font = `${Math.floor(CW * 0.045)}px sans-serif`;
+  ctx.fillStyle = 'rgba(255,255,255,0.75)';
+  ctx.fillText(gameoverReason, CW / 2, headY + CW * 0.1);
+
+  // Stats
+  const statsY = CH * 0.38;
+  const lineH = CW * 0.075;
+
+  ctx.font = `bold ${Math.floor(CW * 0.055)}px sans-serif`;
+  ctx.fillStyle = '#fff';
+  ctx.fillText('Score: ' + score, CW / 2, statsY);
+
+  ctx.font = `${Math.floor(CW * 0.042)}px sans-serif`;
+  ctx.fillStyle = `hsl(${bgHue + 60}, 80%, 70%)`;
+  ctx.fillText('Best: ' + best, CW / 2, statsY + lineH);
+
+  ctx.fillStyle = `hsl(${bgHue + 120}, 70%, 65%)`;
+  ctx.fillText('Mines Defused: ' + minesDefused, CW / 2, statsY + lineH * 2);
+
+  if (score > 0 && score === best) {
+    ctx.font = `bold ${Math.floor(CW * 0.05)}px sans-serif`;
+    ctx.fillStyle = `hsl(50, 100%, 65%)`;
+    ctx.fillText('🌟 New Best!', CW / 2, statsY + lineH * 3);
+  }
+
+  // Retry button
+  const bw = Math.min(CW - 40, 220), bh = 48;
+  const bx = (CW - bw) / 2, by = CH * 0.58;
+  drawButton(bx, by, bw, bh, 'Tap to Retry', `hsl(${bgHue + 40}, 70%, 40%)`, '#fff');
+
+  // Share button
+  const sw = Math.min(CW - 40, 220);
+  const sx = (CW - sw) / 2, sy = CH * 0.68;
+  drawButton(sx, sy, sw, bh, '🔗 Share Score', `hsl(${bgHue + 160}, 60%, 30%)`, '#fff');
+}
+
+function drawButton(x, y, w, h, label, bg, fg) {
+  ctx.fillStyle = bg;
+  roundRect(ctx, x, y, w, h, 12);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+  ctx.lineWidth = 1.5;
+  roundRect(ctx, x, y, w, h, 12);
+  ctx.stroke();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = `bold ${Math.floor(h * 0.38)}px sans-serif`;
+  ctx.fillStyle = fg;
+  ctx.fillText(label, x + w / 2, y + h / 2);
+}
+
+// ─── Utility ─────────────────────────────────────────────────────────────────
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+// ─── Main loop ───────────────────────────────────────────────────────────────
+function loop(ts) {
+  animId = requestAnimationFrame(loop);
+  const dt = Math.min((ts - lastTime) / 1000, 0.033);
+  lastTime = ts;
+
+  updateShake(dt);
+  updateParticles(dt);
+  updatePopups(dt);
+
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
+
+  if (state === STATE.START) {
+    drawStart();
+  } else if (state === STATE.PLAYING) {
+    // Update game time
+    runT += dt;
+    timeLeft = Math.max(0, GAME_DURATION - runT);
+
+    // Mine spawning
+    nextSpawnT -= dt;
+    if (nextSpawnT <= 0) {
+      const maxM = runT < 15 ? 2 : 3;
+      if (mines.length < maxM) spawnMine();
+      const interval = Math.max(0.85, Math.min(2.40, 2.40 - 0.045 * runT));
+      nextSpawnT = interval;
+    }
+
+    // Mine timer tick
+    if (state === STATE.PLAYING) tickMines(dt);
+
+    // Time up
+    if (state === STATE.PLAYING && timeLeft <= 0) {
+      endGame('Time!', true);
+    }
+
+    if (state === STATE.PLAYING) drawPlaying(dt);
+    else if (state === STATE.GAMEOVER) drawGameover();
+  } else if (state === STATE.GAMEOVER) {
+    drawGameover();
+  }
+
+  ctx.restore();
+}
+
+// ─── Bootstrap ───────────────────────────────────────────────────────────────
+lastTime = performance.now();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

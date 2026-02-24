@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Oasis Hop - Free HTML5 Game</title>
+<meta name="description" content="Play Oasis Hop - Bounce a water droplet between palm trees as the desert wind speeds up.">
+<meta name="theme-color" content="#1a0a2e">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Oasis Hop - Free HTML5 Game">
+<meta property="og:description" content="Bounce a water droplet between palm trees as the desert wind speeds up. How far can you hop?">
+<meta property="og:url" content="https://balinti.github.io/oasis-hop/">
+<meta property="og:image" content="https://balinti.github.io/oasis-hop/og-image.png">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow-x:hidden;background:#0d0520;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;color:#e0d8f0}
+body{display:flex;flex-direction:column;align-items:center;min-height:100vh;min-height:100dvh}
+#game-wrap{position:relative;width:100%;max-width:420px;height:100vh;height:100dvh;max-height:750px;margin:0 auto;touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+canvas{display:block;width:100%;height:100%;border-radius:12px}
+#hud{position:absolute;top:12px;left:12px;right:12px;display:flex;justify-content:space-between;align-items:flex-start;pointer-events:none;z-index:10}
+.pill{background:rgba(0,0,0,0.45);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border-radius:20px;padding:4px 14px;font-size:14px;font-weight:700;color:#fff;display:flex;align-items:center;gap:6px;border:1px solid rgba(255,255,255,0.1)}
+.pill .icon{font-size:16px}
+#hydration-bar{position:absolute;top:48px;left:12px;right:12px;height:6px;background:rgba(0,0,0,0.3);border-radius:3px;overflow:hidden;pointer-events:none;z-index:10}
+#hydration-fill{height:100%;width:100%;background:linear-gradient(90deg,#00d4ff,#00ff88);border-radius:3px;transition:width 0.15s ease-out}
+#overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:20;pointer-events:auto}
+#overlay.hidden{display:none;pointer-events:none}
+.overlay-bg{position:absolute;inset:0;background:rgba(10,3,25,0.82);border-radius:12px}
+.overlay-content{position:relative;z-index:1;text-align:center;padding:20px}
+.game-title{font-size:42px;font-weight:900;letter-spacing:-1px;background:linear-gradient(135deg,#00d4ff,#ff6b9d,#ffd93d);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:6px;text-shadow:none}
+.game-subtitle{font-size:15px;color:#a89cc8;margin-bottom:28px;font-weight:400}
+.tap-prompt{font-size:18px;color:#fff;animation:pulse 1.8s ease-in-out infinite;margin-top:20px}
+@keyframes pulse{0%,100%{opacity:0.5;transform:scale(1)}50%{opacity:1;transform:scale(1.05)}}
+.score-display{font-size:64px;font-weight:900;color:#fff;line-height:1}
+.score-label{font-size:13px;color:#a89cc8;text-transform:uppercase;letter-spacing:2px;margin-bottom:4px}
+.best-display{font-size:20px;color:#ffd93d;margin-top:8px}
+.combo-flash{font-size:15px;color:#00ff88;margin-top:4px;font-weight:700}
+.btn-row{display:flex;gap:10px;margin-top:24px;justify-content:center}
+.btn-share{background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.2);color:#fff;padding:10px 20px;border-radius:24px;font-size:14px;font-weight:600;cursor:pointer;pointer-events:auto;transition:background 0.2s}
+.btn-share:hover{background:rgba(255,255,255,0.22)}
+#challenge-banner{position:absolute;top:58px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#ffd93d,#ff6b9d);color:#1a0a2e;font-size:13px;font-weight:700;padding:4px 16px;border-radius:12px;z-index:15;pointer-events:none;white-space:nowrap;display:none}
+.seo-section{max-width:420px;width:100%;padding:24px 16px;margin:0 auto}
+.seo-section h2{font-size:20px;margin-bottom:10px;color:#c0b8e0}
+.seo-section h3{font-size:16px;margin:14px 0 6px;color:#a89cc8}
+.seo-section p,.seo-section li{font-size:14px;line-height:1.6;color:#8878a8;margin-bottom:8px}
+.seo-section ul{padding-left:18px}
+.seo-section details{margin-bottom:8px}
+.seo-section summary{cursor:pointer;font-size:14px;color:#a89cc8;margin-bottom:4px}
+footer{text-align:center;padding:16px;font-size:12px;color:#5a4a7a}
+</style>
+</head>
+<body>
+<div id="game-wrap">
+  <canvas id="gc"></canvas>
+  <div id="hud">
+    <div class="pill"><span class="icon">💧</span><span id="score-hud">0</span></div>
+    <div class="pill"><span class="icon">⭐</span><span id="best-hud">0</span></div>
+  </div>
+  <div id="hydration-bar"><div id="hydration-fill"></div></div>
+  <div id="challenge-banner"></div>
+  <div id="overlay">
+    <div class="overlay-bg"></div>
+    <div class="overlay-content" id="overlay-inner"></div>
+  </div>
+</div>
+
+<section class="seo-section">
+  <h2>About Oasis Hop</h2>
+  <p>Oasis Hop is a free hyper-casual HTML5 game where you guide a tiny water droplet through an endless desert oasis. Tap to tether onto palm trees and swing between them while a rising desert wind pushes you off course. Collect dew beads to stay hydrated and dodge cacti and rocks that threaten to pop your droplet. Simple one-tap controls make it easy to pick up but tricky to master.</p>
+
+  <h3>How to Play</h3>
+  <ul>
+    <li>Tap or press Space/Enter to tether to the nearest palm tree.</li>
+    <li>Tap again to release and launch in the direction you're swinging.</li>
+    <li>Land on a new palm tree to score points.</li>
+    <li>Align your release angle with the wind lane for a Perfect bonus.</li>
+    <li>Collect dew beads to refill your hydration meter before it runs out.</li>
+    <li>Avoid cacti and rocks &mdash; one hit and it's game over!</li>
+  </ul>
+
+  <h3>Tips &amp; Tricks</h3>
+  <ul>
+    <li>Release when your droplet is moving toward the next palm for maximum distance.</li>
+    <li>Watch the wind lane ribbon &mdash; surfing inside it gives you a speed boost.</li>
+    <li>Dew beads often appear near hazards, so weigh the risk vs reward.</li>
+    <li>The difficulty increases gradually: wind gets faster, palms spread further apart, and gust pulses appear.</li>
+  </ul>
+
+  <details><summary>FAQ: Is it free?</summary><p>Yes, Oasis Hop is completely free to play in your browser. No downloads or sign-ups needed.</p></details>
+  <details><summary>FAQ: Does it work on mobile?</summary><p>Absolutely. The game is optimized for both mobile and desktop browsers with responsive canvas scaling.</p></details>
+  <details><summary>FAQ: How is the score calculated?</summary><p>You earn 1 point for every successful palm-to-palm transfer, plus bonus combo points for Perfect Releases aligned with the wind lane.</p></details>
+  <details><summary>FAQ: Can I challenge friends?</summary><p>Yes! After a game, use the Share button to send a challenge link with your target score. Your friends can try to beat it.</p></details>
+</section>
+
+<footer>&copy; 2026 Oasis Hop &bull; A free browser game</footer>
+
+<script>
+'use strict';
+(()=>{
+
+const PI=Math.PI,TAU=PI*2,sin=Math.sin,cos=Math.cos,abs=Math.abs,sqrt=Math.sqrt,
+      min=Math.min,max=Math.max,floor=Math.floor,rand=Math.random,atan2=Math.atan2;
+
+// ── Tuned Constants ──
+const ORBIT_R=42,ORBIT_SPEED=7,GRAVITY=280,DROP_R=9,MAX_VEL=700,
+      TETHER_RANGE=140,DEW_R=8,CACTUS_R=13,ROCK_R=15,
+      HYDRATION_MAX=100,HYDRATION_DRAIN=4.8,HYDRATION_DEW=30,
+      WIND_BASE=25,PERFECT_WINDOW=0.42,SHAKE_DECAY=0.85,
+      CAM_LERP=5,PARTICLE_LIFE=0.55,
+      PALM_GAP_MIN=90,PALM_GAP_MAX=180,PALM_TRUNK_R=12;
+
+// ── Canvas ──
+const canvas=document.getElementById('gc');
+const ctx=canvas.getContext('2d');
+const wrap=document.getElementById('game-wrap');
+const scoreEl=document.getElementById('score-hud');
+const bestEl=document.getElementById('best-hud');
+const hydFill=document.getElementById('hydration-fill');
+const overlay=document.getElementById('overlay');
+const overlayInner=document.getElementById('overlay-inner');
+const challengeBanner=document.getElementById('challenge-banner');
+
+let W,H,dpr;
+function resize(){
+  const r=wrap.getBoundingClientRect();
+  W=r.width;H=r.height;
+  dpr=devicePixelRatio||1;
+  canvas.width=W*dpr;canvas.height=H*dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+addEventListener('resize',resize);resize();
+
+// ── Game state ──
+const S={START:0,PLAY:1,OVER:2};
+let state=S.START,score=0,best=0,combo=0,hydration=HYDRATION_MAX;
+let difficulty=0,elapsed=0,camY=0;
+let shakeX=0,shakeY=0,shakeMag=0;
+let drop={x:0,y:0,vx:0,vy:0};
+let palms=[],dews=[],hazards=[],particles=[];
+let tethered=false,tPalm=null,tAngle=0,lastPalmId=-1,palmId=0;
+let windSpeed=WIND_BASE,gustPhase=0,gustAmp=0;
+let comboText='',comboTimer=0;
+let challengeTarget=0;
+
+// Parse challenge
+try{const p=new URLSearchParams(location.search).get('challenge');
+  if(p&&parseInt(p)>0)challengeTarget=parseInt(p);}catch(e){}
+if(challengeTarget>0){
+  challengeBanner.textContent=`Challenge: Score ${challengeTarget}`;
+  challengeBanner.style.display='block';
+}
+
+// LocalStorage
+function loadBest(){try{return parseInt(localStorage.getItem('oasisHopBest'))||0}catch(e){return 0}}
+function saveBest(v){try{localStorage.setItem('oasisHopBest',''+v)}catch(e){}}
+best=loadBest();
+
+// ── Particles ──
+function emit(x,y,n,hue,spd,life){
+  for(let i=0;i<n;i++){
+    const a=rand()*TAU,s=(0.3+rand()*0.7)*spd;
+    particles.push({x,y,vx:cos(a)*s,vy:sin(a)*s,
+      life:life||PARTICLE_LIFE,ml:life||PARTICLE_LIFE,
+      r:1.5+rand()*3,hue:hue+rand()*30-15});
+  }
+}
+
+// ── Palm generation ──
+function mkPalm(py,side){
+  const px=side<0?35+rand()*70:W-35-rand()*70;
+  return{id:palmId++,x:px,y:py,side,trunkH:55+rand()*35,
+         leafPh:rand()*TAU,hue:95+rand()*45};
+}
+
+function generateAhead(fromY,count){
+  let cy=fromY;
+  for(let i=0;i<count;i++){
+    const gapScale=1+difficulty*0.12;
+    const gap=PALM_GAP_MIN+rand()*(PALM_GAP_MAX-PALM_GAP_MIN)*min(gapScale,1.8);
+    cy-=gap;
+    // Alternate sides with some randomness
+    const side=(i%2===0)?-1:1;
+    palms.push(mkPalm(cy,side));
+
+    // Dew bead 40% chance
+    if(rand()<0.4){
+      const dx=50+rand()*(W-100);
+      const dy=cy+gap*0.2+rand()*gap*0.4;
+      dews.push({x:dx,y:dy,r:DEW_R,alive:true,ph:rand()*TAU});
+    }
+    // Hazard (scaling chance)
+    if(i>0&&rand()<min(0.1+difficulty*0.05,0.35)){
+      const hx=45+rand()*(W-90);
+      const hy=cy+gap*0.15+rand()*gap*0.35;
+      const type=rand()<0.5?'cactus':'rock';
+      hazards.push({x:hx,y:hy,r:type==='cactus'?CACTUS_R:ROCK_R,type});
+    }
+  }
+}
+
+// ── Init ──
+function init(){
+  score=0;combo=0;hydration=HYDRATION_MAX;difficulty=0;elapsed=0;
+  camY=0;shakeMag=0;shakeX=0;shakeY=0;
+  tethered=false;tPalm=null;tAngle=0;lastPalmId=-1;palmId=0;
+  palms=[];dews=[];hazards=[];particles=[];
+  windSpeed=WIND_BASE;gustPhase=0;gustAmp=0;
+  comboText='';comboTimer=0;
+
+  // First palm - player starts tethered here
+  const p0=mkPalm(H*0.6,1);
+  palms.push(p0);
+  // Place droplet on top of first palm
+  drop.x=p0.x;drop.y=p0.y-ORBIT_R;drop.vx=0;drop.vy=0;
+  // Auto-tether to starting palm
+  tethered=true;tPalm=p0;
+  tAngle=atan2(drop.y-p0.y,drop.x-p0.x); // -PI/2 (top)
+  lastPalmId=p0.id;
+
+  generateAhead(p0.y,25);
+  camY=drop.y-H*0.55;
+  updateHUD();
+}
+
+function updateHUD(){
+  scoreEl.textContent=score;
+  bestEl.textContent=best;
+  const pct=max(0,min(100,hydration));
+  hydFill.style.width=pct+'%';
+  hydFill.style.background=pct<30?'linear-gradient(90deg,#ff4444,#ff8844)':'linear-gradient(90deg,#00d4ff,#00ff88)';
+}
+
+// ── Wind lane ──
+function windY(x,t){
+  return H*0.4+sin(x*0.009+t*0.5)*55+sin(x*0.018+t*1.3)*gustAmp;
+}
+function windTangent(x,t){
+  const e=1;return atan2(windY(x+e,t)-windY(x-e,t),2*e);
+}
+
+// ── Nearest palm for tethering ──
+function nearPalm(){
+  let bp=null,bd=Infinity;
+  for(const p of palms){
+    if(p.id===lastPalmId&&tethered)continue; // don't re-tether same palm if already was on it and released
+    const dx=p.x-drop.x,dy=p.y-drop.y,d=sqrt(dx*dx+dy*dy);
+    if(d<TETHER_RANGE&&d<bd){bd=d;bp=p;}
+  }
+  return bp;
+}
+
+// ── Input handler ──
+function tap(){
+  if(state===S.START){state=S.PLAY;init();hideOverlay();return;}
+  if(state===S.OVER){state=S.PLAY;init();hideOverlay();return;}
+  if(state!==S.PLAY)return;
+
+  if(!tethered){
+    // Try to tether
+    const p=nearPalm();
+    if(!p)return;
+    tethered=true;tPalm=p;
+    tAngle=atan2(drop.y-p.y,drop.x-p.x);
+    // Score if transferring to a new palm
+    if(p.id!==lastPalmId&&lastPalmId>=0){
+      score++;
+      // Check perfect: release angle vs wind tangent
+      const launchA=atan2(drop.vy,drop.vx);
+      const wA=windTangent(drop.x,elapsed);
+      let diff=abs(launchA-wA);if(diff>PI)diff=TAU-diff;
+      if(diff<PERFECT_WINDOW){
+        combo++;score+=combo;
+        comboText=`Perfect +${combo}`;comboTimer=1.2;
+        emit(drop.x,drop.y,14,55,130,0.5);
+        shakeMag=4;
+      }else{
+        combo=0;
+      }
+      emit(drop.x,drop.y,8,200,80,0.35);
+      updateHUD();
+    }
+    lastPalmId=p.id;
+    drop.vx=0;drop.vy=0;
+  }else{
+    // Release - launch tangentially
+    tethered=false;
+    const speed=ORBIT_SPEED*ORBIT_R;
+    // CCW orbit: tangent direction is (-sin(θ), cos(θ)) * speed
+    // But we want the direction the droplet is actually moving
+    // With dθ/dt > 0 (CCW), velocity = R*ω*(-sin(θ), cos(θ))
+    drop.vx=-sin(tAngle)*speed;
+    drop.vy=cos(tAngle)*speed;
+    emit(drop.x,drop.y,5,180,50,0.3);
+    tPalm=null;
+  }
+}
+
+canvas.addEventListener('pointerdown',e=>{e.preventDefault();tap();});
+document.addEventListener('keydown',e=>{
+  if(e.code==='Space'||e.code==='Enter'){e.preventDefault();tap();}
+});
+
+// ── Overlays ──
+function hideOverlay(){overlay.classList.add('hidden');}
+function showOverlay(h){overlayInner.innerHTML=h;overlay.classList.remove('hidden');}
+
+function showStart(){
+  let h=`<div class="game-title">Oasis Hop</div>
+    <div class="game-subtitle">Swing between palms. Ride the wind.</div>
+    <div class="tap-prompt">Tap to Start</div>`;
+  if(best>0)h+=`<div class="best-display" style="margin-top:16px">Best: ${best}</div>`;
+  showOverlay(h);
+}
+
+function showGameOver(){
+  if(score>best){best=score;saveBest(best);}
+  updateHUD();
+  let extra='';
+  if(challengeTarget>0){
+    extra=score>=challengeTarget
+      ?`<div style="color:#00ff88;margin-top:10px;font-weight:700">Challenge ${challengeTarget} beaten!</div>`
+      :`<div style="color:#ff6b9d;margin-top:10px">Challenge target: ${challengeTarget}</div>`;
+  }
+  showOverlay(`
+    <div class="score-label">Score</div>
+    <div class="score-display">${score}</div>
+    <div class="best-display">Best: ${best}</div>
+    ${extra}
+    <div class="btn-row">
+      <button class="btn-share" id="btn-share">Share</button>
+      <button class="btn-share" id="btn-dl">Save</button>
+    </div>
+    <div class="tap-prompt" style="margin-top:18px">Tap to Retry</div>
+  `);
+  // Attach listeners after DOM insert
+  setTimeout(()=>{
+    const bs=document.getElementById('btn-share');
+    const bd=document.getElementById('btn-dl');
+    if(bs)bs.addEventListener('pointerdown',e=>{e.stopPropagation();shareScore();});
+    if(bd)bd.addEventListener('pointerdown',e=>{e.stopPropagation();downloadCard();});
+  },50);
+}
+
+// ── Share / Download ──
+function shareScore(){
+  const url=`${location.origin}${location.pathname}?challenge=${score}`;
+  const text=`I scored ${score} in Oasis Hop! Can you beat it?`;
+  if(navigator.share){
+    navigator.share({title:'Oasis Hop',text,url}).catch(()=>{});
+  }else{
+    navigator.clipboard.writeText(text+' '+url).then(()=>{
+      const b=document.getElementById('btn-share');
+      if(b){b.textContent='Copied!';setTimeout(()=>{if(b)b.textContent='Share';},2000);}
+    }).catch(()=>{});
+  }
+}
+
+function downloadCard(){
+  const c=document.createElement('canvas');c.width=400;c.height=300;
+  const x=c.getContext('2d');
+  const g=x.createLinearGradient(0,0,400,300);
+  g.addColorStop(0,'#1a0a2e');g.addColorStop(1,'#0d2847');
+  x.fillStyle=g;x.fillRect(0,0,400,300);
+  x.textAlign='center';
+  x.fillStyle='#fff';x.font='bold 20px sans-serif';x.fillText('Oasis Hop',200,45);
+  x.fillStyle='#00d4ff';x.font='bold 72px sans-serif';x.fillText(''+score,200,140);
+  x.fillStyle='#a89cc8';x.font='16px sans-serif';x.fillText('points',200,168);
+  x.fillStyle='#ffd93d';x.font='bold 16px sans-serif';x.fillText('Best: '+best,200,205);
+  x.fillStyle='#8878a8';x.font='13px sans-serif';x.fillText('balinti.github.io/oasis-hop',200,265);
+  const a=document.createElement('a');a.download='oasis-hop-score.png';
+  a.href=c.toDataURL('image/png');a.click();
+}
+
+// ── Game Over ──
+function gameOver(){
+  state=S.OVER;shakeMag=14;
+  emit(drop.x,drop.y,25,0,160,0.7);
+  showGameOver();
+}
+
+// ── Main Loop ──
+let lt=0;
+function loop(ts){
+  requestAnimationFrame(loop);
+  const rawDt=(ts-lt)/1000;lt=ts;
+  const dt=min(rawDt,0.033);
+
+  if(state===S.START){drawBg();return;}
+
+  // Shake
+  shakeMag*=SHAKE_DECAY;
+  shakeX=(rand()-0.5)*shakeMag*2;
+  shakeY=(rand()-0.5)*shakeMag*2;
+
+  if(state===S.OVER){draw(dt);return;}
+
+  // ── Update ──
+  elapsed+=dt;
+  difficulty=min(elapsed/60,5);
+
+  // Wind
+  windSpeed=WIND_BASE*(1+difficulty*0.5);
+  gustPhase+=dt*1.5;
+  gustAmp=12+difficulty*14;
+
+  // Hydration
+  hydration-=HYDRATION_DRAIN*(1+difficulty*0.2)*dt;
+  if(hydration<=0){hydration=0;gameOver();return;}
+
+  // Combo text timer
+  if(comboTimer>0)comboTimer-=dt;
+
+  if(tethered&&tPalm){
+    // Orbit CCW (angle increases)
+    const w=ORBIT_SPEED*(1+difficulty*0.12);
+    tAngle+=w*dt;
+    if(tAngle>PI)tAngle-=TAU;
+    drop.x=tPalm.x+cos(tAngle)*ORBIT_R;
+    drop.y=tPalm.y+sin(tAngle)*ORBIT_R;
+    drop.vx=0;drop.vy=0;
+    // Tether trail particles
+    if(rand()<0.25)emit(drop.x,drop.y,1,195,18,0.2);
+  }else{
+    // Free flight
+    // Wind force: stronger when inside wind lane
+    const screenY=drop.y-camY;
+    const wly=windY(drop.x,elapsed);
+    const dToLane=abs(screenY-wly);
+    const inLane=dToLane<35;
+    const wPush=inLane?windSpeed*1.8:windSpeed*0.3;
+    const wDir=sin(elapsed*0.6+drop.x*0.01);
+    drop.vx+=wDir*wPush*dt;
+
+    // Gravity
+    drop.vy+=GRAVITY*dt;
+
+    // Clamp velocity
+    const v=sqrt(drop.vx*drop.vx+drop.vy*drop.vy);
+    if(v>MAX_VEL){const s=MAX_VEL/v;drop.vx*=s;drop.vy*=s;}
+
+    drop.x+=drop.vx*dt;
+    drop.y+=drop.vy*dt;
+
+    // Horizontal bounds
+    if(drop.x<DROP_R){drop.x=DROP_R;drop.vx=abs(drop.vx)*0.5;}
+    if(drop.x>W-DROP_R){drop.x=W-DROP_R;drop.vx=-abs(drop.vx)*0.5;}
+
+    // Off screen checks
+    if(drop.y>camY+H+120){gameOver();return;}
+    if(drop.y<camY-250){gameOver();return;}
+  }
+
+  // Camera
+  const targetCam=drop.y-H*0.55;
+  camY+=(targetCam-camY)*CAM_LERP*dt;
+
+  // Dew collision
+  for(const d of dews){
+    if(!d.alive)continue;
+    const dx=d.x-drop.x,dy=d.y-drop.y;
+    if(dx*dx+dy*dy<(DROP_R+d.r)*(DROP_R+d.r)){
+      d.alive=false;
+      hydration=min(HYDRATION_MAX,hydration+HYDRATION_DEW);
+      emit(d.x,d.y,10,185,90,0.4);
+    }
+  }
+
+  // Hazard collision
+  for(const h of hazards){
+    const dx=h.x-drop.x,dy=h.y-drop.y;
+    if(dx*dx+dy*dy<(DROP_R+h.r)*(DROP_R+h.r)){gameOver();return;}
+  }
+
+  // Generate more palms ahead
+  if(palms.length>0){
+    const topY=palms[palms.length-1].y;
+    if(topY>camY-H)generateAhead(topY,12);
+  }
+
+  // Cull below camera
+  const cullY=camY+H+250;
+  palms=palms.filter(p=>p.y<cullY);
+  dews=dews.filter(d=>d.alive&&d.y<cullY);
+  hazards=hazards.filter(h=>h.y<cullY);
+
+  // Particles
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    p.x+=p.vx*dt;p.y+=p.vy*dt;
+    p.life-=dt;
+    if(p.life<=0)particles.splice(i,1);
+  }
+
+  updateHUD();
+  draw(dt);
+}
+
+// ── Drawing ──
+function drawBg(){
+  const g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#1a0a2e');g.addColorStop(0.5,'#0d2847');g.addColorStop(1,'#1a3a5c');
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  // Stars
+  ctx.fillStyle='rgba(255,255,255,0.25)';
+  for(let i=0;i<35;i++){
+    const sx=(i*137.5)%W,sy=(i*97.3)%H;
+    ctx.beginPath();ctx.arc(sx,sy,0.8,0,TAU);ctx.fill();
+  }
+}
+
+function draw(dt){
+  ctx.save();ctx.setTransform(dpr,0,0,dpr,0,0);
+  drawBg();
+
+  ctx.save();
+  ctx.translate(shakeX,-camY+shakeY);
+
+  // Wind lane ribbon
+  const hShift=(elapsed*25)%360;
+  ctx.beginPath();
+  ctx.moveTo(0,windY(0,elapsed)+camY-28);
+  for(let x=0;x<=W;x+=4)ctx.lineTo(x,windY(x,elapsed)+camY-28);
+  for(let x=W;x>=0;x-=4)ctx.lineTo(x,windY(x,elapsed)+camY+28);
+  ctx.closePath();
+  ctx.fillStyle=`hsla(${195+hShift*0.08},65%,55%,0.07)`;ctx.fill();
+  // Lane center
+  ctx.beginPath();
+  for(let x=0;x<=W;x+=3){
+    const ly=windY(x,elapsed)+camY;
+    x===0?ctx.moveTo(x,ly):ctx.lineTo(x,ly);
+  }
+  ctx.strokeStyle=`hsla(${195+hShift*0.08},75%,65%,0.18)`;
+  ctx.lineWidth=1.5;ctx.stroke();
+
+  // Palms
+  for(const p of palms)drawPalm(p);
+
+  // Dew beads
+  for(const d of dews){
+    if(!d.alive)continue;
+    d.ph+=dt*3;
+    const g=0.5+sin(d.ph)*0.3;
+    ctx.beginPath();ctx.arc(d.x,d.y,d.r+sin(d.ph)*1.5,0,TAU);
+    ctx.fillStyle=`hsla(190,100%,70%,${g})`;ctx.fill();
+    ctx.beginPath();ctx.arc(d.x,d.y,d.r*0.4,0,TAU);
+    ctx.fillStyle='rgba(255,255,255,0.65)';ctx.fill();
+  }
+
+  // Hazards
+  for(const h of hazards){
+    if(h.type==='cactus')drawCactus(h);
+    else drawRock(h);
+  }
+
+  // Tether line
+  if(tethered&&tPalm){
+    ctx.beginPath();ctx.moveTo(tPalm.x,tPalm.y);ctx.lineTo(drop.x,drop.y);
+    ctx.strokeStyle='rgba(0,212,255,0.35)';ctx.lineWidth=1.5;
+    ctx.setLineDash([4,4]);ctx.stroke();ctx.setLineDash([]);
+  }
+
+  // Droplet
+  drawDrop();
+
+  // Particles
+  for(const p of particles){
+    const a=max(0,p.life/p.ml);
+    ctx.beginPath();ctx.arc(p.x,p.y,p.r*a,0,TAU);
+    ctx.fillStyle=`hsla(${p.hue},80%,65%,${a})`;ctx.fill();
+  }
+
+  ctx.restore();
+
+  // Combo text overlay (screen space)
+  if(comboTimer>0&&comboText){
+    const a=min(1,comboTimer/0.3);
+    ctx.save();
+    ctx.globalAlpha=a;
+    ctx.fillStyle='#00ff88';ctx.font='bold 22px sans-serif';
+    ctx.textAlign='center';
+    ctx.fillText(comboText,W/2,H*0.35-((1.2-comboTimer)*30));
+    ctx.restore();
+  }
+
+  ctx.restore();
+}
+
+function drawPalm(p){
+  const tw=PALM_TRUNK_R;
+  const isTeth=tPalm&&tPalm.id===p.id;
+  // Trunk
+  ctx.fillStyle=`hsl(${p.hue-65},35%,28%)`;
+  ctx.beginPath();
+  ctx.rect(p.x-tw/2,p.y-p.trunkH,tw,p.trunkH);
+  ctx.fill();
+  // Trunk texture
+  ctx.strokeStyle='rgba(0,0,0,0.12)';ctx.lineWidth=1;
+  for(let i=8;i<p.trunkH;i+=12){
+    ctx.beginPath();ctx.moveTo(p.x-tw/2+1,p.y-i);ctx.lineTo(p.x+tw/2-1,p.y-i);ctx.stroke();
+  }
+  // Tether point
+  ctx.beginPath();ctx.arc(p.x,p.y,5,0,TAU);
+  ctx.fillStyle=isTeth?'#00d4ff':'rgba(0,212,255,0.25)';ctx.fill();
+  if(isTeth){
+    ctx.beginPath();ctx.arc(p.x,p.y,ORBIT_R,0,TAU);
+    ctx.strokeStyle='rgba(0,212,255,0.12)';ctx.lineWidth=1;ctx.stroke();
+  }
+  // Leaves
+  const ly=p.y-p.trunkH;
+  const sway=sin(elapsed*1.8+p.leafPh)*0.2;
+  for(let i=0;i<5;i++){
+    const la=-PI*0.8+i*(PI*0.4)+sway;
+    ctx.beginPath();ctx.moveTo(p.x,ly);
+    const lx=p.x+cos(la)*38,lly=ly+sin(la)*22-12;
+    ctx.quadraticCurveTo(p.x+cos(la)*18,ly-18,lx,lly);
+    ctx.strokeStyle=`hsl(${p.hue},55%,42%)`;ctx.lineWidth=4;ctx.stroke();
+    ctx.strokeStyle=`hsl(${p.hue},45%,52%)`;ctx.lineWidth=2;ctx.stroke();
+  }
+}
+
+function drawCactus(h){
+  ctx.fillStyle='hsl(130,45%,32%)';
+  // Body
+  ctx.beginPath();ctx.ellipse(h.x,h.y,h.r*0.55,h.r,0,0,TAU);ctx.fill();
+  // Arms
+  ctx.beginPath();ctx.ellipse(h.x-h.r*0.7,h.y-h.r*0.3,3,h.r*0.5,0.3,0,TAU);ctx.fill();
+  ctx.beginPath();ctx.ellipse(h.x+h.r*0.6,h.y-h.r*0.5,3,h.r*0.4,-0.4,0,TAU);ctx.fill();
+  // Spines
+  ctx.strokeStyle='hsl(55,60%,65%)';ctx.lineWidth=1;
+  for(let i=0;i<7;i++){
+    const sa=i*(TAU/7);
+    ctx.beginPath();ctx.moveTo(h.x+cos(sa)*h.r*0.5,h.y+sin(sa)*h.r*0.5);
+    ctx.lineTo(h.x+cos(sa)*(h.r+4),h.y+sin(sa)*(h.r+4));ctx.stroke();
+  }
+}
+
+function drawRock(h){
+  ctx.fillStyle='hsl(30,18%,32%)';
+  ctx.beginPath();
+  ctx.moveTo(h.x-h.r,h.y+h.r*0.25);
+  ctx.lineTo(h.x-h.r*0.55,h.y-h.r*0.65);
+  ctx.lineTo(h.x+h.r*0.35,h.y-h.r*0.7);
+  ctx.lineTo(h.x+h.r,h.y+h.r*0.15);
+  ctx.lineTo(h.x+h.r*0.4,h.y+h.r*0.5);
+  ctx.closePath();ctx.fill();
+  ctx.fillStyle='hsl(28,15%,38%)';
+  ctx.beginPath();
+  ctx.moveTo(h.x-h.r*0.3,h.y-h.r*0.4);
+  ctx.lineTo(h.x+h.r*0.2,h.y-h.r*0.5);
+  ctx.lineTo(h.x+h.r*0.5,h.y-h.r*0.1);
+  ctx.lineTo(h.x-h.r*0.1,h.y+h.r*0.1);
+  ctx.closePath();ctx.fill();
+}
+
+function drawDrop(){
+  const hue=(elapsed*50)%360;
+  const c=`hsl(${195+hue*0.1},90%,60%)`;
+  // Glow
+  const g=ctx.createRadialGradient(drop.x,drop.y,0,drop.x,drop.y,DROP_R*2.5);
+  g.addColorStop(0,`hsla(${195+hue*0.1},100%,70%,0.25)`);g.addColorStop(1,'transparent');
+  ctx.fillStyle=g;ctx.beginPath();ctx.arc(drop.x,drop.y,DROP_R*2.5,0,TAU);ctx.fill();
+  // Teardrop shape
+  ctx.beginPath();
+  ctx.moveTo(drop.x,drop.y-DROP_R*1.3);
+  ctx.bezierCurveTo(drop.x-DROP_R*0.6,drop.y-DROP_R,drop.x-DROP_R,drop.y-DROP_R*0.2,drop.x-DROP_R,drop.y+DROP_R*0.2);
+  ctx.arc(drop.x,drop.y+DROP_R*0.2,DROP_R,PI,0,false);
+  ctx.bezierCurveTo(drop.x+DROP_R,drop.y-DROP_R*0.2,drop.x+DROP_R*0.6,drop.y-DROP_R,drop.x,drop.y-DROP_R*1.3);
+  ctx.fillStyle=c;ctx.fill();
+  // Highlight
+  ctx.beginPath();ctx.arc(drop.x-2,drop.y-1,DROP_R*0.35,0,TAU);
+  ctx.fillStyle='rgba(255,255,255,0.55)';ctx.fill();
+}
+
+// ── Start ──
+showStart();
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

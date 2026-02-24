@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Shrinking Vines - Free HTML5 Game</title>
+  <meta name="description" content="Play Shrinking Vines - Swipe directions to guide the shrinking vines through jungle obstacles.">
+  <meta name="theme-color" content="#1a3a1a">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Shrinking Vines - Free HTML5 Game">
+  <meta property="og:description" content="Play Shrinking Vines - Swipe directions to guide the shrinking vines through jungle obstacles.">
+  <meta property="og:url" content="https://balinti.github.io/shrinking-vines/">
+  <meta property="og:image" content="https://balinti.github.io/shrinking-vines/og-image.png">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Shrinking Vines - Free HTML5 Game">
+  <meta name="twitter:description" content="Play Shrinking Vines - Swipe directions to guide the shrinking vines through jungle obstacles.">
+  <meta name="twitter:image" content="https://balinti.github.io/shrinking-vines/og-image.png">
+
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0a1a0a;
+      color: #c8f0c8;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    #game-wrap {
+      width: 100%;
+      max-width: 420px;
+      height: 100svh;
+      height: 100vh;
+      max-height: 750px;
+      position: relative;
+      overflow: hidden;
+      touch-action: none;
+      flex-shrink: 0;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Below-fold SEO content */
+    #seo-content {
+      width: 100%;
+      max-width: 420px;
+      padding: 24px 16px 40px;
+      color: #7ab87a;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    #seo-content h2 {
+      color: #a0e0a0;
+      font-size: 18px;
+      margin-bottom: 10px;
+      margin-top: 20px;
+    }
+
+    #seo-content h3 {
+      color: #90d090;
+      font-size: 15px;
+      margin-bottom: 6px;
+      margin-top: 14px;
+    }
+
+    #seo-content p, #seo-content li {
+      margin-bottom: 6px;
+    }
+
+    #seo-content ul {
+      padding-left: 18px;
+    }
+
+    .ad-slot {
+      width: 100%;
+      max-width: 420px;
+      min-height: 90px;
+      margin: 8px 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+  </style>
+</head>
+<body>
+
+<div id="game-wrap">
+  <canvas id="gc"></canvas>
+</div>
+
+<!-- Ad slot for Auto Ads -->
+<div class="ad-slot">
+  <ins class="adsbygoogle"
+       style="display:block;width:100%;max-width:420px;height:90px"
+       data-ad-client="ca-pub-4099346100621490"
+       data-ad-slot="auto"
+       data-ad-format="horizontal"
+       data-full-width-responsive="true"></ins>
+</div>
+
+<!-- SEO + How-to-play content below fold -->
+<section id="seo-content">
+  <h2>How to Play Shrinking Vines</h2>
+  <p>Guide your living vine through a dense jungle tunnel, collecting nectar rings to keep it alive. The vine is always shrinking — only your skill keeps it growing!</p>
+
+  <h3>Controls</h3>
+  <ul>
+    <li><strong>Hold (tap/click/hold Space)</strong> — Curl LEFT</li>
+    <li><strong>Release</strong> — Curl RIGHT</li>
+    <li>Tap anywhere on Start/Game Over screen to begin or retry</li>
+    <li><strong>Space / Enter</strong> also starts and retries</li>
+  </ul>
+
+  <h3>Nectar Rings</h3>
+  <p>Glowing nectar circles restore vine length and build your combo multiplier. Chains of 3–10 rings spawn in patterns — S-curves, zigzags, and twin lanes. Collect them all for massive combo bonuses!</p>
+
+  <h3>Combo Tiers</h3>
+  <ul>
+    <li>Tier 1 (x1): Default — plain white glow</li>
+    <li>Tier 2 (x2): 5 combos — golden glow, background shifts</li>
+    <li>Tier 3 (x3): 15 combos — blazing orange, intense glow</li>
+    <li>Tier 4 (x5): 30 combos — rainbow pulse, max chaos</li>
+  </ul>
+
+  <h3>Thorns</h3>
+  <p>Thorny obstacles cut your vine length and reset your combo. They don't kill you instantly — but hit too many and your vine will wither away. Watch for wobbling thorns in later levels!</p>
+
+  <h3>Tips &amp; Tricks</h3>
+  <ul>
+    <li>Chain nectar rings for the highest scores — combos multiply points</li>
+    <li>After a thorn hit, a brief mercy window gives you breathing room</li>
+    <li>The vine glows brighter as your combo grows — a sign of power!</li>
+    <li>Speed and hazard density increase every 15 rings — stay alert</li>
+    <li>The tunnel curves guide patterns — learn to read the jungle</li>
+  </ul>
+
+  <h3>About</h3>
+  <p>Shrinking Vines is a free browser-based hyper-casual game. No downloads, no installs — just pure reflex fun in your browser on desktop or mobile.</p>
+</section>
+
+<script>
+(function() {
+  'use strict';
+
+  // ── Constants ──────────────────────────────────────────────────────────────
+  const LS_KEY = 'shrinkingVines_best';
+  const MAX_DPR = 2;
+  const VINE_SEGMENTS = 60;       // max trail length
+  const VINE_HEALTH_MAX = 200;
+  const VINE_HEALTH_START = 120;
+  const VINE_HEALTH_DRAIN = 0.06; // per frame
+  const VINE_HEALTH_THORN = 40;   // damage from thorn
+  const VINE_HEALTH_NECTAR = 18;  // restore from nectar (capped)
+  const TURN_SPEED = 2.2;         // deg/frame max turn
+  const BASE_SPEED = 2.8;
+  const COMBO_THRESHOLDS = [0, 5, 15, 30];
+  const COMBO_MULTS = [1, 2, 3, 5];
+  const COMBO_COLORS = ['#ffffff','#ffd700','#ff8c00','#ff00ff'];
+  const MERCY_FRAMES = 90;
+
+  // ── Canvas setup ───────────────────────────────────────────────────────────
+  const wrap = document.getElementById('game-wrap');
+  const canvas = document.getElementById('gc');
+  const ctx = canvas.getContext('2d');
+
+  let W, H, DPR;
+
+  function resize() {
+    const rect = wrap.getBoundingClientRect();
+    W = rect.width;
+    H = rect.height;
+    DPR = Math.min(window.devicePixelRatio || 1, MAX_DPR);
+    canvas.width  = Math.round(W * DPR);
+    canvas.height = Math.round(H * DPR);
+    ctx.scale(DPR, DPR);
+  }
+
+  window.addEventListener('resize', () => { resize(); });
+  resize();
+
+  // ── State ──────────────────────────────────────────────────────────────────
+  let state = 'start'; // 'start' | 'playing' | 'gameover'
+  let held = false;
+
+  // Game vars
+  let score, best, combo, maxCombo, comboTier;
+  let vineHealth, vineX, vineAngle;
+  let vineTrail; // [{x,y}]
+  let speed, ringsCollected;
+  let objects; // nectar/thorn objects
+  let particles;
+  let shakeFrames, shakeIntensity;
+  let mercy; // frames of mercy after thorn
+  let bgHue;
+  let frameCount;
+  let lastTime;
+  let spawnTimer;
+  let patternQueue;
+
+  function initGame() {
+    score         = 0;
+    combo         = 0;
+    maxCombo      = 0;
+    comboTier     = 0;
+    vineHealth    = VINE_HEALTH_START;
+    vineX         = W / 2;
+    vineAngle     = 0; // 0 = straight up (negative Y)
+    vineTrail     = Array.from({length: VINE_SEGMENTS}, () => ({ x: vineX, y: H * 0.75 }));
+    speed         = BASE_SPEED;
+    ringsCollected = 0;
+    objects       = [];
+    particles     = [];
+    shakeFrames   = 0;
+    shakeIntensity = 0;
+    mercy         = 0;
+    bgHue         = 120;
+    frameCount    = 0;
+    spawnTimer    = 0;
+    patternQueue  = [];
+    best          = parseInt(localStorage.getItem(LS_KEY) || '0', 10);
+    // Spawn initial pattern after short delay
+    spawnTimer = 40;
+  }
+
+  // ── Input ──────────────────────────────────────────────────────────────────
+  function onDown() {
+    held = true;
+    if (state === 'start' || state === 'gameover') startOrRestart();
+  }
+  function onUp() { held = false; }
+
+  function startOrRestart() {
+    initGame();
+    state = 'playing';
+  }
+
+  wrap.addEventListener('pointerdown', onDown);
+  wrap.addEventListener('pointerup',   onUp);
+  wrap.addEventListener('pointerleave', onUp);
+  wrap.addEventListener('pointercancel', onUp);
+
+  document.addEventListener('keydown', e => {
+    if (e.code === 'Space' || e.code === 'Enter') {
+      e.preventDefault();
+      if (state !== 'playing') { startOrRestart(); return; }
+      held = true;
+    }
+  });
+  document.addEventListener('keyup', e => {
+    if (e.code === 'Space' || e.code === 'Enter') held = false;
+  });
+
+  // ── Spawning ───────────────────────────────────────────────────────────────
+  // Tunnel is centered on W/2 with soft walls
+  const TUNNEL_HALF = () => Math.min(W * 0.42, 170);
+
+  function spawnPattern() {
+    const cx = W / 2;
+    const type = Math.random();
+    let count = 4 + Math.floor(Math.random() * 7); // 4–10 rings
+    const startY = -40;
+    const gap = 55 + Math.random() * 25;
+
+    if (type < 0.33) {
+      // S-curve pattern
+      for (let i = 0; i < count; i++) {
+        const t = i / (count - 1);
+        const x = cx + Math.sin(t * Math.PI * 2) * (TUNNEL_HALF() * 0.55);
+        objects.push(makeNectar(x, startY - i * gap));
+      }
+    } else if (type < 0.66) {
+      // Zigzag
+      for (let i = 0; i < count; i++) {
+        const x = cx + (i % 2 === 0 ? -1 : 1) * (TUNNEL_HALF() * 0.4);
+        objects.push(makeNectar(x, startY - i * gap));
+      }
+    } else {
+      // Twin lanes — two parallel columns
+      const laneCount = Math.floor(count / 2);
+      for (let i = 0; i < laneCount; i++) {
+        objects.push(makeNectar(cx - TUNNEL_HALF() * 0.35, startY - i * gap));
+        objects.push(makeNectar(cx + TUNNEL_HALF() * 0.35, startY - i * gap));
+      }
+    }
+
+    // Sprinkle thorns (more at higher difficulty)
+    if (mercy <= 0) {
+      const thornCount = 1 + Math.floor(ringsCollected / 20);
+      for (let i = 0; i < Math.min(thornCount, 3); i++) {
+        const tx = cx + (Math.random() - 0.5) * TUNNEL_HALF() * 1.5;
+        const ty = startY - (Math.random() * count * gap * 0.8);
+        objects.push(makeThorn(tx, ty));
+      }
+    }
+  }
+
+  function makeNectar(x, y) {
+    return {
+      type: 'nectar',
+      x, y,
+      r: 14,
+      hue: Math.random() * 60 + 50, // yellow-green spectrum
+      collected: false,
+      wobble: 0,
+    };
+  }
+
+  function makeThorn(x, y) {
+    const wobbling = ringsCollected > 30 && Math.random() < 0.4;
+    return {
+      type: 'thorn',
+      x, y,
+      r: 10,
+      ox: x,   // original x for wobble
+      wobbling,
+      wobblePhase: Math.random() * Math.PI * 2,
+      wobbleAmp: 20 + Math.random() * 20,
+      wobbleFreq: 0.04 + Math.random() * 0.03,
+      hit: false,
+    };
+  }
+
+  // ── Particles ──────────────────────────────────────────────────────────────
+  function burst(x, y, color, n, speed2) {
+    for (let i = 0; i < n; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const spd = (0.5 + Math.random() * 0.8) * speed2;
+      particles.push({
+        x, y,
+        vx: Math.cos(angle) * spd,
+        vy: Math.sin(angle) * spd,
+        life: 1,
+        decay: 0.04 + Math.random() * 0.04,
+        r: 2 + Math.random() * 3,
+        color,
+      });
+    }
+  }
+
+  function nectarBurst(x, y) {
+    burst(x, y, '#ffe066', 12, 5);
+    burst(x, y, '#ffffff', 6, 3);
+  }
+
+  function thornBurst(x, y) {
+    burst(x, y, '#44bb44', 8, 4);
+    burst(x, y, '#ffff00', 6, 6);
+    burst(x, y, '#ff4444', 4, 3);
+  }
+
+  function gameOverBurst() {
+    for (let i = 0; i < 5; i++) {
+      const px = vineTrail[0].x + (Math.random() - 0.5) * 40;
+      const py = vineTrail[0].y + (Math.random() - 0.5) * 40;
+      burst(px, py, '#88ff88', 10, 5);
+      burst(px, py, '#ff4444', 8, 6);
+    }
+  }
+
+  // ── Difficulty ─────────────────────────────────────────────────────────────
+  function updateDifficulty() {
+    const level = Math.floor(ringsCollected / 15);
+    speed = BASE_SPEED + level * 0.35;
+  }
+
+  // ── Combo tier ─────────────────────────────────────────────────────────────
+  function getComboTier(c) {
+    let t = 0;
+    for (let i = COMBO_THRESHOLDS.length - 1; i >= 0; i--) {
+      if (c >= COMBO_THRESHOLDS[i]) { t = i; break; }
+    }
+    return t;
+  }
+
+  // ── Screen shake ───────────────────────────────────────────────────────────
+  function shake(frames, intensity) {
+    if (intensity > shakeIntensity) {
+      shakeFrames = frames;
+      shakeIntensity = intensity;
+    }
+  }
+
+  // ── Update ─────────────────────────────────────────────────────────────────
+  function update(dt) {
+    frameCount++;
+
+    // Drain vine health
+    vineHealth -= VINE_HEALTH_DRAIN * dt * 60;
+    if (mercy > 0) mercy -= dt * 60;
+
+    // Turn angle
+    const targetAngle = held ? -TURN_SPEED : TURN_SPEED;
+    vineAngle = Math.max(-45, Math.min(45, vineAngle + targetAngle * dt * 60 * 0.1));
+
+    // Move vine head
+    const rad = (vineAngle * Math.PI) / 180;
+    const dx = Math.sin(rad) * speed * dt * 60;
+    const dy = -Math.cos(rad) * speed * dt * 60;
+
+    let newX = vineTrail[0].x + dx;
+    let newY = vineTrail[0].y + dy;
+
+    // Soft tunnel walls
+    const half = TUNNEL_HALF();
+    const left  = W / 2 - half;
+    const right = W / 2 + half;
+    if (newX < left + 10) { newX += (left + 10 - newX) * 0.25; vineAngle = Math.max(vineAngle, -10); }
+    if (newX > right - 10) { newX -= (newX - right + 10) * 0.25; vineAngle = Math.min(vineAngle, 10); }
+    if (newY < 10) newY = 10;
+    if (newY > H - 10) newY = H - 10;
+
+    vineTrail.unshift({ x: newX, y: newY });
+    if (vineTrail.length > VINE_SEGMENTS) vineTrail.pop();
+
+    // Scroll objects
+    objects.forEach(o => { o.y += speed * dt * 60; });
+    if (o => o.y > H + 60) {} // handled below
+
+    // Thorn wobble
+    objects.forEach(o => {
+      if (o.type === 'thorn' && o.wobbling) {
+        o.x = o.ox + Math.sin(frameCount * o.wobbleFreq + o.wobblePhase) * o.wobbleAmp;
+      }
+    });
+
+    // Collision
+    const head = vineTrail[0];
+    objects.forEach(o => {
+      if (o.collected || o.hit) return;
+      const dx2 = head.x - o.x;
+      const dy2 = head.y - o.y;
+      const dist = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+
+      if (o.type === 'nectar' && dist < o.r + 12) {
+        o.collected = true;
+        vineHealth = Math.min(VINE_HEALTH_MAX, vineHealth + VINE_HEALTH_NECTAR);
+        combo++;
+        if (combo > maxCombo) maxCombo = combo;
+        ringsCollected++;
+        const newTier = getComboTier(combo);
+        if (newTier > comboTier) {
+          comboTier = newTier;
+          shake(8, 3);
+        }
+        const mult = COMBO_MULTS[comboTier];
+        score += 1 * mult;
+        nectarBurst(o.x, o.y);
+        updateDifficulty();
+      } else if (o.type === 'thorn' && dist < o.r + 6 && mercy <= 0) {
+        o.hit = true;
+        vineHealth -= VINE_HEALTH_THORN;
+        combo = 0;
+        comboTier = 0;
+        mercy = MERCY_FRAMES;
+        shake(12, 6);
+        thornBurst(o.x, o.y);
+      }
+    });
+
+    // Remove off-screen or consumed objects
+    objects = objects.filter(o => {
+      if (o.collected || o.hit) return false;
+      if (o.y > H + 60) return false;
+      return true;
+    });
+
+    // Spawn timer
+    spawnTimer -= dt * 60;
+    if (spawnTimer <= 0) {
+      spawnPattern();
+      spawnTimer = 120 - Math.min(70, ringsCollected * 1.5);
+    }
+
+    // Particles
+    particles.forEach(p => {
+      p.x += p.vx * dt * 60;
+      p.y += p.vy * dt * 60;
+      p.vy += 0.1 * dt * 60;
+      p.life -= p.decay * dt * 60;
+    });
+    particles = particles.filter(p => p.life > 0);
+
+    // Shake decay
+    if (shakeFrames > 0) { shakeFrames -= dt * 60; shakeIntensity *= 0.9; }
+    else shakeIntensity = 0;
+
+    // Background hue shift with combo
+    const targetHue = 120 + comboTier * 30;
+    bgHue += (targetHue - bgHue) * 0.02 * dt * 60;
+
+    // Death check
+    if (vineHealth <= 0) {
+      vineHealth = 0;
+      gameOver();
+    }
+  }
+
+  function gameOver() {
+    state = 'gameover';
+    if (score > best) {
+      best = score;
+      localStorage.setItem(LS_KEY, String(best));
+    }
+    shake(30, 14);
+    gameOverBurst();
+  }
+
+  // ── Draw ───────────────────────────────────────────────────────────────────
+  function draw() {
+    // Screen shake transform
+    let sx = 0, sy = 0;
+    if (shakeFrames > 0) {
+      sx = (Math.random() - 0.5) * shakeIntensity * 2;
+      sy = (Math.random() - 0.5) * shakeIntensity * 2;
+    }
+    ctx.save();
+    ctx.translate(sx, sy);
+
+    // Background gradient
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, `hsl(${bgHue}, 40%, 6%)`);
+    grad.addColorStop(0.5, `hsl(${bgHue + 20}, 35%, 4%)`);
+    grad.addColorStop(1, `hsl(${bgHue + 40}, 45%, 3%)`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    // Tunnel walls (soft vine borders)
+    drawTunnel();
+
+    if (state === 'playing' || state === 'gameover') {
+      drawObjects();
+      drawParticles();
+      drawVine();
+      drawHUD();
+    }
+
+    ctx.restore();
+
+    if (state === 'start')    drawStart();
+    if (state === 'gameover') drawGameOver();
+  }
+
+  function drawTunnel() {
+    const half = TUNNEL_HALF();
+    const cx = W / 2;
+    // Left wall
+    const lg = ctx.createLinearGradient(0, 0, cx - half + 40, 0);
+    lg.addColorStop(0, `hsla(${bgHue}, 50%, 8%, 1)`);
+    lg.addColorStop(1, `hsla(${bgHue}, 50%, 8%, 0)`);
+    ctx.fillStyle = lg;
+    ctx.fillRect(0, 0, cx - half + 40, H);
+
+    // Right wall
+    const rg = ctx.createLinearGradient(W, 0, cx + half - 40, 0);
+    rg.addColorStop(0, `hsla(${bgHue}, 50%, 8%, 1)`);
+    rg.addColorStop(1, `hsla(${bgHue}, 50%, 8%, 0)`);
+    ctx.fillStyle = rg;
+    ctx.fillRect(cx + half - 40, 0, W - (cx + half - 40), H);
+
+    // Tunnel vine border lines
+    ctx.strokeStyle = `hsla(${bgHue + 60}, 60%, 20%, 0.6)`;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8, 12]);
+    ctx.beginPath();
+    ctx.moveTo(cx - half, 0); ctx.lineTo(cx - half, H);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx + half, 0); ctx.lineTo(cx + half, H);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  function drawVine() {
+    if (vineTrail.length < 2) return;
+    const glowSize = 4 + comboTier * 5;
+    const glowAlpha = 0.4 + comboTier * 0.15;
+    const vineHue = 120 + comboTier * 20;
+
+    // Outer glow
+    ctx.save();
+    ctx.shadowBlur = glowSize * 3;
+    ctx.shadowColor = `hsla(${vineHue}, 80%, 55%, ${glowAlpha})`;
+    ctx.strokeStyle = `hsla(${vineHue + 10}, 90%, 65%, 0.3)`;
+    ctx.lineWidth = 6 + comboTier * 2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    drawVinePath();
+    ctx.stroke();
+    ctx.restore();
+
+    // Core vine
+    ctx.save();
+    ctx.shadowBlur = 6;
+    ctx.shadowColor = `hsla(${vineHue}, 90%, 70%, 0.8)`;
+    ctx.strokeStyle = `hsl(${vineHue + 20}, 90%, 70%)`;
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    drawVinePath();
+    ctx.stroke();
+    ctx.restore();
+
+    // Head dot
+    const head = vineTrail[0];
+    ctx.save();
+    ctx.shadowBlur = 12;
+    ctx.shadowColor = `hsl(${vineHue}, 100%, 80%)`;
+    ctx.fillStyle = `hsl(${vineHue + 30}, 100%, 80%)`;
+    ctx.beginPath();
+    ctx.arc(head.x, head.y, 5 + comboTier, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawVinePath() {
+    ctx.beginPath();
+    ctx.moveTo(vineTrail[0].x, vineTrail[0].y);
+    for (let i = 1; i < vineTrail.length; i++) {
+      // Smooth with midpoint
+      const mx = (vineTrail[i - 1].x + vineTrail[i].x) / 2;
+      const my = (vineTrail[i - 1].y + vineTrail[i].y) / 2;
+      ctx.quadraticCurveTo(vineTrail[i - 1].x, vineTrail[i - 1].y, mx, my);
+    }
+  }
+
+  function drawObjects() {
+    const now = frameCount;
+    objects.forEach(o => {
+      if (o.type === 'nectar') {
+        const pulse = 1 + Math.sin(now * 0.08 + o.x) * 0.12;
+        const r = o.r * pulse;
+        // Glow
+        ctx.save();
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = `hsla(${o.hue}, 90%, 60%, 0.7)`;
+        ctx.strokeStyle = `hsl(${o.hue}, 90%, 65%)`;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(o.x, o.y, r, 0, Math.PI * 2);
+        ctx.stroke();
+        // Inner fill
+        const ig = ctx.createRadialGradient(o.x, o.y, 0, o.x, o.y, r);
+        ig.addColorStop(0, `hsla(${o.hue + 30}, 100%, 85%, 0.8)`);
+        ig.addColorStop(1, `hsla(${o.hue}, 90%, 55%, 0.3)`);
+        ctx.fillStyle = ig;
+        ctx.beginPath();
+        ctx.arc(o.x, o.y, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      } else if (o.type === 'thorn') {
+        const wobble = o.wobbling ? Math.sin(now * o.wobbleFreq + o.wobblePhase) : 0;
+        drawThorn(o.x, o.y, o.r, wobble);
+      }
+    });
+  }
+
+  function drawThorn(x, y, r, wobbleOffset) {
+    const spikes = 6;
+    const outerR = r + 4;
+    const innerR = r - 2;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(wobbleOffset * 0.3);
+    ctx.shadowBlur = 8;
+    ctx.shadowColor = 'rgba(255, 60, 60, 0.6)';
+    ctx.fillStyle = '#cc2222';
+    ctx.strokeStyle = '#ff6666';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (let i = 0; i < spikes * 2; i++) {
+      const angle = (i / (spikes * 2)) * Math.PI * 2 - Math.PI / 2;
+      const rad2 = i % 2 === 0 ? outerR : innerR;
+      if (i === 0) ctx.moveTo(Math.cos(angle) * rad2, Math.sin(angle) * rad2);
+      else         ctx.lineTo(Math.cos(angle) * rad2, Math.sin(angle) * rad2);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawParticles() {
+    particles.forEach(p => {
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, p.life);
+      ctx.fillStyle = p.color;
+      ctx.shadowBlur = 6;
+      ctx.shadowColor = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    });
+  }
+
+  function drawHUD() {
+    const pad = 12;
+
+    // Score
+    ctx.save();
+    ctx.font = 'bold 22px system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#e0ffe0';
+    ctx.shadowBlur = 8;
+    ctx.shadowColor = 'rgba(0,200,0,0.5)';
+    ctx.fillText(score, pad, 36);
+    ctx.restore();
+
+    // Best
+    ctx.save();
+    ctx.font = '13px system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#88aa88';
+    ctx.fillText('Best: ' + best, pad, 54);
+    ctx.restore();
+
+    // Combo
+    if (combo > 1) {
+      const tier = comboTier;
+      const color = COMBO_COLORS[tier];
+      ctx.save();
+      ctx.font = 'bold ' + (16 + tier * 4) + 'px system-ui, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillStyle = color;
+      ctx.shadowBlur = 12;
+      ctx.shadowColor = color;
+      ctx.fillText('x' + COMBO_MULTS[tier] + '  ' + combo + ' combo', W - pad, 36);
+      ctx.restore();
+    }
+
+    // Vine length bar
+    drawHealthBar();
+  }
+
+  function drawHealthBar() {
+    const bw = W - 24;
+    const bh = 8;
+    const bx = 12;
+    const by = H - 20;
+    const ratio = Math.max(0, vineHealth / VINE_HEALTH_MAX);
+
+    // Background
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.beginPath();
+    ctx.roundRect(bx, by, bw, bh, 4);
+    ctx.fill();
+
+    // Fill
+    const barColor = ratio > 0.5 ? '#44ee44' : ratio > 0.25 ? '#eeee00' : '#ee4444';
+    const barGrad = ctx.createLinearGradient(bx, 0, bx + bw * ratio, 0);
+    barGrad.addColorStop(0, barColor);
+    barGrad.addColorStop(1, '#ffffff');
+    ctx.fillStyle = barGrad;
+    ctx.shadowBlur = 8;
+    ctx.shadowColor = barColor;
+    ctx.beginPath();
+    ctx.roundRect(bx, by, bw * ratio, bh, 4);
+    ctx.fill();
+
+    // Label
+    ctx.font = '10px system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#aaccaa';
+    ctx.shadowBlur = 0;
+    ctx.fillText('VINE', bx, by - 4);
+    ctx.restore();
+  }
+
+  function drawStart() {
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(0, 0, W, H);
+
+    // Title
+    ctx.textAlign = 'center';
+    ctx.shadowBlur = 20;
+    ctx.shadowColor = '#44ff44';
+    ctx.fillStyle = '#88ff88';
+    ctx.font = 'bold 38px system-ui, sans-serif';
+    ctx.fillText('Shrinking Vines', W / 2, H * 0.34);
+
+    ctx.shadowColor = '#22cc22';
+    ctx.shadowBlur = 12;
+    ctx.fillStyle = '#55ee55';
+    ctx.font = '17px system-ui, sans-serif';
+    ctx.fillText('Vine Curl: Nectar Combo', W / 2, H * 0.34 + 34);
+
+    // Pulsing tap to start
+    const pulse = 0.7 + Math.sin(Date.now() * 0.003) * 0.3;
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = '#ccffcc';
+    ctx.font = 'bold 20px system-ui, sans-serif';
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = '#88ff88';
+    ctx.fillText('Tap to Start', W / 2, H * 0.54);
+    ctx.globalAlpha = 1;
+
+    // Controls hint
+    ctx.fillStyle = '#6a8f6a';
+    ctx.shadowBlur = 0;
+    ctx.font = '13px system-ui, sans-serif';
+    ctx.fillText('Hold = Curl Left   |   Release = Curl Right', W / 2, H * 0.63);
+
+    ctx.restore();
+  }
+
+  function drawGameOver() {
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.65)';
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.textAlign = 'center';
+
+    ctx.shadowBlur = 16;
+    ctx.shadowColor = '#ff4444';
+    ctx.fillStyle = '#ff8888';
+    ctx.font = 'bold 34px system-ui, sans-serif';
+    ctx.fillText('Vine Withered', W / 2, H * 0.30);
+
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#aaddaa';
+    ctx.font = '16px system-ui, sans-serif';
+    ctx.fillText('Score: ' + score, W / 2, H * 0.41);
+    ctx.fillText('Best: ' + best, W / 2, H * 0.47);
+    ctx.fillText('Max Combo: ' + maxCombo, W / 2, H * 0.53);
+
+    // Tap to retry pulsing
+    const pulse = 0.7 + Math.sin(Date.now() * 0.003) * 0.3;
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = '#ccffcc';
+    ctx.font = 'bold 20px system-ui, sans-serif';
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = '#88ff88';
+    ctx.fillText('Tap to Retry', W / 2, H * 0.65);
+    ctx.globalAlpha = 1;
+
+    ctx.restore();
+  }
+
+  // ── Main loop ──────────────────────────────────────────────────────────────
+  function loop(ts) {
+    const dt = lastTime ? Math.min((ts - lastTime) / 1000, 0.05) : 0.016;
+    lastTime = ts;
+
+    if (state === 'playing') update(dt);
+    draw();
+
+    requestAnimationFrame(loop);
+  }
+
+  // ── Bootstrap ──────────────────────────────────────────────────────────────
+  best = parseInt(localStorage.getItem(LS_KEY) || '0', 10);
+  bgHue = 120;
+  frameCount = 0;
+  shakeFrames = 0;
+  shakeIntensity = 0;
+
+  // polyfill roundRect if missing
+  if (!CanvasRenderingContext2D.prototype.roundRect) {
+    CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+      this.beginPath();
+      this.moveTo(x + r, y);
+      this.lineTo(x + w - r, y);
+      this.quadraticCurveTo(x + w, y, x + w, y + r);
+      this.lineTo(x + w, y + h - r);
+      this.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      this.lineTo(x + r, y + h);
+      this.quadraticCurveTo(x, y + h, x, y + h - r);
+      this.lineTo(x, y + r);
+      this.quadraticCurveTo(x, y, x + r, y);
+      this.closePath();
+    };
+  }
+
+  requestAnimationFrame(loop);
+
+})();
+</script>
+
+<!-- AdSense auto ads init -->
+<script>
+(adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+
+</body>
+</html>

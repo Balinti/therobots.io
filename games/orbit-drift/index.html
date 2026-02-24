@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Orbit Drift - Free HTML5 Game</title>
+  <meta name="description" content="Play Orbit Drift - Tap to keep your space glider flying through orbit rings as the camera zooms dynamically.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a0a1a">
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Orbit Drift - Free HTML5 Game">
+  <meta property="og:description" content="Tap to swap orbital lanes and dodge gate rings in this addictive space game!">
+  <meta property="og:url" content="https://balinti.github.io/orbit-drift/">
+  <meta property="og:image" content="https://balinti.github.io/orbit-drift/og-image.png">
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Orbit Drift - Free HTML5 Game">
+  <meta name="twitter:description" content="Tap to swap orbital lanes and dodge gate rings in this addictive space game!">
+  <meta name="twitter:image" content="https://balinti.github.io/orbit-drift/og-image.png">
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #050510;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      color: #e0e0ff;
+      overflow-x: hidden;
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+    #game-wrapper {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    #topbar {
+      width: 100%;
+      max-width: 420px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 16px;
+      background: rgba(10,10,30,0.85);
+      border-bottom: 1px solid rgba(100,100,255,0.2);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    #topbar .label { font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; color: #6668aa; }
+    #topbar .val { font-size: 20px; font-weight: 700; color: #c0c8ff; letter-spacing: 1px; }
+    #topbar .score-block { display: flex; flex-direction: column; align-items: center; }
+    #canvas-container {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+      max-height: 750px;
+      touch-action: none;
+      cursor: pointer;
+    }
+    #info-section {
+      width: 100%;
+      max-width: 420px;
+      padding: 20px 16px 32px;
+      background: rgba(8,8,24,0.9);
+      border-top: 1px solid rgba(80,80,200,0.15);
+    }
+    #info-section h2 {
+      font-size: 16px;
+      font-weight: 700;
+      color: #8888ff;
+      margin-bottom: 10px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+    #info-section p, #info-section li {
+      font-size: 13px;
+      line-height: 1.7;
+      color: #9090bb;
+    }
+    #info-section ul { padding-left: 18px; margin-bottom: 14px; }
+    #info-section .tips { margin-top: 14px; }
+    #ad-slot {
+      width: 100%;
+      max-width: 420px;
+      min-height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(10,10,25,0.6);
+      border-top: 1px solid rgba(60,60,180,0.1);
+      padding: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div id="game-wrapper">
+    <div id="topbar">
+      <div class="score-block">
+        <span class="label">Score</span>
+        <span class="val" id="hud-score">0</span>
+      </div>
+      <div style="font-size:13px;color:#5558aa;letter-spacing:2px;">ORBIT DRIFT</div>
+      <div class="score-block">
+        <span class="label">Best</span>
+        <span class="val" id="hud-best">0</span>
+      </div>
+    </div>
+    <div id="canvas-container">
+      <canvas id="c"></canvas>
+    </div>
+    <div id="ad-slot">
+      <ins class="adsbygoogle"
+           style="display:inline-block;width:320px;height:50px"
+           data-ad-client="ca-pub-4099346100621490"
+           data-ad-slot="auto"></ins>
+    </div>
+    <div id="info-section">
+      <h2>How to Play</h2>
+      <ul>
+        <li>Your ship auto-orbits a glowing planet, rotating clockwise.</li>
+        <li>Tap / click or press <strong>Space / Enter</strong> to swap between Inner and Outer orbit lanes.</li>
+        <li>Gate rings block one lane — be in the <em>open</em> lane when you reach each gate.</li>
+        <li>Survive as long as possible, pass as many gates as you can!</li>
+      </ul>
+      <div class="tips">
+        <h2>Tips & Strategy</h2>
+        <ul>
+          <li>Watch for double gates — two gates close together requiring a quick back-and-forth swap.</li>
+          <li>Pulse gates (flashing red) at higher scores warn of a tricky pattern ahead.</li>
+          <li>Build combos by passing gates without crashing — the longer the streak, the higher the score multiplier (up to 5x).</li>
+          <li>Near-miss bonus: swap lanes very close to a gate for an extra +1 point!</li>
+          <li>The game speeds up over time — stay focused and anticipate early.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (function(){
+    'use strict';
+
+    // ─── DOM + Canvas Setup ───────────────────────────────────────────────────
+    const canvas = document.getElementById('c');
+    const ctx = canvas.getContext('2d');
+    const hudScore = document.getElementById('hud-score');
+    const hudBest  = document.getElementById('hud-best');
+
+    let W, H, S; // logical dims, min(W,H)
+    const DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+    function resize() {
+      const container = canvas.parentElement;
+      const cw = container.clientWidth;
+      const ch = Math.min(Math.round(cw * (750/420)), window.innerHeight - 90);
+      W = cw; H = ch;
+      canvas.width  = Math.round(W * DPR);
+      canvas.height = Math.round(H * DPR);
+      canvas.style.width  = W + 'px';
+      canvas.style.height = H + 'px';
+      ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+      S = Math.min(W, H);
+    }
+    resize();
+    window.addEventListener('resize', () => { resize(); });
+
+    // ─── Persistence ──────────────────────────────────────────────────────────
+    let bestScore = parseInt(localStorage.getItem('orbitDrift_best') || '0', 10);
+    function saveBest(s) {
+      if (s > bestScore) { bestScore = s; localStorage.setItem('orbitDrift_best', s); }
+    }
+    hudBest.textContent = bestScore;
+
+    // ─── Palette Cycling ──────────────────────────────────────────────────────
+    const PALETTES = [
+      { planet: '#3344ff', inner: '#4488ff', outer: '#44ffcc', ship: '#ffee44', gate: '#ff4466' },
+      { planet: '#aa33ff', inner: '#cc66ff', outer: '#ff66cc', ship: '#ffff66', gate: '#ff6633' },
+      { planet: '#ff4422', inner: '#ff8844', outer: '#ffcc44', ship: '#44ffee', gate: '#ee44ff' },
+      { planet: '#22ff88', inner: '#44ffcc', outer: '#44ccff', ship: '#ff66aa', gate: '#ff4444' },
+      { planet: '#ff22aa', inner: '#ff44dd', outer: '#aa44ff', ship: '#aaff44', gate: '#44ddff' },
+    ];
+    let palette = PALETTES[0];
+    let palIdx = 0;
+    function updatePalette(score) {
+      const newIdx = Math.min(Math.floor(score / 20), PALETTES.length - 1);
+      if (newIdx !== palIdx) { palIdx = newIdx; palette = PALETTES[palIdx]; }
+    }
+
+    // ─── Game State ───────────────────────────────────────────────────────────
+    let state = 'start'; // 'start' | 'playing' | 'gameover'
+    let score, combo, mult, lastSwapAngle;
+    let isNewBest;
+
+    // ─── Shake ────────────────────────────────────────────────────────────────
+    let shakeAmp = 0, shakeDur = 0, shakeT = 0;
+    function triggerShake(amp, dur) {
+      shakeAmp = amp; shakeDur = dur; shakeT = 0;
+    }
+    function getShake() {
+      if (shakeT >= shakeDur) return { x: 0, y: 0 };
+      const t = 1 - shakeT / shakeDur;
+      const a = shakeAmp * t;
+      return { x: (Math.random() * 2 - 1) * a, y: (Math.random() * 2 - 1) * a };
+    }
+
+    // ─── Player ───────────────────────────────────────────────────────────────
+    const LANE_INNER = 0, LANE_OUTER = 1;
+    let player;
+    function getOrbitalRadius(lane) {
+      const rInner = S * 0.20;
+      const rOuter = S * 0.32;
+      return lane === LANE_INNER ? rInner : rOuter;
+    }
+
+    function initPlayer() {
+      player = {
+        lane: LANE_OUTER,
+        angle: -Math.PI / 2,       // top
+        targetLane: LANE_OUTER,
+        laneT: 1,                  // 0..1 eased lane interp
+        radius: getOrbitalRadius(LANE_OUTER),
+        hopOffset: 0,              // radial hop overshoot
+        hopV: 0,
+        trail: [],
+      };
+    }
+
+    // ─── Gates ────────────────────────────────────────────────────────────────
+    let gates = [];
+    let gateCounter = 0;
+    const GATE_SPAWN_AHEAD = Math.PI * 1.2; // spawn this far ahead of player
+
+    function gateSpacingForScore(s) {
+      return Math.max(0.55, 1.15 - 0.012 * s);
+    }
+    function arcHalfForScore(s) {
+      return Math.max(0.18, 0.26 - 0.0015 * s);
+    }
+
+    function spawnGate(angle, isPulse) {
+      // blocked lane is random (or could be patterned)
+      const blockedLane = Math.random() < 0.5 ? LANE_INNER : LANE_OUTER;
+      gates.push({
+        id: gateCounter++,
+        angle: angle,
+        blockedLane,
+        resolved: false,
+        isPulse: isPulse || false,
+        pulseT: 0,
+        flashAlpha: 0,
+        passed: false,
+      });
+    }
+
+    function getNextGateAngle() {
+      if (gates.length === 0) return player.angle + GATE_SPAWN_AHEAD;
+      return gates[gates.length - 1].angle + gateSpacingForScore(score);
+    }
+
+    function ensureGates() {
+      // keep ~5 gates ahead of spawn window
+      while (true) {
+        const nextAngle = getNextGateAngle();
+        const diff = angleDiff(nextAngle, player.angle);
+        if (diff < GATE_SPAWN_AHEAD + Math.PI * 0.5) {
+          const isPulse = score >= 25 && (gateCounter % 5 === 0);
+          spawnGate(nextAngle, isPulse);
+          // double gate
+          if (score >= 10 && Math.random() < 0.20) {
+            spawnGate(nextAngle + 0.42, false);
+          }
+        } else {
+          break;
+        }
+      }
+      // remove gates far behind
+      gates = gates.filter(g => {
+        const d = angleDiff(player.angle, g.angle);
+        return d < Math.PI * 0.5; // within half a revolution behind
+      });
+    }
+
+    // normalize angle to [0, 2pi)
+    function normAngle(a) { return ((a % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2); }
+    // angular diff: how far ahead is 'b' from 'a' going clockwise
+    function angleDiff(from, to) {
+      return normAngle(to - from);
+    }
+
+    // ─── Particles ────────────────────────────────────────────────────────────
+    let particles = [];
+
+    function spawnTrailParticle() {
+      const r = player.radius + player.hopOffset;
+      const px = W/2 + Math.cos(player.angle) * r;
+      const py = H/2 + Math.sin(player.angle) * r;
+      const tangAngle = player.angle + Math.PI / 2; // tangential direction
+      const speed = 0.3 + Math.random() * 0.4;
+      particles.push({
+        x: px, y: py,
+        vx: Math.cos(tangAngle) * speed * (Math.random() < 0.5 ? -1 : 1) + (Math.random()-0.5) * 0.5,
+        vy: Math.sin(tangAngle) * speed * (Math.random() < 0.5 ? -1 : 1) + (Math.random()-0.5) * 0.5,
+        life: 1, decay: 0.025 + Math.random() * 0.015,
+        size: 1.5 + Math.random() * 1.5,
+        color: palette.ship,
+        type: 'trail',
+      });
+    }
+
+    function spawnBurst(x, y, color, count, speedMult) {
+      for (let i = 0; i < count; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const sp = (0.5 + Math.random() * 2) * (speedMult || 1);
+        particles.push({
+          x, y,
+          vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+          life: 1, decay: 0.018 + Math.random() * 0.02,
+          size: 2 + Math.random() * 3,
+          color,
+          type: 'burst',
+        });
+      }
+    }
+
+    function updateParticles(dt) {
+      particles = particles.filter(p => {
+        p.x += p.vx * dt * 60;
+        p.y += p.vy * dt * 60;
+        p.vx *= 0.96; p.vy *= 0.96;
+        p.life -= p.decay * dt * 60;
+        return p.life > 0;
+      });
+    }
+
+    function drawParticles() {
+      for (const p of particles) {
+        ctx.globalAlpha = p.life * (p.type === 'trail' ? 0.6 : 0.85);
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // ─── Stars background ─────────────────────────────────────────────────────
+    let stars = [];
+    function initStars() {
+      stars = [];
+      for (let i = 0; i < 80; i++) {
+        stars.push({
+          x: Math.random() * 420, y: Math.random() * 750,
+          r: 0.5 + Math.random() * 1.2,
+          a: 0.3 + Math.random() * 0.6,
+        });
+      }
+    }
+    initStars();
+
+    function drawStars() {
+      for (const s of stars) {
+        ctx.globalAlpha = s.a;
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(s.x / 420 * W, s.y / 750 * H, s.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // ─── Drawing Helpers ──────────────────────────────────────────────────────
+    function drawPlanet(cx, cy) {
+      const pr = S * 0.085;
+      // outer glow
+      const g1 = ctx.createRadialGradient(cx, cy, pr * 0.3, cx, cy, pr * 2.2);
+      g1.addColorStop(0, palette.planet + '55');
+      g1.addColorStop(1, 'transparent');
+      ctx.fillStyle = g1;
+      ctx.beginPath();
+      ctx.arc(cx, cy, pr * 2.2, 0, Math.PI * 2);
+      ctx.fill();
+      // planet body
+      const g2 = ctx.createRadialGradient(cx - pr*0.25, cy - pr*0.25, pr*0.1, cx, cy, pr);
+      g2.addColorStop(0, '#ffffff44');
+      g2.addColorStop(0.4, palette.planet);
+      g2.addColorStop(1, '#000022');
+      ctx.fillStyle = g2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, pr, 0, Math.PI * 2);
+      ctx.fill();
+      // ring
+      ctx.strokeStyle = palette.planet + 'aa';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, pr * 1.55, pr * 0.38, -0.25, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    function drawOrbits(cx, cy) {
+      const rInner = getOrbitalRadius(LANE_INNER);
+      const rOuter = getOrbitalRadius(LANE_OUTER);
+      ctx.setLineDash([4, 10]);
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = palette.inner + '44';
+      ctx.beginPath(); ctx.arc(cx, cy, rInner, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = palette.outer + '44';
+      ctx.beginPath(); ctx.arc(cx, cy, rOuter, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    function drawGates(cx, cy, now) {
+      const rInner = getOrbitalRadius(LANE_INNER);
+      const rOuter = getOrbitalRadius(LANE_OUTER);
+      const arcH = arcHalfForScore(score);
+      const laneW = S * 0.045;
+
+      for (const g of gates) {
+        if (g.resolved) continue;
+        g.pulseT += 0.05;
+        const pulseFlash = g.isPulse ? (Math.sin(g.pulseT * 8) * 0.5 + 0.5) : 0;
+
+        // Draw the two arcs for inner / outer, highlight the blocked one
+        for (let lane = 0; lane < 2; lane++) {
+          const r = lane === LANE_INNER ? rInner : rOuter;
+          const blocked = lane === g.blockedLane;
+          const alpha = blocked ? (0.9 + pulseFlash * 0.1) : 0.18;
+          const color = blocked ? palette.gate : (lane === LANE_INNER ? palette.inner : palette.outer);
+
+          ctx.save();
+          ctx.translate(cx, cy);
+          ctx.rotate(g.angle);
+          // arc stroke
+          ctx.lineWidth = laneW;
+          ctx.lineCap = 'round';
+          ctx.strokeStyle = color + Math.round(alpha * 255).toString(16).padStart(2, '0');
+          ctx.beginPath();
+          ctx.arc(0, 0, r, -arcH, arcH);
+          ctx.stroke();
+
+          if (blocked) {
+            // glow
+            ctx.shadowColor = palette.gate;
+            ctx.shadowBlur = 12 + pulseFlash * 8;
+            ctx.lineWidth = laneW * 0.5;
+            ctx.strokeStyle = '#ffffff' + Math.round((0.4 + pulseFlash * 0.4) * 255).toString(16).padStart(2, '0');
+            ctx.beginPath();
+            ctx.arc(0, 0, r, -arcH * 0.5, arcH * 0.5);
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+          }
+          ctx.restore();
+        }
+
+        // center tick mark
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(g.angle);
+        ctx.strokeStyle = palette.gate + 'cc';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(rInner - laneW, 0);
+        ctx.lineTo(rOuter + laneW, 0);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    function drawShip(cx, cy) {
+      const r = player.radius + player.hopOffset;
+      const px = cx + Math.cos(player.angle) * r;
+      const py = cy + Math.sin(player.angle) * r;
+      const heading = player.angle + Math.PI / 2; // tangential
+
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.rotate(heading);
+      // glow
+      ctx.shadowColor = palette.ship;
+      ctx.shadowBlur = 14;
+      // ship body (small triangle)
+      const sz = S * 0.022;
+      ctx.fillStyle = palette.ship;
+      ctx.beginPath();
+      ctx.moveTo(0, -sz * 1.5);
+      ctx.lineTo(sz * 0.8, sz);
+      ctx.lineTo(-sz * 0.8, sz);
+      ctx.closePath();
+      ctx.fill();
+      // engine exhaust
+      ctx.fillStyle = '#ffffff88';
+      ctx.beginPath();
+      ctx.ellipse(0, sz * 1.2, sz * 0.3, sz * 0.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    }
+
+    function drawHUD() {
+      // combo / mult display on canvas
+      if (state === 'playing' && combo > 0) {
+        ctx.font = `bold ${S * 0.04}px system-ui`;
+        ctx.textAlign = 'right';
+        ctx.fillStyle = mult > 1 ? `hsl(${(Date.now()/10)%360},100%,70%)` : '#8888ff';
+        ctx.globalAlpha = 0.9;
+        ctx.fillText(`x${mult} combo:${combo}`, W - 12, H - 14);
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // ─── Start Screen ─────────────────────────────────────────────────────────
+    function drawStart() {
+      // gradient bg
+      const bg = ctx.createLinearGradient(0, 0, 0, H);
+      bg.addColorStop(0, '#08081e');
+      bg.addColorStop(1, '#020210');
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, W, H);
+      drawStars();
+
+      const cx = W/2, cy = H/2;
+      drawPlanet(cx, cy);
+      drawOrbits(cx, cy);
+
+      // title
+      ctx.textAlign = 'center';
+      ctx.shadowColor = palette.inner;
+      ctx.shadowBlur = 24;
+      ctx.font = `bold ${S * 0.10}px system-ui`;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText('ORBIT', cx, cy - S * 0.18);
+      ctx.fillStyle = palette.inner;
+      ctx.fillText('DRIFT', cx, cy - S * 0.07);
+      ctx.shadowBlur = 0;
+
+      // subtitle
+      ctx.font = `${S * 0.038}px system-ui`;
+      ctx.fillStyle = '#8888bb';
+      ctx.fillText('Lane-Swap Slalom', cx, cy + S * 0.04);
+
+      // tap prompt pulse
+      const pulse = Math.sin(Date.now() / 500) * 0.3 + 0.7;
+      ctx.globalAlpha = pulse;
+      ctx.font = `bold ${S * 0.045}px system-ui`;
+      ctx.fillStyle = palette.outer;
+      ctx.fillText('Tap to Start', cx, cy + S * 0.16);
+      ctx.globalAlpha = 1;
+
+      // best
+      if (bestScore > 0) {
+        ctx.font = `${S * 0.033}px system-ui`;
+        ctx.fillStyle = '#5558aa';
+        ctx.fillText(`Best: ${bestScore}`, cx, cy + S * 0.245);
+      }
+    }
+
+    // ─── Game Over Screen ──────────────────────────────────────────────────────
+    function drawGameOver() {
+      // semi overlay
+      ctx.fillStyle = 'rgba(2,2,16,0.72)';
+      ctx.fillRect(0, 0, W, H);
+
+      const cx = W/2, cy = H/2;
+      // panel
+      const pw = W * 0.78, ph = H * 0.38;
+      const px = cx - pw/2, py = cy - ph/2 - S * 0.03;
+      ctx.fillStyle = 'rgba(12,12,40,0.95)';
+      roundRect(ctx, px, py, pw, ph, 18);
+      ctx.fill();
+      ctx.strokeStyle = palette.gate + '88';
+      ctx.lineWidth = 2;
+      roundRect(ctx, px, py, pw, ph, 18);
+      ctx.stroke();
+
+      ctx.textAlign = 'center';
+      ctx.font = `bold ${S * 0.065}px system-ui`;
+      ctx.shadowColor = palette.gate;
+      ctx.shadowBlur = 16;
+      ctx.fillStyle = palette.gate;
+      ctx.fillText('CRASHED', cx, py + ph * 0.27);
+      ctx.shadowBlur = 0;
+
+      ctx.font = `${S * 0.038}px system-ui`;
+      ctx.fillStyle = '#9999cc';
+      ctx.fillText('Score', cx, py + ph * 0.46);
+
+      ctx.font = `bold ${S * 0.11}px system-ui`;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(score, cx, py + ph * 0.68);
+
+      if (isNewBest) {
+        ctx.font = `bold ${S * 0.038}px system-ui`;
+        ctx.fillStyle = '#ffdd44';
+        ctx.shadowColor = '#ffdd44';
+        ctx.shadowBlur = 10;
+        ctx.fillText('NEW BEST!', cx, py + ph * 0.85);
+        ctx.shadowBlur = 0;
+      } else {
+        ctx.font = `${S * 0.033}px system-ui`;
+        ctx.fillStyle = '#5558aa';
+        ctx.fillText(`Best: ${bestScore}`, cx, py + ph * 0.86);
+      }
+
+      // tap to retry
+      const pulse = Math.sin(Date.now() / 500) * 0.3 + 0.7;
+      ctx.globalAlpha = pulse;
+      ctx.font = `bold ${S * 0.042}px system-ui`;
+      ctx.fillStyle = palette.outer;
+      ctx.fillText('Tap to Retry', cx, cy + ph * 0.62);
+      ctx.globalAlpha = 1;
+
+      // share button (score >= 20 or new best)
+      if (score >= 20 || isNewBest) {
+        const bw = W * 0.42, bh = H * 0.055;
+        const bx = cx - bw/2, by = cy + ph * 0.70;
+        ctx.fillStyle = 'rgba(60,80,200,0.7)';
+        roundRect(ctx, bx, by, bw, bh, 8);
+        ctx.fill();
+        ctx.strokeStyle = palette.inner + 'aa';
+        ctx.lineWidth = 1.5;
+        roundRect(ctx, bx, by, bw, bh, 8);
+        ctx.stroke();
+        ctx.fillStyle = '#ffffff';
+        ctx.font = `bold ${S * 0.036}px system-ui`;
+        ctx.fillText('Share Score', cx, by + bh * 0.68);
+        // store for hit detection
+        window._shareBtn = { x: bx, y: by, w: bw, h: bh };
+      } else {
+        window._shareBtn = null;
+      }
+    }
+
+    function roundRect(ctx, x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.lineTo(x + w - r, y);
+      ctx.arcTo(x + w, y, x + w, y + r, r);
+      ctx.lineTo(x + w, y + h - r);
+      ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+      ctx.lineTo(x + r, y + h);
+      ctx.arcTo(x, y + h, x, y + h - r, r);
+      ctx.lineTo(x, y + r);
+      ctx.arcTo(x, y, x + r, y, r);
+      ctx.closePath();
+    }
+
+    // ─── Game Logic ───────────────────────────────────────────────────────────
+    function startGame() {
+      state = 'playing';
+      score = 0; combo = 0; mult = 1;
+      lastSwapAngle = -999;
+      isNewBest = false;
+      gates = []; gateCounter = 0;
+      particles = [];
+      palIdx = 0; palette = PALETTES[0];
+      shakeT = shakeDur; // reset shake
+      initPlayer();
+      ensureGates();
+      hudScore.textContent = '0';
+      hudBest.textContent = bestScore;
+    }
+
+    function swapLane() {
+      if (state !== 'playing') return;
+      const newLane = player.lane === LANE_INNER ? LANE_OUTER : LANE_INNER;
+      player.targetLane = newLane;
+      player.laneT = 0;
+      lastSwapAngle = player.angle;
+      // hop burst
+      player.hopV = (newLane === LANE_OUTER ? 1 : -1) * S * 0.004;
+    }
+
+    let lastTime = 0;
+    function update(ts) {
+      const dt = Math.min((ts - lastTime) / 1000, 0.05);
+      lastTime = ts;
+
+      if (state !== 'playing') return;
+
+      shakeT += dt;
+
+      // omega (rotation speed)
+      const omega = Math.min(1.55 + 0.028 * score, 3.40);
+      player.angle += omega * dt;
+
+      // lane easing
+      if (player.laneT < 1) {
+        player.laneT = Math.min(1, player.laneT + dt * 7);
+        const t = easeOutBack(player.laneT);
+        const rFrom = getOrbitalRadius(player.lane === LANE_INNER ? LANE_INNER : LANE_OUTER);
+        const rTo   = getOrbitalRadius(player.targetLane);
+        // lerp between old and new - but we track via hopOffset
+        player.lane = player.targetLane; // immediate logical swap for collision
+      }
+      // hop spring
+      const targetR = getOrbitalRadius(player.targetLane);
+      const hopTarget = 0;
+      player.hopV += (hopTarget - player.hopOffset) * 18 * dt - player.hopV * 5 * dt;
+      player.hopOffset += player.hopV;
+      player.radius = targetR;
+
+      // trail
+      if (Math.random() < 0.35) spawnTrailParticle();
+
+      updateParticles(dt);
+      ensureGates();
+
+      // gate collision + pass detection
+      const HIT_WIN = 0.055;
+      for (const g of gates) {
+        if (g.resolved) continue;
+        const diff = normAngle(player.angle - g.angle);
+        const behind = diff < Math.PI; // player has passed gate (diff wraps 0-2pi, if < pi = just passed)
+        if (diff < HIT_WIN || diff > Math.PI * 2 - HIT_WIN) {
+          // within hit window
+          if (player.lane === g.blockedLane) {
+            // CRASH
+            triggerShake(10, 0.25);
+            const cx = W/2 + Math.cos(player.angle)*player.radius;
+            const cy = H/2 + Math.sin(player.angle)*player.radius;
+            spawnBurst(cx, cy, palette.gate, 28, 1.5);
+            spawnBurst(cx, cy, '#ffffff', 12, 2);
+            saveBest(score);
+            isNewBest = score >= bestScore && score > 0;
+            hudBest.textContent = bestScore;
+            state = 'gameover';
+            return;
+          }
+        }
+        // passing: player moved past gate (diff just crossed pi boundary)
+        if (!g.passed && diff > Math.PI * 0.5 && diff < Math.PI * 1.2) {
+          g.passed = true;
+          g.resolved = true;
+          // near miss bonus
+          const swapDiff = Math.abs(normAngle(lastSwapAngle - g.angle));
+          const nearMiss = Math.min(swapDiff, Math.PI * 2 - swapDiff) < 0.18;
+          combo++;
+          mult = 1 + Math.min(4, Math.floor(combo / 5));
+          score += 1 * mult + (nearMiss ? 1 : 0);
+          updatePalette(score);
+          hudScore.textContent = score;
+          // pass shake + burst
+          triggerShake(2.5, 0.08);
+          const gx = W/2 + Math.cos(g.angle) * getOrbitalRadius(1 - g.blockedLane);
+          const gy = H/2 + Math.sin(g.angle) * getOrbitalRadius(1 - g.blockedLane);
+          spawnBurst(gx, gy, palette.outer, 10, 0.8);
+          if (nearMiss) spawnBurst(gx, gy, '#ffdd44', 8, 1.2);
+        }
+      }
+    }
+
+    function easeOutBack(t) {
+      const c1 = 1.70158, c3 = c1 + 1;
+      return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+    }
+
+    // ─── Render ───────────────────────────────────────────────────────────────
+    function render() {
+      const cx = W/2, cy = H/2;
+
+      // shake offset
+      const sh = getShake();
+
+      // background
+      const bg = ctx.createLinearGradient(0, 0, 0, H);
+      bg.addColorStop(0, '#08081e');
+      bg.addColorStop(1, '#020210');
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, W, H);
+
+      ctx.save();
+      ctx.translate(sh.x, sh.y);
+
+      drawStars();
+      drawPlanet(cx, cy);
+      drawOrbits(cx, cy);
+
+      if (state === 'playing' || state === 'gameover') {
+        drawGates(cx, cy, Date.now());
+        drawParticles();
+        drawShip(cx, cy);
+        drawHUD();
+      }
+
+      if (state === 'gameover') {
+        drawGameOver();
+      }
+
+      ctx.restore();
+
+      if (state === 'start') {
+        drawStart();
+      }
+    }
+
+    // ─── Main Loop ────────────────────────────────────────────────────────────
+    function loop(ts) {
+      update(ts);
+      render();
+      requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(loop);
+
+    // ─── Input ────────────────────────────────────────────────────────────────
+    function handleInput(clientX, clientY) {
+      if (state === 'start') {
+        startGame();
+        return;
+      }
+      if (state === 'gameover') {
+        // check share button
+        if (window._shareBtn) {
+          const rect = canvas.getBoundingClientRect();
+          const scaleX = W / rect.width;
+          const scaleY = H / rect.height;
+          const lx = (clientX - rect.left) * scaleX;
+          const ly = (clientY - rect.top) * scaleY;
+          const b = window._shareBtn;
+          if (lx >= b.x && lx <= b.x + b.w && ly >= b.y && ly <= b.y + b.h) {
+            shareScore();
+            return;
+          }
+        }
+        startGame();
+        return;
+      }
+      if (state === 'playing') {
+        swapLane();
+      }
+    }
+
+    canvas.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      handleInput(e.clientX, e.clientY);
+    });
+
+    document.addEventListener('keydown', e => {
+      if (e.code === 'Space' || e.code === 'Enter') {
+        e.preventDefault();
+        handleInput(W/2, H/2);
+      }
+    });
+
+    // ─── Share ────────────────────────────────────────────────────────────────
+    function shareScore() {
+      const text = `I scored ${score} in Orbit Drift! Can you beat me? https://balinti.github.io/orbit-drift/`;
+      if (navigator.share) {
+        navigator.share({ title: 'Orbit Drift', text, url: 'https://balinti.github.io/orbit-drift/' })
+          .catch(() => {});
+      } else {
+        navigator.clipboard.writeText(text)
+          .then(() => alert('Score copied to clipboard!'))
+          .catch(() => alert(text));
+      }
+    }
+
+    // ─── AdSense init ─────────────────────────────────────────────────────────
+    try { (adsbygoogle = window.adsbygoogle || []).push({}); } catch(e) {}
+
+  })();
+  </script>
+</body>
+</html>

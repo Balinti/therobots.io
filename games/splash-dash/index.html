@@ -1,0 +1,1031 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Splash Dash - Free HTML5 Game</title>
+  <meta name="description" content="Play Splash Dash - Tap to jump across floating platforms while randomly spawning powerups give special abilities.">
+  <meta name="theme-color" content="#061018">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Splash Dash - Free HTML5 Game">
+  <meta property="og:description" content="Play Splash Dash - Tap to jump across floating platforms while randomly spawning powerups give special abilities.">
+  <meta property="og:url" content="https://balinti.github.io/splash-dash/">
+  <meta property="og:image" content="https://balinti.github.io/splash-dash/og.png">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Splash Dash - Free HTML5 Game">
+  <meta name="twitter:description" content="Play Splash Dash - Tap to jump across floating platforms while randomly spawning powerups give special abilities.">
+  <meta name="twitter:image" content="https://balinti.github.io/splash-dash/og.png">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: radial-gradient(ellipse at 50% 20%, #0a2a3a 0%, #061018 60%, #020810 100%);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      color: #e0f4ff;
+      overflow-x: hidden;
+    }
+
+    #game-wrapper {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      max-height: 750px;
+      aspect-ratio: 420 / 750;
+      margin: auto;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+      cursor: pointer;
+      border-radius: 12px;
+      box-shadow: 0 0 40px rgba(0,180,255,0.25), 0 8px 32px rgba(0,0,0,0.6);
+    }
+
+    @media (max-height: 760px) {
+      #game-wrapper {
+        max-height: 100vh;
+        max-width: calc(100vh * 420 / 750);
+      }
+    }
+
+    #seo-block {
+      max-width: 420px;
+      width: 100%;
+      padding: 24px 16px 32px;
+      text-align: center;
+      color: #4a7a99;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    #seo-block h2 { font-size: 15px; color: #6aaabb; margin-bottom: 8px; }
+    #seo-block p { margin-bottom: 6px; }
+  </style>
+</head>
+<body>
+  <div id="game-wrapper">
+    <canvas id="c"></canvas>
+  </div>
+
+  <div id="seo-block">
+    <h2>How to Play Splash Dash</h2>
+    <p>Tap or press Space/Enter to create a splash pad and bounce forward over the water. Time your tap near the waterline marker for a perfect splash — earn streaks and power Surge mode every 5 perfects for a super-bounce!</p>
+    <p>Dodge bubble mines, ride the foam current, and dash through score gates as speed ramps up. How far can you go?</p>
+    <p>Free browser game — no download needed. Works on mobile and desktop.</p>
+  </div>
+
+  <script>
+  (() => {
+    'use strict';
+
+    // ─── Constants ────────────────────────────────────────────────────────────
+    const VW = 420, VH = 750;
+    const HS_KEY = 'splashdash_highscore';
+    const PERFECTS_FOR_SURGE = 5;
+    const WATERLINE_Y = VH * 0.72;    // y where pads sit
+    const RUNNER_BASE_Y = WATERLINE_Y - 28; // runner feet y
+    const PAD_H = 12;
+    const PAD_MAX_W = 90;
+    const PAD_MIN_W = 36;
+    const GATE_W = 18;
+    const GATE_H = 60;
+    const GATE_GAP = 160;  // vertical gap between gate posts
+    const GATE_SCORE = 10;
+    const MINE_R = 14;
+
+    // ─── Canvas Setup ─────────────────────────────────────────────────────────
+    const canvas = document.getElementById('c');
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+
+    function resizeCanvas() {
+      const wrapper = canvas.parentElement;
+      const rect = wrapper.getBoundingClientRect();
+      canvas.width = Math.round(rect.width * dpr);
+      canvas.height = Math.round(rect.height * dpr);
+    }
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    // Scale ctx from virtual (420×750) to actual pixels
+    function scaleCtx() {
+      const sx = canvas.width / VW;
+      const sy = canvas.height / VH;
+      ctx.setTransform(sx, 0, 0, sy, 0, 0);
+    }
+
+    // ─── State ────────────────────────────────────────────────────────────────
+    let state = 'start';   // 'start' | 'playing' | 'gameover'
+    let score = 0;
+    let best = parseInt(localStorage.getItem(HS_KEY) || '0', 10);
+    let hue = 180;
+    let tick = 0;
+    let shakeFrames = 0, shakeAmt = 0;
+
+    // Runner
+    let runner = {};
+
+    // World scroll offset
+    let worldX = 0;
+    let speed = 0;
+
+    // Collections
+    let pads = [];
+    let particles = [];
+    let ripples = [];
+    let gates = [];
+    let mines = [];
+    let foamDrifts = [];
+
+    // Splash mechanics
+    let markerX = 0;
+    let markerDir = 1;
+    let markerSpeed = 0;
+    let streakCount = 0;
+    let surgeCount = 0;       // perfects accumulated
+    let surgeReady = false;   // next pad is a SURGE pad
+    let lastPadX = 0;
+    let lastPadTime = 0;
+    let padUsed = false;      // current floor pad has been used
+    let onPad = false;
+    let airborne = false;
+
+    // Difficulty milestones
+    let phase = 0;  // 0=basic, 1=current drift, 2=mines, 3=double-gates
+
+    // ─── Init / Reset ─────────────────────────────────────────────────────────
+    function initGame() {
+      score = 0; tick = 0; hue = 180;
+      speed = 2.8; phase = 0;
+      worldX = 0; shakeFrames = 0;
+      streakCount = 0; surgeCount = 0; surgeReady = false;
+      airborne = false; onPad = false; padUsed = false;
+
+      runner = {
+        x: VW * 0.3, y: RUNNER_BASE_Y,
+        vy: 0,
+        w: 22, h: 34,
+        onGround: true,
+        animFrame: 0, animT: 0,
+        trail: []
+      };
+
+      markerX = runner.x;
+      markerDir = 1;
+      markerSpeed = speed * 2.2;
+
+      // Starting platform
+      pads = [{ x: -40, y: WATERLINE_Y, w: VW + 80, h: PAD_H, surge: false, life: 1 }];
+      particles = []; ripples = []; gates = []; mines = []; foamDrifts = [];
+      lastPadX = runner.x;
+      lastPadTime = 0;
+
+      // Seed gates ahead
+      for (let i = 0; i < 3; i++) spawnGate(VW + 200 + i * 380);
+      // Seed foam drifts
+      for (let i = 0; i < 5; i++) foamDrifts.push(makeFoam(Math.random() * VW));
+    }
+
+    // ─── Spawn helpers ────────────────────────────────────────────────────────
+    function spawnGate(worldAbsX) {
+      const screenX = worldAbsX - worldX;
+      // gate top y and bottom y, gap in middle
+      const centerY = WATERLINE_Y - 90 - Math.sin(worldAbsX * 0.003) * 60;
+      gates.push({
+        wx: worldAbsX,
+        topH: centerY - GATE_GAP / 2,
+        botY: centerY + GATE_GAP / 2,
+        scored: false,
+        hue: (hue + 60) % 360
+      });
+    }
+
+    function spawnMine(worldAbsX) {
+      // Predictable pattern: mines oscillate vertically in a sine pattern
+      const phase = (worldAbsX * 0.008) % (Math.PI * 2);
+      const y = WATERLINE_Y - 30 - Math.abs(Math.sin(phase)) * 80;
+      mines.push({ wx: worldAbsX, y, r: MINE_R, triggered: false });
+    }
+
+    function makeFoam(x) {
+      return {
+        x, y: WATERLINE_Y + 4 + Math.random() * 10,
+        w: 30 + Math.random() * 60,
+        alpha: 0.3 + Math.random() * 0.3,
+        spd: 0.3 + Math.random() * 0.5
+      };
+    }
+
+    // ─── Input ────────────────────────────────────────────────────────────────
+    function onInput() {
+      if (state === 'start') {
+        state = 'playing';
+        initGame();
+        return;
+      }
+      if (state === 'gameover') {
+        state = 'playing';
+        initGame();
+        return;
+      }
+      if (state === 'playing') {
+        doSplash();
+      }
+    }
+
+    canvas.addEventListener('pointerdown', e => { e.preventDefault(); onInput(); });
+    window.addEventListener('keydown', e => {
+      if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); onInput(); }
+    });
+
+    // ─── Splash Mechanics ─────────────────────────────────────────────────────
+    function doSplash() {
+      if (airborne) return; // can't double-splash
+
+      // Determine timing quality
+      const dist = Math.abs(runner.x - markerX);
+      const perfectWindow = Math.max(18, 38 - phase * 4);
+      const earlyWindow = perfectWindow * 2.8;
+
+      let quality; // 'perfect' | 'good' | 'early' | 'late'
+      const relPos = runner.x - markerX; // positive = runner ahead of marker
+
+      if (dist <= perfectWindow) {
+        quality = 'perfect';
+      } else if (relPos < -earlyWindow) {
+        quality = 'early';
+      } else if (relPos > earlyWindow) {
+        quality = 'late';
+      } else {
+        quality = 'good';
+      }
+
+      // Bounce forces
+      const isSurge = surgeReady;
+      let vyForce, hopDist;
+      if (quality === 'perfect') {
+        vyForce = isSurge ? -22 : -17;
+        hopDist = isSurge ? 180 : 130;
+        streakCount++;
+        surgeCount++;
+        score += isSurge ? 5 : 2;
+        if (surgeCount >= PERFECTS_FOR_SURGE) { surgeReady = true; surgeCount = 0; }
+        else if (isSurge) { surgeReady = false; }
+        spawnPerfectParticles(runner.x, runner.y + runner.h, isSurge);
+        triggerShake(isSurge ? 4 : 1.5);
+        score += streakCount >= 3 ? 1 : 0; // streak bonus
+      } else if (quality === 'good') {
+        vyForce = -14;
+        hopDist = 100;
+        streakCount = Math.max(0, streakCount - 1);
+        if (isSurge) surgeReady = false;
+      } else if (quality === 'early') {
+        vyForce = -10;
+        hopDist = 65;
+        streakCount = 0;
+        if (isSurge) surgeReady = false;
+      } else { // late
+        vyForce = -18;
+        hopDist = 145;
+        streakCount = 0;
+        if (isSurge) surgeReady = false;
+      }
+
+      // Place pad at runner's feet
+      const padW = Math.max(PAD_MIN_W, PAD_MAX_W - phase * 6);
+      const surge = (quality === 'perfect' && surgeReady && surgeCount === 0);
+      const newPad = {
+        x: worldX + runner.x - padW / 2,
+        y: WATERLINE_Y,
+        w: padW,
+        h: PAD_H,
+        surge: isSurge,
+        life: 1,
+        quality
+      };
+      pads.push(newPad);
+
+      // Foam ripple
+      spawnRipple(runner.x, WATERLINE_Y, isSurge ? 2.5 : 1);
+
+      // Set runner airborne
+      runner.vy = vyForce;
+      airborne = true;
+      runner.onGround = false;
+      padUsed = false;
+
+      // Adjust marker speed based on quality for feel
+      markerSpeed = speed * (quality === 'late' ? 2.8 : quality === 'early' ? 1.8 : 2.2);
+    }
+
+    // ─── Particles ────────────────────────────────────────────────────────────
+    function spawnPerfectParticles(x, y, surge) {
+      const count = surge ? 22 : 12;
+      for (let i = 0; i < count; i++) {
+        const angle = (Math.PI * 2 / count) * i + Math.random() * 0.3;
+        const spd = 2 + Math.random() * (surge ? 6 : 4);
+        particles.push({
+          x, y,
+          vx: Math.cos(angle) * spd,
+          vy: Math.sin(angle) * spd - 3,
+          r: 3 + Math.random() * (surge ? 5 : 3),
+          life: 1, decay: 0.03 + Math.random() * 0.02,
+          hue: hue + Math.random() * 60,
+          type: 'spark'
+        });
+      }
+    }
+
+    function spawnRipple(x, y, scale) {
+      ripples.push({ x, y, r: 4, maxR: 50 * scale, life: 1, hue });
+    }
+
+    function spawnWaterParticles(x, y, count) {
+      for (let i = 0; i < count; i++) {
+        particles.push({
+          x: x + (Math.random() - 0.5) * 30,
+          y: y,
+          vx: (Math.random() - 0.5) * 4,
+          vy: -Math.random() * 5 - 1,
+          r: 2 + Math.random() * 3,
+          life: 1, decay: 0.04 + Math.random() * 0.03,
+          hue: 190 + Math.random() * 30,
+          type: 'water'
+        });
+      }
+    }
+
+    // ─── Screen Shake ─────────────────────────────────────────────────────────
+    function triggerShake(amt, frames) {
+      shakeAmt = amt;
+      shakeFrames = frames || Math.ceil(amt * 4);
+    }
+
+    // ─── Update ───────────────────────────────────────────────────────────────
+    function update() {
+      tick++;
+      hue = (hue + 0.3) % 360;
+
+      // Difficulty phases based on score
+      if (score >= 200) phase = 3;
+      else if (score >= 100) phase = 2;
+      else if (score >= 40) phase = 1;
+      else phase = 0;
+
+      // Speed ramp
+      speed = 2.8 + score * 0.012 + phase * 0.5;
+      speed = Math.min(speed, 9);
+
+      // Marker oscillates
+      markerSpeed = speed * 2.2;
+      markerX += markerDir * markerSpeed;
+      if (markerX > runner.x + 80) markerDir = -1;
+      if (markerX < runner.x - 80) markerDir = 1;
+
+      // World scroll
+      worldX += speed;
+
+      // Runner physics
+      if (!runner.onGround) {
+        runner.vy += 0.7; // gravity
+        runner.y += runner.vy;
+      }
+
+      // Check landing on any pad
+      runner.onGround = false;
+      for (const pad of pads) {
+        const px = pad.x - worldX;
+        if (
+          runner.x + runner.w / 2 > px &&
+          runner.x - runner.w / 2 < px + pad.w &&
+          runner.y + runner.h >= WATERLINE_Y - 2 &&
+          runner.y + runner.h <= WATERLINE_Y + 10 &&
+          runner.vy >= 0
+        ) {
+          runner.y = WATERLINE_Y - runner.h;
+          runner.vy = 0;
+          runner.onGround = true;
+          if (airborne) {
+            airborne = false;
+            spawnWaterParticles(runner.x, WATERLINE_Y, 6);
+          }
+          break;
+        }
+      }
+
+      // Fell into water = game over
+      if (runner.y + runner.h > WATERLINE_Y + 60) {
+        triggerShake(8, 20);
+        spawnWaterParticles(runner.x, WATERLINE_Y, 25);
+        endGame();
+        return;
+      }
+
+      // Runner falls off bottom
+      if (runner.y > VH + 50) { endGame(); return; }
+
+      // Runner animation
+      runner.animT += runner.onGround ? speed * 0.1 : 0.05;
+      runner.animFrame = Math.floor(runner.animT) % 4;
+      runner.trail.push({ x: runner.x, y: runner.y, alpha: 0.5 });
+      if (runner.trail.length > 8) runner.trail.shift();
+
+      // Foam current drift (phase >= 1) — cosmetic but affects marker visual
+      for (const f of foamDrifts) {
+        f.x -= f.spd * (phase >= 1 ? 1.5 : 0.8);
+        if (f.x + f.w < 0) {
+          f.x = VW + 20;
+          f.y = WATERLINE_Y + 4 + Math.random() * 10;
+          f.w = 30 + Math.random() * 60;
+        }
+      }
+
+      // Pads: fade old ones
+      for (const pad of pads) {
+        if (pad.x - worldX + pad.w < -60) {
+          pad.life -= 0.05;
+        }
+      }
+      pads = pads.filter(p => p.life > 0 && p.x - worldX + p.w > -200);
+
+      // Spawn gates
+      const gateTarget = worldX + VW + 200;
+      const lastGate = gates.length ? gates[gates.length - 1].wx : worldX;
+      if (gateTarget > lastGate + 350) {
+        spawnGate(lastGate + 350 + score * 0.2);
+        // Phase 3: double gates
+        if (phase >= 3 && Math.floor(score / 50) % 2 === 0) {
+          spawnGate(lastGate + 350 + score * 0.2 + 200);
+        }
+      }
+
+      // Spawn mines (phase >= 2)
+      if (phase >= 2) {
+        const lastMine = mines.length ? mines[mines.length - 1].wx : worldX;
+        if (worldX + VW + 150 > lastMine + 280) {
+          spawnMine(lastMine + 280);
+        }
+      }
+
+      // Score gates
+      for (const g of gates) {
+        const gx = g.wx - worldX;
+        if (!g.scored && gx < runner.x && gx + GATE_W > runner.x - runner.w / 2) {
+          // Check if runner passed through gate gap
+          const ry = runner.y + runner.h / 2;
+          if (ry > g.topH && ry < g.botY) {
+            g.scored = true;
+            score += GATE_SCORE;
+            spawnPerfectParticles(runner.x, runner.y, false);
+          } else {
+            // Hit gate = game over
+            triggerShake(8, 20);
+            endGame();
+            return;
+          }
+        }
+      }
+      gates = gates.filter(g => g.wx - worldX > -100);
+
+      // Check mine collision (phase >= 2)
+      for (const m of mines) {
+        const mx = m.wx - worldX;
+        const dx = mx - runner.x;
+        const dy = m.y - (runner.y + runner.h / 2);
+        if (Math.sqrt(dx * dx + dy * dy) < MINE_R + 10) {
+          triggerShake(9, 22);
+          spawnPerfectParticles(runner.x, runner.y, true);
+          endGame();
+          return;
+        }
+      }
+      mines = mines.filter(m => m.wx - worldX > -100);
+
+      // Particles
+      for (const p of particles) {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.15;
+        p.vx *= 0.97;
+        p.life -= p.decay;
+      }
+      particles = particles.filter(p => p.life > 0);
+
+      // Ripples
+      for (const r of ripples) {
+        r.r += (r.maxR - r.r) * 0.12;
+        r.life -= 0.04;
+      }
+      ripples = ripples.filter(r => r.life > 0);
+
+      // Shake
+      if (shakeFrames > 0) shakeFrames--;
+    }
+
+    function endGame() {
+      state = 'gameover';
+      if (score > best) {
+        best = score;
+        localStorage.setItem(HS_KEY, best);
+      }
+    }
+
+    // ─── Draw ─────────────────────────────────────────────────────────────────
+    function draw() {
+      ctx.save();
+      scaleCtx();
+
+      // Shake transform
+      let sx = 0, sy = 0;
+      if (shakeFrames > 0) {
+        const s = shakeAmt * (shakeFrames / (shakeAmt * 4 + 2));
+        sx = (Math.random() - 0.5) * s * 2;
+        sy = (Math.random() - 0.5) * s * 2;
+        ctx.translate(sx, sy);
+      }
+
+      // Background sky
+      const sky = ctx.createLinearGradient(0, 0, 0, WATERLINE_Y);
+      sky.addColorStop(0, `hsl(${hue},55%,8%)`);
+      sky.addColorStop(1, `hsl(${(hue + 20) % 360},60%,16%)`);
+      ctx.fillStyle = sky;
+      ctx.fillRect(0, 0, VW, VH);
+
+      // Stars (decorative)
+      ctx.save();
+      const starSeed = 42;
+      for (let i = 0; i < 40; i++) {
+        const sx2 = ((i * 137.5 + starSeed) % VW);
+        const sy2 = ((i * 97.3 + starSeed * 0.5) % (WATERLINE_Y * 0.8));
+        const alpha = 0.3 + 0.4 * Math.sin(tick * 0.03 + i);
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(sx2, sy2, 1 + (i % 3) * 0.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+
+      // Water surface
+      const waterGrad = ctx.createLinearGradient(0, WATERLINE_Y, 0, VH);
+      waterGrad.addColorStop(0, `hsl(${(hue + 180) % 360},70%,28%)`);
+      waterGrad.addColorStop(0.3, `hsl(${(hue + 200) % 360},65%,18%)`);
+      waterGrad.addColorStop(1, `hsl(${(hue + 210) % 360},60%,8%)`);
+      ctx.fillStyle = waterGrad;
+      ctx.fillRect(0, WATERLINE_Y, VW, VH - WATERLINE_Y);
+
+      // Water shimmer lines
+      ctx.save();
+      ctx.globalAlpha = 0.15;
+      for (let i = 0; i < 6; i++) {
+        const yy = WATERLINE_Y + 10 + i * 22 + Math.sin(tick * 0.04 + i) * 4;
+        const xx = (tick * speed * 0.5 + i * 80) % (VW + 80) - 40;
+        ctx.strokeStyle = `hsl(${hue},80%,70%)`;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(xx, yy);
+        ctx.lineTo(xx + 60, yy);
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      // Foam drifts
+      ctx.save();
+      for (const f of foamDrifts) {
+        ctx.globalAlpha = f.alpha;
+        ctx.fillStyle = `hsl(${hue},40%,85%)`;
+        ctx.beginPath();
+        ctx.ellipse(f.x + f.w / 2, f.y, f.w / 2, 4, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+
+      // Pads
+      for (const pad of pads) {
+        const px = pad.x - worldX;
+        const isSurge = pad.surge;
+        ctx.save();
+        ctx.globalAlpha = Math.min(1, pad.life);
+
+        // Pad glow
+        if (isSurge) {
+          ctx.shadowColor = `hsl(${(hue + 40) % 360},100%,60%)`;
+          ctx.shadowBlur = 18;
+        }
+
+        // Pad gradient
+        const padGrad = ctx.createLinearGradient(px, pad.y, px, pad.y + PAD_H);
+        if (isSurge) {
+          padGrad.addColorStop(0, `hsl(${(hue + 40) % 360},100%,75%)`);
+          padGrad.addColorStop(1, `hsl(${(hue + 60) % 360},90%,50%)`);
+        } else if (pad.quality === 'perfect') {
+          padGrad.addColorStop(0, `hsl(${hue},90%,70%)`);
+          padGrad.addColorStop(1, `hsl(${hue},80%,45%)`);
+        } else {
+          padGrad.addColorStop(0, `hsl(${(hue + 30) % 360},60%,55%)`);
+          padGrad.addColorStop(1, `hsl(${(hue + 30) % 360},50%,35%)`);
+        }
+        ctx.fillStyle = padGrad;
+        ctx.beginPath();
+        ctx.roundRect(px, pad.y, pad.w, PAD_H, 4);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // Ripples
+      for (const r of ripples) {
+        ctx.save();
+        ctx.globalAlpha = r.life * 0.7;
+        ctx.strokeStyle = `hsl(${r.hue},80%,65%)`;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.ellipse(r.x, r.y, r.r, r.r * 0.3, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Particles
+      for (const p of particles) {
+        ctx.save();
+        ctx.globalAlpha = p.life;
+        if (p.type === 'spark') {
+          ctx.shadowColor = `hsl(${p.hue},100%,70%)`;
+          ctx.shadowBlur = 8;
+          ctx.fillStyle = `hsl(${p.hue},100%,75%)`;
+        } else {
+          ctx.fillStyle = `hsl(190,80%,65%)`;
+        }
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r * p.life, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // Gates
+      for (const g of gates) {
+        const gx = g.wx - worldX;
+        if (gx > VW + 20 || gx < -20) continue;
+        ctx.save();
+        ctx.shadowColor = `hsl(${g.hue},100%,60%)`;
+        ctx.shadowBlur = 12;
+
+        const gGrad = ctx.createLinearGradient(gx, 0, gx + GATE_W, 0);
+        gGrad.addColorStop(0, `hsl(${g.hue},90%,60%)`);
+        gGrad.addColorStop(1, `hsl(${(g.hue + 40) % 360},90%,70%)`);
+        ctx.fillStyle = gGrad;
+
+        // Top post
+        ctx.beginPath();
+        ctx.roundRect(gx, 0, GATE_W, g.topH, [0, 0, 4, 4]);
+        ctx.fill();
+
+        // Bottom post
+        ctx.beginPath();
+        ctx.roundRect(gx, g.botY, GATE_W, VH - g.botY, [4, 4, 0, 0]);
+        ctx.fill();
+
+        // Gap highlight
+        ctx.globalAlpha = 0.3;
+        ctx.fillStyle = `hsl(${g.hue},100%,80%)`;
+        ctx.fillRect(gx, g.topH, GATE_W, g.botY - g.topH);
+
+        ctx.restore();
+      }
+
+      // Mines
+      for (const m of mines) {
+        const mx = m.wx - worldX;
+        if (mx > VW + 20 || mx < -20) continue;
+        ctx.save();
+        const pulse = 0.7 + 0.3 * Math.sin(tick * 0.15);
+        ctx.shadowColor = '#ff4444';
+        ctx.shadowBlur = 16 * pulse;
+        ctx.fillStyle = `hsl(0,90%,${50 + 15 * pulse}%)`;
+        ctx.beginPath();
+        ctx.arc(mx, m.y, m.r, 0, Math.PI * 2);
+        ctx.fill();
+        // spikes
+        ctx.strokeStyle = '#ff8888';
+        ctx.lineWidth = 2;
+        for (let a = 0; a < 6; a++) {
+          const ang = (a / 6) * Math.PI * 2 + tick * 0.03;
+          ctx.beginPath();
+          ctx.moveTo(mx + Math.cos(ang) * m.r, m.y + Math.sin(ang) * m.r);
+          ctx.lineTo(mx + Math.cos(ang) * (m.r + 7), m.y + Math.sin(ang) * (m.r + 7));
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      // Waterline marker
+      if (state === 'playing') {
+        const markerVisible = !airborne;
+        ctx.save();
+        ctx.globalAlpha = markerVisible ? (0.6 + 0.4 * Math.sin(tick * 0.2)) : 0.2;
+        const mColor = surgeReady ? `hsl(${(hue + 40) % 360},100%,70%)` : `hsl(${hue},90%,65%)`;
+        ctx.strokeStyle = mColor;
+        ctx.lineWidth = 3;
+        ctx.setLineDash([6, 4]);
+        ctx.beginPath();
+        ctx.moveTo(markerX, WATERLINE_Y - 50);
+        ctx.lineTo(markerX, WATERLINE_Y + 10);
+        ctx.stroke();
+        // Marker arrowhead at waterline
+        ctx.setLineDash([]);
+        ctx.fillStyle = mColor;
+        ctx.beginPath();
+        ctx.moveTo(markerX, WATERLINE_Y + 14);
+        ctx.lineTo(markerX - 7, WATERLINE_Y + 2);
+        ctx.lineTo(markerX + 7, WATERLINE_Y + 2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // Runner trail
+      for (let i = 0; i < runner.trail.length; i++) {
+        const t = runner.trail[i];
+        ctx.save();
+        ctx.globalAlpha = t.alpha * (i / runner.trail.length) * 0.4;
+        ctx.fillStyle = `hsl(${hue},80%,65%)`;
+        ctx.beginPath();
+        ctx.ellipse(t.x, t.y + runner.h / 2, runner.w * 0.3, runner.h * 0.3, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // Runner
+      drawRunner();
+
+      // HUD
+      if (state === 'playing') drawHUD();
+
+      // Start screen
+      if (state === 'start') drawStart();
+
+      // Game over screen
+      if (state === 'gameover') drawGameOver();
+
+      ctx.restore();
+    }
+
+    function drawRunner() {
+      const x = runner.x, y = runner.y;
+      const w = runner.w, h = runner.h;
+      const bob = runner.onGround ? Math.sin(runner.animT * 2) * 2 : 0;
+      const ry = y + bob;
+
+      ctx.save();
+      // Body glow
+      if (surgeReady) {
+        ctx.shadowColor = `hsl(${(hue + 40) % 360},100%,70%)`;
+        ctx.shadowBlur = 20;
+      } else {
+        ctx.shadowColor = `hsl(${hue},80%,60%)`;
+        ctx.shadowBlur = 10;
+      }
+
+      // Body gradient
+      const bodyGrad = ctx.createLinearGradient(x - w / 2, ry, x + w / 2, ry + h);
+      if (surgeReady) {
+        bodyGrad.addColorStop(0, `hsl(${(hue + 40) % 360},100%,75%)`);
+        bodyGrad.addColorStop(1, `hsl(${(hue + 70) % 360},90%,50%)`);
+      } else {
+        bodyGrad.addColorStop(0, `hsl(${hue},80%,70%)`);
+        bodyGrad.addColorStop(1, `hsl(${hue},70%,45%)`);
+      }
+      ctx.fillStyle = bodyGrad;
+      ctx.beginPath();
+      ctx.roundRect(x - w / 2, ry, w, h * 0.75, 6);
+      ctx.fill();
+
+      // Head
+      ctx.shadowBlur = 6;
+      ctx.fillStyle = surgeReady ? `hsl(${(hue + 40) % 360},100%,80%)` : `hsl(${hue},60%,80%)`;
+      ctx.beginPath();
+      ctx.arc(x, ry - 2, w * 0.45, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Eyes
+      ctx.fillStyle = '#061018';
+      ctx.beginPath();
+      ctx.arc(x + 4, ry - 3, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.arc(x + 5, ry - 4, 1.2, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Legs (running animation)
+      if (runner.onGround) {
+        const legPhase = runner.animT * 2;
+        ctx.strokeStyle = `hsl(${hue},70%,55%)`;
+        ctx.lineWidth = 5;
+        ctx.lineCap = 'round';
+        // Left leg
+        ctx.beginPath();
+        ctx.moveTo(x - 5, ry + h * 0.75);
+        ctx.lineTo(x - 5 + Math.sin(legPhase) * 8, ry + h);
+        ctx.stroke();
+        // Right leg
+        ctx.beginPath();
+        ctx.moveTo(x + 5, ry + h * 0.75);
+        ctx.lineTo(x + 5 + Math.sin(legPhase + Math.PI) * 8, ry + h);
+        ctx.stroke();
+      } else {
+        // Airborne legs tucked
+        ctx.strokeStyle = `hsl(${hue},70%,55%)`;
+        ctx.lineWidth = 5;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(x - 6, ry + h * 0.75);
+        ctx.lineTo(x - 10, ry + h * 0.9);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x + 6, ry + h * 0.75);
+        ctx.lineTo(x + 10, ry + h * 0.9);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawHUD() {
+      // Score
+      ctx.save();
+      ctx.shadowColor = `hsl(${hue},90%,60%)`;
+      ctx.shadowBlur = 12;
+      ctx.fillStyle = '#e0f4ff';
+      ctx.font = 'bold 32px "Segoe UI", system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(score, VW / 2, 52);
+
+      // Best
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = `hsl(${hue},60%,60%)`;
+      ctx.font = '14px "Segoe UI", system-ui, sans-serif';
+      ctx.fillText('BEST ' + best, VW / 2, 72);
+
+      // Streak
+      if (streakCount >= 2) {
+        ctx.shadowColor = `hsl(${hue},100%,70%)`;
+        ctx.shadowBlur = 8;
+        ctx.fillStyle = `hsl(${hue},100%,75%)`;
+        ctx.font = 'bold 16px "Segoe UI", system-ui, sans-serif';
+        ctx.fillText('🔥 ×' + streakCount, VW - 50, 52);
+      }
+
+      // Surge meter
+      const surgeBarW = 120;
+      const surgeBarH = 8;
+      const sbx = VW / 2 - surgeBarW / 2;
+      const sby = 82;
+      ctx.globalAlpha = 0.5;
+      ctx.fillStyle = 'rgba(255,255,255,0.15)';
+      ctx.beginPath();
+      ctx.roundRect(sbx, sby, surgeBarW, surgeBarH, 4);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      const surgeFill = surgeReady ? surgeBarW : (surgeCount / PERFECTS_FOR_SURGE) * surgeBarW;
+      if (surgeFill > 0) {
+        const surgeGrad = ctx.createLinearGradient(sbx, sby, sbx + surgeBarW, sby);
+        surgeGrad.addColorStop(0, `hsl(${(hue + 30) % 360},100%,60%)`);
+        surgeGrad.addColorStop(1, `hsl(${(hue + 80) % 360},100%,70%)`);
+        ctx.fillStyle = surgeGrad;
+        if (surgeReady) {
+          ctx.shadowColor = `hsl(${(hue + 40) % 360},100%,70%)`;
+          ctx.shadowBlur = 10;
+        }
+        ctx.beginPath();
+        ctx.roundRect(sbx, sby, surgeFill, surgeBarH, 4);
+        ctx.fill();
+      }
+      if (surgeReady) {
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = `hsl(${(hue + 40) % 360},100%,80%)`;
+        ctx.font = 'bold 12px "Segoe UI", system-ui, sans-serif';
+        ctx.fillText('SURGE READY!', VW / 2, 104);
+      }
+      ctx.restore();
+    }
+
+    function drawStart() {
+      // Overlay
+      ctx.save();
+      ctx.fillStyle = 'rgba(6,16,24,0.6)';
+      ctx.fillRect(0, 0, VW, VH);
+
+      // Title glow
+      ctx.shadowColor = `hsl(${hue},100%,60%)`;
+      ctx.shadowBlur = 30;
+      ctx.fillStyle = '#e0f4ff';
+      ctx.font = 'bold 52px "Segoe UI", system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('SPLASH', VW / 2, VH / 2 - 60);
+
+      ctx.shadowColor = `hsl(${(hue + 60) % 360},100%,60%)`;
+      ctx.fillStyle = `hsl(${(hue + 60) % 360},100%,75%)`;
+      ctx.fillText('DASH', VW / 2, VH / 2 - 4);
+
+      // Subtitle
+      ctx.shadowBlur = 6;
+      ctx.fillStyle = 'rgba(200,235,255,0.8)';
+      ctx.font = '18px "Segoe UI", system-ui, sans-serif';
+      ctx.fillText('Tap to Start', VW / 2, VH / 2 + 46);
+
+      // Instructions
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = 'rgba(160,210,240,0.6)';
+      ctx.font = '13px "Segoe UI", system-ui, sans-serif';
+      ctx.fillText('Tap near the marker for PERFECT!', VW / 2, VH / 2 + 90);
+      ctx.fillText('5 perfects = SURGE boost', VW / 2, VH / 2 + 110);
+
+      // Best score
+      if (best > 0) {
+        ctx.fillStyle = `hsl(${hue},70%,65%)`;
+        ctx.font = 'bold 16px "Segoe UI", system-ui, sans-serif';
+        ctx.fillText('BEST: ' + best, VW / 2, VH / 2 + 148);
+      }
+
+      // Tap pulse circle
+      const pulseR = 24 + 8 * Math.sin(tick * 0.08);
+      ctx.globalAlpha = 0.3 + 0.2 * Math.sin(tick * 0.08);
+      ctx.strokeStyle = `hsl(${hue},90%,65%)`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(VW / 2, VH / 2 + 46, pulseR + 28, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.restore();
+    }
+
+    function drawGameOver() {
+      ctx.save();
+      ctx.fillStyle = 'rgba(6,16,24,0.75)';
+      ctx.fillRect(0, 0, VW, VH);
+
+      ctx.shadowColor = '#ff4466';
+      ctx.shadowBlur = 24;
+      ctx.fillStyle = '#ff6688';
+      ctx.font = 'bold 42px "Segoe UI", system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('WIPED OUT!', VW / 2, VH / 2 - 70);
+
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#e0f4ff';
+      ctx.font = 'bold 28px "Segoe UI", system-ui, sans-serif';
+      ctx.fillText('Score: ' + score, VW / 2, VH / 2 - 20);
+
+      ctx.fillStyle = `hsl(${hue},70%,65%)`;
+      ctx.font = '20px "Segoe UI", system-ui, sans-serif';
+      ctx.fillText('Best: ' + best, VW / 2, VH / 2 + 16);
+
+      if (score === best && score > 0) {
+        ctx.shadowColor = `hsl(${hue},100%,70%)`;
+        ctx.shadowBlur = 16;
+        ctx.fillStyle = `hsl(${hue},100%,80%)`;
+        ctx.font = 'bold 18px "Segoe UI", system-ui, sans-serif';
+        ctx.fillText('NEW BEST!', VW / 2, VH / 2 + 50);
+      }
+
+      const pulse = 0.85 + 0.15 * Math.sin(tick * 0.1);
+      ctx.globalAlpha = pulse;
+      ctx.shadowColor = `hsl(${hue},90%,60%)`;
+      ctx.shadowBlur = 10;
+      ctx.fillStyle = '#e0f4ff';
+      ctx.font = 'bold 20px "Segoe UI", system-ui, sans-serif';
+      ctx.fillText('Tap to Retry', VW / 2, VH / 2 + 90);
+
+      ctx.restore();
+    }
+
+    // ─── Game Loop ────────────────────────────────────────────────────────────
+    function loop() {
+      if (state === 'playing') update();
+      else tick++;  // keep hue cycling on screens
+      hue = (hue + 0.2) % 360;
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    // Start the loop
+    loop();
+
+  })();
+  </script>
+</body>
+</html>

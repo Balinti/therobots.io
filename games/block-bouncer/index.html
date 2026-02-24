@@ -1,0 +1,1113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Block Bouncer - Free HTML5 Game</title>
+  <meta name="description" content="Play Block Bouncer - Bounce the ball around a pixel maze while obstacles multiply rapidly.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a0a1a">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Block Bouncer - Free HTML5 Game">
+  <meta property="og:description" content="Play Block Bouncer - Bounce the ball around a pixel maze while obstacles multiply rapidly.">
+  <meta property="og:url" content="https://balinti.github.io/block-bouncer/">
+  <meta property="og:image" content="https://balinti.github.io/block-bouncer/og.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Block Bouncer - Free HTML5 Game">
+  <meta name="twitter:description" content="Play Block Bouncer - Bounce the ball around a pixel maze while obstacles multiply rapidly.">
+  <meta name="twitter:image" content="https://balinti.github.io/block-bouncer/og.jpg">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0a0a1a;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      min-height: 100dvh;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      overflow-x: hidden;
+      touch-action: none;
+      user-select: none;
+    }
+
+    #game-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 100%;
+      max-width: 420px;
+      padding: 8px 8px 0;
+    }
+
+    #canvas-container {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      border-radius: 12px;
+      touch-action: none;
+    }
+
+    #how-to-play {
+      width: 100%;
+      max-width: 420px;
+      margin: 10px 0 16px;
+      padding: 0 8px;
+    }
+
+    #how-to-play details {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 8px;
+      padding: 8px 12px;
+      cursor: pointer;
+    }
+
+    #how-to-play summary {
+      color: rgba(255,255,255,0.5);
+      font-size: 12px;
+      letter-spacing: 0.05em;
+      list-style: none;
+      outline: none;
+    }
+
+    #how-to-play summary::-webkit-details-marker { display: none; }
+    #how-to-play summary::before { content: '▶ '; }
+    #how-to-play details[open] summary::before { content: '▼ '; }
+
+    #how-to-play p {
+      color: rgba(255,255,255,0.4);
+      font-size: 11px;
+      line-height: 1.6;
+      margin-top: 8px;
+    }
+
+    @media (max-height: 700px) {
+      #how-to-play { display: none; }
+    }
+  </style>
+</head>
+<body>
+<div id="game-wrapper">
+  <div id="canvas-container">
+    <canvas id="c"></canvas>
+  </div>
+</div>
+
+<div id="how-to-play">
+  <details>
+    <summary>How to Play</summary>
+    <p>
+      <strong>Block Bouncer</strong> is a one-tap endless runner. Your ball auto-scrolls forward through a corridor with two lanes — ceiling and floor.<br><br>
+      <strong>Tap / Click / Space / Enter</strong> to flip gravity and arc the ball to the opposite lane.<br><br>
+      Dodge chunky rectangular blocks. Collect glowing <strong>Charge Orbs</strong> to build your score multiplier (1x → 2x → 3x → 4x). Nail a <strong>close call</strong> for bonus points!<br><br>
+      Every 9 orbs triggers <strong>Fever Mode</strong>: 3 seconds of turbo speed and massive bonus points. Survive it for glory!
+    </p>
+  </details>
+</div>
+
+<script>
+(function() {
+'use strict';
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+const W = 420, H = 750;
+const DPR = Math.min(window.devicePixelRatio || 1, 2);
+const LANE_Y_TOP = H * 0.25;
+const LANE_Y_BOT = H * 0.75;
+const BALL_X = W * 0.22;
+const BALL_R = 16;
+const BLOCK_W = 72;
+const BLOCK_H = 52;
+const ORB_R = 10;
+const GRAVITY = 3800;
+const FLIP_VY = -1200;
+const TRAIL_MAX = 14;
+const PARTICLE_MAX = 240;
+const LS_KEY = 'bbgl_best';
+const LANE_H = H * 0.18;
+
+// Multiplier tier thresholds
+const TIERS = [
+  { min: 0,  max: 2,  mult: 1, color: '#ffffff', label: '1×' },
+  { min: 3,  max: 5,  mult: 2, color: '#00e5ff', label: '2×' },
+  { min: 6,  max: 8,  mult: 3, color: '#ff00e5', label: '3×' },
+  { min: 9,  max: Infinity, mult: 4, color: '#ffd700', label: '4×' },
+];
+
+// Block patterns: array of {lane: 'top'|'bot', gap: number} sequences
+const PATTERNS = [
+  [{ lane:'bot', gap:380 }],
+  [{ lane:'top', gap:380 }],
+  [{ lane:'bot', gap:280 }, { lane:'top', gap:480 }],
+  [{ lane:'top', gap:280 }, { lane:'bot', gap:480 }],
+  [{ lane:'bot', gap:240 }, { lane:'bot', gap:520 }],
+  [{ lane:'top', gap:240 }, { lane:'top', gap:520 }],
+  [{ lane:'bot', gap:200 }, { lane:'top', gap:360 }, { lane:'bot', gap:560 }],
+  [{ lane:'top', gap:200 }, { lane:'bot', gap:360 }, { lane:'top', gap:560 }],
+  [{ lane:'bot', gap:160 }, { lane:'bot', gap:380 }, { lane:'top', gap:600 }],
+  [{ lane:'top', gap:160 }, { lane:'top', gap:380 }, { lane:'bot', gap:600 }],
+  [{ lane:'bot', gap:300 }, { lane:'top', gap:300 }, { lane:'bot', gap:300 }],
+  [{ lane:'top', gap:300 }, { lane:'bot', gap:300 }, { lane:'top', gap:300 }],
+];
+
+// ─── Canvas setup ─────────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+function resize() {
+  const container = document.getElementById('canvas-container');
+  const cw = Math.min(container.clientWidth, W);
+  const ch = Math.round(cw * (H / W));
+  canvas.style.width = cw + 'px';
+  canvas.style.height = ch + 'px';
+  canvas.width = Math.round(W * DPR);
+  canvas.height = Math.round(H * DPR);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ─── State ────────────────────────────────────────────────────────────────────
+let state = 'start';
+let score = 0, best = 0, orbCount = 0, mult = 1;
+let time = 0;
+let worldX = 0;
+let shakeTime = 0, shakeAmt = 0;
+let bgHue = 220;
+let fever = false, feverTimer = 0, feverCooldown = 0;
+
+// Ball
+let ball = {};
+let trail = [];
+
+// Entities
+let blocks = [];
+let orbs = [];
+let particles = [];
+let floatTexts = [];
+
+// Spawn
+let nextSpawnDist = 0;
+let spawnDist = 0;
+let spawnCooldown = 0;
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+function rnd(a, b) { return a + Math.random() * (b - a); }
+function rndInt(a, b) { return Math.floor(rnd(a, b + 1)); }
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+function getTier(n) {
+  for (let t of TIERS) if (n <= t.max) return t;
+  return TIERS[TIERS.length - 1];
+}
+
+function loadBest() {
+  try { best = parseInt(localStorage.getItem(LS_KEY)) || 0; } catch(e) {}
+}
+function saveBest() {
+  try { localStorage.setItem(LS_KEY, best); } catch(e) {}
+}
+
+function getSpeed() {
+  let base = 240 + Math.min(time * 18, 260);
+  if (fever) base *= 1.75;
+  return base;
+}
+
+function getSpawnInterval() {
+  return Math.max(1.1, 2.4 - time * 0.055);
+}
+
+// ─── Ball ─────────────────────────────────────────────────────────────────────
+function resetBall() {
+  ball = {
+    x: BALL_X,
+    y: LANE_Y_BOT,
+    vy: 0,
+    lane: 'bot',       // 'top' or 'bot'
+    gravDir: 1,        // +1 = down, -1 = up
+    scaleX: 1,
+    scaleY: 1,
+    hue: 0,
+  };
+  trail = [];
+}
+
+function flipGravity() {
+  if (state !== 'playing') return;
+  ball.gravDir *= -1;
+  ball.vy = FLIP_VY * ball.gravDir;
+  // squash on flip
+  ball.scaleX = 0.7;
+  ball.scaleY = 1.4;
+  spawnFlipBurst(ball.x, ball.y);
+}
+
+function updateBall(dt) {
+  ball.vy += GRAVITY * ball.gravDir * dt;
+  ball.vy = clamp(ball.vy, -1600, 1600);
+  ball.y += ball.vy * dt;
+
+  // Lane boundaries
+  const topBound = LANE_Y_TOP;
+  const botBound = LANE_Y_BOT;
+
+  if (ball.gravDir > 0 && ball.y >= botBound) {
+    ball.y = botBound;
+    ball.vy = 0;
+    ball.lane = 'bot';
+  } else if (ball.gravDir < 0 && ball.y <= topBound) {
+    ball.y = topBound;
+    ball.vy = 0;
+    ball.lane = 'top';
+  }
+
+  // Squash/stretch spring
+  ball.scaleX += (1 - ball.scaleX) * 12 * dt;
+  ball.scaleY += (1 - ball.scaleY) * 12 * dt;
+
+  // Close to boundary = slightly squash
+  const distTop = ball.y - topBound;
+  const distBot = botBound - ball.y;
+  const closest = Math.min(distTop, distBot);
+  if (closest < BALL_R * 1.5) {
+    const s = 0.85 + 0.15 * (closest / (BALL_R * 1.5));
+    ball.scaleX = lerp(ball.scaleX, 1 / s, 0.25);
+    ball.scaleY = lerp(ball.scaleY, s, 0.25);
+  }
+
+  // Trail
+  trail.unshift({ x: ball.x, y: ball.y, age: 0 });
+  if (trail.length > TRAIL_MAX) trail.pop();
+  for (let t of trail) t.age += dt;
+
+  ball.hue = (ball.hue + 90 * dt) % 360;
+}
+
+// ─── Blocks ──────────────────────────────────────────────────────────────────
+function spawnPattern(worldOffset) {
+  const pattern = PATTERNS[rndInt(0, PATTERNS.length - 1)];
+  for (const step of pattern) {
+    const ly = step.lane === 'top' ? LANE_Y_TOP : LANE_Y_BOT;
+    blocks.push({
+      wx: worldX + W + worldOffset + step.gap,
+      y: ly,
+      w: BLOCK_W + rndInt(-8, 16),
+      h: BLOCK_H,
+      hue: rndInt(0, 360),
+      age: 0,
+      fadeIn: 0.2,
+    });
+  }
+  // Scatter 1-2 orbs per pattern in open lanes
+  const usedLanes = new Set(pattern.map(s => s.lane));
+  const freeLanes = ['top', 'bot'].filter(l => !usedLanes.has(l));
+  const orbLane = freeLanes.length ? freeLanes[rndInt(0, freeLanes.length - 1)] : (rndInt(0, 1) === 0 ? 'top' : 'bot');
+  const orbGap = rndInt(80, 220);
+  orbs.push({
+    wx: worldX + W + worldOffset + orbGap,
+    y: orbLane === 'top' ? LANE_Y_TOP : LANE_Y_BOT,
+    r: ORB_R,
+    hue: rndInt(40, 200),
+    age: 0,
+    collected: false,
+    pulse: Math.random() * Math.PI * 2,
+  });
+}
+
+function updateBlocks(dt, speed) {
+  for (let b of blocks) {
+    b.age += dt;
+    b.fadeIn = Math.min(1, b.age / 0.2);
+  }
+  blocks = blocks.filter(b => (b.wx - worldX) > -BLOCK_W - 40);
+}
+
+// ─── Orbs ─────────────────────────────────────────────────────────────────────
+function updateOrbs(dt) {
+  for (let o of orbs) {
+    o.age += dt;
+    o.pulse += dt * 3.5;
+  }
+  orbs = orbs.filter(o => !o.collected && (o.wx - worldX) > -ORB_R * 2 - 40);
+}
+
+// ─── Particles ───────────────────────────────────────────────────────────────
+function addParticle(x, y, vx, vy, r, hue, life, alpha) {
+  if (particles.length >= PARTICLE_MAX) return;
+  particles.push({ x, y, vx, vy, r, hue, life, maxLife: life, alpha: alpha || 1 });
+}
+
+function spawnFlipBurst(x, y) {
+  const tier = getTier(orbCount);
+  const h = parseInt(tier.color.replace('#',''), 16);
+  const hue = ball.hue;
+  for (let i = 0; i < 8; i++) {
+    const a = Math.PI * 2 * i / 8;
+    addParticle(x, y, Math.cos(a)*160, Math.sin(a)*160, rnd(2,5), hue, 0.35);
+  }
+}
+
+function spawnOrbPickup(x, y, hue) {
+  for (let i = 0; i < 14; i++) {
+    const a = Math.PI * 2 * Math.random();
+    const s = rnd(60, 200);
+    addParticle(x, y, Math.cos(a)*s, Math.sin(a)*s, rnd(3, 7), hue, rnd(0.4, 0.7));
+  }
+}
+
+function spawnDeathShatter(x, y) {
+  for (let i = 0; i < 30; i++) {
+    const a = Math.PI * 2 * Math.random();
+    const s = rnd(80, 320);
+    addParticle(x, y, Math.cos(a)*s, Math.sin(a)*s, rnd(3, 10), rnd(0, 30), rnd(0.5, 1.0));
+  }
+}
+
+function spawnCloseCall(x, y) {
+  for (let i = 0; i < 6; i++) {
+    const a = Math.PI * 2 * Math.random();
+    addParticle(x, y, Math.cos(a)*90, Math.sin(a)*90, rnd(2, 5), 60, 0.5);
+  }
+}
+
+function updateParticles(dt) {
+  for (let p of particles) {
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vx *= 1 - 4 * dt;
+    p.vy *= 1 - 4 * dt;
+    p.life -= dt;
+  }
+  particles = particles.filter(p => p.life > 0);
+}
+
+// ─── Float Texts ─────────────────────────────────────────────────────────────
+function addFloatText(x, y, text, color) {
+  floatTexts.push({ x, y, text, color: color || '#fff', life: 1.0, vy: -55 });
+}
+
+function updateFloatTexts(dt) {
+  for (let f of floatTexts) {
+    f.y += f.vy * dt;
+    f.life -= dt;
+  }
+  floatTexts = floatTexts.filter(f => f.life > 0);
+}
+
+// ─── Collision ───────────────────────────────────────────────────────────────
+function circleAABB(cx, cy, r, bx, by, bw, bh) {
+  const nearX = clamp(cx, bx, bx + bw);
+  const nearY = clamp(cy, by, by + bh);
+  const dx = cx - nearX, dy = cy - nearY;
+  return dx * dx + dy * dy < r * r;
+}
+
+function circleCircle(ax, ay, ar, bx, by, br) {
+  const dx = ax - bx, dy = ay - by, d = ar + br;
+  return dx * dx + dy * dy < d * d;
+}
+
+function checkCollisions() {
+  const bx_screen = ball.x;
+  const by_screen = ball.y;
+
+  // Blocks
+  for (let b of blocks) {
+    if (b.fadeIn < 1) continue; // still fading in
+    const sx = b.wx - worldX;
+    const bLeft = sx - b.w / 2;
+    const bTop = b.y - b.h / 2;
+    if (circleAABB(bx_screen, by_screen, BALL_R - 2, bLeft, bTop, b.w, b.h)) {
+      triggerDeath();
+      return;
+    }
+    // Close call: within margin
+    const expandMargin = BALL_R * 2.2;
+    if (!b._closeCalled && circleAABB(bx_screen, by_screen, BALL_R + expandMargin, bLeft - 2, bTop - 2, b.w + 4, b.h + 4)) {
+      if (!circleAABB(bx_screen, by_screen, BALL_R + 2, bLeft, bTop, b.w, b.h)) {
+        b._closeCalled = true;
+        score += 5;
+        shakeTime = 0.12;
+        shakeAmt = 3;
+        spawnCloseCall(bx_screen, by_screen);
+        addFloatText(bx_screen, by_screen - 30, 'Close! +5', '#ffd700');
+      }
+    }
+  }
+
+  // Orbs
+  for (let o of orbs) {
+    if (o.collected) continue;
+    const sx = o.wx - worldX;
+    if (circleCircle(bx_screen, by_screen, BALL_R, sx, o.y, o.r + 2)) {
+      o.collected = true;
+      orbCount++;
+      const tier = getTier(orbCount);
+      mult = tier.mult;
+      score += 10 * mult;
+      spawnOrbPickup(sx, o.y, o.hue);
+      addFloatText(sx, o.y - 24, '+' + (10 * mult), tier.color);
+
+      // Fever every 9 orbs
+      if (orbCount > 0 && orbCount % 9 === 0 && !fever && feverCooldown <= 0) {
+        fever = true;
+        feverTimer = 3.0;
+        feverCooldown = 9.0;
+        addFloatText(ball.x, ball.y - 50, '🔥 FEVER!', '#ff6600');
+        shakeTime = 0.2;
+        shakeAmt = 5;
+      }
+    }
+  }
+}
+
+// ─── Death & Game Over ────────────────────────────────────────────────────────
+let redFlash = 0;
+let deathHandled = false;
+
+function triggerDeath() {
+  if (deathHandled) return;
+  deathHandled = true;
+  spawnDeathShatter(ball.x, ball.y);
+  shakeTime = 0.45;
+  shakeAmt = 14;
+  redFlash = 1.0;
+  if (score > best) { best = score; saveBest(); }
+  setTimeout(() => {
+    state = 'gameover';
+  }, 420);
+}
+
+// ─── Spawn logic ──────────────────────────────────────────────────────────────
+function updateSpawn(dt, speed) {
+  spawnDist += speed * dt;
+  if (spawnDist >= nextSpawnDist) {
+    spawnPattern(0);
+    nextSpawnDist = spawnDist + speed * getSpawnInterval();
+  }
+}
+
+// ─── Game init / reset ────────────────────────────────────────────────────────
+function startGame() {
+  score = 0;
+  orbCount = 0;
+  mult = 1;
+  time = 0;
+  worldX = 0;
+  blocks = [];
+  orbs = [];
+  particles = [];
+  floatTexts = [];
+  trail = [];
+  fever = false;
+  feverTimer = 0;
+  feverCooldown = 0;
+  shakeTime = 0;
+  shakeAmt = 0;
+  redFlash = 0;
+  deathHandled = false;
+  bgHue = 220;
+  spawnDist = 0;
+  nextSpawnDist = 180; // first obstacle very soon
+  resetBall();
+  state = 'playing';
+}
+
+// ─── Input ────────────────────────────────────────────────────────────────────
+canvas.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  handleInput();
+});
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    handleInput();
+  }
+});
+
+function handleInput() {
+  if (state === 'start') { startGame(); return; }
+  if (state === 'gameover') { startGame(); return; }
+  if (state === 'playing') { flipGravity(); }
+}
+
+// ─── Main loop ────────────────────────────────────────────────────────────────
+let lastT = 0;
+
+function loop(ts) {
+  requestAnimationFrame(loop);
+  const dt = clamp((ts - lastT) / 1000, 0, 0.033);
+  lastT = ts;
+
+  if (state === 'playing') {
+    time += dt;
+    const speed = getSpeed();
+    worldX += speed * dt;
+
+    updateBall(dt);
+    updateBlocks(dt, speed);
+    updateOrbs(dt);
+    updateParticles(dt);
+    updateFloatTexts(dt);
+    updateSpawn(dt, speed);
+
+    if (!deathHandled) checkCollisions();
+
+    // Score over time
+    score += mult * dt * 8;
+
+    // BG hue shift
+    bgHue = 220 - clamp(time * 4, 0, 80) + (fever ? 40 * Math.sin(time * 8) : 0);
+
+    // Fever countdown
+    if (fever) {
+      feverTimer -= dt;
+      if (feverTimer <= 0) {
+        fever = false;
+        feverTimer = 0;
+      }
+    }
+    if (feverCooldown > 0) feverCooldown -= dt;
+
+    // Shake decay
+    if (shakeTime > 0) {
+      shakeTime -= dt;
+      if (shakeTime <= 0) shakeAmt = 0;
+    }
+    if (redFlash > 0) redFlash -= dt * 3;
+  } else {
+    updateParticles(dt);
+    updateFloatTexts(dt);
+  }
+
+  draw(dt);
+}
+
+// ─── Draw ─────────────────────────────────────────────────────────────────────
+function draw(dt) {
+  // Shake transform
+  let sx = 0, sy = 0;
+  if (shakeTime > 0 && shakeAmt > 0) {
+    const intensity = (shakeTime / 0.45) * shakeAmt;
+    sx = rnd(-intensity, intensity);
+    sy = rnd(-intensity, intensity);
+  }
+
+  ctx.save();
+  ctx.translate(sx, sy);
+
+  // Background
+  drawBackground();
+
+  if (state === 'playing' || state === 'gameover') {
+    drawLanes();
+    drawBlocks();
+    drawOrbs();
+    drawTrail();
+    drawBall();
+    drawParticles();
+    drawFloatTexts();
+    drawHUD();
+  }
+
+  if (state === 'start') {
+    drawLanes();
+    drawStartScreen();
+  }
+
+  if (state === 'gameover') {
+    drawGameOver();
+  }
+
+  // Red flash vignette
+  if (redFlash > 0) {
+    const alpha = Math.min(redFlash, 0.7);
+    const grad = ctx.createRadialGradient(W/2, H/2, H*0.2, W/2, H/2, H*0.7);
+    grad.addColorStop(0, 'rgba(255,0,0,0)');
+    grad.addColorStop(1, `rgba(200,0,0,${alpha})`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // Fever overlay
+  if (fever) {
+    const pulse = 0.12 + 0.08 * Math.sin(time * 12);
+    const grad = ctx.createLinearGradient(0, 0, W, H);
+    grad.addColorStop(0, `rgba(255,100,0,${pulse})`);
+    grad.addColorStop(1, `rgba(255,200,0,${pulse * 0.5})`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    // Fever border
+    ctx.strokeStyle = `rgba(255,150,0,${0.6 + 0.4 * Math.sin(time * 10)})`;
+    ctx.lineWidth = 4;
+    ctx.strokeRect(2, 2, W - 4, H - 4);
+  }
+
+  ctx.restore();
+}
+
+function drawBackground() {
+  const h1 = (bgHue + 20) % 360;
+  const h2 = (bgHue - 20 + 360) % 360;
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, `hsl(${h1},60%,6%)`);
+  grad.addColorStop(0.5, `hsl(${bgHue},50%,8%)`);
+  grad.addColorStop(1, `hsl(${h2},60%,6%)`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+}
+
+function drawLanes() {
+  // Top lane strip
+  ctx.fillStyle = 'rgba(255,255,255,0.04)';
+  ctx.fillRect(0, LANE_Y_TOP - LANE_H / 2, W, LANE_H);
+  // Bottom lane strip
+  ctx.fillRect(0, LANE_Y_BOT - LANE_H / 2, W, LANE_H);
+
+  // Lane dividers
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([12, 10]);
+
+  // Top lane borders
+  ctx.beginPath();
+  ctx.moveTo(0, LANE_Y_TOP - LANE_H / 2);
+  ctx.lineTo(W, LANE_Y_TOP - LANE_H / 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(0, LANE_Y_TOP + LANE_H / 2);
+  ctx.lineTo(W, LANE_Y_TOP + LANE_H / 2);
+  ctx.stroke();
+
+  // Bottom lane borders
+  ctx.beginPath();
+  ctx.moveTo(0, LANE_Y_BOT - LANE_H / 2);
+  ctx.lineTo(W, LANE_Y_BOT - LANE_H / 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(0, LANE_Y_BOT + LANE_H / 2);
+  ctx.lineTo(W, LANE_Y_BOT + LANE_H / 2);
+  ctx.stroke();
+
+  ctx.setLineDash([]);
+
+  // Middle divider
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([6, 20]);
+  ctx.beginPath();
+  ctx.moveTo(0, H / 2);
+  ctx.lineTo(W, H / 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function drawBlocks() {
+  for (let b of blocks) {
+    const sx = b.wx - worldX;
+    if (sx > W + BLOCK_W || sx < -BLOCK_W) continue;
+    const alpha = b.fadeIn;
+    const bLeft = sx - b.w / 2;
+    const bTop = b.y - b.h / 2;
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+
+    // Main block fill
+    const grad = ctx.createLinearGradient(bLeft, bTop, bLeft + b.w, bTop + b.h);
+    grad.addColorStop(0, `hsl(${b.hue},80%,45%)`);
+    grad.addColorStop(1, `hsl(${b.hue + 30},70%,30%)`);
+    ctx.fillStyle = grad;
+
+    // Rounded rect
+    roundRect(ctx, bLeft, bTop, b.w, b.h, 8);
+    ctx.fill();
+
+    // Highlight edge
+    ctx.strokeStyle = `hsl(${b.hue},90%,70%)`;
+    ctx.lineWidth = 2.5;
+    roundRect(ctx, bLeft, bTop, b.w, b.h, 8);
+    ctx.stroke();
+
+    // Inner shine
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    roundRect(ctx, bLeft + 4, bTop + 4, b.w - 8, (b.h - 8) * 0.4, 4);
+    ctx.fill();
+
+    ctx.restore();
+  }
+}
+
+function drawOrbs() {
+  for (let o of orbs) {
+    if (o.collected) continue;
+    const sx = o.wx - worldX;
+    if (sx > W + 20 || sx < -20) continue;
+
+    const pulse = 1 + 0.15 * Math.sin(o.pulse);
+    const r = o.r * pulse;
+
+    ctx.save();
+    // Glow
+    ctx.shadowColor = `hsl(${o.hue},100%,65%)`;
+    ctx.shadowBlur = 18;
+
+    // Orb body
+    const grad = ctx.createRadialGradient(sx - r * 0.3, o.y - r * 0.3, 1, sx, o.y, r);
+    grad.addColorStop(0, `hsl(${o.hue},100%,90%)`);
+    grad.addColorStop(0.5, `hsl(${o.hue},90%,60%)`);
+    grad.addColorStop(1, `hsl(${o.hue},80%,35%)`);
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(sx, o.y, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.shadowBlur = 0;
+
+    // Shine
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.beginPath();
+    ctx.arc(sx - r * 0.28, o.y - r * 0.28, r * 0.32, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+}
+
+function drawTrail() {
+  for (let i = 0; i < trail.length; i++) {
+    const t = trail[i];
+    const prog = 1 - i / TRAIL_MAX;
+    const r = BALL_R * prog * 0.8;
+    const alpha = prog * 0.35;
+    const tier = getTier(orbCount);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = tier.color;
+    ctx.shadowColor = tier.color;
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.arc(t.x, t.y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawBall() {
+  if (deathHandled && state !== 'gameover') return;
+  const tier = getTier(orbCount);
+  const { x, y, scaleX, scaleY } = ball;
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(scaleX, scaleY);
+
+  // Glow
+  ctx.shadowColor = tier.color;
+  ctx.shadowBlur = 22;
+
+  // Ball body gradient
+  const grad = ctx.createRadialGradient(-BALL_R * 0.3, -BALL_R * 0.35, 1, 0, 0, BALL_R);
+  grad.addColorStop(0, '#ffffff');
+  grad.addColorStop(0.4, `hsl(${ball.hue},90%,75%)`);
+  grad.addColorStop(1, `hsl(${ball.hue + 30},80%,40%)`);
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(0, 0, BALL_R, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.shadowBlur = 0;
+
+  // Outline with tier color
+  ctx.strokeStyle = tier.color;
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.arc(0, 0, BALL_R, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Shine
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  ctx.beginPath();
+  ctx.arc(-BALL_R * 0.28, -BALL_R * 0.28, BALL_R * 0.3, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawParticles() {
+  for (let p of particles) {
+    const alpha = (p.life / p.maxLife) * p.alpha;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = `hsl(${p.hue},90%,65%)`;
+    ctx.shadowColor = `hsl(${p.hue},100%,70%)`;
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r * (0.5 + 0.5 * p.life / p.maxLife), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawFloatTexts() {
+  for (let f of floatTexts) {
+    ctx.save();
+    ctx.globalAlpha = Math.min(f.life * 2, 1);
+    ctx.fillStyle = f.color;
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+    ctx.lineWidth = 3;
+    ctx.font = 'bold 18px "Segoe UI", system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.strokeText(f.text, f.x, f.y);
+    ctx.fillText(f.text, f.x, f.y);
+    ctx.restore();
+  }
+}
+
+function drawHUD() {
+  const tier = getTier(orbCount);
+
+  // Score
+  ctx.save();
+  ctx.font = 'bold 38px "Segoe UI", system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ffffff';
+  ctx.shadowColor = 'rgba(0,0,0,0.5)';
+  ctx.shadowBlur = 8;
+  ctx.fillText(Math.floor(score), W / 2, 60);
+
+  // Multiplier
+  ctx.font = 'bold 20px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = tier.color;
+  ctx.shadowColor = tier.color;
+  ctx.shadowBlur = 12;
+  ctx.fillText(tier.label, W / 2, 86);
+  ctx.restore();
+
+  // Best score
+  ctx.save();
+  ctx.font = '14px "Segoe UI", system-ui, sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  ctx.fillText('Best: ' + Math.floor(best), W - 16, 32);
+  ctx.restore();
+
+  // Fever countdown bar
+  if (fever) {
+    const barW = W * 0.7;
+    const barX = W / 2 - barW / 2;
+    const barY = H - 48;
+    const prog = feverTimer / 3.0;
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    roundRect(ctx, barX, barY, barW, 14, 7);
+    ctx.fill();
+    const fgrad = ctx.createLinearGradient(barX, 0, barX + barW * prog, 0);
+    fgrad.addColorStop(0, '#ff6600');
+    fgrad.addColorStop(1, '#ffdd00');
+    ctx.fillStyle = fgrad;
+    roundRect(ctx, barX, barY, barW * prog, 14, 7);
+    ctx.fill();
+    ctx.font = 'bold 13px "Segoe UI", system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#fff';
+    ctx.shadowColor = '#ff6600';
+    ctx.shadowBlur = 8;
+    ctx.fillText('🔥 FEVER MODE', W / 2, barY - 6);
+    ctx.restore();
+  }
+
+  // Orb counter dots
+  drawOrbMeter();
+}
+
+function drawOrbMeter() {
+  const maxDots = 9;
+  const dotR = 5;
+  const spacing = 14;
+  const total = maxDots;
+  const filled = orbCount % 9;
+  const tier = getTier(orbCount);
+  const startX = W / 2 - ((total - 1) * spacing) / 2;
+  const y = H - 22;
+
+  for (let i = 0; i < total; i++) {
+    const x = startX + i * spacing;
+    ctx.save();
+    if (i < filled) {
+      ctx.fillStyle = tier.color;
+      ctx.shadowColor = tier.color;
+      ctx.shadowBlur = 8;
+    } else {
+      ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    }
+    ctx.beginPath();
+    ctx.arc(x, y, dotR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawStartScreen() {
+  // Semi overlay
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.save();
+  ctx.textAlign = 'center';
+
+  // Title background pill
+  const titleY = H * 0.3;
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  roundRect(ctx, W/2 - 160, titleY - 55, 320, 90, 20);
+  ctx.fill();
+
+  // Title
+  ctx.font = 'bold 52px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = '#ffffff';
+  ctx.shadowColor = '#00e5ff';
+  ctx.shadowBlur = 24;
+  ctx.fillText('Block', W / 2, titleY - 8);
+  ctx.fillStyle = '#00e5ff';
+  ctx.fillText('Bouncer', W / 2, titleY + 42);
+  ctx.shadowBlur = 0;
+
+  // Tagline
+  ctx.font = '18px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.fillText('Gravity Lane Endless Runner', W / 2, H * 0.48);
+
+  // Tap prompt (pulsing)
+  const pulse = 0.65 + 0.35 * Math.sin(Date.now() / 400);
+  ctx.globalAlpha = pulse;
+  ctx.font = 'bold 26px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = '#ffd700';
+  ctx.shadowColor = '#ffd700';
+  ctx.shadowBlur = 18;
+  ctx.fillText('Tap / Space to Start', W / 2, H * 0.65);
+  ctx.shadowBlur = 0;
+  ctx.globalAlpha = 1;
+
+  // Mini tips
+  ctx.font = '14px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.fillText('Flip gravity · Dodge blocks · Collect orbs', W / 2, H * 0.75);
+
+  // Best score
+  if (best > 0) {
+    ctx.font = '16px "Segoe UI", system-ui, sans-serif';
+    ctx.fillStyle = 'rgba(255,215,0,0.7)';
+    ctx.fillText('Best: ' + Math.floor(best), W / 2, H * 0.83);
+  }
+
+  ctx.restore();
+}
+
+function drawGameOver() {
+  // Overlay
+  ctx.fillStyle = 'rgba(0,0,0,0.72)';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.save();
+  ctx.textAlign = 'center';
+
+  const cy = H / 2;
+
+  // Panel
+  ctx.fillStyle = 'rgba(10,10,30,0.9)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  ctx.lineWidth = 1.5;
+  roundRect(ctx, W / 2 - 155, cy - 160, 310, 280, 24);
+  ctx.fill();
+  ctx.stroke();
+
+  // Game Over title
+  ctx.font = 'bold 44px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = '#ff4444';
+  ctx.shadowColor = '#ff0000';
+  ctx.shadowBlur = 20;
+  ctx.fillText('Game Over', W / 2, cy - 90);
+  ctx.shadowBlur = 0;
+
+  // Score
+  ctx.font = '18px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  ctx.fillText('Score', W / 2, cy - 42);
+  ctx.font = 'bold 56px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(Math.floor(score), W / 2, cy + 10);
+
+  // Best
+  ctx.font = '16px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = score >= best ? '#ffd700' : 'rgba(255,255,255,0.45)';
+  if (score >= best && score > 0) {
+    ctx.fillStyle = '#ffd700';
+    ctx.shadowColor = '#ffd700';
+    ctx.shadowBlur = 12;
+    ctx.fillText('NEW BEST! ' + Math.floor(best), W / 2, cy + 46);
+    ctx.shadowBlur = 0;
+  } else {
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.fillText('Best: ' + Math.floor(best), W / 2, cy + 46);
+  }
+
+  // Retry button
+  const btnY = cy + 80;
+  const pulse = 0.7 + 0.3 * Math.sin(Date.now() / 380);
+  ctx.globalAlpha = pulse;
+  ctx.fillStyle = '#00e5ff';
+  ctx.shadowColor = '#00e5ff';
+  ctx.shadowBlur = 16;
+  roundRect(ctx, W / 2 - 100, btnY - 28, 200, 52, 26);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.globalAlpha = 1;
+  ctx.font = 'bold 22px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = '#000';
+  ctx.fillText('Tap to Retry', W / 2, btnY + 8);
+
+  ctx.restore();
+}
+
+// ─── Utility: rounded rect path ──────────────────────────────────────────────
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+loadBest();
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

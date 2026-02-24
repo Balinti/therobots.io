@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Glitch Sprint - Free HTML5 Game</title>
+<meta name="description" content="Play Glitch Sprint - Tap to dodge obstacles while controls randomly invert in a neon-lit cyber city.">
+<meta name="theme-color" content="#0a0a1a">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Glitch Sprint - Free HTML5 Game">
+<meta property="og:description" content="Tap to phase through obstacles in a neon cyber sprint. How far can you go?">
+<meta property="og:url" content="https://balinti.github.io/glitch-sprint/">
+<meta property="og:image" content="https://balinti.github.io/glitch-sprint/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Glitch Sprint - Free HTML5 Game">
+<meta name="twitter:description" content="Tap to phase through obstacles in a neon cyber sprint. How far can you go?">
+<meta name="twitter:image" content="https://balinti.github.io/glitch-sprint/og.png">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"VideoGame","name":"Glitch Sprint","description":"Tap to phase through obstacles in a neon cyber sprint. How far can you go?","url":"https://balinti.github.io/glitch-sprint/","genre":"Hyper-casual","gamePlatform":"HTML5","applicationCategory":"Game","operatingSystem":"Any","playMode":"SinglePlayer","numberOfPlayers":1,"inLanguage":"en"}
+</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#08081a;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;color:#ccc;touch-action:none;user-select:none;-webkit-user-select:none}
+#wrap{position:relative;width:100%;max-width:420px;height:100%;max-height:750px;margin:0 auto;display:flex;flex-direction:column;align-items:center}
+canvas{display:block;width:100%;height:100%;image-rendering:pixelated}
+#below{position:absolute;top:100%;left:0;right:0;padding:20px 16px 80px;max-width:420px;margin:0 auto;color:#8a8aaa;font-size:13px;line-height:1.6}
+#below h1{font-size:20px;color:#b0b0ff;margin-bottom:8px}
+#below h2{font-size:15px;color:#9090cc;margin:12px 0 4px}
+#below p,#below li{margin-bottom:6px}
+#below ul{padding-left:18px}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+#mute-btn{position:absolute;top:8px;right:8px;z-index:10;background:rgba(0,0,0,0.5);border:1px solid rgba(255,255,255,0.15);color:#fff;font-size:18px;width:36px;height:36px;border-radius:50%;cursor:pointer;display:none;align-items:center;justify-content:center;line-height:1}
+</style>
+</head>
+<body>
+<div id="wrap">
+<canvas id="c"></canvas>
+<button id="mute-btn" aria-label="Toggle sound">&#x1f50a;</button>
+</div>
+<div id="below">
+<h1>Glitch Sprint: Phase Tap</h1>
+<p>Glitch Sprint is a hyper-casual HTML5 game where you sprint through a neon cyber city. Tap to activate your Glitch Phase and pass through one obstacle at a time &mdash; but don't overheat your Glitch Meter or a Glitch Storm will strike!</p>
+<h2>How to Play</h2>
+<ul>
+<li>Tap the screen, press Space or Enter to activate Glitch Phase.</li>
+<li>While phasing, you become intangible and pass through one obstacle.</li>
+<li>Each phase increases your heat meter. Let it cool between uses.</li>
+<li>If heat maxes out, a Glitch Storm scrambles the visuals for 1.5 seconds.</li>
+<li>Thread obstacles without phasing to build your combo multiplier.</li>
+<li>Data Gates appear after 25 seconds &mdash; pass through solid for big rewards!</li>
+</ul>
+<h2>Controls</h2>
+<p><strong>Tap</strong> / <strong>Space</strong> / <strong>Enter</strong> &mdash; Activate Glitch Phase</p>
+<h2>FAQ</h2>
+<p><strong>Is this game free?</strong> Yes, Glitch Sprint is 100% free to play in your browser.</p>
+<p><strong>Does it work on mobile?</strong> Yes! It's optimized for phones and tablets.</p>
+<p><strong>How is the score calculated?</strong> Score = distance traveled + obstacle bonuses &times; combo multiplier.</p>
+</div>
+<script>
+(function(){
+"use strict";
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+const muteBtn=document.getElementById('mute-btn');
+const wrap=document.getElementById('wrap');
+
+let W,H,DPR;
+function resize(){
+const maxW=420,maxH=750;
+let cw=Math.min(window.innerWidth,maxW);
+let ch=Math.min(window.innerHeight,maxH);
+DPR=Math.min(window.devicePixelRatio||1,3);
+canvas.width=cw*DPR;
+canvas.height=ch*DPR;
+canvas.style.width=cw+'px';
+canvas.style.height=ch+'px';
+W=cw;H=ch;
+wrap.style.maxWidth=maxW+'px';
+wrap.style.maxHeight=maxH+'px';
+wrap.style.height=Math.min(window.innerHeight,maxH)+'px';
+}
+resize();
+window.addEventListener('resize',resize);
+
+// Audio
+let audioCtx=null,soundOn=true,audioInited=false;
+function initAudio(){
+if(audioInited)return;
+try{audioCtx=new(window.AudioContext||window.webkitAudioContext)();audioInited=true;muteBtn.style.display='flex';}catch(e){}
+}
+function beep(freq,dur,vol,type){
+if(!audioCtx||!soundOn)return;
+try{
+const o=audioCtx.createOscillator();
+const g=audioCtx.createGain();
+o.type=type||'square';
+o.frequency.value=freq;
+g.gain.value=vol||0.08;
+g.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+dur);
+o.connect(g);g.connect(audioCtx.destination);
+o.start();o.stop(audioCtx.currentTime+dur);
+}catch(e){}
+}
+function sndPhase(){beep(880,0.1,0.07,'sine');beep(1200,0.08,0.05,'square');}
+function sndStorm(){beep(200,0.3,0.1,'sawtooth');beep(150,0.5,0.06,'square');}
+function sndDeath(){beep(120,0.4,0.12,'sawtooth');beep(80,0.6,0.08,'square');}
+function sndGate(){beep(1400,0.12,0.06,'sine');beep(1800,0.1,0.04,'sine');}
+function sndCombo(){beep(660+Math.random()*400,0.06,0.04,'sine');}
+muteBtn.addEventListener('click',function(e){
+e.stopPropagation();
+soundOn=!soundOn;
+muteBtn.textContent=soundOn?'\u{1F50A}':'\u{1F507}';
+});
+
+// State
+let state='start'; // start, playing, gameover
+let score=0,best=parseInt(localStorage.getItem('gsp_best'))||0;
+let combo=0,maxCombo=0,phaseCount=0,gatesHit=0,obstaclesThreaded=0;
+let heat=0,stormActive=false,stormTelegraph=false;
+let stormTimer=0,telegraphTimer=0;
+let phasing=false,phaseTimer=0,phaseUsedOnObstacle=false;
+let elapsed=0,spawnTimer=0;
+let shakeX=0,shakeY=0,shakeDecay=0;
+let obstacles=[],particles=[];
+let baseHue=0;
+let challengeScore=0;
+let stormLanePerm=[0,1,2],stormPermTimer=0,stormJitterX=0;
+
+// Parse challenge
+const urlParams=new URLSearchParams(window.location.search);
+const challengeParam=urlParams.get('challenge');
+if(challengeParam)challengeScore=parseInt(challengeParam)||0;
+
+// Constants
+const SAFE_BOTTOM=60;
+const RUNNER_W=28,RUNNER_H=40;
+const OBS_W_RATIO=0.75,OBS_H=32;
+const GATE_H=18;
+
+function roadW(){return W*0.86;}
+function laneW(){return roadW()/3;}
+function laneX(i){
+const rw=roadW();
+const startX=(W-rw)/2;
+return startX+laneW()*(i+0.5);
+}
+function runnerY(){return H*0.78;}
+
+// Formulas
+function speed(t){return 260+10*t+90*(1-Math.exp(-t/18));}
+function spawnInterval(t){return Math.max(0.42,Math.min(0.95,0.95-0.012*t));}
+function gateChance(t){return Math.max(0,Math.min(0.35,(t-25)/25));}
+function doubleChance(t){return Math.max(0.05,Math.min(0.28,0.05+0.006*t));}
+function phaseDur(t){return Math.max(0.18,Math.min(0.25,0.25-0.0012*t));}
+function heatGain(t){return Math.max(0.18,Math.min(0.32,0.18+0.0025*t));}
+const HEAT_COOL=0.22,HEAT_COOL_STORM=0.10;
+const STORM_TELEGRAPH=0.35,STORM_DUR=1.5;
+
+function resetGame(){
+score=0;combo=0;maxCombo=0;phaseCount=0;gatesHit=0;obstaclesThreaded=0;
+heat=0;stormActive=false;stormTelegraph=false;stormTimer=0;telegraphTimer=0;
+phasing=false;phaseTimer=0;phaseUsedOnObstacle=false;
+elapsed=0;spawnTimer=0;
+shakeX=0;shakeY=0;shakeDecay=0;
+obstacles=[];particles=[];
+stormLanePerm=[0,1,2];stormPermTimer=0;stormJitterX=0;
+}
+
+function triggerPhase(){
+if(phasing||stormTelegraph)return;
+initAudio();
+phasing=true;
+phaseTimer=phaseDur(elapsed);
+phaseUsedOnObstacle=false;
+phaseCount++;
+heat+=heatGain(elapsed);
+sndPhase();
+// Phase burst particles
+for(let i=0;i<12;i++){
+particles.push({
+x:laneX(1),y:runnerY(),
+vx:(Math.random()-0.5)*200,vy:(Math.random()-0.5)*200,
+life:0.4+Math.random()*0.3,maxLife:0.7,
+size:3+Math.random()*3,
+color:`hsla(${(baseHue+180)%360},100%,70%,`,
+type:'phase'
+});
+}
+// Combo penalty for phasing
+if(combo>0)combo=Math.max(0,combo-1);
+}
+
+function addShake(amount){
+shakeDecay=Math.max(shakeDecay,amount);
+}
+
+function spawnObstacle(){
+const lanes=[0,1,2];
+const isGate=Math.random()<gateChance(elapsed);
+const isDouble=!isGate&&Math.random()<doubleChance(elapsed);
+if(isDouble){
+const skip=Math.floor(Math.random()*3);
+for(let i=0;i<3;i++){
+if(i===skip)continue;
+obstacles.push({lane:i,y:-40,isGate:false,passed:false,phased:false,w:laneW()*OBS_W_RATIO,h:OBS_H});
+}
+}else{
+const lane=Math.floor(Math.random()*3);
+obstacles.push({lane:lane,y:-40,isGate:isGate,passed:false,phased:false,w:laneW()*(isGate?0.9:OBS_W_RATIO),h:isGate?GATE_H:OBS_H});
+}
+}
+
+function comboMult(){return 1+(Math.min(combo,20)-1)*0.12;}
+
+// Collision AABB with forgiving hitbox
+function collides(obs){
+const rx=laneX(1)-RUNNER_W*0.4;
+const ry=runnerY()-RUNNER_H*0.4;
+const rw2=RUNNER_W*0.8;
+const rh2=RUNNER_H*0.8;
+const renderLane=stormActive?stormLanePerm[obs.lane]:obs.lane;
+const ox=laneX(obs.lane)-obs.w/2;
+const oy=obs.y-obs.h/2;
+return rx<ox+obs.w&&rx+rw2>ox&&ry<oy+obs.h&&ry+rh2>oy;
+}
+
+function update(dt){
+if(state!=='playing')return;
+elapsed+=dt;
+const spd=speed(elapsed);
+
+// Score distance
+score+=spd*dt*0.08;
+
+// Heat cooling
+if(!stormActive&&!stormTelegraph){
+heat=Math.max(0,heat-HEAT_COOL*dt);
+}else if(stormActive){
+heat=Math.max(0,heat-HEAT_COOL_STORM*dt);
+}
+
+// Storm check
+if(heat>=1&&!stormActive&&!stormTelegraph){
+stormTelegraph=true;
+telegraphTimer=STORM_TELEGRAPH;
+heat=0.55;
+sndStorm();
+addShake(6);
+}
+if(stormTelegraph){
+telegraphTimer-=dt;
+if(telegraphTimer<=0){
+stormTelegraph=false;
+stormActive=true;
+stormTimer=STORM_DUR;
+stormLanePerm=[0,1,2];
+stormPermTimer=0;
+}
+}
+if(stormActive){
+stormTimer-=dt;
+stormPermTimer-=dt;
+if(stormPermTimer<=0){
+// Shuffle lane perm (render only)
+stormLanePerm=[0,1,2].sort(()=>Math.random()-0.5);
+stormPermTimer=0.12;
+stormJitterX=(Math.random()-0.5)*4;
+}
+if(stormTimer<=0){
+stormActive=false;
+stormLanePerm=[0,1,2];
+stormJitterX=0;
+}
+}
+
+// Phase timer
+if(phasing){
+phaseTimer-=dt;
+// Afterimage particles
+if(Math.random()<0.6){
+particles.push({
+x:laneX(1)+(Math.random()-0.5)*10,
+y:runnerY()+(Math.random()-0.5)*RUNNER_H,
+vx:0,vy:20,
+life:0.25,maxLife:0.25,
+size:RUNNER_W*0.6,
+color:`hsla(${(baseHue+90)%360},80%,60%,`,
+type:'afterimage'
+});
+}
+if(phaseTimer<=0){
+phasing=false;
+}
+}
+
+// Spawning
+spawnTimer-=dt;
+if(spawnTimer<=0){
+spawnObstacle();
+spawnTimer=spawnInterval(elapsed);
+}
+
+// Move obstacles
+for(let i=obstacles.length-1;i>=0;i--){
+const o=obstacles[i];
+o.y+=spd*dt;
+// Check pass
+if(!o.passed&&o.y-o.h/2>runnerY()+RUNNER_H/2){
+o.passed=true;
+if(!o.phased){
+// Threaded without phasing
+if(o.isGate){
+score+=80*comboMult();
+combo=Math.min(20,combo+2);
+gatesHit++;
+sndGate();
+// Gate sparkles
+for(let j=0;j<8;j++){
+particles.push({
+x:laneX(o.lane)+(Math.random()-0.5)*40,
+y:o.y,
+vx:(Math.random()-0.5)*120,vy:-80-Math.random()*60,
+life:0.5+Math.random()*0.3,maxLife:0.8,
+size:2+Math.random()*3,
+color:`hsla(${(baseHue+60)%360},100%,80%,`,
+type:'sparkle'
+});
+}
+}else{
+score+=12*comboMult();
+combo=Math.min(20,combo+1);
+obstaclesThreaded++;
+if(combo>2&&combo%3===0)sndCombo();
+}
+if(combo>maxCombo)maxCombo=combo;
+// Near miss shake
+const dist=Math.abs(laneX(1)-laneX(o.lane));
+if(dist<laneW()*0.6){
+addShake(2);
+// Sparkle
+for(let j=0;j<4;j++){
+particles.push({
+x:laneX(1)+(Math.random()-0.5)*20,
+y:runnerY(),
+vx:(Math.random()-0.5)*80,vy:-60-Math.random()*40,
+life:0.3,maxLife:0.3,
+size:2,
+color:`hsla(${baseHue},100%,70%,`,
+type:'sparkle'
+});
+}
+}
+}
+}
+// Collision
+if(!o.passed&&collides(o)){
+if(phasing&&!phaseUsedOnObstacle){
+// Phase through
+phaseUsedOnObstacle=true;
+phaseTimer=0;
+phasing=false;
+o.phased=true;
+o.passed=true;
+if(o.isGate){
+score+=25;
+combo=Math.max(0,combo-2);
+gatesHit++;
+}
+addShake(3);
+// Phase impact particles
+for(let j=0;j<8;j++){
+particles.push({
+x:laneX(o.lane)+(Math.random()-0.5)*30,
+y:o.y,
+vx:(Math.random()-0.5)*150,vy:(Math.random()-0.5)*100,
+life:0.3+Math.random()*0.2,maxLife:0.5,
+size:3+Math.random()*2,
+color:`hsla(${(baseHue+180)%360},90%,65%,`,
+type:'phase'
+});
+}
+}else if(!phasing){
+// Death
+gameOver();
+return;
+}
+}
+// Remove off-screen
+if(o.y>H+60){
+obstacles.splice(i,1);
+}
+}
+
+// Particles
+for(let i=particles.length-1;i>=0;i--){
+const p=particles[i];
+p.x+=p.vx*dt;
+p.y+=p.vy*dt;
+p.life-=dt;
+if(p.life<=0){
+particles.splice(i,1);
+}
+}
+
+// Shake decay
+if(shakeDecay>0){
+shakeX=(Math.random()-0.5)*shakeDecay*2;
+shakeY=(Math.random()-0.5)*shakeDecay*2;
+shakeDecay=Math.max(0,shakeDecay-dt*30);
+}else{
+shakeX=0;shakeY=0;
+}
+
+// HSL cycling
+baseHue=(elapsed*18+combo*12)%360;
+}
+
+function gameOver(){
+state='gameover';
+sndDeath();
+addShake(12);
+if(score>best){
+best=Math.floor(score);
+localStorage.setItem('gsp_best',best);
+}
+// Death shards
+for(let i=0;i<30;i++){
+particles.push({
+x:laneX(1)+(Math.random()-0.5)*20,
+y:runnerY()+(Math.random()-0.5)*30,
+vx:(Math.random()-0.5)*300,vy:-100-Math.random()*200,
+life:0.6+Math.random()*0.5,maxLife:1.1,
+size:3+Math.random()*5,
+color:`hsla(${(baseHue+Math.random()*60)%360},100%,60%,`,
+type:'shard'
+});
+}
+}
+
+function draw(){
+ctx.save();
+ctx.setTransform(DPR,0,0,DPR,0,0);
+ctx.translate(shakeX,shakeY);
+
+// Background gradient
+const bgGrad=ctx.createLinearGradient(0,0,0,H);
+bgGrad.addColorStop(0,`hsl(${(baseHue+240)%360},30%,6%)`);
+bgGrad.addColorStop(1,`hsl(${(baseHue+260)%360},25%,10%)`);
+ctx.fillStyle=bgGrad;
+ctx.fillRect(-10,-10,W+20,H+20);
+
+// Road
+const rw=roadW();
+const rx=(W-rw)/2;
+ctx.fillStyle='rgba(20,20,40,0.85)';
+ctx.fillRect(rx,0,rw,H);
+
+// Road edges
+ctx.strokeStyle=`hsla(${baseHue},80%,55%,0.4)`;
+ctx.lineWidth=2;
+ctx.beginPath();ctx.moveTo(rx,0);ctx.lineTo(rx,H);ctx.stroke();
+ctx.beginPath();ctx.moveTo(rx+rw,0);ctx.lineTo(rx+rw,H);ctx.stroke();
+
+// Lane dividers
+ctx.setLineDash([16,12]);
+ctx.strokeStyle=`hsla(${baseHue},50%,40%,0.25)`;
+ctx.lineWidth=1;
+for(let i=1;i<3;i++){
+const lx=rx+laneW()*i;
+ctx.beginPath();ctx.moveTo(lx,0);ctx.lineTo(lx,H);ctx.stroke();
+}
+ctx.setLineDash([]);
+
+// Storm tint
+if(stormActive){
+ctx.fillStyle=`hsla(${(baseHue+120)%360},60%,20%,${0.15+Math.sin(elapsed*20)*0.05})`;
+ctx.fillRect(0,0,W,H);
+// Scanlines
+ctx.fillStyle='rgba(0,0,0,0.08)';
+for(let sy=0;sy<H;sy+=4){
+ctx.fillRect(0,sy,W,2);
+}
+}
+if(stormTelegraph){
+const flash=Math.sin(elapsed*30)*0.5+0.5;
+ctx.fillStyle=`rgba(255,60,60,${flash*0.15})`;
+ctx.fillRect(0,0,W,H);
+}
+
+// Obstacles
+for(const o of obstacles){
+const renderLane=stormActive?stormLanePerm[o.lane]:o.lane;
+const ox=laneX(renderLane)+(stormActive?stormJitterX:0);
+const oy=o.y;
+if(o.isGate){
+// Data Gate
+const gateGrad=ctx.createLinearGradient(ox-o.w/2,oy,ox+o.w/2,oy);
+gateGrad.addColorStop(0,`hsla(${(baseHue+120)%360},90%,55%,0.9)`);
+gateGrad.addColorStop(0.5,`hsla(${(baseHue+140)%360},100%,70%,1)`);
+gateGrad.addColorStop(1,`hsla(${(baseHue+120)%360},90%,55%,0.9)`);
+ctx.fillStyle=gateGrad;
+ctx.fillRect(ox-o.w/2,oy-o.h/2,o.w,o.h);
+// Gate glow
+ctx.shadowColor=`hsl(${(baseHue+130)%360},100%,60%)`;
+ctx.shadowBlur=10;
+ctx.fillRect(ox-o.w/2,oy-o.h/2,o.w,o.h);
+ctx.shadowBlur=0;
+// Gate label
+ctx.fillStyle='#fff';
+ctx.font='bold 9px monospace';
+ctx.textAlign='center';
+ctx.fillText('DATA',ox,oy+3);
+}else{
+// Obstacle block
+ctx.fillStyle=o.phased?`hsla(${baseHue},60%,40%,0.3)`:`hsla(${(baseHue+30)%360},70%,45%,0.9)`;
+ctx.fillRect(ox-o.w/2,oy-o.h/2,o.w,o.h);
+// Edge highlight
+ctx.strokeStyle=`hsla(${(baseHue+30)%360},90%,65%,0.6)`;
+ctx.lineWidth=1.5;
+ctx.strokeRect(ox-o.w/2,oy-o.h/2,o.w,o.h);
+// Inner pattern
+ctx.fillStyle=`hsla(${(baseHue+30)%360},80%,55%,0.3)`;
+ctx.fillRect(ox-o.w/2+3,oy-o.h/2+3,o.w-6,o.h-6);
+}
+}
+
+// Runner
+const runX=laneX(1);
+const runY=runnerY();
+if(phasing){
+// Phasing runner - translucent + glow
+ctx.globalAlpha=0.4+Math.sin(elapsed*40)*0.2;
+ctx.shadowColor=`hsl(${(baseHue+180)%360},100%,70%)`;
+ctx.shadowBlur=15;
+}
+// Runner body
+ctx.fillStyle=phasing?`hsla(${(baseHue+180)%360},100%,70%,0.8)`:`hsl(${baseHue},80%,60%)`;
+const rr=4;
+const rbx=runX-RUNNER_W/2,rby=runY-RUNNER_H/2;
+ctx.beginPath();
+ctx.moveTo(rbx+rr,rby);
+ctx.lineTo(rbx+RUNNER_W-rr,rby);
+ctx.quadraticCurveTo(rbx+RUNNER_W,rby,rbx+RUNNER_W,rby+rr);
+ctx.lineTo(rbx+RUNNER_W,rby+RUNNER_H-rr);
+ctx.quadraticCurveTo(rbx+RUNNER_W,rby+RUNNER_H,rbx+RUNNER_W-rr,rby+RUNNER_H);
+ctx.lineTo(rbx+rr,rby+RUNNER_H);
+ctx.quadraticCurveTo(rbx,rby+RUNNER_H,rbx,rby+RUNNER_H-rr);
+ctx.lineTo(rbx,rby+rr);
+ctx.quadraticCurveTo(rbx,rby,rbx+rr,rby);
+ctx.closePath();
+ctx.fill();
+// Runner inner detail
+ctx.fillStyle=phasing?`hsla(${(baseHue+200)%360},100%,85%,0.5)`:'rgba(255,255,255,0.15)';
+ctx.fillRect(rbx+5,rby+6,RUNNER_W-10,8);
+ctx.fillRect(rbx+8,rby+18,RUNNER_W-16,4);
+// Runner eye
+ctx.fillStyle=phasing?'#fff':`hsl(${(baseHue+60)%360},100%,80%)`;
+ctx.fillRect(rbx+8,rby+4,4,3);
+ctx.fillRect(rbx+RUNNER_W-12,rby+4,4,3);
+
+ctx.globalAlpha=1;
+ctx.shadowBlur=0;
+
+// Particles
+for(const p of particles){
+const alpha=Math.max(0,p.life/p.maxLife);
+ctx.globalAlpha=alpha;
+if(p.type==='afterimage'){
+ctx.fillStyle=p.color+alpha*0.4+')';
+ctx.fillRect(p.x-p.size/2,p.y-p.size,p.size,p.size*1.5);
+}else{
+ctx.fillStyle=p.color+alpha+')';
+ctx.beginPath();
+ctx.arc(p.x,p.y,p.size*alpha,0,Math.PI*2);
+ctx.fill();
+}
+}
+ctx.globalAlpha=1;
+
+// HUD
+if(state==='playing'){
+// Score
+ctx.fillStyle='rgba(0,0,0,0.4)';
+ctx.fillRect(0,0,W,42);
+ctx.fillStyle='#fff';
+ctx.font='bold 18px monospace';
+ctx.textAlign='left';
+ctx.fillText(Math.floor(score),12,28);
+// Best
+ctx.font='11px monospace';
+ctx.fillStyle='rgba(255,255,255,0.5)';
+ctx.textAlign='right';
+ctx.fillText('BEST '+best,W-12,16);
+// Combo
+if(combo>1){
+ctx.fillStyle=`hsl(${(baseHue+60)%360},100%,70%)`;
+ctx.font='bold 14px monospace';
+ctx.textAlign='right';
+ctx.fillText('x'+combo,W-12,34);
+}
+// Heat bar
+const barW=80,barH=6,barX=12,barY=36;
+ctx.fillStyle='rgba(255,255,255,0.15)';
+ctx.fillRect(barX,barY,barW,barH);
+const heatFrac=Math.min(heat,1);
+const heatColor=heatFrac>0.7?`hsl(0,90%,55%)`:heatFrac>0.4?`hsl(40,90%,55%)`:`hsl(120,70%,50%)`;
+ctx.fillStyle=heatColor;
+ctx.fillRect(barX,barY,barW*heatFrac,barH);
+ctx.strokeStyle='rgba(255,255,255,0.3)';
+ctx.lineWidth=1;
+ctx.strokeRect(barX,barY,barW,barH);
+// Heat label
+ctx.fillStyle='rgba(255,255,255,0.4)';
+ctx.font='8px monospace';
+ctx.textAlign='left';
+ctx.fillText('HEAT',barX+barW+4,barY+6);
+// Storm warning
+if(stormTelegraph){
+ctx.fillStyle=`rgba(255,50,50,${0.6+Math.sin(elapsed*25)*0.4})`;
+ctx.font='bold 20px monospace';
+ctx.textAlign='center';
+ctx.fillText('GLITCH STORM!',W/2,H/2-30);
+}
+if(stormActive){
+ctx.fillStyle=`rgba(180,80,255,${0.5+Math.sin(elapsed*15)*0.3})`;
+ctx.font='bold 14px monospace';
+ctx.textAlign='center';
+ctx.fillText('STORM ACTIVE',W/2,56);
+}
+}
+
+// Start screen
+if(state==='start'){
+// Dim overlay
+ctx.fillStyle='rgba(5,5,20,0.85)';
+ctx.fillRect(0,0,W,H);
+// Title
+ctx.fillStyle=`hsl(${(Date.now()/30)%360},80%,65%)`;
+ctx.font='bold 32px monospace';
+ctx.textAlign='center';
+ctx.fillText('GLITCH',W/2,H*0.28);
+ctx.fillText('SPRINT',W/2,H*0.28+38);
+// Subtitle
+ctx.fillStyle='rgba(255,255,255,0.5)';
+ctx.font='13px monospace';
+ctx.fillText('Phase Tap',W/2,H*0.28+62);
+// Instructions
+ctx.fillStyle='rgba(255,255,255,0.7)';
+ctx.font='15px monospace';
+const pulse=0.5+Math.sin(Date.now()/300)*0.5;
+ctx.globalAlpha=0.5+pulse*0.5;
+ctx.fillText('TAP TO START',W/2,H*0.55);
+ctx.globalAlpha=1;
+// Controls hint
+ctx.fillStyle='rgba(255,255,255,0.35)';
+ctx.font='11px monospace';
+ctx.fillText('Tap / Space / Enter = Phase',W/2,H*0.62);
+ctx.fillText('Phase through 1 obstacle',W/2,H*0.67);
+ctx.fillText('Don\'t overheat!',W/2,H*0.72);
+// Best
+if(best>0){
+ctx.fillStyle='rgba(255,255,255,0.4)';
+ctx.font='12px monospace';
+ctx.fillText('BEST: '+best,W/2,H*0.80);
+}
+// Challenge banner
+if(challengeScore>0){
+ctx.fillStyle='rgba(255,200,50,0.85)';
+ctx.font='bold 13px monospace';
+ctx.fillText('Beat '+challengeScore+' to win!',W/2,H*0.87);
+}
+}
+
+// Game over screen
+if(state==='gameover'){
+ctx.fillStyle='rgba(5,5,20,0.8)';
+ctx.fillRect(0,0,W,H);
+// Title
+ctx.fillStyle=`hsl(0,80%,60%)`;
+ctx.font='bold 28px monospace';
+ctx.textAlign='center';
+ctx.fillText('GAME OVER',W/2,H*0.2);
+// Score
+ctx.fillStyle='#fff';
+ctx.font='bold 36px monospace';
+ctx.fillText(Math.floor(score),W/2,H*0.32);
+// Best
+const isNew=Math.floor(score)>=best&&best>0;
+ctx.fillStyle=isNew?'hsl(50,100%,65%)':'rgba(255,255,255,0.5)';
+ctx.font='14px monospace';
+ctx.fillText(isNew?'NEW BEST!':'BEST: '+best,W/2,H*0.38);
+// Challenge result
+if(challengeScore>0){
+const won=Math.floor(score)>=challengeScore;
+ctx.fillStyle=won?'hsl(120,80%,60%)':'hsl(0,80%,60%)';
+ctx.font='bold 14px monospace';
+ctx.fillText(won?'CHALLENGE BEATEN!':'Challenge: '+challengeScore,W/2,H*0.44);
+}
+// Stats
+ctx.fillStyle='rgba(255,255,255,0.5)';
+ctx.font='11px monospace';
+const statY=challengeScore>0?H*0.50:H*0.46;
+ctx.fillText('Max Combo: '+maxCombo+'  Phases: '+phaseCount,W/2,statY);
+ctx.fillText('Gates: '+gatesHit+'  Threaded: '+obstaclesThreaded,W/2,statY+16);
+ctx.fillText('Time: '+elapsed.toFixed(1)+'s',W/2,statY+32);
+
+// Retry
+const retryPulse=0.5+Math.sin(Date.now()/300)*0.5;
+ctx.globalAlpha=0.5+retryPulse*0.5;
+ctx.fillStyle='#fff';
+ctx.font='15px monospace';
+ctx.fillText('TAP TO RETRY',W/2,H*0.72);
+ctx.globalAlpha=1;
+
+// Share / Challenge buttons
+const btnW=90,btnH=32,btnGap=12;
+const btnY=H*0.79;
+const shareX=W/2-btnW-btnGap/2;
+const challX=W/2+btnGap/2;
+// Share btn
+ctx.fillStyle=`hsla(${baseHue},70%,45%,0.7)`;
+roundRect(ctx,shareX,btnY,btnW,btnH,6);ctx.fill();
+ctx.strokeStyle=`hsla(${baseHue},80%,60%,0.8)`;ctx.lineWidth=1;
+roundRect(ctx,shareX,btnY,btnW,btnH,6);ctx.stroke();
+ctx.fillStyle='#fff';ctx.font='bold 11px monospace';ctx.textAlign='center';
+ctx.fillText('SHARE',shareX+btnW/2,btnY+20);
+// Challenge btn
+ctx.fillStyle='hsla(280,70%,45%,0.7)';
+roundRect(ctx,challX,btnY,btnW,btnH,6);ctx.fill();
+ctx.strokeStyle='hsla(280,80%,60%,0.8)';ctx.lineWidth=1;
+roundRect(ctx,challX,btnY,btnW,btnH,6);ctx.stroke();
+ctx.fillStyle='#fff';ctx.font='bold 11px monospace';ctx.textAlign='center';
+ctx.fillText('CHALLENGE',challX+btnW/2,btnY+20);
+
+// Store btn bounds for click detection
+window._shareBtnBounds={x:shareX,y:btnY,w:btnW,h:btnH};
+window._challBtnBounds={x:challX,y:btnY,w:btnW,h:btnH};
+}
+
+ctx.restore();
+}
+
+function roundRect(ctx,x,y,w,h,r){
+ctx.beginPath();
+ctx.moveTo(x+r,y);
+ctx.lineTo(x+w-r,y);
+ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+ctx.lineTo(x+w,y+h-r);
+ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+ctx.lineTo(x+r,y+h);
+ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+ctx.lineTo(x,y+r);
+ctx.quadraticCurveTo(x,y,x+r,y);
+ctx.closePath();
+}
+
+function generateShareImage(){
+const sc=document.createElement('canvas');
+sc.width=600;sc.height=315;
+const sctx=sc.getContext('2d');
+// Background
+const g=sctx.createLinearGradient(0,0,600,315);
+g.addColorStop(0,'#0a0a2e');g.addColorStop(1,'#1a0a3e');
+sctx.fillStyle=g;sctx.fillRect(0,0,600,315);
+// Title
+sctx.fillStyle='#b0b0ff';sctx.font='bold 36px monospace';sctx.textAlign='center';
+sctx.fillText('GLITCH SPRINT',300,80);
+// Score
+sctx.fillStyle='#fff';sctx.font='bold 64px monospace';
+sctx.fillText(Math.floor(score),300,170);
+sctx.fillStyle='rgba(255,255,255,0.5)';sctx.font='16px monospace';
+sctx.fillText('SCORE',300,195);
+// Stats
+sctx.fillStyle='rgba(255,255,255,0.6)';sctx.font='14px monospace';
+sctx.fillText('Combo: '+maxCombo+' | Phases: '+phaseCount+' | Time: '+elapsed.toFixed(1)+'s',300,240);
+// URL
+sctx.fillStyle='rgba(255,200,100,0.7)';sctx.font='13px monospace';
+sctx.fillText('balinti.github.io/glitch-sprint',300,280);
+return sc;
+}
+
+function shareScore(){
+const shareUrl=window.location.origin+window.location.pathname+'?challenge='+Math.floor(score);
+const text='I scored '+Math.floor(score)+' in Glitch Sprint! Can you beat me?';
+if(navigator.share){
+const shareCanvas=generateShareImage();
+shareCanvas.toBlob(function(blob){
+if(blob&&navigator.canShare&&navigator.canShare({files:[new File([blob],'glitch-sprint.png',{type:'image/png'})]})){
+navigator.share({
+title:'Glitch Sprint Score',
+text:text,
+url:shareUrl,
+files:[new File([blob],'glitch-sprint.png',{type:'image/png'})]
+}).catch(()=>{});
+}else{
+navigator.share({title:'Glitch Sprint Score',text:text,url:shareUrl}).catch(()=>{});
+}
+},'image/png');
+}else{
+copyToClipboard(text+' '+shareUrl);
+}
+}
+
+function shareChallenge(){
+const shareUrl=window.location.origin+window.location.pathname+'?challenge='+Math.floor(score);
+const text='Beat my score of '+Math.floor(score)+' in Glitch Sprint!';
+if(navigator.share){
+navigator.share({title:'Glitch Sprint Challenge',text:text,url:shareUrl}).catch(()=>{});
+}else{
+copyToClipboard(text+' '+shareUrl);
+}
+}
+
+function copyToClipboard(text){
+if(navigator.clipboard){
+navigator.clipboard.writeText(text).then(()=>{showCopyMsg();}).catch(()=>{fallbackCopy(text);});
+}else{fallbackCopy(text);}
+}
+function fallbackCopy(text){
+const ta=document.createElement('textarea');
+ta.value=text;ta.style.position='fixed';ta.style.left='-9999px';
+document.body.appendChild(ta);ta.select();
+try{document.execCommand('copy');showCopyMsg();}catch(e){}
+document.body.removeChild(ta);
+}
+let copyMsgTimer=0;
+function showCopyMsg(){copyMsgTimer=2;}
+
+function downloadShareImage(){
+const shareCanvas=generateShareImage();
+const link=document.createElement('a');
+link.download='glitch-sprint-'+Math.floor(score)+'.png';
+link.href=shareCanvas.toDataURL('image/png');
+link.click();
+}
+
+// Input
+function getCanvasPos(e){
+const rect=canvas.getBoundingClientRect();
+const x=((e.clientX||e.touches&&e.touches[0]&&e.touches[0].clientX||0)-rect.left)*(W/rect.width);
+const y=((e.clientY||e.touches&&e.touches[0]&&e.touches[0].clientY||0)-rect.top)*(H/rect.height);
+return{x,y};
+}
+
+function handleInput(e){
+initAudio();
+if(state==='start'){
+state='playing';
+resetGame();
+return;
+}
+if(state==='gameover'){
+// Check share/challenge buttons
+if(e){
+const pos=getCanvasPos(e);
+const sb=window._shareBtnBounds;
+const cb=window._challBtnBounds;
+if(sb&&pos.x>=sb.x&&pos.x<=sb.x+sb.w&&pos.y>=sb.y&&pos.y<=sb.y+sb.h){
+shareScore();
+return;
+}
+if(cb&&pos.x>=cb.x&&pos.x<=cb.x+cb.w&&pos.y>=cb.y&&pos.y<=cb.y+cb.h){
+shareChallenge();
+return;
+}
+}
+state='start';
+return;
+}
+if(state==='playing'){
+triggerPhase();
+}
+}
+
+canvas.addEventListener('pointerdown',function(e){
+e.preventDefault();
+handleInput(e);
+});
+document.addEventListener('keydown',function(e){
+if(e.code==='Space'||e.code==='Enter'){
+e.preventDefault();
+handleInput(null);
+}
+});
+
+// Game loop
+let lastTime=0;
+function loop(ts){
+const dt=Math.min((ts-lastTime)/1000,0.05);
+lastTime=ts;
+update(dt);
+draw();
+
+// Copy message overlay
+if(copyMsgTimer>0){
+ctx.save();
+ctx.setTransform(DPR,0,0,DPR,0,0);
+ctx.fillStyle='rgba(0,0,0,0.7)';
+roundRect(ctx,W/2-70,H*0.65,140,30,8);ctx.fill();
+ctx.fillStyle='#fff';ctx.font='13px monospace';ctx.textAlign='center';
+ctx.fillText('Link copied!',W/2,H*0.65+20);
+ctx.restore();
+copyMsgTimer-=dt;
+}
+
+requestAnimationFrame(loop);
+}
+requestAnimationFrame(function(ts){lastTime=ts;loop(ts);});
+
+})();
+</script>
+</body>
+</html>

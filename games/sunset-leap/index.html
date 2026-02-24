@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Sunset Leap - Free HTML5 Game</title>
+<meta name="description" content="Play Sunset Leap - Tap to jump gaps while collecting random powerups during a vibrant sunset.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#ff6a00">
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="Sunset Leap - Free HTML5 Game">
+<meta property="og:description" content="Endless rooftop runner. Only the shadowed zones are safe. How long can you survive the Shadowline?">
+<meta property="og:url" content="https://balinti.github.io/sunset-leap/">
+<meta property="og:image" content="https://balinti.github.io/sunset-leap/preview.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Sunset Leap - Free HTML5 Game">
+<meta name="twitter:description" content="Endless rooftop runner. Only the shadowed zones are safe. How long can you survive the Shadowline?">
+<meta name="twitter:image" content="https://balinti.github.io/sunset-leap/preview.png">
+<!-- AdSense -->
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#0a0010;overflow:hidden;font-family:'Segoe UI',Arial,sans-serif;touch-action:manipulation}
+#wrap{
+  position:relative;
+  width:min(420px,100vw);
+  height:min(750px,100vh);
+  margin:auto;
+  overflow:hidden;
+  touch-action:manipulation;
+}
+#gameCanvas{display:block;width:100%;height:100%;}
+.panel{
+  position:absolute;top:0;left:0;right:0;bottom:0;
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  pointer-events:all;z-index:10;
+  transition:opacity 0.25s;
+}
+.panel.hidden{opacity:0;pointer-events:none;}
+#startPanel{background:linear-gradient(160deg,rgba(20,5,40,0.88)0%,rgba(60,20,0,0.85)100%);}
+#gameoverPanel{background:linear-gradient(160deg,rgba(10,0,20,0.92)0%,rgba(50,10,5,0.90)100%);}
+.panel h1{
+  font-size:2.2rem;font-weight:900;
+  background:linear-gradient(90deg,#ffd080,#ff6030,#ff90a0);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  text-align:center;line-height:1.1;margin-bottom:6px;letter-spacing:-1px;
+}
+.panel h2{font-size:1.25rem;font-weight:700;color:#ffb060;text-align:center;margin-bottom:20px;}
+.subtitle{color:#cc8866;font-size:0.85rem;text-align:center;margin-bottom:22px;max-width:300px;line-height:1.5;}
+.tap-btn{
+  background:linear-gradient(135deg,#ff6030,#ff9020);
+  color:#fff;font-weight:900;font-size:1.1rem;
+  border:none;border-radius:12px;padding:14px 44px;
+  cursor:pointer;letter-spacing:1px;
+  box-shadow:0 4px 24px rgba(255,100,30,0.5);
+  transition:transform 0.1s,box-shadow 0.1s;margin-top:10px;
+}
+.tap-btn:active{transform:scale(0.96);}
+.stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 20px;margin:14px 0;width:280px;}
+.stat-item{background:rgba(255,255,255,0.07);border-radius:8px;padding:8px 12px;text-align:center;}
+.stat-item .val{font-size:1.3rem;font-weight:800;color:#ffcc60;display:block;}
+.stat-item .lbl{font-size:0.72rem;color:#aa8866;text-transform:uppercase;letter-spacing:1px;}
+.share-row{display:flex;gap:10px;margin-top:14px;}
+.share-btn{background:rgba(255,255,255,0.12);color:#fff;border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:8px 18px;font-size:0.85rem;cursor:pointer;transition:background 0.15s;}
+.share-btn:hover{background:rgba(255,255,255,0.22);}
+#howto{position:absolute;bottom:0;left:0;right:0;z-index:20;}
+#howto-toggle{width:100%;background:rgba(0,0,0,0.6);color:#aa8866;font-size:0.75rem;border:none;border-top:1px solid rgba(255,255,255,0.1);padding:6px;cursor:pointer;}
+#howto-body{display:none;background:rgba(0,0,0,0.85);padding:12px 16px;color:#998877;font-size:0.78rem;line-height:1.6;border-top:1px solid rgba(255,255,255,0.08);max-height:160px;overflow-y:auto;}
+#howto-body.open{display:block;}
+#howto-body h3{color:#ffaa60;margin-bottom:6px;font-size:0.85rem;}
+#howto-body p{margin-bottom:5px;}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="gameCanvas"></canvas>
+
+  <div class="panel" id="startPanel">
+    <h1>Sunset Leap</h1>
+    <h2>Shadowline</h2>
+    <p class="subtitle">Only the <strong style="color:#8090ff">shadowed zones</strong> are safe.<br>Build your streak. Dare the sunlit edge.</p>
+    <button class="tap-btn" id="startBtn">TAP TO START</button>
+    <p style="color:#664433;font-size:0.72rem;margin-top:14px;">Space / Enter / Tap to jump</p>
+  </div>
+
+  <div class="panel hidden" id="gameoverPanel">
+    <h1>Game Over</h1>
+    <div class="stats-grid">
+      <div class="stat-item"><span class="val" id="goScore">0</span><span class="lbl">Score</span></div>
+      <div class="stat-item"><span class="val" id="goBest">0</span><span class="lbl">Best</span></div>
+      <div class="stat-item"><span class="val" id="goMeters">0m</span><span class="lbl">Distance</span></div>
+      <div class="stat-item"><span class="val" id="goMult">1x</span><span class="lbl">Max Mult</span></div>
+      <div class="stat-item"><span class="val" id="goNear">0</span><span class="lbl">Near-Misses</span></div>
+      <div class="stat-item"><span class="val" id="goCoins">0</span><span class="lbl">Sun Coins</span></div>
+    </div>
+    <div class="share-row">
+      <button class="share-btn" id="shareBtn">Share</button>
+      <button class="share-btn" id="copyBtn">Copy Score</button>
+    </div>
+    <button class="tap-btn" id="retryBtn">PLAY AGAIN</button>
+  </div>
+
+  <div id="howto">
+    <button id="howto-toggle" onclick="var b=document.getElementById('howto-body');b.classList.toggle('open');this.textContent=b.classList.contains('open')?'▲ How to Play':'▼ How to Play'">▼ How to Play</button>
+    <div id="howto-body">
+      <h3>Sunset Leap: Shadowline — How to Play</h3>
+      <p><strong>Goal:</strong> Auto-run across rooftops and only land in the dark <em>shadowed zones</em>. Landing in sunlit areas ends the game.</p>
+      <p><strong>Controls:</strong> Tap the screen, press Space, or press Enter to jump. Time your jump so you land inside the moving shadow!</p>
+      <p><strong>Shadow Streak:</strong> Each safe landing builds your multiplier (up to 10×). Breaking your streak resets it.</p>
+      <p><strong>Near-Miss Bonus:</strong> Landing close to a shadow edge earns extra points and a brief slow-motion moment.</p>
+      <p><strong>Sun Coins ☀:</strong> Gold coins appear in dangerous lit zones. Pass through them and still land in shadow to collect them!</p>
+      <p><strong>Difficulty:</strong> Shadows shrink and speed up over time. After 30s, split shadows appear. After 2 min, glare flickers in lit zones.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+// ── Constants ──────────────────────────────────────────────────────────────
+const HS_SCORE  = 'sl_shadowline_hs_score';
+const HS_METERS = 'sl_shadowline_hs_meters';
+const PW = 22, PH = 34;
+const GRAV = 2400, JUMP_VY = -860, VY_MAX = 1400;
+const COYOTE = 0.085, JUMP_BUF = 0.10;
+
+// ── DOM ────────────────────────────────────────────────────────────────────
+const wrap     = document.getElementById('wrap');
+const canvas   = document.getElementById('gameCanvas');
+const ctx      = canvas.getContext('2d');
+const startPnl = document.getElementById('startPanel');
+const goPnl    = document.getElementById('gameoverPanel');
+
+// ── HiDPI resize ──────────────────────────────────────────────────────────
+let W, H, DPR;
+function resize(){
+  const r = wrap.getBoundingClientRect();
+  W = r.width; H = r.height;
+  DPR = Math.min(Math.max(devicePixelRatio||1,1),2.5);
+  canvas.width  = Math.floor(W*DPR);
+  canvas.height = Math.floor(H*DPR);
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function clamp(v,mn,mx){return Math.max(mn,Math.min(mx,v));}
+function lerp(a,b,t){return a+(b-a)*t;}
+// Deterministic hash → 0..1
+function rng(seed){
+  let s=((seed^0x9e3779b9)>>>0);
+  s=(Math.imul(s^(s>>>16),0x45d9f3b)>>>0);
+  s=(Math.imul(s^(s>>>16),0x45d9f3b)>>>0);
+  return (s>>>0)/4294967295;
+}
+
+// ── Audio ──────────────────────────────────────────────────────────────────
+let audioCtx=null, audioReady=false;
+function initAudio(){if(!audioCtx){try{audioCtx=new(window.AudioContext||window.webkitAudioContext)();audioReady=true;}catch(e){}}}
+function beep(freq,dur,vol,type){
+  if(!audioReady)return;
+  try{
+    const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+    o.connect(g);g.connect(audioCtx.destination);
+    o.type=type||'sine';o.frequency.value=freq;
+    g.gain.setValueAtTime(vol,audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001,audioCtx.currentTime+dur);
+    o.start(audioCtx.currentTime);o.stop(audioCtx.currentTime+dur);
+  }catch(e){}
+}
+
+// ── Particles ──────────────────────────────────────────────────────────────
+let parts=[];
+function spawnParts(x,y,count,vxR,vyR,life,sz,hue,sat,lit,drag,grav){
+  drag=drag||0.95; grav=grav||600;
+  for(let i=0;i<count;i++){
+    parts.push({
+      x,y,
+      vx:(Math.random()*2-1)*vxR,
+      vy:-Math.random()*vyR,
+      life:life+Math.random()*0.2,
+      maxLife:life+0.2,
+      sz:sz*(0.5+Math.random()*0.8),
+      h:hue+(Math.random()*30-15),s:sat,l:lit,
+      drag,grav
+    });
+  }
+}
+function updateParts(dt){
+  for(let i=parts.length-1;i>=0;i--){
+    const p=parts[i];
+    p.life-=dt;
+    if(p.life<=0){parts.splice(i,1);continue;}
+    p.vx*=Math.pow(p.drag,dt*60);
+    p.vy=p.vy*Math.pow(p.drag,dt*60)+p.grav*dt;
+    p.x+=p.vx*dt; p.y+=p.vy*dt;
+  }
+}
+function drawParts(camX){
+  for(const p of parts){
+    ctx.globalAlpha=(p.life/p.maxLife)*0.88;
+    ctx.fillStyle=`hsl(${p.h},${p.s}%,${p.l}%)`;
+    ctx.beginPath();
+    ctx.arc(p.x-camX,p.y,p.sz,0,Math.PI*2);
+    ctx.fill();
+  }
+  ctx.globalAlpha=1;
+}
+
+// ── Screen shake ──────────────────────────────────────────────────────────
+let shk={t:0,dur:0,amp:0};
+function trigShake(amp,dur){shk.t=0;shk.dur=dur;shk.amp=Math.max(shk.amp,amp);}
+function getShake(){
+  if(shk.t>=shk.dur)return[0,0];
+  const d=1-shk.t/shk.dur;
+  return[(Math.random()*2-1)*shk.amp*d,(Math.random()*2-1)*shk.amp*d];
+}
+
+// ── Difficulty helpers ─────────────────────────────────────────────────────
+function platWMax(t){return Math.max(200,320-0.55*t);}
+function platWMin(t){return Math.max(120,220-0.85*t);}
+function gapMin(t){return Math.min(120,70+0.45*t);}
+function gapMax(t){return Math.min(190,120+0.60*t);}
+function safeFrac(t){return clamp(0.55-0.0032*t,0.18,0.55);}
+function shdSpeed(t){return clamp(0.18+0.0042*t,0.18,0.65);}
+function gameSpeed(t){return clamp(260+1.35*t,260,520);}
+function nearWin(t){return clamp(10-0.03*t,4,10);}
+
+// ── Shadow ranges ─────────────────────────────────────────────────────────
+function getShadowRanges(plat){
+  const sf=plat.shadow.safeFrac, ph=plat.shadow.phase;
+  const safeW=plat.w*sf;
+  const L=plat.x+(plat.w-safeW)*ph;
+  if(plat.shadow.split){
+    const pw=safeW*0.45, gw=safeW*0.10;
+    return [{l:L,r:L+pw},{l:L+pw+gw,r:L+2*pw+gw}];
+  }
+  return [{l:L,r:L+safeW}];
+}
+
+// ── Platform factory ──────────────────────────────────────────────────────
+function makePlat(worldX, t, idx, prevDir){
+  const seed=1000+idx*97;
+  const wMin=platWMin(t), wMax=platWMax(t);
+  const w=wMin+rng(seed)*(wMax-wMin);
+  const baseY=H*0.62;
+  const y=clamp(baseY+(rng(seed+1)*140-70), H*0.40, H*0.78);
+  const sf=safeFrac(t), ss=shdSpeed(t);
+  let dir=rng(seed+2)>0.5?1:-1;
+  if(t>=10 && idx%3===0) dir=-(prevDir||1);
+  const phase=rng(seed+3);
+  const split=t>=30&&idx%5===0;
+
+  // coin placement: static position in lit zone
+  const coinFreq=t<60?6:4;
+  const hasCoin=idx%coinFreq===0&&idx>3;
+  let coinX=null;
+  if(hasCoin){
+    const safeW2=w*sf;
+    const L2=worldX+(w-safeW2)*phase;
+    const beforeW=L2-worldX;
+    const afterW=(worldX+w)-(L2+safeW2);
+    if(beforeW>=18&&afterW>=18){
+      coinX=rng(seed+5)>0.5 ? worldX+beforeW*0.5 : L2+safeW2+afterW*0.5;
+    } else if(beforeW>=18){ coinX=worldX+beforeW*0.5; }
+    else if(afterW>=18){ coinX=L2+safeW2+afterW*0.5; }
+    else{ coinX=worldX+w*0.15; }
+  }
+
+  return {x:worldX,y,w,h:18,
+    shadow:{dir,phase,speed:ss,safeFrac:sf,split},
+    coin:hasCoin?{x:coinX,collected:false}:null,
+    idx};
+}
+
+// ── Game state ────────────────────────────────────────────────────────────
+let G={};  // game state object
+let lastT=0, raf=0, inputLock=false;
+
+function initGame(){
+  parts=[]; shk={t:0,dur:0,amp:0};
+  G={
+    state:'playing', t:0,
+    score:0, distance:0, meters:0,
+    streak:0, mult:1, maxMult:1,
+    coins:0, nearMisses:0,
+    sunHue:20, camX:0,
+    slowMoT:0, timeScale:1,
+    platforms:[], platIdx:0, prevDir:1,
+    lastPlatX:0,
+    pl:{x:60,y:0,vx:0,vy:0,w:PW,h:PH,
+        onGround:false,wasOnGround:false,
+        coyoteT:0,jumpBufT:0,
+        squash:1,stretch:1,dead:false},
+    deathTimer:0
+  };
+
+  // generate initial platforms
+  let wx=20;
+  for(let i=0;i<14;i++){
+    const g=i===0?0:gapMin(0)+rng(i*37)*(gapMax(0)-gapMin(0));
+    const p=makePlat(wx,0,i,G.prevDir);
+    G.prevDir=p.shadow.dir;
+    wx=p.x+p.w+g;
+    G.platforms.push(p);
+    if(i===0){
+      G.pl.x=p.x+30; G.pl.y=p.y-PH; G.pl.onGround=true; G.pl.coyoteT=COYOTE;
+    }
+  }
+  G.lastPlatX=G.platforms[G.platforms.length-1].x+G.platforms[G.platforms.length-1].w;
+  G.platIdx=G.platforms.length-1;
+}
+
+// ── Input ─────────────────────────────────────────────────────────────────
+function doJump(){
+  const pl=G.pl;
+  if(pl.dead)return;
+  if(pl.onGround||pl.coyoteT>0){
+    pl.vy=JUMP_VY; pl.onGround=false; pl.coyoteT=0;
+    pl.squash=0.7; pl.stretch=1.3;
+    beep(420,0.08,0.12,'square');
+  } else {
+    pl.jumpBufT=JUMP_BUF;
+  }
+}
+function handleTap(){
+  if(G.state==='start')         { startGame(); return; }
+  if(G.state==='playing')       { doJump(); return; }
+  if(G.state==='gameover'&&!inputLock){ restartGame(); }
+}
+
+document.addEventListener('pointerdown',e=>{
+  e.preventDefault();
+  if(e.target.classList.contains('tap-btn')||e.target.classList.contains('share-btn'))return;
+  initAudio();
+  handleTap();
+},{passive:false});
+document.addEventListener('keydown',e=>{
+  if(e.code==='Space'||e.code==='Enter'){
+    e.preventDefault(); initAudio(); handleTap();
+  }
+});
+document.getElementById('startBtn').addEventListener('click',e=>{e.stopPropagation();initAudio();startGame();});
+document.getElementById('retryBtn').addEventListener('click',e=>{e.stopPropagation();initAudio();if(!inputLock)restartGame();});
+
+// ── Share ─────────────────────────────────────────────────────────────────
+function shareText(){return`🌅 Sunset Leap: Shadowline\nScore: ${Math.floor(G.score)} | ${G.meters}m | ×${G.maxMult} | ${G.coins}☀\nhttps://balinti.github.io/sunset-leap/`;}
+document.getElementById('shareBtn').addEventListener('click',()=>{
+  if(navigator.share){navigator.share({title:'Sunset Leap',text:shareText()}).catch(()=>{});}
+  else{navigator.clipboard.writeText(shareText()).catch(()=>{});alert('Copied!');}
+});
+document.getElementById('copyBtn').addEventListener('click',()=>{
+  navigator.clipboard.writeText(shareText()).then(()=>alert('Score copied!')).catch(()=>alert(shareText()));
+});
+
+// ── Game over ─────────────────────────────────────────────────────────────
+function showGameOver(){
+  G.state='gameover';
+  const prev=+localStorage.getItem(HS_SCORE)||0;
+  const prevM=+localStorage.getItem(HS_METERS)||0;
+  const sc=Math.floor(G.score);
+  if(sc>prev) localStorage.setItem(HS_SCORE,sc);
+  if(G.meters>prevM) localStorage.setItem(HS_METERS,G.meters);
+  document.getElementById('goScore').textContent=sc;
+  document.getElementById('goBest').textContent=Math.max(sc,prev);
+  document.getElementById('goMeters').textContent=G.meters+'m';
+  document.getElementById('goMult').textContent=G.maxMult+'×';
+  document.getElementById('goNear').textContent=G.nearMisses;
+  document.getElementById('goCoins').textContent=G.coins;
+  goPnl.classList.remove('hidden');
+  inputLock=true;
+  setTimeout(()=>inputLock=false,350);
+}
+
+function startGame(){
+  startPnl.classList.add('hidden');
+  goPnl.classList.add('hidden');
+  initGame(); lastT=0;
+}
+function restartGame(){
+  goPnl.classList.add('hidden');
+  initGame(); lastT=0;
+}
+
+// ── Update ────────────────────────────────────────────────────────────────
+function update(dt){
+  // slow-mo
+  G.slowMoT>0 ? (G.slowMoT-=dt, G.timeScale=0.55) : (G.timeScale=1);
+  const sdt=dt*G.timeScale;
+
+  G.t+=sdt;
+  shk.t+=dt;
+  G.sunHue=(G.sunHue+6*sdt)%360;
+
+  const spd=gameSpeed(G.t);
+  G.distance+=spd*sdt;
+  G.meters=Math.floor(G.distance/10);
+  G.score+=(spd*sdt)*0.08*G.mult;
+
+  const pl=G.pl;
+
+  if(pl.dead){
+    G.deathTimer-=dt;
+    if(G.deathTimer<=0) showGameOver();
+    updateParts(sdt);
+    G.camX=pl.x-W*0.35;
+    return;
+  }
+
+  // timers
+  if(pl.coyoteT>0) pl.coyoteT-=sdt;
+  if(pl.jumpBufT>0) pl.jumpBufT-=sdt;
+
+  // jump buffer: if just landed with buffer queued
+  if(pl.jumpBufT>0&&(pl.onGround||pl.coyoteT>0)){
+    pl.vy=JUMP_VY; pl.onGround=false; pl.coyoteT=0; pl.jumpBufT=0;
+    pl.squash=0.7; pl.stretch=1.3;
+    beep(420,0.08,0.12,'square');
+  }
+
+  // gravity
+  if(!pl.onGround){pl.vy=Math.min(pl.vy+GRAV*sdt,VY_MAX);}
+
+  pl.wasOnGround=pl.onGround;
+  pl.onGround=false;
+
+  pl.y+=pl.vy*sdt;
+  pl.x+=spd*sdt;
+
+  // squash/stretch recovery
+  pl.squash=lerp(pl.squash,1,sdt*14);
+  pl.stretch=lerp(pl.stretch,1,sdt*14);
+
+  // ── Platform collision ─────────────────────────────────────────────────
+  const cx=pl.x+pl.w/2;
+  for(const plat of G.platforms){
+    const prevBottom=pl.y-pl.vy*sdt;
+    if(cx<=plat.x||cx>=plat.x+plat.w)continue;
+    if(pl.y+pl.h<plat.y||prevBottom+pl.h>plat.y+plat.h+2)continue;
+    if(pl.vy<0)continue;
+    // landed
+    pl.y=plat.y-pl.h; pl.vy=0; pl.onGround=true;
+    pl.squash=1.3; pl.stretch=0.7;
+
+    // check shadow
+    const ranges=getShadowRanges(plat);
+    let inShadow=false;
+    for(const {l,r} of ranges){if(cx>=l&&cx<=r){inShadow=true;break;}}
+
+    // near-miss: min distance to any shadow edge
+    const nw=nearWin(G.t);
+    let dEdge=Infinity;
+    for(const {l,r} of ranges){dEdge=Math.min(dEdge,Math.abs(cx-l),Math.abs(cx-r));}
+
+    if(inShadow){
+      G.streak++;
+      G.mult=Math.min(10,1+Math.floor(G.streak/4));
+      G.maxMult=Math.max(G.maxMult,G.mult);
+      G.score+=10*G.mult;
+      // landing dust
+      spawnParts(cx,plat.y,10,60,80,0.5,3.5,220,60,70);
+
+      if(dEdge<=nw){
+        const bonus=Math.floor((nw-dEdge+1)*6)*G.mult;
+        G.score+=bonus; G.slowMoT=0.10; G.nearMisses++;
+        trigShake(4,0.10);
+        spawnParts(cx,plat.y,16,130,170,0.75,4,30,100,65);
+        spawnParts(cx,plat.y,8,100,140,0.6,3,200,100,70);
+        beep(880,0.12,0.2,'sine');
+      } else {
+        beep(330,0.06,0.08,'sine');
+      }
+    } else {
+      // death – landed in lit zone
+      pl.dead=true; G.streak=0;
+      trigShake(14,0.22); G.deathTimer=0.9;
+      spawnParts(cx,plat.y,24,180,220,1.0,5.5,20,80,50,0.92,350);
+      spawnParts(cx,plat.y,16,220,280,1.4,3,40,100,70,0.96,130);
+      beep(160,0.35,0.3,'sawtooth');
+    }
+    break;
+  }
+
+  // coyote: if was on ground but no longer
+  if(pl.wasOnGround&&!pl.onGround&&pl.coyoteT<=0&&pl.vy>0){
+    pl.coyoteT=COYOTE;
+  }
+  if(pl.onGround) pl.coyoteT=COYOTE;
+
+  // fall off screen
+  if(pl.y>H+120&&!pl.dead){
+    pl.dead=true; trigShake(14,0.22); G.deathTimer=0.7;
+    spawnParts(pl.x,H+20,16,120,200,0.8,4,20,80,50,0.93,180);
+    beep(160,0.35,0.3,'sawtooth');
+  }
+
+  // coin collection
+  for(const plat of G.platforms){
+    if(!plat.coin||plat.coin.collected)continue;
+    const co=plat.coin;
+    const cy=plat.y-42;
+    const nx=clamp(co.x,pl.x,pl.x+pl.w);
+    const ny=clamp(cy,pl.y,pl.y+pl.h);
+    const dx=co.x-nx, dy=cy-ny;
+    if(dx*dx+dy*dy<64){
+      co.collected=true; G.coins++;
+      G.score+=25*G.mult;
+      spawnParts(co.x,cy,12,90,130,0.65,4.5,50,100,65);
+      beep(660,0.1,0.18,'sine');
+    }
+  }
+
+  // advance shadow phases
+  for(const plat of G.platforms){
+    const sh=plat.shadow;
+    sh.phase+=sh.dir*sh.speed*sdt;
+    if(sh.phase>1){sh.phase=2-sh.phase;sh.dir*=-1;}
+    if(sh.phase<0){sh.phase=-sh.phase;sh.dir*=-1;}
+  }
+
+  G.camX=pl.x-W*0.35;
+
+  // spawn new platforms
+  while(G.lastPlatX-G.camX<W+500){
+    G.platIdx++;
+    const seed=1000+G.platIdx*97;
+    const g=gapMin(G.t)+rng(seed+4)*(gapMax(G.t)-gapMin(G.t));
+    const p=makePlat(G.lastPlatX+g,G.t,G.platIdx,G.prevDir);
+    G.prevDir=p.shadow.dir;
+    G.platforms.push(p);
+    G.lastPlatX=p.x+p.w;
+  }
+
+  // cull old platforms
+  G.platforms=G.platforms.filter(p=>p.x+p.w>G.camX-250);
+
+  updateParts(sdt);
+}
+
+// ── Draw background ────────────────────────────────────────────────────────
+function drawBG(){
+  const h=G.sunHue;
+  const g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,   `hsl(${(h+280)%360},55%,10%)`);
+  g.addColorStop(0.28,`hsl(${(h+220)%360},65%,18%)`);
+  g.addColorStop(0.58,`hsl(${(h+10)%360},85%,30%)`);
+  g.addColorStop(0.82,`hsl(${h%360},92%,48%)`);
+  g.addColorStop(1,   `hsl(${(h-15+360)%360},90%,32%)`);
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+}
+
+// ── Parallax layers ───────────────────────────────────────────────────────
+function drawParallax(camX){
+  const h=G.sunHue;
+  // Far buildings
+  ctx.fillStyle=`hsla(${(h+250)%360},40%,8%,0.9)`;
+  const off1=camX*0.18;
+  for(let j=0;j<14;j++){
+    const bx=((j*63+off1)%W+W)%W-30;
+    const bh=H*(0.12+rng(j*17+2)*0.22);
+    const bw=22+rng(j*17)*28;
+    ctx.fillRect(bx,H-bh,bw,bh);
+  }
+  // Mid buildings
+  ctx.fillStyle=`hsla(${(h+240)%360},30%,14%,0.85)`;
+  const off2=camX*0.32;
+  for(let j=0;j<18;j++){
+    const bx=((j*47+off2)%W+W)%W-20;
+    const bh=H*(0.08+rng(j*23+1)*0.16);
+    const bw=14+rng(j*23)*22;
+    ctx.fillRect(bx,H-bh,bw,bh);
+  }
+  // Clouds
+  ctx.fillStyle=`hsla(${(h+15)%360},60%,80%,0.13)`;
+  const off3=camX*0.06;
+  for(let j=0;j<5;j++){
+    const cx2=((j*110+off3)%W+W)%W;
+    const cy=H*(0.08+rng(j*11+5)*0.22);
+    ctx.beginPath();
+    ctx.ellipse(cx2,cy,55+rng(j*11+9)*30,16+rng(j*11+3)*10,0,0,Math.PI*2);
+    ctx.fill();
+  }
+}
+
+// ── Draw platform ─────────────────────────────────────────────────────────
+function drawPlat(plat){
+  const sx=plat.x-G.camX, sy=plat.y;
+  const h=G.sunHue;
+
+  // base
+  const pg=ctx.createLinearGradient(sx,sy,sx,sy+plat.h);
+  pg.addColorStop(0,`hsl(${(h+200)%360},28%,28%)`);
+  pg.addColorStop(1,`hsl(${(h+200)%360},22%,18%)`);
+  ctx.fillStyle=pg;
+  ctx.fillRect(sx,sy,plat.w,plat.h);
+
+  // lit overlay
+  ctx.fillStyle=`hsla(${(h+15)%360},95%,65%,0.38)`;
+  ctx.fillRect(sx,sy,plat.w,plat.h);
+
+  // glare flicker after 120s
+  if(G.t>120){
+    const fi=clamp((G.t-120)/60,0,0.45);
+    const fl=(Math.sin(Date.now()*0.003+plat.x*0.1)*0.5+0.5);
+    // animated bands
+    for(let k=0;k<3;k++){
+      const by=sy+((Date.now()*0.0007+k*0.33+plat.x*0.002)%1)*plat.h;
+      ctx.fillStyle=`hsla(${(h+25)%360},100%,90%,${fi*fl*0.12})`;
+      ctx.fillRect(sx,by,plat.w,2.5);
+    }
+  }
+
+  // shadow safe zones
+  const ranges=getShadowRanges(plat);
+  for(const {l,r} of ranges){
+    const rx=l-G.camX;
+    ctx.fillStyle=`hsla(${(h+225)%360},65%,22%,0.80)`;
+    ctx.fillRect(rx,sy,r-l,plat.h);
+    // texture
+    ctx.fillStyle=`hsla(${(h+230)%360},50%,45%,0.25)`;
+    for(let k=0;k<3;k++) ctx.fillRect(rx,sy+k*6,r-l,1.5);
+    // edge markers
+    ctx.fillStyle=`hsla(${(h+220)%360},80%,60%,0.5)`;
+    ctx.fillRect(rx,sy,2,plat.h);
+    ctx.fillRect(rx+r-l-2,sy,2,plat.h);
+  }
+
+  // edge highlight
+  ctx.strokeStyle=`hsla(${(h+10)%360},70%,75%,0.28)`;
+  ctx.lineWidth=1;
+  ctx.strokeRect(sx,sy,plat.w,plat.h);
+}
+
+// ── Draw coin ─────────────────────────────────────────────────────────────
+function drawCoin(plat){
+  if(!plat.coin||plat.coin.collected)return;
+  const co=plat.coin;
+  const sx=co.x-G.camX;
+  const sy=plat.y-42+Math.sin(Date.now()*0.003+co.x*0.05)*5;
+  const h=G.sunHue;
+  // glow
+  const gr=ctx.createRadialGradient(sx,sy,1,sx,sy,15);
+  gr.addColorStop(0,`hsla(${(h+40)%360},100%,80%,0.7)`);
+  gr.addColorStop(1,`hsla(${(h+30)%360},100%,60%,0)`);
+  ctx.fillStyle=gr;
+  ctx.beginPath();ctx.arc(sx,sy,15,0,Math.PI*2);ctx.fill();
+  // coin
+  ctx.fillStyle=`hsl(${(h+45)%360},100%,62%)`;
+  ctx.beginPath();ctx.arc(sx,sy,8,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle=`hsl(${(h+30)%360},100%,42%)`;
+  ctx.lineWidth=1.5; ctx.stroke();
+  ctx.fillStyle=`hsl(${(h+50)%360},70%,88%)`;
+  ctx.beginPath();ctx.arc(sx-2,sy-2,2.5,0,Math.PI*2);ctx.fill();
+}
+
+// ── Draw player ───────────────────────────────────────────────────────────
+function drawPlayer(){
+  const pl=G.pl;
+  const sx=pl.x-G.camX, sy=pl.y;
+  const h=G.sunHue;
+  const cx2=sx+pl.w/2, cy=sy+pl.h/2;
+
+  ctx.save();
+  ctx.translate(cx2,cy);
+  ctx.scale(pl.squash,pl.stretch);  // note: squash on x, stretch on y
+  ctx.translate(-pl.w/2,-pl.h/2);
+
+  if(pl.dead){
+    ctx.globalAlpha=Math.max(0,G.deathTimer/0.9);
+    ctx.fillStyle=`hsl(${(h+15)%360},90%,55%)`;
+    ctx.fillRect(0,0,pl.w,pl.h);
+    ctx.globalAlpha=1;
+    ctx.restore();return;
+  }
+
+  // shadow blob
+  ctx.fillStyle='rgba(0,0,0,0.22)';
+  ctx.beginPath();ctx.ellipse(pl.w/2,pl.h+3,pl.w*0.45,3.5,0,0,Math.PI*2);ctx.fill();
+
+  // body
+  ctx.fillStyle=`hsl(${(h+5)%360},80%,48%)`;
+  ctx.fillRect(0,pl.h*0.44,pl.w,pl.h*0.56);
+  // head
+  ctx.fillStyle=`hsl(${(h+15)%360},90%,62%)`;
+  ctx.beginPath();
+  // use fillRect with manual rounded corners for wider compat
+  const hx=2,hy=0,hw=pl.w-4,hh=pl.h*0.47,hr=5;
+  ctx.moveTo(hx+hr,hy);ctx.lineTo(hx+hw-hr,hy);
+  ctx.arcTo(hx+hw,hy,hx+hw,hy+hr,hr);
+  ctx.lineTo(hx+hw,hy+hh);ctx.lineTo(hx,hy+hh);
+  ctx.arcTo(hx,hy,hx+hr,hy,hr);ctx.closePath();ctx.fill();
+  // eye
+  ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(pl.w-7,8,3,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#1a1a2e';ctx.beginPath();ctx.arc(pl.w-6,8,1.6,0,Math.PI*2);ctx.fill();
+  // legs
+  const lag=pl.onGround?Math.sin(Date.now()*0.009)*5:0;
+  ctx.fillStyle=`hsl(${(h+5)%360},65%,36%)`;
+  ctx.fillRect(2,pl.h*0.78,9,pl.h*0.22+lag);
+  ctx.fillRect(pl.w-11,pl.h*0.78,9,pl.h*0.22-lag);
+
+  ctx.restore();
+}
+
+// ── Draw HUD ──────────────────────────────────────────────────────────────
+function drawHUD(){
+  const h=G.sunHue;
+  ctx.save();
+
+  // score
+  ctx.textAlign='right';ctx.textBaseline='top';
+  ctx.font='bold 24px "Segoe UI",Arial,sans-serif';
+  ctx.fillStyle=`hsl(${(h+40)%360},100%,82%)`;
+  ctx.fillText(Math.floor(G.score),W-12,12);
+
+  ctx.font='13px "Segoe UI",Arial';
+  ctx.fillStyle=`hsl(${(h+30)%360},80%,72%)`;
+  ctx.fillText(G.meters+'m',W-12,40);
+
+  // multiplier
+  if(G.mult>1){
+    ctx.textAlign='left';
+    ctx.font=`bold ${14+G.mult*1.5}px "Segoe UI",Arial`;
+    ctx.fillStyle=`hsl(${(h+5)%360},100%,68%)`;
+    ctx.fillText('×'+G.mult,12,12);
+    ctx.font='12px "Segoe UI",Arial';
+    ctx.fillStyle=`hsl(${(h+20)%360},75%,65%)`;
+    ctx.fillText('streak '+G.streak,12,40);
+  }
+
+  // coins
+  if(G.coins>0){
+    ctx.textAlign='center';
+    ctx.font='bold 13px "Segoe UI",Arial';
+    ctx.fillStyle=`hsl(${(h+45)%360},100%,72%)`;
+    ctx.fillText('☀ '+G.coins,W/2,14);
+  }
+
+  // vignette pulse on high streak
+  if(G.streak>=8){
+    const pulse=0.5+Math.sin(Date.now()*0.004)*0.5;
+    const vg=ctx.createRadialGradient(W/2,H*0.55,H*0.18,W/2,H*0.55,H*0.75);
+    vg.addColorStop(0,'transparent');
+    vg.addColorStop(1,`hsla(${(h+280)%360},80%,28%,${0.28*pulse})`);
+    ctx.fillStyle=vg;ctx.fillRect(0,0,W,H);
+  }
+  ctx.restore();
+}
+
+// ── Draw start screen (animated bg only; panels handle UI) ────────────────
+function drawStartBG(){
+  const t=Date.now()*0.001;
+  const h=(20+t*6)%360;
+  const g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,`hsl(${(h+280)%360},55%,10%)`);
+  g.addColorStop(0.65,`hsl(${h%360},92%,44%)`);
+  g.addColorStop(1,`hsl(${(h-15+360)%360},90%,30%)`);
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  // sun glow
+  const sg=ctx.createRadialGradient(W/2,H*0.58,0,W/2,H*0.58,85);
+  sg.addColorStop(0,`hsl(${(h+40)%360},100%,92%)`);
+  sg.addColorStop(0.3,`hsl(${(h+20)%360},100%,72%)`);
+  sg.addColorStop(1,`hsla(${h%360},100%,60%,0)`);
+  ctx.fillStyle=sg;ctx.beginPath();ctx.arc(W/2,H*0.58,85,0,Math.PI*2);ctx.fill();
+}
+
+// ── Main render ───────────────────────────────────────────────────────────
+function render(){
+  ctx.clearRect(0,0,W,H);
+  if(G.state==='start'){drawStartBG();return;}
+  drawBG();
+  const[sx,sy]=getShake();
+  ctx.save();ctx.translate(sx,sy);
+  drawParallax(G.camX);
+  for(const p of G.platforms) drawPlat(p);
+  for(const p of G.platforms) drawCoin(p);
+  drawParts(G.camX);
+  drawPlayer();
+  ctx.restore();
+  if(G.state==='playing'||G.pl.dead) drawHUD();
+}
+
+// ── Main loop ─────────────────────────────────────────────────────────────
+function loop(now){
+  raf=requestAnimationFrame(loop);
+  if(!lastT){lastT=now;}
+  const dt=Math.min(0.033,(now-lastT)/1000);
+  lastT=now;
+  if(G.state==='playing'||G.pl&&G.pl.dead) update(dt);
+  render();
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────
+G={state:'start'};
+raf=requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

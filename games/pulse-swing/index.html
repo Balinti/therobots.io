@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Pulse Swing - Free HTML5 Game</title>
+  <meta name="description" content="Play Pulse Swing - Bounce between floating steampunk platforms as controls unpredictably reverse direction.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a0a1a">
+  <meta property="og:title" content="Pulse Swing - Free HTML5 Game">
+  <meta property="og:description" content="Tap to swing between anchors, flip gravity at Inverter gates, dodge hazards. How far can you go?">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://balinti.github.io/pulse-swing/">
+  <meta property="og:image" content="https://balinti.github.io/pulse-swing/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Pulse Swing - Free HTML5 Game">
+  <meta name="twitter:description" content="Tap to swing between anchors, flip gravity at Inverter gates, dodge hazards. How far can you go?">
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; min-height: 100vh;
+      background: #0a0a1a;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      color: #e0e0f0;
+      display: flex; flex-direction: column; align-items: center;
+    }
+    header {
+      width: 100%; max-width: 420px;
+      padding: 12px 16px 8px;
+      text-align: center;
+    }
+    header h1 { font-size: 1.5rem; font-weight: 800; letter-spacing: 2px; color: #a0c4ff; }
+    header p { font-size: 0.75rem; color: #7070a0; margin-top: 2px; }
+    #game-wrap {
+      width: 100%; max-width: 420px;
+      position: relative;
+      flex-shrink: 0;
+    }
+    #gc {
+      display: block;
+      width: 100%;
+      aspect-ratio: 9/16;
+      max-height: calc(100vh - 140px);
+      background: #0a0a1a;
+      cursor: pointer;
+      touch-action: none;
+      border-radius: 12px;
+      box-shadow: 0 0 40px rgba(100,140,255,0.15);
+    }
+    #below {
+      width: 100%; max-width: 420px;
+      padding: 16px;
+      font-size: 0.8rem;
+      color: #6060a0;
+      line-height: 1.6;
+    }
+    #below h2 { font-size: 0.95rem; color: #a0a0d0; margin: 12px 0 4px; }
+    #below p { margin-bottom: 8px; }
+    #below .daily { color: #a0c4ff; font-size: 0.85rem; text-align: center; margin: 8px 0; }
+    #share-btn {
+      display: none;
+      margin: 8px auto;
+      padding: 10px 24px;
+      background: linear-gradient(135deg, #4060ff, #8040ff);
+      border: none; border-radius: 24px;
+      color: #fff; font-size: 0.9rem; font-weight: 700;
+      cursor: pointer; letter-spacing: 1px;
+      box-shadow: 0 2px 16px rgba(100,80,255,0.4);
+    }
+    #share-btn:active { transform: scale(0.96); }
+    #share-msg {
+      text-align: center; font-size: 0.75rem; color: #8888cc;
+      min-height: 18px; margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+<header>
+  <h1>PULSE SWING</h1>
+  <p>Swing · Flip · Survive</p>
+</header>
+<div id="game-wrap">
+  <canvas id="gc"></canvas>
+</div>
+<div id="below">
+  <div class="daily" id="daily-label"></div>
+  <button id="share-btn">🔗 Share Score</button>
+  <div id="share-msg"></div>
+  <h2>How to Play</h2>
+  <p><strong>Tap / Space / Enter</strong> to hook onto the next anchor and swing. Release is automatic at the best moment.</p>
+  <p>Pass through <strong>Inverter Gates</strong> (+/−) to flip your gravity. Gold <strong>Steam Vents</strong> give score boosts.</p>
+  <p>Tap inside the <strong>timing ring</strong> around an anchor for a Perfect bonus and combo multiplier.</p>
+  <p>Dodge spinning <strong>hazard gears</strong>. The further you go, the faster it gets!</p>
+  <h2>FAQ</h2>
+  <p><strong>Q: How is score calculated?</strong> A: Distance + combo multiplier + Perfect bonuses + near-miss bonuses.</p>
+  <p><strong>Q: What is the Daily Seed?</strong> A: Every day has a unique level layout. Share your score to challenge friends on the same seed!</p>
+  <p><strong>Q: Does it save my best score?</strong> A: Yes, automatically in your browser.</p>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+// ─── SEEDED RNG ─────────────────────────────────────────────────────────────
+function mkRng(seed) {
+  let s = seed >>> 0;
+  return function() {
+    s ^= s << 13; s ^= s >> 17; s ^= s << 5;
+    return ((s >>> 0) / 4294967296);
+  };
+}
+
+// ─── URL / SEED SETUP ────────────────────────────────────────────────────────
+const params = new URLSearchParams(location.search);
+const todayStr = (function() {
+  const d = new Date();
+  return '' + d.getFullYear() + String(d.getMonth()+1).padStart(2,'0') + String(d.getDate()).padStart(2,'0');
+})();
+let SEED = params.has('seed') ? parseInt(params.get('seed')) : parseInt(todayStr);
+let CHALLENGE_SCORE = params.has('score') ? parseInt(params.get('score')) : 0;
+const IS_DAILY = !params.has('seed');
+
+document.getElementById('daily-label').textContent = IS_DAILY
+  ? '📅 Daily Seed: ' + todayStr
+  : '🎯 Challenge Seed: ' + SEED + (CHALLENGE_SCORE ? ' | Beat: ' + CHALLENGE_SCORE : '');
+
+// ─── HIGH SCORE ──────────────────────────────────────────────────────────────
+const HS_KEY = 'pulseSwing_v2_best';
+let bestScore = parseInt(localStorage.getItem(HS_KEY) || '0');
+
+// ─── CANVAS SETUP ────────────────────────────────────────────────────────────
+const canvas = document.getElementById('gc');
+const ctx = canvas.getContext('2d');
+const DPR = Math.min(window.devicePixelRatio || 1, 2);
+let W = 0, H = 0;
+
+function resizeCanvas() {
+  const rect = canvas.getBoundingClientRect();
+  W = rect.width;
+  H = rect.height;
+  canvas.width = W * DPR;
+  canvas.height = H * DPR;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+// ─── GAME STATE ──────────────────────────────────────────────────────────────
+const STATE = { START: 0, PLAYING: 1, GAMEOVER: 2 };
+let state = STATE.START;
+let score = 0;
+let combo = 0;
+let comboMult = 1;
+let distance = 0;
+let gameTime = 0;
+let hue = 200;
+let shakeAmt = 0;
+let shakeX = 0, shakeY = 0;
+let rng;
+
+// ─── PLAYER ──────────────────────────────────────────────────────────────────
+const player = {
+  x: 0, y: 0, vy: 0, vx: 0,
+  r: 14,
+  gravity: 1,   // +1 down, -1 up
+  hooked: false,
+  hookAnchor: null,
+  hookAngle: 0,
+  hookLen: 0,
+  hookAngVel: 0,
+  trail: [],
+  dead: false
+};
+
+// ─── WORLD OBJECTS ───────────────────────────────────────────────────────────
+let anchors = [];
+let gates = [];
+let hazards = [];
+let particles = [];
+
+// ─── PARTICLE POOL ───────────────────────────────────────────────────────────
+const POOL_SIZE = 300;
+const pool = [];
+for (let i = 0; i < POOL_SIZE; i++) {
+  pool.push({ alive: false, x:0,y:0,vx:0,vy:0,r:3,life:1,maxLife:1,color:'#fff',type:'spark' });
+}
+function spawnParticle(x,y,vx,vy,r,life,color,type) {
+  for (let p of pool) {
+    if (!p.alive) {
+      p.alive=true; p.x=x; p.y=y; p.vx=vx; p.vy=vy;
+      p.r=r; p.life=life; p.maxLife=life; p.color=color; p.type=type||'spark';
+      return p;
+    }
+  }
+}
+function burst(wx,wy,count,color,type,speed) {
+  for (let i=0;i<count;i++) {
+    const a = Math.random()*Math.PI*2;
+    const sp = (speed||80) * (0.3 + Math.random()*0.7);
+    spawnParticle(wx,wy, Math.cos(a)*sp, Math.sin(a)*sp,
+      2+Math.random()*3, 0.4+Math.random()*0.5, color, type);
+  }
+}
+
+// ─── WORLD -> SCREEN ─────────────────────────────────────────────────────────
+let camX = 0;   // camera world X (left edge)
+let camY = 0;   // camera world Y (top edge) - camera follows player Y
+
+function wx2s(wx) { return wx - camX; }
+function wy2s(wy) { return wy - camY; }
+
+// ─── SPEED ───────────────────────────────────────────────────────────────────
+function forwardSpeed() {
+  return Math.min(240 + 2.2 * gameTime, 520);
+}
+
+// ─── LEVEL GENERATION ────────────────────────────────────────────────────────
+let genX = 0;   // world X frontier for generation
+
+function generateAhead() {
+  const target = camX + W * 2.5;
+  while (genX < target) {
+    genX += 180 + rng() * 140;
+    // Anchor
+    const ay = H * 0.2 + rng() * H * 0.6;
+    const isVent = gameTime > 5 && rng() < 0.12;
+    anchors.push({
+      x: genX, y: ay,
+      r: isVent ? 16 : 12,
+      type: isVent ? 'vent' : 'normal',
+      hookRadius: isVent ? 90 : 70,
+      perfectTimer: 0,
+      perfectPulse: 0
+    });
+
+    // Inverter gate
+    if (rng() < 0.25) {
+      gates.push({
+        x: genX + 80 + rng()*60,
+        y: H * 0.15 + rng() * H * 0.7,
+        w: 18, h: 80,
+        sign: rng() < 0.5 ? 1 : -1,
+        triggered: false,
+        flash: 0
+      });
+    }
+
+    // Hazards after 10s
+    if (gameTime > 10 && rng() < Math.min(0.08 + gameTime * 0.003, 0.45)) {
+      hazards.push({
+        x: genX + rng() * 120,
+        y: H * 0.2 + rng() * H * 0.6,
+        r: 14 + rng() * 10,
+        rot: rng() * Math.PI * 2,
+        rotSpd: (0.5 + rng() * 2) * (rng()<0.5?1:-1)
+      });
+    }
+  }
+}
+
+// ─── INIT GAME ────────────────────────────────────────────────────────────────
+function initGame() {
+  rng = mkRng(SEED);
+  score = 0; combo = 0; comboMult = 1;
+  distance = 0; gameTime = 0; hue = 200;
+  shakeAmt = 0;
+  anchors = []; gates = []; hazards = []; particles = [];
+  for (let p of pool) p.alive = false;
+
+  player.x = W * 0.25;
+  player.y = H * 0.5;
+  player.vx = 0; player.vy = 0;
+  player.gravity = 1;
+  player.hooked = false; player.hookAnchor = null;
+  player.trail = [];
+  player.dead = false;
+
+  camX = player.x - W * 0.3;
+  camY = player.y - H * 0.5;
+  genX = camX;
+
+  generateAhead();
+
+  // Hook to first anchor immediately
+  const first = anchors[0];
+  if (first) hookTo(first, true);
+
+  state = STATE.PLAYING;
+}
+
+// ─── HOOK LOGIC ───────────────────────────────────────────────────────────────
+function hookTo(anchor, silent) {
+  player.hooked = true;
+  player.hookAnchor = anchor;
+  const dx = player.x - anchor.x;
+  const dy = player.y - anchor.y;
+  player.hookLen = Math.max(Math.sqrt(dx*dx+dy*dy), 40);
+  player.hookAngle = Math.atan2(dy, dx);
+  // Angular velocity from current linear velocity
+  player.hookAngVel = (player.vx * Math.cos(player.hookAngle + Math.PI/2) +
+                        player.vy * Math.sin(player.hookAngle + Math.PI/2)) / player.hookLen;
+  if (Math.abs(player.hookAngVel) < 0.5) {
+    player.hookAngVel = player.gravity > 0 ? -1.2 : 1.2;
+  }
+
+  if (!silent) {
+    burst(anchor.x, anchor.y, 8, anchor.type==='vent' ? '#ffd700' : '#88aaff', 'spark', 120);
+    shakeAmt = Math.max(shakeAmt, anchor.type==='vent' ? 6 : 2);
+    if (anchor.type === 'vent') {
+      score += 50 * comboMult;
+    }
+  }
+}
+
+function releaseHook() {
+  if (!player.hooked) return;
+  const a = player.hookAnchor;
+  // Convert angular to linear
+  player.vx = -Math.sin(player.hookAngle) * player.hookAngVel * player.hookLen;
+  player.vy =  Math.cos(player.hookAngle) * player.hookAngVel * player.hookLen;
+  player.hooked = false;
+  player.hookAnchor = null;
+}
+
+// ─── FIND NEXT HOOKABLE ANCHOR ────────────────────────────────────────────────
+function findNextAnchor() {
+  let best = null, bestDist = Infinity;
+  for (const a of anchors) {
+    if (a === player.hookAnchor) continue;
+    const dx = a.x - player.x;
+    const dy = a.y - player.y;
+    if (dx < -50 || dx > 500) continue;
+    const d = Math.sqrt(dx*dx + dy*dy);
+    if (d < a.hookRadius && d < bestDist) {
+      bestDist = d;
+      best = a;
+    }
+  }
+  return best;
+}
+
+function onAction() {
+  if (state === STATE.START) { initGame(); return; }
+  if (state === STATE.GAMEOVER) { initGame(); return; }
+  if (state === STATE.PLAYING) {
+    if (player.dead) return;
+    if (player.hooked) {
+      releaseHook();
+    } else {
+      const a = findNextAnchor();
+      if (a) {
+        // Perfect timing check
+        const dx = a.x - player.x, dy = a.y - player.y;
+        const d = Math.sqrt(dx*dx+dy*dy);
+        const perfect = d < a.hookRadius * 0.5;
+        if (perfect) {
+          combo++;
+          comboMult = Math.min(1 + combo * 0.5, 8);
+          score += 100 * comboMult;
+          burst(player.x, player.y, 14, `hsl(${hue+40},100%,70%)`, 'ring', 150);
+          shakeAmt = Math.max(shakeAmt, 3);
+        } else {
+          combo = 0;
+          comboMult = 1;
+        }
+        hookTo(a, false);
+      }
+    }
+  }
+}
+
+// ─── INPUT ────────────────────────────────────────────────────────────────────
+canvas.addEventListener('pointerdown', function(e){ e.preventDefault(); onAction(); }, { passive: false });
+document.addEventListener('keydown', function(e){
+  if (e.code==='Space'||e.code==='Enter') { e.preventDefault(); onAction(); }
+});
+
+// ─── GAMEOVER ─────────────────────────────────────────────────────────────────
+function triggerDeath() {
+  if (player.dead) return;
+  player.dead = true;
+  player.hooked = false;
+  shakeAmt = 18;
+  burst(player.x, player.y, 30, '#ff4040', 'spark', 200);
+  burst(player.x, player.y, 15, '#ffaa00', 'ring', 120);
+  const finalScore = Math.floor(score);
+  if (finalScore > bestScore) {
+    bestScore = finalScore;
+    localStorage.setItem(HS_KEY, bestScore);
+  }
+  setTimeout(() => { state = STATE.GAMEOVER; }, 900);
+
+  // Show share button
+  document.getElementById('share-btn').style.display = 'block';
+}
+
+// ─── SHARE ────────────────────────────────────────────────────────────────────
+document.getElementById('share-btn').addEventListener('click', function() {
+  const url = location.origin + location.pathname + '?seed=' + SEED + '&score=' + Math.floor(score);
+  const text = '🎮 I scored ' + Math.floor(score) + ' in Pulse Swing! Can you beat me?\n' + url;
+  if (navigator.share) {
+    navigator.share({ title: 'Pulse Swing', text: text, url: url }).catch(()=>{});
+  } else {
+    navigator.clipboard.writeText(text).then(() => {
+      document.getElementById('share-msg').textContent = '✅ Copied to clipboard!';
+      setTimeout(() => { document.getElementById('share-msg').textContent = ''; }, 3000);
+    }).catch(() => {
+      document.getElementById('share-msg').textContent = url;
+    });
+  }
+});
+
+// ─── UPDATE ───────────────────────────────────────────────────────────────────
+let lastTime = 0;
+function update(dt) {
+  if (state !== STATE.PLAYING) return;
+  if (player.dead) return;
+
+  gameTime += dt;
+  hue = (200 + gameTime * 10) % 360;
+
+  const spd = forwardSpeed();
+
+  if (player.hooked) {
+    const a = player.hookAnchor;
+    // Pendulum physics
+    const g = 400 * player.gravity;
+    const gravAngle = player.gravity > 0 ? Math.PI/2 : -Math.PI/2;
+    const alpha = (g / player.hookLen) * Math.sin(gravAngle - player.hookAngle);
+    player.hookAngVel += alpha * dt;
+    player.hookAngVel *= 0.995; // slight damping
+    player.hookAngle += player.hookAngVel * dt;
+
+    // Update position
+    player.x = a.x + Math.cos(player.hookAngle) * player.hookLen;
+    player.y = a.y + Math.sin(player.hookAngle) * player.hookLen;
+
+    // Also drift forward
+    a.x -= spd * dt;
+
+    // Auto-release at apex (angular velocity near 0 and moving up/down appropriately)
+    if (player.gravity > 0 && player.hookAngVel > 0.05 && Math.sin(player.hookAngle) < -0.3) {
+      releaseHook();
+    } else if (player.gravity < 0 && player.hookAngVel < -0.05 && Math.sin(player.hookAngle) > 0.3) {
+      releaseHook();
+    }
+    // Safety timeout
+    a._hookTime = (a._hookTime || 0) + dt;
+    if (a._hookTime > 1.5) { releaseHook(); }
+
+  } else {
+    // Free flight
+    const grav = 700 * player.gravity;
+    player.vy += grav * dt;
+    player.vy = Math.clamp ? Math.clamp(player.vy,-900,900) : Math.max(-900, Math.min(900, player.vy));
+    player.x += player.vx * dt;
+    player.y += player.vy * dt;
+  }
+
+  // Scroll world
+  const targetCamX = player.x - W * 0.3;
+  const targetCamY = player.y - H * 0.5;
+  camX += (targetCamX - camX) * Math.min(dt * 5, 1);
+  camY += (targetCamY - camY) * Math.min(dt * 3, 1);
+
+  // Move non-hooked anchors, gates, hazards with world scroll
+  const scrollDX = spd * dt;
+  for (const a of anchors) {
+    if (a !== player.hookAnchor) a.x -= scrollDX;
+  }
+  for (const g of gates) g.x -= scrollDX;
+  for (const h of hazards) {
+    h.x -= scrollDX;
+    h.rot += h.rotSpd * dt;
+  }
+
+  // Distance score
+  distance += spd * dt;
+  score += spd * dt * 0.01 * comboMult;
+
+  // Trail
+  player.trail.push({ x: player.x, y: player.y });
+  if (player.trail.length > 12) player.trail.shift();
+
+  // Perfect timing ring pulse
+  for (const a of anchors) {
+    a.perfectPulse = (a.perfectPulse || 0) + dt * 2;
+  }
+
+  // Check inverter gates
+  for (const g of gates) {
+    const sx = wx2s(g.x), sy = wy2s(g.y);
+    const px = wx2s(player.x), py = wy2s(player.y);
+    if (!g.triggered &&
+        Math.abs(player.x - g.x) < g.w/2 + player.r &&
+        Math.abs(player.y - g.y) < g.h/2 + player.r) {
+      g.triggered = true;
+      player.gravity = g.sign;
+      g.flash = 1;
+      burst(player.x, player.y, 20, g.sign > 0 ? '#ff6060' : '#60aaff', 'ring', 160);
+      shakeAmt = Math.max(shakeAmt, 4);
+    }
+    if (g.triggered) g.flash *= 0.9;
+  }
+
+  // Check hazards
+  for (const h of hazards) {
+    const dx = player.x - h.x + camX - wx2s(h.x) + wx2s(h.x);
+    const dy = player.y - h.y;
+    const ddx = player.x - h.x;
+    const ddy = player.y - h.y;
+    const d = Math.sqrt(ddx*ddx + ddy*ddy);
+    if (d < player.r + h.r - 2) {
+      triggerDeath();
+      return;
+    }
+    // Near-miss bonus
+    if (!h._nearMissed && d < player.r + h.r + 20) {
+      h._nearMissed = true;
+      score += 25 * comboMult;
+      spawnParticle(player.x, player.y, 0, -60, 4, 0.5, '#ffff80', 'spark');
+    }
+  }
+
+  // Out of bounds
+  if (wy2s(player.y) > H + 80 || wy2s(player.y) < -80) {
+    triggerDeath();
+    return;
+  }
+
+  // Update particles
+  for (const p of pool) {
+    if (!p.alive) continue;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy += 60 * dt;
+    p.life -= dt;
+    if (p.life <= 0) p.alive = false;
+  }
+
+  // Shake decay
+  shakeAmt *= Math.pow(0.85, dt * 60);
+  if (shakeAmt < 0.1) shakeAmt = 0;
+  shakeX = shakeAmt > 0 ? (Math.random()-0.5)*shakeAmt*2 : 0;
+  shakeY = shakeAmt > 0 ? (Math.random()-0.5)*shakeAmt*2 : 0;
+
+  // Prune off-screen objects
+  anchors = anchors.filter(a => a.x > camX - 200);
+  gates   = gates.filter(g => g.x > camX - 200);
+  hazards = hazards.filter(h => h.x > camX - 200);
+
+  generateAhead();
+}
+
+// ─── RENDER ───────────────────────────────────────────────────────────────────
+function drawRoundedRect(x,y,w,h,r) {
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.lineTo(x+w-r,y); ctx.arcTo(x+w,y,x+w,y+r,r);
+  ctx.lineTo(x+w,y+h-r); ctx.arcTo(x+w,y+h,x+w-r,y+h,r);
+  ctx.lineTo(x+r,y+h); ctx.arcTo(x,y+h,x,y+h-r,r);
+  ctx.lineTo(x,y+r); ctx.arcTo(x,y,x+r,y,r);
+  ctx.closePath();
+}
+
+function render() {
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
+
+  // Background
+  const bg = ctx.createLinearGradient(0,0,0,H);
+  bg.addColorStop(0, `hsl(${hue},40%,8%)`);
+  bg.addColorStop(1, `hsl(${(hue+60)%360},35%,5%)`);
+  ctx.fillStyle = bg;
+  ctx.fillRect(0,0,W,H);
+
+  // Subtle bands
+  for (let i=0; i<5; i++) {
+    const y = ((i * H/4) - (camY % (H/4))) % H;
+    ctx.strokeStyle = `hsla(${hue},40%,50%,0.04)`;
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke();
+  }
+
+  if (state === STATE.START) {
+    drawStartScreen();
+    ctx.restore();
+    return;
+  }
+
+  // ── WORLD OBJECTS ──
+  // Gates
+  for (const g of gates) {
+    const sx = wx2s(g.x), sy = wy2s(g.y);
+    if (sx < -50 || sx > W+50) continue;
+    const col = g.sign > 0 ? `hsl(0,80%,60%)` : `hsl(210,80%,60%)`;
+    const glowCol = g.sign > 0 ? 'rgba(255,80,80,0.3)' : 'rgba(80,160,255,0.3)';
+
+    ctx.save();
+    // Glow
+    ctx.shadowColor = col;
+    ctx.shadowBlur = 20 + (g.flash||0)*30;
+
+    // Gate body
+    ctx.fillStyle = `hsla(${g.sign>0?0:210},60%,15%,0.9)`;
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 2.5;
+    drawRoundedRect(sx - g.w/2, sy - g.h/2, g.w, g.h, 4);
+    ctx.fill(); ctx.stroke();
+
+    // Sign
+    ctx.fillStyle = col;
+    ctx.font = 'bold 18px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(g.sign > 0 ? '+' : '−', sx, sy);
+    ctx.restore();
+  }
+
+  // Hazards
+  for (const h of hazards) {
+    const sx = wx2s(h.x), sy = wy2s(h.y);
+    if (sx < -80 || sx > W+80) continue;
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(h.rot);
+    ctx.shadowColor = '#ff4040';
+    ctx.shadowBlur = 12;
+    ctx.strokeStyle = '#ff4040';
+    ctx.fillStyle = 'rgba(80,10,10,0.9)';
+    ctx.lineWidth = 2;
+    // Draw gear-ish circle with spikes
+    ctx.beginPath(); ctx.arc(0,0,h.r,0,Math.PI*2); ctx.fill(); ctx.stroke();
+    const spikes = 8;
+    ctx.strokeStyle = '#ff6060';
+    ctx.lineWidth = 2;
+    for (let i=0;i<spikes;i++) {
+      const a = (i/spikes)*Math.PI*2;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a)*h.r, Math.sin(a)*h.r);
+      ctx.lineTo(Math.cos(a)*(h.r+8), Math.sin(a)*(h.r+8));
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // Anchors
+  for (const a of anchors) {
+    const sx = wx2s(a.x), sy = wy2s(a.y);
+    if (sx < -100 || sx > W+100) continue;
+    const isVent = a.type === 'vent';
+    const col = isVent ? '#ffd700' : `hsl(${hue},80%,65%)`;
+    const pulse = 0.5 + 0.5 * Math.sin((a.perfectPulse||0));
+
+    // Hookability ring
+    const inRange = !player.hooked && player.x < a.x + 200 &&
+                    Math.abs(player.x - a.x) < a.hookRadius + 60 &&
+                    Math.abs(player.y - a.y) < a.hookRadius + 60;
+    if (inRange && state === STATE.PLAYING && !player.dead) {
+      ctx.save();
+      ctx.strokeStyle = `hsla(${hue+40},100%,70%,${0.3 + 0.3*pulse})`;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6,4]);
+      ctx.beginPath();
+      ctx.arc(sx, sy, a.hookRadius * (0.9 + 0.1*pulse), 0, Math.PI*2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+
+    ctx.save();
+    ctx.shadowColor = col;
+    ctx.shadowBlur = isVent ? 20 : 12;
+    // Anchor body
+    ctx.fillStyle = isVent ? '#7a5a00' : `hsl(${hue},50%,20%)`;
+    ctx.strokeStyle = col;
+    ctx.lineWidth = isVent ? 3 : 2;
+    ctx.beginPath(); ctx.arc(sx, sy, a.r, 0, Math.PI*2);
+    ctx.fill(); ctx.stroke();
+    // Inner glow dot
+    ctx.fillStyle = col;
+    ctx.globalAlpha = 0.7 + 0.3*pulse;
+    ctx.beginPath(); ctx.arc(sx, sy, a.r*0.4, 0, Math.PI*2); ctx.fill();
+    ctx.globalAlpha = 1;
+    if (isVent) {
+      ctx.fillStyle = '#ffd700';
+      ctx.font = 'bold 10px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('★', sx, sy);
+    }
+    ctx.restore();
+  }
+
+  // Hook rope
+  if (player.hooked && player.hookAnchor) {
+    const a = player.hookAnchor;
+    const sx = wx2s(a.x), sy = wy2s(a.y);
+    const px = wx2s(player.x), py = wy2s(player.y);
+    ctx.save();
+    ctx.strokeStyle = `hsl(${hue},70%,70%)`;
+    ctx.lineWidth = 3;
+    ctx.shadowColor = `hsl(${hue},80%,60%)`;
+    ctx.shadowBlur = 8;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    // Slight wobble
+    const mx = (sx+px)/2 + Math.sin(gameTime*8)*4;
+    const my = (sy+py)/2 + Math.cos(gameTime*6)*4;
+    ctx.moveTo(sx, sy);
+    ctx.quadraticCurveTo(mx, my, px, py);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Player trail
+  for (let i=0; i<player.trail.length; i++) {
+    const t = player.trail[i];
+    const alpha = i / player.trail.length * 0.4;
+    const r2 = player.r * (i/player.trail.length) * 0.7;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = `hsl(${hue},80%,70%)`;
+    ctx.beginPath();
+    ctx.arc(wx2s(t.x), wy2s(t.y), r2, 0, Math.PI*2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // Player
+  const px2 = wx2s(player.x), py2 = wy2s(player.y);
+  ctx.save();
+  ctx.shadowColor = `hsl(${hue},100%,70%)`;
+  ctx.shadowBlur = 18;
+  // Outline
+  ctx.strokeStyle = `hsl(${hue},100%,80%)`;
+  ctx.lineWidth = 3;
+  ctx.fillStyle = `hsl(${hue},60%,40%)`;
+  ctx.beginPath(); ctx.arc(px2, py2, player.r, 0, Math.PI*2);
+  ctx.fill(); ctx.stroke();
+  // Inner
+  ctx.fillStyle = `hsl(${hue},100%,80%)`;
+  ctx.beginPath(); ctx.arc(px2, py2, player.r*0.45, 0, Math.PI*2);
+  ctx.fill();
+  // Gravity indicator
+  const arrowY = player.gravity > 0 ? player.r*1.4 : -player.r*1.4;
+  ctx.strokeStyle = player.gravity > 0 ? '#ff6060' : '#60aaff';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(px2, py2 + (player.gravity > 0 ? player.r*0.5 : -player.r*0.5));
+  ctx.lineTo(px2, py2 + arrowY);
+  ctx.stroke();
+  // Arrowhead
+  ctx.fillStyle = player.gravity > 0 ? '#ff6060' : '#60aaff';
+  ctx.beginPath();
+  if (player.gravity > 0) {
+    ctx.moveTo(px2, py2+arrowY);
+    ctx.lineTo(px2-4, py2+arrowY-6);
+    ctx.lineTo(px2+4, py2+arrowY-6);
+  } else {
+    ctx.moveTo(px2, py2+arrowY);
+    ctx.lineTo(px2-4, py2+arrowY+6);
+    ctx.lineTo(px2+4, py2+arrowY+6);
+  }
+  ctx.fill();
+  ctx.restore();
+
+  // Particles
+  for (const p of pool) {
+    if (!p.alive) continue;
+    const alpha = p.life / p.maxLife;
+    const sx2 = wx2s(p.x), sy2 = wy2s(p.y);
+    if (sx2 < -20 || sx2 > W+20 || sy2 < -20 || sy2 > H+20) continue;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = p.color;
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur = p.type === 'ring' ? 12 : 6;
+    ctx.beginPath();
+    ctx.arc(sx2, sy2, p.r * (p.type==='ring' ? (1+alpha) : 1), 0, Math.PI*2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur = 0;
+  }
+
+  // ── HUD ──
+  ctx.shadowBlur = 0;
+  // Score
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  drawRoundedRect(10, 10, 140, 58, 8);
+  ctx.fill();
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 26px monospace';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText(Math.floor(score), 18, 14);
+
+  ctx.fillStyle = '#8888bb';
+  ctx.font = '11px monospace';
+  ctx.fillText('BEST: ' + bestScore, 18, 44);
+
+  // Combo
+  if (combo > 0) {
+    ctx.fillStyle = `hsl(${hue+40},100%,70%)`;
+    ctx.font = 'bold 15px monospace';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'top';
+    ctx.fillText('×' + comboMult.toFixed(1) + ' COMBO ' + combo, W-12, 14);
+  }
+
+  // Speed bar
+  const speedFrac = (forwardSpeed() - 240) / (520 - 240);
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.fillRect(W-80, H-22, 70, 8);
+  const spg = ctx.createLinearGradient(W-80, 0, W-10, 0);
+  spg.addColorStop(0, `hsl(${hue},80%,60%)`);
+  spg.addColorStop(1, `hsl(${hue+60},80%,60%)`);
+  ctx.fillStyle = spg;
+  ctx.fillRect(W-80, H-22, 70*speedFrac, 8);
+  ctx.fillStyle = '#666699';
+  ctx.font = '9px monospace';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText('SPEED', W-12, H-24);
+
+  // Challenge score indicator
+  if (CHALLENGE_SCORE > 0) {
+    const challengeX = W - 12;
+    ctx.fillStyle = '#ffd700';
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'top';
+    ctx.fillText('🎯 BEAT: ' + CHALLENGE_SCORE, challengeX, 36);
+  }
+
+  if (state === STATE.GAMEOVER) drawGameoverScreen();
+
+  ctx.restore();
+}
+
+// ─── SCREENS ─────────────────────────────────────────────────────────────────
+function drawStartScreen() {
+  // Semi overlay
+  ctx.fillStyle = 'rgba(5,5,20,0.82)';
+  ctx.fillRect(0,0,W,H);
+
+  // Title glow
+  ctx.save();
+  ctx.shadowColor = `hsl(${hue},100%,60%)`;
+  ctx.shadowBlur = 40;
+  ctx.fillStyle = `hsl(${hue},90%,70%)`;
+  ctx.font = 'bold 44px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('PULSE', W/2, H/2 - 60);
+  ctx.fillText('SWING', W/2, H/2 - 12);
+  ctx.restore();
+
+  ctx.fillStyle = '#8080c0';
+  ctx.font = '14px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('Swing · Flip · Survive', W/2, H/2 + 30);
+
+  const pulse2 = 0.7 + 0.3*Math.sin(Date.now()/400);
+  ctx.globalAlpha = pulse2;
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 16px monospace';
+  ctx.fillText('TAP TO START', W/2, H/2 + 80);
+  ctx.globalAlpha = 1;
+
+  // Instructions
+  ctx.fillStyle = '#5555aa';
+  ctx.font = '11px monospace';
+  ctx.fillText('Tap = hook/release  |  Pass gates to flip gravity', W/2, H/2 + 120);
+  ctx.fillText('⭐ Gold anchors = score boost', W/2, H/2 + 140);
+}
+
+function drawGameoverScreen() {
+  ctx.fillStyle = 'rgba(5,5,20,0.88)';
+  ctx.fillRect(0,0,W,H);
+
+  ctx.save();
+  ctx.shadowColor = '#ff4040';
+  ctx.shadowBlur = 30;
+  ctx.fillStyle = '#ff6060';
+  ctx.font = 'bold 32px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('GAME OVER', W/2, H/2 - 80);
+  ctx.restore();
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 42px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(Math.floor(score), W/2, H/2 - 20);
+
+  ctx.fillStyle = '#8080c0';
+  ctx.font = '14px monospace';
+  ctx.fillText('BEST: ' + bestScore, W/2, H/2 + 28);
+
+  if (CHALLENGE_SCORE > 0) {
+    const beat = Math.floor(score) > CHALLENGE_SCORE;
+    ctx.fillStyle = beat ? '#ffd700' : '#888888';
+    ctx.font = '13px monospace';
+    ctx.fillText(beat ? '🏆 Challenge Beaten!' : '🎯 Target: ' + CHALLENGE_SCORE, W/2, H/2 + 52);
+  }
+
+  const pulse2 = 0.7 + 0.3*Math.sin(Date.now()/400);
+  ctx.globalAlpha = pulse2;
+  ctx.fillStyle = `hsl(${hue},80%,70%)`;
+  ctx.font = 'bold 16px monospace';
+  ctx.fillText('TAP TO RETRY', W/2, H/2 + 90);
+  ctx.globalAlpha = 1;
+
+  ctx.fillStyle = '#5555aa';
+  ctx.font = '11px monospace';
+  ctx.fillText('Share your score below!', W/2, H/2 + 118);
+}
+
+// ─── MAIN LOOP ────────────────────────────────────────────────────────────────
+function loop(ts) {
+  const dt = Math.min((ts - lastTime) / 1000, 0.033);
+  lastTime = ts;
+
+  // Animate hue on start screen
+  if (state === STATE.START) {
+    hue = (hue + 20 * dt) % 360;
+  }
+
+  update(dt);
+  render();
+  requestAnimationFrame(loop);
+}
+
+requestAnimationFrame(function(ts) {
+  lastTime = ts;
+  requestAnimationFrame(loop);
+});
+
+})();
+</script>
+</body>
+</html>

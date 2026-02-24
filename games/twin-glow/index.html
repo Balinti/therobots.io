@@ -1,0 +1,1060 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Twin Glow - Free HTML5 Game</title>
+  <meta name="description" content="Play Twin Glow - Tap to split your glowing neon character and switch colors to match dual-city platforms.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <link rel="canonical" href="https://balinti.github.io/twin-glow/">
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Twin Glow - Free HTML5 Game">
+  <meta property="og:description" content="Play Twin Glow - Tap to flip your glowing orb and match neon gates as they scroll down. How far can you go?">
+  <meta property="og:url" content="https://balinti.github.io/twin-glow/">
+  <meta property="og:image" content="https://balinti.github.io/twin-glow/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Twin Glow - Free HTML5 Game">
+  <meta name="twitter:description" content="Tap to flip your glowing orb and match neon gates. Free HTML5 game!">
+  <meta name="twitter:image" content="https://balinti.github.io/twin-glow/og.png">
+  <!-- Theme -->
+  <meta name="theme-color" content="#0a0a1a">
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #050510;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: flex-start;
+      overflow: hidden;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      color: #fff;
+    }
+    #game-wrap {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      max-height: 750px;
+      height: 100vh;
+      flex-shrink: 0;
+    }
+    #game-canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+    }
+    /* HUD overlay */
+    #hud {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      pointer-events: none;
+      padding: 18px 20px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      z-index: 10;
+    }
+    .hud-box {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      line-height: 1;
+    }
+    .hud-label {
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      opacity: 0.5;
+      margin-bottom: 3px;
+    }
+    .hud-val {
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    #score-val { color: #fff; text-shadow: 0 0 12px rgba(255,255,255,0.4); }
+    #best-val  { color: #ffd166; text-shadow: 0 0 10px rgba(255,209,102,0.5); }
+    #streak-box {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    #streak-val {
+      font-size: 14px;
+      font-weight: 600;
+      color: #a0f0ff;
+    }
+    #mult-val {
+      font-size: 11px;
+      color: #ff9ef5;
+      font-weight: 600;
+    }
+    /* Center panel */
+    #center-panel {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 20;
+      pointer-events: none;
+    }
+    #center-panel.visible { pointer-events: auto; }
+    .panel-box {
+      background: rgba(5,5,22,0.88);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 24px;
+      padding: 36px 32px 28px;
+      text-align: center;
+      max-width: 310px;
+      width: 90%;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 0 60px rgba(100,50,200,0.2), 0 0 0 1px rgba(255,255,255,0.04);
+    }
+    .panel-title {
+      font-size: 42px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1;
+      margin-bottom: 6px;
+      background: linear-gradient(135deg, #ff6eb4 30%, #00e5ff 70%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .panel-subtitle {
+      font-size: 13px;
+      opacity: 0.5;
+      margin-bottom: 28px;
+      letter-spacing: 0.06em;
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px 16px;
+      margin-bottom: 24px;
+      text-align: left;
+    }
+    .stat-item { display: flex; flex-direction: column; }
+    .stat-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.12em; opacity: 0.4; margin-bottom: 2px; }
+    .stat-val { font-size: 20px; font-weight: 700; }
+    .stat-highlight { color: #ffd166; }
+    .stat-perfect { color: #a0f0ff; }
+    .stat-streak { color: #ff9ef5; }
+    .miss-hint {
+      font-size: 11px;
+      color: #ffd16680;
+      margin-bottom: 18px;
+      min-height: 16px;
+    }
+    .btn-primary {
+      width: 100%;
+      padding: 15px;
+      border-radius: 14px;
+      border: none;
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      background: linear-gradient(135deg, #c84bff, #00b4d8);
+      color: #fff;
+      box-shadow: 0 4px 24px rgba(180,80,255,0.35);
+      transition: transform 0.08s, box-shadow 0.08s;
+      margin-bottom: 10px;
+    }
+    .btn-primary:active { transform: scale(0.97); box-shadow: 0 2px 12px rgba(180,80,255,0.2); }
+    .btn-secondary {
+      width: 100%;
+      padding: 11px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.12);
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      background: transparent;
+      color: rgba(255,255,255,0.6);
+      transition: background 0.15s, color 0.15s;
+    }
+    .btn-secondary:hover { background: rgba(255,255,255,0.05); color: #fff; }
+    /* How-to on start screen */
+    .how-to {
+      margin: 0 0 22px;
+    }
+    .how-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+      font-size: 13px;
+      opacity: 0.7;
+    }
+    .orb-demo {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      overflow: hidden;
+      position: relative;
+    }
+    .orb-top { position: absolute; top: 0; left: 0; right: 0; height: 50%; background: #ff6eb4; }
+    .orb-bot { position: absolute; bottom: 0; left: 0; right: 0; height: 50%; background: #00e5ff; }
+    /* Mute toggle */
+    #mute-btn {
+      position: absolute;
+      bottom: 14px;
+      right: 14px;
+      z-index: 30;
+      background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 50%;
+      width: 36px;
+      height: 36px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      color: rgba(255,255,255,0.6);
+      transition: background 0.15s;
+      pointer-events: auto;
+    }
+    #mute-btn:hover { background: rgba(255,255,255,0.13); }
+    /* Hidden seo section */
+    #seo-text {
+      max-width: 420px;
+      padding: 18px 20px;
+      font-size: 13px;
+      line-height: 1.7;
+      color: rgba(255,255,255,0.35);
+      text-align: center;
+    }
+    #seo-text h2 { font-size: 15px; font-weight: 600; margin-bottom: 8px; opacity: 0.5; }
+    /* Perfect flash overlay */
+    #perfect-flash {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 15;
+      border-radius: 0;
+      opacity: 0;
+      background: radial-gradient(ellipse at 50% 60%, rgba(255,200,255,0.18) 0%, transparent 70%);
+      transition: opacity 0.05s;
+    }
+    #perfect-label {
+      position: absolute;
+      left: 50%;
+      top: 38%;
+      transform: translateX(-50%) translateY(-50%);
+      font-size: 22px;
+      font-weight: 800;
+      pointer-events: none;
+      z-index: 16;
+      opacity: 0;
+      color: #fff;
+      text-shadow: 0 0 18px #ff9ef5, 0 0 6px #fff;
+      letter-spacing: 0.06em;
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+<div id="game-wrap">
+  <canvas id="game-canvas"></canvas>
+
+  <!-- HUD -->
+  <div id="hud">
+    <div class="hud-box">
+      <div class="hud-label">Score</div>
+      <div class="hud-val" id="score-val">0</div>
+    </div>
+    <div class="hud-box" id="streak-box">
+      <div class="hud-label">Streak</div>
+      <div class="hud-val" id="streak-val" style="font-size:18px">0</div>
+      <div id="mult-val"></div>
+    </div>
+    <div class="hud-box">
+      <div class="hud-label">Best</div>
+      <div class="hud-val" id="best-val">0</div>
+    </div>
+  </div>
+
+  <!-- Center panel -->
+  <div id="center-panel" class="visible">
+    <!-- Start screen injected by JS -->
+  </div>
+
+  <!-- Perfect flash -->
+  <div id="perfect-flash"></div>
+  <div id="perfect-label"></div>
+
+  <!-- Mute button -->
+  <button id="mute-btn" title="Toggle sound">🔇</button>
+</div>
+
+<!-- SEO text section -->
+<section id="seo-text" aria-label="About Twin Glow">
+  <h2>How to Play Twin Glow</h2>
+  <p>
+    Twin Glow is a fast-paced hyper-casual HTML5 arcade game where you control a glowing orb split into two halves —
+    Pink on top and Cyan on bottom. As neon gates scroll down the screen, you must tap or press Space to instantly
+    flip your orb 180°, swapping which color is on top.
+  </p>
+  <p>
+    Each gate checks your orientation at the moment it aligns with your orb. A top gate requires the Pink side facing up;
+    a bottom gate requires the Cyan side facing up. Time your flips perfectly just before a gate to earn bonus points
+    and build a streak multiplier — up to 6×! Miss a gate orientation and it's game over.
+  </p>
+  <p>
+    Gates speed up and narrow the further you progress. After 50 gates, Pulse Gates appear — their slit width
+    breathes rhythmically, demanding even tighter reflexes. Play on desktop (Space/Enter) or mobile (tap anywhere).
+    Free to play in your browser, no download required.
+  </p>
+</section>
+
+<script>
+(function() {
+'use strict';
+
+// ── Constants & Colors ──────────────────────────────────────────────────────
+const PINK = '#ff6eb4';
+const CYAN = '#00e5ff';
+const PINK_RGB = [255, 110, 180];
+const CYAN_RGB = [0, 229, 255];
+const LS_BEST  = 'twinGlow_bestScore';
+const LS_BSTRK = 'twinGlow_bestStreak';
+
+// ── DOM refs ─────────────────────────────────────────────────────────────────
+const canvas      = document.getElementById('game-canvas');
+const ctx         = canvas.getContext('2d');
+const wrap        = document.getElementById('game-wrap');
+const panel       = document.getElementById('center-panel');
+const scoreEl     = document.getElementById('score-val');
+const bestEl      = document.getElementById('best-val');
+const streakEl    = document.getElementById('streak-val');
+const multEl      = document.getElementById('mult-val');
+const flashEl     = document.getElementById('perfect-flash');
+const labelEl     = document.getElementById('perfect-label');
+const muteBtn     = document.getElementById('mute-btn');
+
+// ── Sizing ───────────────────────────────────────────────────────────────────
+let W, H, dpr;
+function resize() {
+  const cssW = Math.min(420, window.innerWidth);
+  const cssH = Math.min(750, window.innerHeight);
+  dpr = Math.min(Math.max(window.devicePixelRatio || 1, 1), 2.5);
+  canvas.width  = Math.floor(cssW * dpr);
+  canvas.height = Math.floor(cssH * dpr);
+  canvas.style.width  = cssW + 'px';
+  canvas.style.height = cssH + 'px';
+  wrap.style.maxWidth  = cssW + 'px';
+  wrap.style.maxHeight = cssH + 'px';
+  wrap.style.height    = cssH + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  W = cssW; H = cssH;
+}
+resize();
+window.addEventListener('resize', () => { resize(); if (state !== 'playing') drawBg(); });
+
+// ── Audio ─────────────────────────────────────────────────────────────────────
+let audioCtx = null;
+let muted = true; // default muted
+function getAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+function beep(freq, dur, type = 'sine', vol = 0.18, detune = 0) {
+  if (muted) return;
+  try {
+    const ac = getAudio();
+    if (ac.state === 'suspended') ac.resume();
+    const osc = ac.createOscillator();
+    const gain = ac.createGain();
+    osc.connect(gain); gain.connect(ac.destination);
+    osc.type = type;
+    osc.frequency.value = freq;
+    osc.detune.value = detune;
+    gain.gain.setValueAtTime(vol, ac.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + dur);
+    osc.start(ac.currentTime);
+    osc.stop(ac.currentTime + dur);
+  } catch(e) {}
+}
+function playFlip()    { beep(440, 0.08, 'square', 0.12); }
+function playPass()    { beep(660, 0.12, 'sine', 0.15); }
+function playPerfect() { beep(880, 0.18, 'sine', 0.2); setTimeout(() => beep(1100, 0.14, 'sine', 0.12), 80); }
+function playCrash()   { beep(160, 0.35, 'sawtooth', 0.22, -100); setTimeout(() => beep(100, 0.4, 'sawtooth', 0.15, -200), 80); }
+
+muteBtn.addEventListener('click', () => {
+  muted = !muted;
+  muteBtn.textContent = muted ? '🔇' : '🔊';
+  if (!muted && audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+});
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let state = 'start'; // 'start' | 'playing' | 'gameover'
+let score, gatesCleared, streak, bestStreak, maxMult;
+let perfects, lastDeltaMs;
+let lastFlipTimeMs, flip; // flip: 0=top Pink bot Cyan, 1=top Cyan bot Pink
+let gates, particles;
+let bgHue;
+let shake = { t: 0, mag: 0 };
+let lastTs = 0;
+let pulsePhase = 0;
+let prevGateType = -1;
+
+// Best score
+let bestScore = parseInt(localStorage.getItem(LS_BEST) || '0');
+let bestStreakSaved = parseInt(localStorage.getItem(LS_BSTRK) || '0');
+bestEl.textContent = bestScore;
+
+// ── Difficulty helpers ────────────────────────────────────────────────────────
+function speed(s)   { return Math.min(520, 220 + 7.5 * s); }
+function gap(s)     { return Math.max(150, Math.min(260, 260 - 2.2 * s)); }
+function perfWin(s) { return Math.max(90,  Math.min(180, 180 - 1.2 * s)); }
+function slitWidth(s) {
+  const cssW = W;
+  const base = Math.max(120, Math.min(160, cssW * 0.34));
+  return Math.max(92, base - 0.9 * s);
+}
+
+// ── Gate spawning ─────────────────────────────────────────────────────────────
+function nextGateType() {
+  const s = gatesCleared;
+  let chance;
+  if (s < 10) chance = 0;
+  else if (s < 25) chance = 0.25;
+  else chance = 0.40;
+  if (prevGateType !== -1 && Math.random() < chance) return prevGateType;
+  const t = prevGateType === 0 ? 1 : (prevGateType === 1 ? 0 : Math.round(Math.random()));
+  return t; // 0=TOP, 1=BOTTOM
+}
+
+function spawnGate(y) {
+  const t = nextGateType();
+  prevGateType = t;
+  const isPulse = (gatesCleared >= 50 && Math.random() < 0.22);
+  gates.push({ y, type: t, cleared: false, pulse: isPulse, pulsePhase: 0 });
+}
+
+// ── Player geometry ───────────────────────────────────────────────────────────
+function playerR() { return Math.max(18, Math.min(26, W * 0.055)); }
+function playerX() { return W / 2; }
+function playerY() { return H * 0.68; }
+
+// ── Init game ─────────────────────────────────────────────────────────────────
+function initGame() {
+  score = 0;
+  gatesCleared = 0;
+  streak = 0;
+  bestStreak = 0;
+  maxMult = 1;
+  perfects = 0;
+  lastDeltaMs = null;
+  lastFlipTimeMs = -9999;
+  flip = 0;
+  bgHue = 220;
+  pulsePhase = 0;
+  prevGateType = -1;
+  shake = { t: 0, mag: 0 };
+  particles = [];
+  gates = [];
+  // Spawn initial gates
+  const firstGap = gap(0);
+  let y = H * 0.15;
+  for (let i = 0; i < 6; i++) {
+    spawnGate(y);
+    y -= firstGap;
+  }
+  scoreEl.textContent = '0';
+  streakEl.textContent = '0';
+  multEl.textContent = '';
+  updateBestEl();
+}
+
+function updateBestEl() { bestEl.textContent = bestScore; }
+
+// ── Particles ─────────────────────────────────────────────────────────────────
+function spawnParticles(x, y, n, color, allDir, minLife, maxLife) {
+  for (let i = 0; i < n; i++) {
+    const angle = allDir
+      ? Math.random() * Math.PI * 2
+      : (-Math.PI / 2) + (Math.random() - 0.5) * Math.PI * 1.1;
+    const spd = 60 + Math.random() * 180;
+    const life = minLife + Math.random() * (maxLife - minLife);
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * spd,
+      vy: Math.sin(angle) * spd,
+      life, maxLife: life,
+      r: 2 + Math.random() * 3,
+      color
+    });
+  }
+}
+
+// Crash ring
+let ring = null;
+function spawnRing(x, y) {
+  ring = { x, y, r: playerR(), maxR: W * 0.55, alpha: 1, life: 0.5 };
+}
+
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy += 280 * dt; // gravity
+    p.life -= dt;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+  if (ring) {
+    ring.life -= dt;
+    ring.r += (ring.maxR - ring.r) * dt * 5;
+    ring.alpha = ring.life / 0.5;
+    if (ring.life <= 0) ring = null;
+  }
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    const a = Math.max(0, p.life / p.maxLife);
+    ctx.globalAlpha = a * a;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  if (ring) {
+    ctx.globalAlpha = ring.alpha * 0.7;
+    ctx.strokeStyle = '#ff6eb4';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(ring.x, ring.y, ring.r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+}
+
+// ── Perfect flash (DOM) ───────────────────────────────────────────────────────
+let flashTimer = 0;
+function triggerPerfectFlash(txt) {
+  flashEl.style.opacity = '1';
+  labelEl.style.opacity = '1';
+  labelEl.textContent = txt;
+  flashTimer = 0.45;
+}
+function updateFlash(dt) {
+  if (flashTimer > 0) {
+    flashTimer -= dt;
+    if (flashTimer <= 0) {
+      flashEl.style.opacity = '0';
+      labelEl.style.opacity = '0';
+    }
+  }
+}
+
+// ── Screen shake ──────────────────────────────────────────────────────────────
+function triggerShake(dur, mag) {
+  shake.t = dur;
+  shake.mag = mag;
+}
+
+// ── Background ────────────────────────────────────────────────────────────────
+function drawBg(dt) {
+  if (dt) bgHue = (bgHue + dt * 4) % 360;
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, `hsl(${bgHue},35%,5%)`);
+  grad.addColorStop(1, `hsl(${(bgHue+60)%360},25%,8%)`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+}
+
+// ── Gate rendering ────────────────────────────────────────────────────────────
+const GATE_H = 28;
+const GATE_SLIT_H = 18;
+
+function getEffectiveSlitW(gate) {
+  let sw = slitWidth(gatesCleared);
+  if (gate.pulse) {
+    const pf = 0.82 + 0.18 * Math.sin(gate.pulsePhase);
+    sw *= pf;
+  }
+  return Math.max(60, sw);
+}
+
+function drawGate(gate) {
+  const sw = getEffectiveSlitW(gate);
+  const halfSlit = sw / 2;
+  const cx = W / 2;
+  const gy = gate.y;
+  const isTop = gate.type === 0;
+  // Color: TOP gate = Pink needed = show pink tint, BOTTOM = Cyan
+  const col = isTop ? PINK : CYAN;
+  const glowCol = isTop ? 'rgba(255,110,180,0.35)' : 'rgba(0,229,255,0.35)';
+
+  // Glow
+  ctx.shadowColor = col;
+  ctx.shadowBlur = 18;
+
+  // Left bar
+  ctx.fillStyle = col;
+  ctx.fillRect(0, gy - GATE_H / 2, cx - halfSlit, GATE_H);
+  // Right bar
+  ctx.fillRect(cx + halfSlit, gy - GATE_H / 2, W - (cx + halfSlit), GATE_H);
+
+  ctx.shadowBlur = 0;
+
+  // Label inside gate slit
+  ctx.globalAlpha = 0.6;
+  ctx.font = 'bold 10px sans-serif';
+  ctx.fillStyle = isTop ? '#ffc2e0' : '#a0f0ff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(isTop ? '↑PINK' : '↓CYAN', cx, gy);
+  ctx.globalAlpha = 1;
+  ctx.textAlign = 'left';
+
+  // Slit edge glow lines
+  ctx.strokeStyle = glowCol;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(cx - halfSlit, gy - GATE_H / 2);
+  ctx.lineTo(cx - halfSlit, gy + GATE_H / 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(cx + halfSlit, gy - GATE_H / 2);
+  ctx.lineTo(cx + halfSlit, gy + GATE_H / 2);
+  ctx.stroke();
+
+  // Pulse gate indicator
+  if (gate.pulse) {
+    ctx.globalAlpha = 0.5 + 0.5 * Math.abs(Math.sin(gate.pulsePhase));
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(cx, gy, 6, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+}
+
+// ── Orb rendering ─────────────────────────────────────────────────────────────
+function drawOrb(animFlipT) {
+  const x = playerX(), y = playerY(), r = playerR();
+  // animFlipT: 0=normal, 0..1 = flipping animation (rotation)
+  // Colors depending on flip state
+  const topCol    = flip === 0 ? PINK : CYAN;
+  const botCol    = flip === 0 ? CYAN : PINK;
+  const topColRGB = flip === 0 ? PINK_RGB : CYAN_RGB;
+  const botColRGB = flip === 0 ? CYAN_RGB : PINK_RGB;
+
+  ctx.save();
+
+  // Outer ambient glow
+  const glowGrad = ctx.createRadialGradient(x, y, r * 0.4, x, y, r * 2.2);
+  glowGrad.addColorStop(0, `rgba(${topColRGB},0.12)`);
+  glowGrad.addColorStop(0.5, `rgba(${botColRGB},0.06)`);
+  glowGrad.addColorStop(1, 'transparent');
+  ctx.fillStyle = glowGrad;
+  ctx.beginPath();
+  ctx.arc(x, y, r * 2.2, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Clip to circle
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.clip();
+
+  // Top half
+  ctx.fillStyle = topCol;
+  ctx.shadowColor = topCol;
+  ctx.shadowBlur = 16;
+  ctx.fillRect(x - r, y - r, r * 2, r);
+
+  // Bottom half
+  ctx.fillStyle = botCol;
+  ctx.shadowColor = botCol;
+  ctx.shadowBlur = 16;
+  ctx.fillRect(x - r, y, r * 2, r);
+
+  ctx.shadowBlur = 0;
+
+  // Center divider glow
+  const divGrad = ctx.createLinearGradient(x - r, y, x + r, y);
+  divGrad.addColorStop(0, 'transparent');
+  divGrad.addColorStop(0.3, 'rgba(255,255,255,0.35)');
+  divGrad.addColorStop(0.7, 'rgba(255,255,255,0.35)');
+  divGrad.addColorStop(1, 'transparent');
+  ctx.fillStyle = divGrad;
+  ctx.fillRect(x - r, y - 1.5, r * 2, 3);
+
+  // Highlight
+  const hilite = ctx.createRadialGradient(x - r * 0.25, y - r * 0.35, 0, x, y, r);
+  hilite.addColorStop(0, 'rgba(255,255,255,0.35)');
+  hilite.addColorStop(0.5, 'rgba(255,255,255,0.05)');
+  hilite.addColorStop(1, 'transparent');
+  ctx.fillStyle = hilite;
+  ctx.fillRect(x - r, y - r, r * 2, r * 2);
+
+  ctx.restore();
+
+  // Outer ring
+  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+  ctx.lineWidth = 1.5;
+  ctx.shadowColor = 'rgba(255,255,255,0.3)';
+  ctx.shadowBlur = 6;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+}
+
+// ── HUD update ────────────────────────────────────────────────────────────────
+function updateHUD() {
+  scoreEl.textContent = score;
+  streakEl.textContent = streak;
+  const m = 1 + Math.min(5, Math.floor(streak / 3));
+  if (m > 1) {
+    multEl.textContent = `×${m}`;
+  } else {
+    multEl.textContent = '';
+  }
+}
+
+// ── Input handling ────────────────────────────────────────────────────────────
+function handleInput() {
+  if (state === 'start') {
+    startGame();
+  } else if (state === 'playing') {
+    doFlip();
+  } else if (state === 'gameover') {
+    startGame();
+  }
+}
+
+canvas.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  // Unmute on first interaction
+  if (muted === null) { muted = false; muteBtn.textContent = '🔊'; }
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  handleInput();
+});
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    handleInput();
+  }
+});
+
+function doFlip() {
+  flip = 1 - flip;
+  lastFlipTimeMs = performance.now();
+  playFlip();
+}
+
+// ── Panel UI ──────────────────────────────────────────────────────────────────
+function showStartPanel() {
+  panel.classList.add('visible');
+  panel.innerHTML = `
+    <div class="panel-box">
+      <div class="panel-title">Twin Glow</div>
+      <div class="panel-subtitle">FLIP CORE</div>
+      <div class="how-to">
+        <div class="how-row">
+          <div class="orb-demo"><div class="orb-top"></div><div class="orb-bot"></div></div>
+          Tap to flip your orb 180°
+        </div>
+        <div class="how-row" style="font-size:12px; opacity:0.5; margin-left:38px">
+          Pink top → pass pink gates<br>Cyan top → pass cyan gates
+        </div>
+      </div>
+      <button class="btn-primary" id="start-btn">Tap to Start</button>
+      <div style="font-size:11px; opacity:0.35; margin-top:10px">Space / Enter on desktop</div>
+    </div>`;
+  document.getElementById('start-btn').addEventListener('click', e => {
+    e.stopPropagation();
+    startGame();
+  });
+}
+
+function showGameoverPanel() {
+  panel.classList.add('visible');
+  const m = maxMult;
+  const missHint = (lastDeltaMs !== null && lastDeltaMs > 0 && lastDeltaMs < 400)
+    ? `Missed perfect by <strong>${Math.round(lastDeltaMs)}ms</strong>` : '';
+
+  panel.innerHTML = `
+    <div class="panel-box">
+      <div class="panel-title" style="font-size:32px">Game Over</div>
+      <div class="panel-subtitle" style="margin-bottom:18px">Keep flipping!</div>
+      <div class="stats-grid">
+        <div class="stat-item">
+          <span class="stat-label">Score</span>
+          <span class="stat-val stat-highlight">${score}</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Best</span>
+          <span class="stat-val" style="color:#ffd166">${bestScore}</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Perfects</span>
+          <span class="stat-val stat-perfect">${perfects}</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Best Streak</span>
+          <span class="stat-val stat-streak">${bestStreak}</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Max Mult</span>
+          <span class="stat-val" style="color:#c0a0ff">×${m}</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Gates</span>
+          <span class="stat-val">${gatesCleared}</span>
+        </div>
+      </div>
+      <div class="miss-hint">${missHint}</div>
+      <button class="btn-primary" id="retry-btn">Tap to Retry</button>
+      <button class="btn-secondary" id="share-btn" style="margin-top:8px">Share Score</button>
+    </div>`;
+
+  document.getElementById('retry-btn').addEventListener('click', e => {
+    e.stopPropagation();
+    startGame();
+  });
+  document.getElementById('share-btn').addEventListener('click', e => {
+    e.stopPropagation();
+    doShare();
+  });
+}
+
+function hidePanel() {
+  panel.classList.remove('visible');
+  panel.innerHTML = '';
+}
+
+function doShare() {
+  const txt = `I scored ${score} in Twin Glow! Can you beat me?\nhttps://balinti.github.io/twin-glow/`;
+  if (navigator.share) {
+    navigator.share({ title: 'Twin Glow', text: txt, url: 'https://balinti.github.io/twin-glow/' }).catch(() => {});
+  } else {
+    navigator.clipboard.writeText(txt).then(() => alert('Score copied to clipboard!')).catch(() => {
+      prompt('Copy this:', txt);
+    });
+  }
+}
+
+// ── Game lifecycle ────────────────────────────────────────────────────────────
+function startGame() {
+  hidePanel();
+  initGame();
+  state = 'playing';
+  lastTs = performance.now();
+}
+
+function gameOver() {
+  state = 'gameover';
+  playCrash();
+  // Save scores
+  if (score > bestScore) {
+    bestScore = score;
+    localStorage.setItem(LS_BEST, bestScore);
+  }
+  if (bestStreak > bestStreakSaved) {
+    bestStreakSaved = bestStreak;
+    localStorage.setItem(LS_BSTRK, bestStreakSaved);
+  }
+  updateBestEl();
+  setTimeout(() => showGameoverPanel(), 900);
+}
+
+// ── Main loop ─────────────────────────────────────────────────────────────────
+function update(now) {
+  const dt = Math.min(0.033, (now - lastTs) / 1000);
+  lastTs = now;
+
+  if (state !== 'playing') return;
+
+  // Bg hue
+  bgHue = (bgHue + dt * 4) % 360;
+
+  // Screen shake decay
+  if (shake.t > 0) shake.t -= dt;
+
+  updateParticles(dt);
+  updateFlash(dt);
+
+  const spd = speed(gatesCleared);
+  const py = playerY();
+  const pr = playerR();
+
+  // Update pulse phases for all gates
+  for (const g of gates) {
+    if (g.pulse) g.pulsePhase += dt * 6;
+    // Move gates downward
+    g.y += spd * dt;
+  }
+
+  // Resolve gates
+  for (const g of gates) {
+    if (!g.cleared && g.y >= py) {
+      g.cleared = true;
+      const sw = getEffectiveSlitW(g);
+      const halfSlit = sw / 2;
+      const cx = W / 2;
+      // Orb collision: check if orb overlaps gate bars
+      const orbLeft  = cx - pr;
+      const orbRight = cx + pr;
+      const inSlit   = orbRight <= cx + halfSlit && orbLeft >= cx - halfSlit;
+      // Orientation check
+      const topColor    = flip === 0 ? 'pink' : 'cyan';
+      const bottomColor = flip === 0 ? 'cyan' : 'pink';
+      const correct = g.type === 0
+        ? topColor === 'pink'    // TOP gate needs pink on top
+        : bottomColor === 'cyan'; // BOTTOM gate needs cyan on bottom (flip===0)
+
+      if (!correct) {
+        // CRASH
+        triggerShake(0.22, 10);
+        spawnParticles(cx, py, 42, PINK, true, 0.7, 1.2);
+        spawnParticles(cx, py, 20, CYAN, true, 0.6, 1.0);
+        spawnRing(cx, py);
+        gameOver();
+        return;
+      }
+
+      // SUCCESS
+      gatesCleared++;
+      const resolveTime = now;
+      const delta = resolveTime - lastFlipTimeMs;
+      const pw = perfWin(gatesCleared);
+      const isPerfect = delta >= 0 && delta <= pw;
+
+      if (isPerfect) {
+        streak++;
+        if (streak > bestStreak) bestStreak = streak;
+        perfects++;
+        lastDeltaMs = 0;
+      } else {
+        // Store how close we were (for miss hint)
+        lastDeltaMs = delta <= pw * 4 ? Math.max(0, delta - pw) : null;
+        streak = 0;
+      }
+
+      const mult = Math.min(6, 1 + Math.floor(streak / 3));
+      if (mult > maxMult) maxMult = mult;
+      const pts = (isPerfect ? 2 : 1) * mult;
+      score += pts;
+
+      if (isPerfect) {
+        triggerShake(0.08, 3);
+        spawnParticles(cx, py - pr, 14, streak % 2 === 0 ? PINK : CYAN, false, 0.45, 0.75);
+        const streakLabel = streak >= 3 ? ` ×${mult} STREAK!` : '';
+        triggerPerfectFlash(`PERFECT!${streakLabel}`);
+        playPerfect();
+      } else {
+        playPass();
+        spawnParticles(cx, py - pr, 5, g.type === 0 ? PINK : CYAN, false, 0.2, 0.4);
+      }
+
+      updateHUD();
+    }
+  }
+
+  // Remove gates that have passed off screen
+  for (let i = gates.length - 1; i >= 0; i--) {
+    if (gates[i].y > H + GATE_H * 2) gates.splice(i, 1);
+  }
+
+  // Spawn new gates
+  const gapDist = gap(gatesCleared);
+  if (gates.length === 0) {
+    spawnGate(-GATE_H);
+  } else {
+    const topGate = gates.reduce((a, b) => a.y < b.y ? a : b);
+    while (topGate.y > -gapDist * 2) {
+      // Actually find the minimum y
+      const minY = Math.min(...gates.map(g => g.y));
+      if (minY > -gapDist) {
+        spawnGate(minY - gapDist);
+      } else break;
+    }
+    // Ensure we always have gates above
+    const minY = Math.min(...gates.map(g => g.y));
+    if (minY > 0) spawnGate(minY - gapDist);
+  }
+}
+
+function render() {
+  ctx.save();
+
+  // Screen shake offset
+  let sx = 0, sy = 0;
+  if (shake.t > 0) {
+    const m = shake.mag * (shake.t / (shake.t + 0.01));
+    sx = (Math.random() - 0.5) * m * 2;
+    sy = (Math.random() - 0.5) * m * 2;
+    ctx.translate(sx, sy);
+  }
+
+  drawBg(0);
+
+  if (state === 'playing' || state === 'gameover') {
+    // Draw gates
+    ctx.save();
+    for (const g of gates) {
+      if (!g.cleared || g.y < playerY() + 40) drawGate(g);
+    }
+    ctx.restore();
+
+    // Draw particles
+    drawParticles();
+
+    // Draw orb (only when playing)
+    if (state === 'playing') drawOrb();
+
+    // Draw lane guide lines (subtle)
+    const sw = slitWidth(gatesCleared);
+    const cx = W / 2;
+    ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([8, 16]);
+    ctx.beginPath();
+    ctx.moveTo(cx - sw / 2, 0);
+    ctx.lineTo(cx - sw / 2, H);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx + sw / 2, 0);
+    ctx.lineTo(cx + sw / 2, H);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  ctx.restore();
+}
+
+// ── RAF loop ──────────────────────────────────────────────────────────────────
+function loop(now) {
+  update(now);
+  render();
+  requestAnimationFrame(loop);
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+updateBestEl();
+showStartPanel();
+drawBg(0);
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

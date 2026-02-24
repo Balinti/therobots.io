@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Twig Magnet - Free HTML5 Game</title>
+  <meta name="description" content="Play Twig Magnet - Tap to activate a magnetic twig that pulls falling leaves before they hit the ground.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#1a2a1a">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Twig Magnet - Free HTML5 Game">
+  <meta property="og:description" content="Play Twig Magnet - Tap to activate a magnetic twig that pulls falling leaves before they hit the ground.">
+  <meta property="og:url" content="https://balinti.github.io/twig-magnet/">
+  <meta property="og:image" content="https://balinti.github.io/twig-magnet/og-image.png">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Twig Magnet - Free HTML5 Game">
+  <meta name="twitter:description" content="Play Twig Magnet - Tap to activate a magnetic twig that pulls falling leaves before they hit the ground.">
+  <meta name="twitter:image" content="https://balinti.github.io/twig-magnet/og-image.png">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #0d1a0d;
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden;
+      font-family: sans-serif;
+      touch-action: none;
+      user-select: none;
+    }
+    #gameContainer {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      height: 100vh;
+      max-height: 750px;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+<div id="gameContainer">
+  <canvas id="c"></canvas>
+</div>
+<script>
+(function(){
+'use strict';
+
+// ─── Canvas Setup ────────────────────────────────────────────────────────────
+const container = document.getElementById('gameContainer');
+const canvas    = document.getElementById('c');
+const ctx       = canvas.getContext('2d');
+let W, H, DPR;
+
+function resize() {
+  DPR = window.devicePixelRatio || 1;
+  const rect = container.getBoundingClientRect();
+  W = rect.width;
+  H = rect.height;
+  canvas.width  = W * DPR;
+  canvas.height = H * DPR;
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener('resize', () => { resize(); if(state !== 'playing') draw(); });
+resize();
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+const LS_KEY     = 'twigmagnet_highscore_v1';
+const LANES      = 3;
+const TWIG_Y_OFF = 100; // distance from bottom
+const LEAF_R     = 18;
+const PULSE_DUR  = 0.25;
+const PULSE_R0   = 18;
+const PULSE_R1   = 92;
+const PULSE_BAND = 14;
+const SNAP_DUR   = 0.10;
+const COOLDOWN   = 0.18;
+const MAX_CRACKS = 3;
+const GUST_DUR   = 1.5;
+const GUST_AMP   = 22;
+
+// ─── State ───────────────────────────────────────────────────────────────────
+let state       = 'start';
+let score       = 0;
+let highScore   = parseInt(localStorage.getItem(LS_KEY) || '0', 10);
+let cracks      = 0;
+let combo       = 0;
+let timeAlive   = 0;
+let spawnTimer  = 0;
+let hue         = 100; // HSL hue cycling
+let shakeAmt    = 0;
+let shakeTimer  = 0;
+let twigLane    = 1; // 0=L,1=C,2=R
+let pulseCooldown = 0;
+
+let leaves      = [];  // { x,y, lane, rot, hue, snapping, snapT, snapStartX, snapStartY, targetX, targetY, captured }
+let hazards     = [];  // rot leaves — same shape + .isRot=true
+let allLeaves   = [];  // combined reference for iteration
+let pulses      = [];  // { lane, t }
+let particles   = [];  // { x,y,vx,vy,life,maxLife,r,hue }
+
+let gustActive  = false;
+let gustTimer   = 0;
+let gustIntervalTimer = 0;
+
+function laneX(lane) {
+  return W * (lane + 1) / (LANES + 1);
+}
+function twigY() { return H - TWIG_Y_OFF; }
+
+function getComboMult() {
+  if (combo >= 15) return 4;
+  if (combo >= 10) return 3;
+  if (combo >=  5) return 2;
+  return 1;
+}
+function getComboTier() {
+  if (combo >= 15) return 3;
+  if (combo >= 10) return 2;
+  if (combo >=  5) return 1;
+  return 0;
+}
+
+// ─── Difficulty ───────────────────────────────────────────────────────────────
+function fallSpeed()     { return Math.min(620, 260 + 7.5  * timeAlive); }
+function spawnInterval() { return Math.max(0.28, 0.72 - 0.0065 * timeAlive); }
+function pRot()          {
+  if (timeAlive < 10) return 0;
+  return Math.min(0.14, 0.02 + 0.0022 * (timeAlive - 10));
+}
+function pBurst()        { return timeAlive > 25 ? Math.min(0.16, 0.04 + 0.004*(timeAlive-25)) : 0; }
+function gustInterval()  { return Math.max(10, 18 - 0.12 * Math.max(0, timeAlive - 45)); }
+
+// ─── Shake ───────────────────────────────────────────────────────────────────
+function shake(amount, duration) {
+  shakeAmt   = Math.max(shakeAmt, amount);
+  shakeTimer = Math.max(shakeTimer, duration);
+}
+
+// ─── Particles ────────────────────────────────────────────────────────────────
+function spawnParticles(x, y, count, h, fast) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = (fast ? 140 : 80) + Math.random() * 80;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - (fast ? 60 : 30),
+      life: 1, maxLife: 0.45 + Math.random() * 0.35,
+      r: 3 + Math.random() * 5,
+      hue: h + (Math.random() - 0.5) * 40,
+      alpha: 1
+    });
+  }
+}
+
+// ─── Spawn ────────────────────────────────────────────────────────────────────
+function spawnLeaf(lane, isRot) {
+  const h = isRot ? 25 : (hue + Math.random() * 60) % 360;
+  const leaf = {
+    x: laneX(lane),
+    y: -LEAF_R,
+    lane,
+    isRot: !!isRot,
+    hue: h,
+    drift: (Math.random() - 0.5) * 18, // minimal drift
+    rot: Math.random() * Math.PI * 2,
+    rotSpeed: (Math.random() - 0.5) * 4,
+    captured: false,
+    snapping: false,
+    snapT: 0,
+    snapStartX: 0, snapStartY: 0,
+    targetX: 0, targetY: 0,
+    glowRed: false
+  };
+  allLeaves.push(leaf);
+  return leaf;
+}
+
+function doSpawn() {
+  if (Math.random() < pBurst()) {
+    const burstLane = Math.floor(Math.random() * LANES);
+    const count = 3 + Math.floor(Math.random() * 4);
+    let rotUsed = false;
+    let yOff = 0;
+    for (let i = 0; i < count; i++) {
+      const isRot = !rotUsed && Math.random() < pRot();
+      if (isRot) rotUsed = true;
+      const leaf = spawnLeaf(burstLane, isRot);
+      leaf.y = -LEAF_R - yOff * (LEAF_R * 3);
+      yOff++;
+    }
+  } else {
+    const lane = Math.floor(Math.random() * LANES);
+    spawnLeaf(lane, Math.random() < pRot());
+  }
+}
+
+// ─── Input ────────────────────────────────────────────────────────────────────
+function handleInput() {
+  if (state === 'start') {
+    startGame();
+    return;
+  }
+  if (state === 'gameover') {
+    startGame();
+    return;
+  }
+  if (state === 'playing') {
+    // advance lane
+    twigLane = (twigLane + 1) % LANES;
+    // fire pulse if off cooldown
+    if (pulseCooldown <= 0) {
+      pulses.push({ lane: twigLane, t: 0 });
+      pulseCooldown = COOLDOWN;
+      shake(1.5, 0.07);
+    }
+  }
+}
+
+canvas.addEventListener('pointerdown', e => { e.preventDefault(); handleInput(); });
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); handleInput(); }
+});
+
+// ─── Game Init ────────────────────────────────────────────────────────────────
+function startGame() {
+  state        = 'playing';
+  score        = 0;
+  cracks       = 0;
+  combo        = 0;
+  timeAlive    = 0;
+  spawnTimer   = 0;
+  twigLane     = 1;
+  pulseCooldown = 0;
+  leaves       = [];
+  hazards      = [];
+  allLeaves    = [];
+  pulses       = [];
+  particles    = [];
+  gustActive   = false;
+  gustTimer    = 0;
+  gustIntervalTimer = 0;
+  shakeAmt     = 0;
+  shakeTimer   = 0;
+  // spawn first leaf right away
+  doSpawn();
+}
+
+// ─── Update ───────────────────────────────────────────────────────────────────
+let prevTime = 0;
+function update(ts) {
+  const dt = Math.min(0.05, (ts - prevTime) / 1000);
+  prevTime = ts;
+
+  if (state !== 'playing') return;
+
+  timeAlive     += dt;
+  hue            = (hue + dt * 30) % 360;
+  pulseCooldown  = Math.max(0, pulseCooldown - dt);
+
+  // shake decay
+  if (shakeTimer > 0) {
+    shakeTimer -= dt;
+    if (shakeTimer <= 0) { shakeAmt = 0; shakeTimer = 0; }
+  }
+
+  // gust
+  if (timeAlive >= 45) {
+    gustIntervalTimer += dt;
+    const gi = gustInterval();
+    if (!gustActive && gustIntervalTimer >= gi) {
+      gustActive = true;
+      gustTimer  = 0;
+      gustIntervalTimer = 0;
+    }
+  }
+  if (gustActive) {
+    gustTimer += dt;
+    if (gustTimer >= GUST_DUR) gustActive = false;
+  }
+
+  // spawn
+  spawnTimer += dt;
+  const si = spawnInterval();
+  while (spawnTimer >= si) {
+    spawnTimer -= si;
+    doSpawn();
+  }
+
+  // update pulses
+  for (let i = pulses.length - 1; i >= 0; i--) {
+    const p = pulses[i];
+    p.t += dt;
+    if (p.t >= PULSE_DUR) { pulses.splice(i, 1); continue; }
+
+    // check leaf capture
+    const pct = p.t / PULSE_DUR;
+    const R   = PULSE_R0 + (PULSE_R1 - PULSE_R0) * pct;
+    const px  = laneX(p.lane);
+    const py  = twigY();
+
+    for (let j = allLeaves.length - 1; j >= 0; j--) {
+      const leaf = allLeaves[j];
+      if (leaf.captured || leaf.snapping) continue;
+      if (leaf.lane !== p.lane) continue;
+
+      const dx   = leaf.x - px;
+      const dy   = leaf.y - py;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+
+      if (Math.abs(dist - R) <= PULSE_BAND) {
+        leaf.captured = true;
+        if (leaf.isRot) {
+          // crack!
+          cracks++;
+          shake(6, 0.18);
+          spawnParticles(leaf.x, leaf.y, 14, 25, true);
+          allLeaves.splice(j, 1);
+          combo = 0;
+          if (cracks >= MAX_CRACKS) endGame();
+        } else {
+          // snap to twig
+          leaf.snapping   = true;
+          leaf.snapT      = 0;
+          leaf.snapStartX = leaf.x;
+          leaf.snapStartY = leaf.y;
+          leaf.targetX    = laneX(twigLane);
+          leaf.targetY    = twigY();
+
+          const prevTier = getComboTier();
+          combo++;
+          const mult = getComboMult();
+          score += mult;
+          spawnParticles(leaf.x, leaf.y, 8, leaf.hue, false);
+          shake(2, 0.08);
+
+          const newTier = getComboTier();
+          if (newTier > prevTier) {
+            shake(5, 0.14);
+            spawnParticles(laneX(twigLane), twigY(), 22, hue, true);
+          }
+          if (score > highScore) {
+            highScore = score;
+            localStorage.setItem(LS_KEY, highScore);
+          }
+        }
+      }
+    }
+  }
+
+  // update leaves
+  const speed = fallSpeed();
+  for (let i = allLeaves.length - 1; i >= 0; i--) {
+    const leaf = allLeaves[i];
+
+    if (leaf.snapping) {
+      leaf.snapT += dt;
+      const t  = Math.min(1, leaf.snapT / SNAP_DUR);
+      const et = 1 - Math.pow(1 - t, 3); // easeOutCubic
+      leaf.x   = leaf.snapStartX + (leaf.targetX - leaf.snapStartX) * et;
+      leaf.y   = leaf.snapStartY + (leaf.targetY - leaf.snapStartY) * et;
+      leaf.rot += leaf.rotSpeed * dt;
+      if (t >= 1) allLeaves.splice(i, 1);
+      continue;
+    }
+
+    if (!leaf.captured) {
+      leaf.y   += speed * dt;
+      leaf.x    = laneX(leaf.lane) + leaf.drift * Math.sin(leaf.y * 0.02);
+      leaf.rot += leaf.rotSpeed * dt;
+
+      // near-miss glow
+      const groundY = H - 10;
+      leaf.glowRed  = (!leaf.isRot && (groundY - leaf.y) < speed * 0.2);
+
+      // hit ground
+      if (leaf.y >= groundY) {
+        allLeaves.splice(i, 1);
+        if (!leaf.isRot) {
+          cracks++;
+          shake(5, 0.15);
+          spawnParticles(leaf.x, leaf.y - 10, 10, leaf.hue, false);
+          combo = 0;
+          if (cracks >= MAX_CRACKS) endGame();
+        }
+      }
+    }
+  }
+
+  // update particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.life -= dt / p.maxLife;
+    if (p.life <= 0) { particles.splice(i, 1); continue; }
+    p.x  += p.vx * dt;
+    p.y  += p.vy * dt;
+    p.vy += 220 * dt; // gravity
+    p.vx *= Math.pow(0.92, dt * 60); // drag
+    p.vy *= Math.pow(0.97, dt * 60);
+  }
+}
+
+// ─── End Game ─────────────────────────────────────────────────────────────────
+function endGame() {
+  state = 'gameover';
+  shake(12, 0.4);
+  spawnParticles(W/2, H/2, 30, 0, true);
+}
+
+// ─── Draw ─────────────────────────────────────────────────────────────────────
+function drawLeaf(leaf) {
+  const { x, y, rot, hue: h, isRot, glowRed } = leaf;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rot);
+
+  if (isRot) {
+    // dark brownish rot leaf
+    ctx.shadowBlur = 12;
+    ctx.shadowColor = 'rgba(120,40,0,0.8)';
+    ctx.fillStyle = '#5a2a00';
+    drawLeafShape(ctx, 0, 0, LEAF_R * 1.1, h);
+    // crack lines
+    ctx.strokeStyle = '#2a0a00';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(-LEAF_R*0.4, -LEAF_R*0.2);
+    ctx.lineTo(LEAF_R*0.2, LEAF_R*0.4);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(LEAF_R*0.3, -LEAF_R*0.3);
+    ctx.lineTo(-LEAF_R*0.1, LEAF_R*0.2);
+    ctx.stroke();
+  } else {
+    const color = glowRed
+      ? `hsl(0,90%,55%)`
+      : `hsl(${h},75%,55%)`;
+    ctx.shadowBlur  = glowRed ? 20 : 10;
+    ctx.shadowColor = glowRed ? 'rgba(255,80,80,0.9)' : `hsla(${h},80%,60%,0.6)`;
+    ctx.fillStyle   = color;
+    drawLeafShape(ctx, 0, 0, LEAF_R, h);
+  }
+  ctx.restore();
+}
+
+function drawLeafShape(ctx, x, y, r, h) {
+  ctx.beginPath();
+  ctx.ellipse(x, y, r * 0.55, r, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // vein
+  ctx.strokeStyle = `hsla(${h},30%,80%,0.4)`;
+  ctx.lineWidth   = 1;
+  ctx.beginPath();
+  ctx.moveTo(x, y - r * 0.85);
+  ctx.lineTo(x, y + r * 0.85);
+  ctx.stroke();
+}
+
+function drawTwig() {
+  const tx = laneX(twigLane);
+  const ty = twigY();
+
+  // twig stick
+  ctx.save();
+  ctx.strokeStyle = '#8B5E3C';
+  ctx.lineWidth   = 4;
+  ctx.lineCap     = 'round';
+  ctx.shadowBlur  = 8;
+  ctx.shadowColor = 'rgba(139,94,60,0.5)';
+  ctx.beginPath();
+  ctx.moveTo(tx - 22, ty + 14);
+  ctx.bezierCurveTo(tx - 8, ty + 2, tx + 8, ty + 2, tx + 22, ty + 14);
+  ctx.stroke();
+
+  // twig tip glow
+  const glowColor = pulseCooldown > 0
+    ? `hsla(${hue},50%,60%,${1 - pulseCooldown/COOLDOWN})`
+    : `hsla(${hue},90%,65%,0.9)`;
+  ctx.shadowBlur  = pulseCooldown > 0 ? 4 : 16;
+  ctx.shadowColor = glowColor;
+  ctx.fillStyle   = glowColor;
+  ctx.beginPath();
+  ctx.arc(tx, ty - 4, 6, 0, Math.PI * 2);
+  ctx.fill();
+
+  // cooldown arc indicator
+  const coolPct = 1 - pulseCooldown / COOLDOWN;
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = `hsla(${hue},80%,65%,0.5)`;
+  ctx.lineWidth   = 2.5;
+  ctx.beginPath();
+  ctx.arc(tx, ty - 4, 13, -Math.PI/2, -Math.PI/2 + Math.PI*2*coolPct, false);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function drawPulse(pulse) {
+  const pct  = pulse.t / PULSE_DUR;
+  const R    = PULSE_R0 + (PULSE_R1 - PULSE_R0) * pct;
+  const alph = (1 - pct) * 0.7;
+  const px   = laneX(pulse.lane);
+  const py   = twigY();
+
+  ctx.save();
+  ctx.strokeStyle = `hsla(${hue},90%,75%,${alph})`;
+  ctx.lineWidth   = 3 + (1 - pct) * 4;
+  ctx.shadowBlur  = 18;
+  ctx.shadowColor = `hsla(${hue},90%,75%,${alph * 0.6})`;
+  ctx.beginPath();
+  ctx.arc(px, py, R, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawCrackHearts() {
+  const heartSize = 14;
+  const startX    = 16;
+  const y         = 36;
+  for (let i = 0; i < MAX_CRACKS; i++) {
+    const isCracked = i < cracks;
+    ctx.save();
+    ctx.globalAlpha = isCracked ? 0.25 : 1;
+    ctx.fillStyle   = isCracked ? '#555' : '#ff4444';
+    ctx.shadowBlur  = isCracked ? 0 : 8;
+    ctx.shadowColor = '#ff4444';
+    // draw simple heart / leaf icon
+    const hx = startX + i * (heartSize * 2 + 4);
+    ctx.beginPath();
+    ctx.ellipse(hx, y, heartSize * 0.4, heartSize * 0.7, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawLaneGuides() {
+  for (let l = 0; l < LANES; l++) {
+    const x   = laneX(l);
+    const isActive = l === twigLane;
+    ctx.save();
+    ctx.setLineDash([6, 10]);
+    ctx.strokeStyle = isActive
+      ? `hsla(${hue},60%,65%,0.18)`
+      : 'rgba(255,255,255,0.06)';
+    ctx.lineWidth = isActive ? 1.5 : 1;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, H - TWIG_Y_OFF + 20);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+}
+
+function drawBackground() {
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0,   '#0a180a');
+  grad.addColorStop(0.5, '#0d1f10');
+  grad.addColorStop(1,   '#0f2213');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+}
+
+function drawHUD() {
+  // Score
+  ctx.save();
+  ctx.font        = `bold ${Math.round(W * 0.1)}px monospace`;
+  ctx.fillStyle   = `hsl(${hue},80%,70%)`;
+  ctx.textAlign   = 'center';
+  ctx.shadowBlur  = 12;
+  ctx.shadowColor = `hsla(${hue},80%,70%,0.5)`;
+  ctx.fillText(score, W/2, 58);
+
+  // combo
+  if (combo >= 5) {
+    const mult = getComboMult();
+    ctx.font      = `bold ${Math.round(W * 0.045)}px monospace`;
+    ctx.fillStyle = `hsl(${(hue+120)%360},90%,65%)`;
+    ctx.shadowColor= `hsla(${(hue+120)%360},90%,65%,0.6)`;
+    ctx.fillText(`x${mult} COMBO ${combo}`, W/2, 78);
+  }
+
+  // best
+  ctx.font      = `${Math.round(W * 0.034)}px monospace`;
+  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  ctx.shadowBlur = 0;
+  ctx.textAlign  = 'right';
+  ctx.fillText(`BEST ${highScore}`, W - 14, 36);
+
+  ctx.restore();
+
+  drawCrackHearts();
+}
+
+function drawStartScreen() {
+  drawBackground();
+
+  // Title
+  ctx.save();
+  ctx.textAlign   = 'center';
+  ctx.font        = `bold ${Math.round(W * 0.13)}px monospace`;
+  ctx.fillStyle   = `hsl(${hue},80%,65%)`;
+  ctx.shadowBlur  = 24;
+  ctx.shadowColor = `hsla(${hue},80%,65%,0.6)`;
+  ctx.fillText('TWIG', W/2, H/2 - 80);
+  ctx.fillStyle   = `hsl(${(hue+60)%360},85%,60%)`;
+  ctx.shadowColor = `hsla(${(hue+60)%360},85%,60%,0.6)`;
+  ctx.fillText('MAGNET', W/2, H/2 - 20);
+
+  ctx.font      = `${Math.round(W * 0.045)}px monospace`;
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.shadowBlur = 0;
+  ctx.fillText('Pulse. Pivot. Collect.', W/2, H/2 + 28);
+
+  const blink = (Date.now() % 1200) < 700;
+  if (blink) {
+    ctx.font      = `bold ${Math.round(W * 0.048)}px monospace`;
+    ctx.fillStyle = `hsl(${hue},90%,70%)`;
+    ctx.shadowBlur= 10;
+    ctx.shadowColor = `hsla(${hue},90%,70%,0.5)`;
+    ctx.fillText('TAP TO START', W/2, H/2 + 100);
+  }
+
+  // instructions
+  ctx.font      = `${Math.round(W * 0.032)}px monospace`;
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.shadowBlur = 0;
+  ctx.fillText('Tap = hop lane + pulse', W/2, H/2 + 155);
+  ctx.fillText('Catch leaves, dodge rot', W/2, H/2 + 183);
+  ctx.fillText('3 misses = game over', W/2, H/2 + 211);
+
+  if (highScore > 0) {
+    ctx.font      = `${Math.round(W * 0.038)}px monospace`;
+    ctx.fillStyle = `hsl(${hue},70%,60%)`;
+    ctx.fillText(`BEST: ${highScore}`, W/2, H/2 + 255);
+  }
+
+  ctx.restore();
+}
+
+function drawGameOverScreen() {
+  // dim overlay
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.textAlign   = 'center';
+  ctx.font        = `bold ${Math.round(W * 0.11)}px monospace`;
+  ctx.fillStyle   = '#ff4444';
+  ctx.shadowBlur  = 20;
+  ctx.shadowColor = 'rgba(255,60,60,0.7)';
+  ctx.fillText('GAME', W/2, H/2 - 70);
+  ctx.fillText('OVER', W/2, H/2 - 10);
+
+  ctx.font      = `${Math.round(W * 0.055)}px monospace`;
+  ctx.fillStyle = `hsl(${hue},80%,70%)`;
+  ctx.shadowColor = `hsla(${hue},80%,70%,0.5)`;
+  ctx.shadowBlur = 10;
+  ctx.fillText(`SCORE: ${score}`, W/2, H/2 + 50);
+
+  ctx.font      = `${Math.round(W * 0.04)}px monospace`;
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.shadowBlur = 0;
+  ctx.fillText(`BEST: ${highScore}`, W/2, H/2 + 88);
+
+  const blink = (Date.now() % 1200) < 700;
+  if (blink) {
+    ctx.font      = `bold ${Math.round(W * 0.046)}px monospace`;
+    ctx.fillStyle = `hsl(${hue},90%,70%)`;
+    ctx.shadowBlur= 10;
+    ctx.shadowColor = `hsla(${hue},90%,70%,0.5)`;
+    ctx.fillText('TAP TO RETRY', W/2, H/2 + 145);
+  }
+
+  ctx.restore();
+}
+
+function drawGustBanner() {
+  if (!gustActive) return;
+  const fade = Math.min(1, Math.min(gustTimer, GUST_DUR - gustTimer) / 0.3);
+  ctx.save();
+  ctx.globalAlpha = fade * 0.92;
+  ctx.fillStyle   = '#1a3a1a';
+  const bw = W * 0.55, bh = 32;
+  const bx = (W - bw) / 2, by = H * 0.25;
+  ctx.beginPath();
+  ctx.roundRect(bx, by, bw, bh, 8);
+  ctx.fill();
+  ctx.textAlign   = 'center';
+  ctx.font        = `bold ${Math.round(W * 0.038)}px monospace`;
+  ctx.fillStyle   = '#88ffaa';
+  ctx.shadowBlur  = 8;
+  ctx.shadowColor = 'rgba(100,255,150,0.6)';
+  ctx.fillText('~ GUST! ~', W/2, by + 22);
+  ctx.restore();
+}
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+
+  if (state === 'start') {
+    hue = (hue + 0.4) % 360;
+    drawStartScreen();
+    return;
+  }
+
+  // apply shake
+  let sx = 0, sy = 0;
+  if (shakeAmt > 0 && shakeTimer > 0) {
+    sx = (Math.random() - 0.5) * shakeAmt * 2;
+    sy = (Math.random() - 0.5) * shakeAmt * 2;
+  }
+  ctx.save();
+  ctx.translate(sx, sy);
+
+  drawBackground();
+  drawLaneGuides();
+
+  // gust visual bend on lane guides (visual only)
+  // (already handled by drawLaneGuides above; nothing to change in collision logic)
+
+  // draw leaves
+  for (const leaf of allLeaves) {
+    drawLeaf(leaf);
+  }
+
+  // draw pulses
+  for (const pulse of pulses) {
+    drawPulse(pulse);
+  }
+
+  // draw twig
+  drawTwig();
+
+  // draw particles
+  for (const p of particles) {
+    ctx.save();
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle   = `hsl(${p.hue},80%,65%)`;
+    ctx.shadowBlur  = 6;
+    ctx.shadowColor = `hsla(${p.hue},80%,65%,0.5)`;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r * p.life, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  drawHUD();
+  drawGustBanner();
+
+  ctx.restore();
+
+  if (state === 'gameover') {
+    drawGameOverScreen();
+  }
+}
+
+// ─── Game Loop ────────────────────────────────────────────────────────────────
+function loop(ts) {
+  update(ts);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+prevTime = performance.now();
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

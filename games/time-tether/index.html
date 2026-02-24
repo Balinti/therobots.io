@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Time Tether - Free HTML5 Game</title>
+<meta name="description" content="Play Time Tether - Tap to tether and swing quickly through minimalist nodes under strict time limits.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0a0a1a">
+<link rel="canonical" href="https://balinti.github.io/time-tether/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Time Tether - Free HTML5 Game">
+<meta property="og:description" content="Play Time Tether - Tap to tether and swing quickly through minimalist nodes under strict time limits.">
+<meta property="og:url" content="https://balinti.github.io/time-tether/">
+<meta property="og:image" content="https://balinti.github.io/time-tether/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Time Tether - Free HTML5 Game">
+<meta name="twitter:description" content="Play Time Tether - Tap to tether and swing quickly through minimalist nodes under strict time limits.">
+<meta name="twitter:image" content="https://balinti.github.io/time-tether/og.png">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#0a0a1a;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;touch-action:none;user-select:none;-webkit-user-select:none}
+#wrap{position:relative;width:100%;max-width:420px;height:100vh;max-height:750px;margin:0 auto;overflow:hidden}
+canvas{display:block;width:100%;height:100%}
+#ui-overlay{position:absolute;bottom:60px;left:0;right:0;display:none;flex-direction:column;align-items:center;gap:12px;pointer-events:none;z-index:10}
+#ui-overlay.active{display:flex}
+#ui-overlay button{pointer-events:auto;background:rgba(255,255,255,0.12);color:#fff;border:1px solid rgba(255,255,255,0.25);border-radius:24px;padding:10px 28px;font-size:15px;cursor:pointer;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);transition:background .2s}
+#ui-overlay button:hover{background:rgba(255,255,255,0.22)}
+#seo-footer{position:fixed;bottom:2px;left:0;right:0;text-align:center;font-size:9px;color:rgba(255,255,255,0.15);pointer-events:none;z-index:1}
+</style>
+</head>
+<body>
+<div id="wrap">
+<canvas id="c"></canvas>
+<div id="ui-overlay">
+<button id="btn-share">Share Score</button>
+</div>
+</div>
+<div id="seo-footer">Time Tether &mdash; Free HTML5 Game &copy; 2026</div>
+<script>
+'use strict';
+(function(){
+
+/* ── CONSTANTS ── */
+const LS_KEY = 'timeTetherHighScore_v1';
+const MAX_DPR = 2.5;
+const PLAYER_Y_RATIO = 0.7;
+const NODE_SPAWN_AHEAD = 1800;
+const NODE_CULL_BEHIND = 400;
+const BASE_SPEED = 180;
+const PACE_MAX = 1.0;
+const PACE_DRAIN_BASE = 0.06;
+const PACE_REFILL_NORMAL = 0.22;
+const PACE_REFILL_GOLD = 0.38;
+const PACE_REFILL_GRAZE = 0.04;
+const BT_DURATION_EARLY = 0.35;
+const BT_DURATION_LATE = 0.20;
+const BT_TIME_SCALE = 0.28;
+const CONE_HALF_ANGLE = Math.PI * 0.32;
+const CONE_RANGE = 420;
+const SLING_SPEED = 900;
+const SHAKE_DURATION = 0.3;
+const SHAKE_INTENSITY_HIT = 3;
+const SHAKE_INTENSITY_DIE = 10;
+
+/* ── CANVAS SETUP ── */
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const wrap = document.getElementById('wrap');
+const uiOverlay = document.getElementById('ui-overlay');
+const btnShare = document.getElementById('btn-share');
+let W, H, dpr;
+
+function resize(){
+    const r = wrap.getBoundingClientRect();
+    dpr = Math.min(devicePixelRatio||1, MAX_DPR);
+    W = r.width; H = r.height;
+    canvas.width = W*dpr; canvas.height = H*dpr;
+    canvas.style.width = W+'px'; canvas.style.height = H+'px';
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+/* ── STATE ── */
+let state = 'start';
+let score, bestScore, combo, maxChain, pace;
+let playerX, playerY, playerVX, playerVY, playerSpeed;
+let cameraY;
+let nodes, particles, trailPoints;
+let elapsed, difficulty;
+let bulletTime, btTimer, btActive;
+let selectedNode, tethering, tetherTarget, tetherProgress;
+let shakeTimer, shakeIntensity;
+let hueShift;
+let challengeScore = null;
+let lastBest = 0;
+
+/* Parse challenge score from URL */
+try {
+    const u = new URLSearchParams(location.search);
+    if(u.has('challengeScore')) challengeScore = parseInt(u.get('challengeScore'))||null;
+} catch(e){}
+
+bestScore = parseInt(localStorage.getItem(LS_KEY))||0;
+
+function resetGame(){
+    score = 0; combo = 0; maxChain = 0;
+    pace = PACE_MAX;
+    playerX = W/2; playerY = 0; playerVX = 0; playerVY = 0;
+    playerSpeed = BASE_SPEED;
+    cameraY = playerY - H*PLAYER_Y_RATIO;
+    nodes = []; particles = []; trailPoints = [];
+    elapsed = 0; difficulty = 0;
+    bulletTime = false; btTimer = 0; btActive = false;
+    selectedNode = null; tethering = false; tetherTarget = null; tetherProgress = 0;
+    shakeTimer = 0; shakeIntensity = 0;
+    hueShift = 0;
+    spawnInitialNodes();
+}
+
+/* ── NODE TYPES ── */
+const NT_NORMAL=0, NT_GOLD=1, NT_MOVING=2, NT_RED=3;
+
+function makeNode(y){
+    const x = 40 + Math.random()*(W-80);
+    let type = NT_NORMAL;
+    if(elapsed > 45 && Math.random()<0.18) type = NT_RED;
+    else if(elapsed > 25 && Math.random()<0.25) type = NT_MOVING;
+    else if(elapsed > 10 && Math.random()<0.2) type = NT_GOLD;
+    return {x, y, type, radius: type===NT_GOLD?14:11, moveDir: (Math.random()<0.5?1:-1), moveSpeed: 20+Math.random()*30, alive:true, highlighted:false, hitAnim:0};
+}
+
+function spawnInitialNodes(){
+    for(let y = playerY - 150; y > playerY - NODE_SPAWN_AHEAD; y -= 90+Math.random()*70){
+        nodes.push(makeNode(y));
+    }
+}
+
+/* ── PARTICLES ── */
+function spawnParticles(x,y,count,color,speed,life){
+    for(let i=0;i<count;i++){
+        const a = Math.random()*Math.PI*2;
+        const s = speed*(0.3+Math.random()*0.7);
+        particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life,maxLife:life,color,size:2+Math.random()*3});
+    }
+}
+function spawnRing(x,y,color){
+    particles.push({x,y,vx:0,vy:0,life:0.4,maxLife:0.4,color,size:0,ring:true,ringRadius:5});
+}
+function spawnTetherSparks(x1,y1,x2,y2,color){
+    const dx=x2-x1, dy=y2-y1;
+    for(let i=0;i<12;i++){
+        const t = Math.random();
+        const px = x1+dx*t, py = y1+dy*t;
+        const a = Math.random()*Math.PI*2;
+        const s = 30+Math.random()*50;
+        particles.push({x:px,y:py,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:0.3+Math.random()*0.2,maxLife:0.5,color,size:1.5+Math.random()*2});
+    }
+}
+
+/* ── INPUT ── */
+let inputDown = false;
+function onInput(){
+    if(state==='start'){state='playing'; resetGame(); return;}
+    if(state==='gameover'){state='start'; uiOverlay.classList.remove('active'); return;}
+    if(state==='playing') triggerBulletTime();
+}
+canvas.addEventListener('pointerdown', e=>{e.preventDefault(); onInput();});
+document.addEventListener('keydown', e=>{
+    if(e.code==='Space'||e.code==='Enter'){e.preventDefault(); onInput();}
+});
+
+btnShare.addEventListener('click', ()=>{
+    const url = 'https://balinti.github.io/time-tether/?challengeScore='+score;
+    const text = `I scored ${score} in Time Tether! Can you beat me?`;
+    if(navigator.share){
+        navigator.share({title:'Time Tether Challenge',text,url}).catch(()=>{});
+    } else {
+        navigator.clipboard.writeText(text+' '+url).then(()=>{
+            btnShare.textContent='Copied!';
+            setTimeout(()=>{btnShare.textContent='Share Score';},1500);
+        }).catch(()=>{});
+    }
+});
+
+/* ── BULLET TIME ── */
+function triggerBulletTime(){
+    if(bulletTime || tethering) return;
+    bulletTime = true;
+    const btDur = lerp(BT_DURATION_EARLY, BT_DURATION_LATE, Math.min(difficulty,1));
+    btTimer = btDur;
+    btActive = true;
+    highlightCandidates();
+    if(selectedNode){
+        startTether(selectedNode);
+    }
+}
+
+function highlightCandidates(){
+    nodes.forEach(n=>n.highlighted=false);
+    selectedNode = null;
+    const candidates = [];
+    const dirX = playerVX, dirY = -playerSpeed;
+    const dirLen = Math.sqrt(dirX*dirX+dirY*dirY)||1;
+    const ndx = dirX/dirLen, ndy = dirY/dirLen;
+    for(const n of nodes){
+        if(!n.alive) continue;
+        const dx = n.x - playerX, dy = n.y - playerY;
+        const dist = Math.sqrt(dx*dx+dy*dy);
+        if(dist > CONE_RANGE || dist < 20) continue;
+        const dot = (dx*ndx+dy*ndy)/dist;
+        const angle = Math.acos(Math.max(-1,Math.min(1,dot)));
+        if(angle < CONE_HALF_ANGLE && dy < 0){
+            candidates.push({node:n, dist, angle});
+        }
+    }
+    candidates.sort((a,b)=>a.dist-b.dist);
+    const pick = candidates.slice(0,3);
+    pick.forEach(c=>c.node.highlighted=true);
+    if(pick.length>0) selectedNode = pick[0].node;
+}
+
+function startTether(node){
+    tethering = true;
+    tetherTarget = node;
+    tetherProgress = 0;
+}
+
+/* ── UPDATE ── */
+let lastTime = 0;
+function update(ts){
+    requestAnimationFrame(update);
+    if(!lastTime){lastTime=ts;return;}
+    let rawDt = (ts-lastTime)/1000;
+    lastTime = ts;
+    rawDt = Math.min(rawDt, 0.05);
+
+    if(state!=='playing'){draw(); return;}
+
+    let dt = rawDt;
+    if(bulletTime) dt *= BT_TIME_SCALE;
+
+    elapsed += dt;
+    difficulty = elapsed / 60;
+    hueShift += dt*30;
+
+    /* Pace drain */
+    const drainMult = 1 + difficulty*1.8;
+    pace -= PACE_DRAIN_BASE * drainMult * dt;
+    pace = Math.max(0, Math.min(PACE_MAX, pace));
+
+    /* Check death */
+    if(pace <= 0){
+        endGame();
+        draw();
+        return;
+    }
+
+    /* Bullet time timer */
+    if(bulletTime){
+        btTimer -= rawDt;
+        if(btTimer <= 0){
+            bulletTime = false;
+            btActive = false;
+            if(!tethering){
+                /* Miss - no valid node */
+                combo = 0;
+                pace -= 0.08;
+                checkGraze();
+            }
+        }
+    }
+
+    /* Tether animation */
+    if(tethering && tetherTarget){
+        const dx = tetherTarget.x - playerX;
+        const dy = tetherTarget.y - playerY;
+        const dist = Math.sqrt(dx*dx+dy*dy);
+        tetherProgress += rawDt * SLING_SPEED / Math.max(dist, 1);
+        if(tetherProgress >= 1){
+            /* Snap to node */
+            const oldX = playerX, oldY = playerY;
+            playerX = tetherTarget.x;
+            playerY = tetherTarget.y;
+            tetherTarget.alive = false;
+            tetherTarget.hitAnim = 1;
+
+            /* Score & combo */
+            combo++;
+            if(combo > maxChain) maxChain = combo;
+            let pts = 10 + combo*2;
+            let refill = PACE_REFILL_NORMAL;
+
+            if(tetherTarget.type === NT_GOLD){
+                pts *= 3;
+                refill = PACE_REFILL_GOLD;
+            } else if(tetherTarget.type === NT_RED){
+                pts *= 5;
+                if(combo >= 3) refill = PACE_REFILL_NORMAL;
+                else { refill = -0.15; }
+            }
+
+            score += pts;
+            pace = Math.min(PACE_MAX, pace + refill);
+
+            /* Sling velocity */
+            const slingDx = playerX - oldX;
+            const slingDy = playerY - oldY;
+            const slingDist = Math.sqrt(slingDx*slingDx+slingDy*slingDy)||1;
+            playerVX = (slingDx/slingDist)*120;
+            playerVY = 0;
+
+            /* Effects */
+            const hue = tetherTarget.type===NT_GOLD?50:tetherTarget.type===NT_RED?0:(200+hueShift%360);
+            spawnParticles(playerX, playerY, 20, `hsl(${hue},90%,65%)`, 200, 0.5);
+            spawnRing(playerX, playerY, `hsl(${hue},90%,65%)`);
+            spawnTetherSparks(oldX, oldY, playerX, playerY, `hsl(${hue},80%,70%)`);
+
+            /* Combo milestone */
+            if(combo % 10 === 0 && combo > 0){
+                spawnParticles(playerX, playerY, 50, `hsl(${(hueShift*3)%360},100%,70%)`, 350, 0.8);
+            }
+
+            shakeTimer = SHAKE_DURATION*0.4;
+            shakeIntensity = SHAKE_INTENSITY_HIT;
+
+            tethering = false;
+            tetherTarget = null;
+            bulletTime = false;
+            btActive = false;
+        }
+    }
+
+    /* Player movement */
+    playerSpeed = BASE_SPEED + difficulty*80;
+    playerY -= playerSpeed * dt;
+    playerX += playerVX * dt;
+    playerVX *= (1 - 3*dt);
+    /* Clamp X */
+    if(playerX < 20){playerX=20;playerVX=Math.abs(playerVX)*0.5;}
+    if(playerX > W-20){playerX=W-20;playerVX=-Math.abs(playerVX)*0.5;}
+
+    /* Camera */
+    cameraY = playerY - H*PLAYER_Y_RATIO;
+
+    /* Trail */
+    trailPoints.unshift({x:playerX, y:playerY, age:0});
+    for(let i=trailPoints.length-1;i>=0;i--){
+        trailPoints[i].age += dt;
+        if(trailPoints[i].age > 0.5) trailPoints.splice(i,1);
+    }
+
+    /* Node management */
+    const spawnThreshold = playerY - NODE_SPAWN_AHEAD;
+    let minNodeY = Infinity;
+    for(const n of nodes){ if(n.y < minNodeY) minNodeY = n.y; }
+    while(minNodeY > spawnThreshold){
+        const gap = 80 + Math.random()*60 - difficulty*5;
+        minNodeY -= Math.max(gap, 50);
+        nodes.push(makeNode(minNodeY));
+    }
+    /* Cull */
+    nodes = nodes.filter(n => n.y < playerY + NODE_CULL_BEHIND);
+
+    /* Move moving nodes */
+    for(const n of nodes){
+        if(n.type === NT_MOVING && n.alive){
+            n.x += n.moveDir * n.moveSpeed * dt;
+            if(n.x < 30 || n.x > W-30) n.moveDir *= -1;
+            n.x = Math.max(30, Math.min(W-30, n.x));
+        }
+        if(n.hitAnim > 0) n.hitAnim -= dt*4;
+    }
+
+    /* Particles */
+    for(let i=particles.length-1;i>=0;i--){
+        const p = particles[i];
+        p.life -= dt;
+        if(p.life<=0){particles.splice(i,1);continue;}
+        if(!p.ring){
+            p.x += p.vx*dt;
+            p.y += p.vy*dt;
+            p.vx *= (1-2*dt);
+            p.vy *= (1-2*dt);
+        } else {
+            p.ringRadius += dt*200;
+        }
+    }
+
+    /* Shake */
+    if(shakeTimer > 0) shakeTimer -= rawDt;
+
+    draw();
+}
+
+function checkGraze(){
+    const grazeRange = 80;
+    for(const n of nodes){
+        if(!n.alive) continue;
+        const dx = n.x-playerX, dy = n.y-playerY;
+        const dist = Math.sqrt(dx*dx+dy*dy);
+        if(dist < grazeRange){
+            pace = Math.min(PACE_MAX, pace + PACE_REFILL_GRAZE);
+            spawnParticles(n.x, n.y, 5, 'rgba(255,255,255,0.6)', 60, 0.3);
+            return;
+        }
+    }
+}
+
+function endGame(){
+    state = 'gameover';
+    if(score > bestScore){
+        bestScore = score;
+        localStorage.setItem(LS_KEY, bestScore);
+    }
+    lastBest = bestScore;
+    shakeTimer = SHAKE_DURATION;
+    shakeIntensity = SHAKE_INTENSITY_DIE;
+    uiOverlay.classList.add('active');
+}
+
+/* ── DRAW ── */
+function draw(){
+    ctx.save();
+
+    /* Shake offset */
+    let sx=0, sy=0;
+    if(shakeTimer>0){
+        const t = shakeTimer/SHAKE_DURATION;
+        sx = (Math.random()-0.5)*2*shakeIntensity*t;
+        sy = (Math.random()-0.5)*2*shakeIntensity*t;
+        ctx.translate(sx,sy);
+    }
+
+    /* Background gradient */
+    const grad = ctx.createLinearGradient(0,0,0,H);
+    grad.addColorStop(0,'#0a0a1a');
+    grad.addColorStop(1,'#12102a');
+    ctx.fillStyle = grad;
+    ctx.fillRect(-10,-10,W+20,H+20);
+
+    /* Stars / ambient dots */
+    if(state==='playing'||state==='gameover'){
+        drawStars();
+    }
+
+    if(state==='start'){
+        drawStartScreen();
+        ctx.restore();
+        return;
+    }
+    if(state==='gameover'){
+        drawGameWorld();
+        drawGameOverScreen();
+        ctx.restore();
+        return;
+    }
+
+    /* Bullet time overlay */
+    if(bulletTime){
+        ctx.fillStyle = 'rgba(0,0,10,0.18)';
+        ctx.fillRect(0,0,W,H);
+        /* Vignette */
+        const vg = ctx.createRadialGradient(W/2,H/2,H*0.2,W/2,H/2,H*0.7);
+        vg.addColorStop(0,'rgba(0,0,0,0)');
+        vg.addColorStop(1,'rgba(0,0,20,0.35)');
+        ctx.fillStyle = vg;
+        ctx.fillRect(0,0,W,H);
+    }
+
+    drawGameWorld();
+    drawHUD();
+
+    ctx.restore();
+}
+
+function worldToScreen(wx,wy){
+    return {x:wx, y:wy-cameraY};
+}
+
+function drawStars(){
+    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    const seed = 12345;
+    for(let i=0;i<40;i++){
+        const sx = ((seed*i*7+i*131)%1000)/1000*W;
+        const sy = ((seed*i*13+i*97)%1000)/1000*H;
+        const sz = ((seed*i*3+i*53)%1000)/1000*1.5+0.5;
+        ctx.beginPath();
+        ctx.arc(sx,sy,sz,0,Math.PI*2);
+        ctx.fill();
+    }
+}
+
+function drawGameWorld(){
+    ctx.save();
+
+    /* Draw trail */
+    if(trailPoints.length > 1){
+        ctx.beginPath();
+        const p0 = worldToScreen(trailPoints[0].x, trailPoints[0].y);
+        ctx.moveTo(p0.x, p0.y);
+        for(let i=1;i<trailPoints.length;i++){
+            const p = worldToScreen(trailPoints[i].x, trailPoints[i].y);
+            ctx.lineTo(p.x, p.y);
+        }
+        ctx.strokeStyle = `hsla(${(220+hueShift)%360},80%,60%,0.4)`;
+        ctx.lineWidth = 3;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+    }
+
+    /* Draw tether line */
+    if(tethering && tetherTarget){
+        const ps = worldToScreen(playerX, playerY);
+        const ts = worldToScreen(tetherTarget.x, tetherTarget.y);
+        const cx = lerp(ps.x, ts.x, tetherProgress);
+        const cy = lerp(ps.y, ts.y, tetherProgress);
+        ctx.beginPath();
+        ctx.moveTo(ps.x, ps.y);
+        ctx.lineTo(cx, cy);
+        const hue = tetherTarget.type===NT_GOLD?50:tetherTarget.type===NT_RED?0:(200+hueShift%360);
+        ctx.strokeStyle = `hsla(${hue},90%,65%,0.8)`;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+    }
+
+    /* Draw cone during bullet time */
+    if(bulletTime && !tethering){
+        const ps = worldToScreen(playerX, playerY);
+        ctx.save();
+        ctx.translate(ps.x, ps.y);
+        ctx.rotate(-Math.PI/2);
+        ctx.beginPath();
+        ctx.moveTo(0,0);
+        ctx.arc(0,0,CONE_RANGE*0.6,-CONE_HALF_ANGLE,CONE_HALF_ANGLE);
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(100,180,255,0.07)';
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(100,180,255,0.15)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    /* Draw nodes */
+    for(const n of nodes){
+        const s = worldToScreen(n.x, n.y);
+        if(s.y < -50 || s.y > H+50) continue;
+        if(!n.alive){
+            if(n.hitAnim > 0){
+                ctx.globalAlpha = n.hitAnim;
+                ctx.beginPath();
+                ctx.arc(s.x, s.y, n.radius*(2-n.hitAnim), 0, Math.PI*2);
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+                ctx.globalAlpha = 1;
+            }
+            continue;
+        }
+
+        let baseHue, sat, lum;
+        switch(n.type){
+            case NT_GOLD: baseHue=50; sat=90; lum=60; break;
+            case NT_RED: baseHue=0; sat=80; lum=55; break;
+            case NT_MOVING: baseHue=160; sat=70; lum=55; break;
+            default: baseHue=(220+hueShift)%360; sat=60; lum=55;
+        }
+
+        /* Glow */
+        const glowR = n.highlighted ? n.radius*3 : n.radius*2;
+        const glow = ctx.createRadialGradient(s.x,s.y,0,s.x,s.y,glowR);
+        glow.addColorStop(0,`hsla(${baseHue},${sat}%,${lum}%,${n.highlighted?0.4:0.15})`);
+        glow.addColorStop(1,'transparent');
+        ctx.fillStyle = glow;
+        ctx.fillRect(s.x-glowR,s.y-glowR,glowR*2,glowR*2);
+
+        /* Node circle */
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, n.radius, 0, Math.PI*2);
+        ctx.fillStyle = `hsl(${baseHue},${sat}%,${lum}%)`;
+        ctx.fill();
+
+        if(n.highlighted){
+            ctx.beginPath();
+            ctx.arc(s.x, s.y, n.radius+5, 0, Math.PI*2);
+            ctx.strokeStyle = `hsla(${baseHue},${sat}%,${lum+20}%,0.7)`;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+
+        /* Inner highlight */
+        ctx.beginPath();
+        ctx.arc(s.x-n.radius*0.25, s.y-n.radius*0.25, n.radius*0.4, 0, Math.PI*2);
+        ctx.fillStyle = `hsla(${baseHue},${sat}%,${lum+30}%,0.4)`;
+        ctx.fill();
+    }
+
+    /* Draw particles */
+    for(const p of particles){
+        const ps = worldToScreen(p.x, p.y);
+        const alpha = p.life/p.maxLife;
+        if(p.ring){
+            ctx.beginPath();
+            ctx.arc(ps.x, ps.y, p.ringRadius, 0, Math.PI*2);
+            ctx.strokeStyle = p.color.replace(')',`,${alpha})`).replace('hsl','hsla').replace('rgb','rgba');
+            ctx.lineWidth = 2*alpha;
+            ctx.stroke();
+        } else {
+            ctx.globalAlpha = alpha;
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            ctx.arc(ps.x, ps.y, p.size*alpha, 0, Math.PI*2);
+            ctx.fill();
+            ctx.globalAlpha = 1;
+        }
+    }
+
+    /* Draw player */
+    const pp = worldToScreen(playerX, playerY);
+    /* Squash/stretch based on velocity */
+    const vy = playerSpeed;
+    const stretch = tethering ? 1.3 : 1.0;
+    const squash = tethering ? 0.7 : 1.0;
+
+    ctx.save();
+    ctx.translate(pp.x, pp.y);
+    ctx.scale(squash, stretch);
+
+    /* Player glow */
+    const pgHue = (200+hueShift)%360;
+    const pg = ctx.createRadialGradient(0,0,0,0,0,28);
+    pg.addColorStop(0,`hsla(${pgHue},80%,70%,0.5)`);
+    pg.addColorStop(1,'transparent');
+    ctx.fillStyle = pg;
+    ctx.fillRect(-28,-28,56,56);
+
+    /* Player orb */
+    ctx.beginPath();
+    ctx.arc(0,0,10,0,Math.PI*2);
+    const pg2 = ctx.createRadialGradient(-2,-2,2,0,0,10);
+    pg2.addColorStop(0,`hsl(${pgHue},80%,85%)`);
+    pg2.addColorStop(1,`hsl(${pgHue},70%,55%)`);
+    ctx.fillStyle = pg2;
+    ctx.fill();
+
+    /* White core */
+    ctx.beginPath();
+    ctx.arc(-2,-2,3,0,Math.PI*2);
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.fill();
+
+    ctx.restore();
+
+    ctx.restore();
+}
+
+function drawHUD(){
+    /* Score */
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 24px system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(score, 16, 40);
+
+    /* Combo */
+    if(combo > 1){
+        ctx.font = 'bold 16px system-ui, sans-serif';
+        ctx.fillStyle = `hsl(${(50+hueShift)%360},80%,65%)`;
+        ctx.fillText('x'+combo, 16, 62);
+    }
+
+    /* Pace meter */
+    const meterW = W - 32;
+    const meterH = 6;
+    const meterX = 16;
+    const meterY = H - 30;
+
+    ctx.fillStyle = 'rgba(255,255,255,0.1)';
+    ctx.beginPath();
+    ctx.roundRect(meterX, meterY, meterW, meterH, 3);
+    ctx.fill();
+
+    const paceRatio = pace/PACE_MAX;
+    let meterHue;
+    if(paceRatio > 0.5) meterHue = lerp(50, 140, (paceRatio-0.5)*2);
+    else meterHue = lerp(0, 50, paceRatio*2);
+
+    const meterGrad = ctx.createLinearGradient(meterX, 0, meterX+meterW*paceRatio, 0);
+    meterGrad.addColorStop(0, `hsl(${meterHue},80%,55%)`);
+    meterGrad.addColorStop(1, `hsl(${meterHue+20},90%,60%)`);
+    ctx.fillStyle = meterGrad;
+    ctx.beginPath();
+    ctx.roundRect(meterX, meterY, meterW*paceRatio, meterH, 3);
+    ctx.fill();
+
+    /* Glow on low pace */
+    if(paceRatio < 0.3){
+        const pulse = 0.3 + Math.sin(elapsed*8)*0.15;
+        ctx.shadowColor = `hsla(0,90%,55%,${pulse})`;
+        ctx.shadowBlur = 10;
+        ctx.fillStyle = `hsla(0,90%,55%,${pulse})`;
+        ctx.beginPath();
+        ctx.roundRect(meterX, meterY, meterW*paceRatio, meterH, 3);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+    }
+
+    /* Pace label */
+    ctx.font = '10px system-ui, sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.textAlign = 'right';
+    ctx.fillText('PACE', meterX+meterW, meterY-4);
+}
+
+function drawStartScreen(){
+    /* Background */
+    const grad = ctx.createLinearGradient(0,0,0,H);
+    grad.addColorStop(0,'#0a0a1a');
+    grad.addColorStop(0.5,'#12102a');
+    grad.addColorStop(1,'#0d0b20');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0,0,W,H);
+
+    drawStars();
+
+    /* Animated orb */
+    const orbY = H*0.32 + Math.sin(Date.now()/800)*8;
+    const orbHue = (Date.now()/30)%360;
+    const og = ctx.createRadialGradient(W/2,orbY,0,W/2,orbY,50);
+    og.addColorStop(0,`hsla(${orbHue},80%,70%,0.5)`);
+    og.addColorStop(1,'transparent');
+    ctx.fillStyle = og;
+    ctx.fillRect(W/2-50,orbY-50,100,100);
+    ctx.beginPath();
+    ctx.arc(W/2, orbY, 16, 0, Math.PI*2);
+    const og2 = ctx.createRadialGradient(W/2-3,orbY-3,3,W/2,orbY,16);
+    og2.addColorStop(0,`hsl(${orbHue},80%,85%)`);
+    og2.addColorStop(1,`hsl(${orbHue},70%,55%)`);
+    ctx.fillStyle = og2;
+    ctx.fill();
+
+    /* Decorative nodes */
+    const nodePositions = [
+        {x:W*0.25,y:orbY-90}, {x:W*0.72,y:orbY-140}, {x:W*0.55,y:orbY-200}
+    ];
+    for(const np of nodePositions){
+        const ny = np.y + Math.sin(Date.now()/1000+np.x)*5;
+        ctx.beginPath();
+        ctx.arc(np.x, ny, 8, 0, Math.PI*2);
+        ctx.fillStyle = `hsla(${(orbHue+120)%360},60%,55%,0.5)`;
+        ctx.fill();
+        /* Line to orb */
+        ctx.beginPath();
+        ctx.moveTo(W/2, orbY);
+        ctx.lineTo(np.x, ny);
+        ctx.strokeStyle = `hsla(${(orbHue+120)%360},60%,55%,0.1)`;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+    }
+
+    /* Title */
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 36px system-ui, sans-serif';
+    ctx.fillText('TIME TETHER', W/2, H*0.55);
+
+    /* Subtitle */
+    ctx.font = '14px system-ui, sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.fillText('Bullet-Time Chain', W/2, H*0.55+28);
+
+    /* Challenge score */
+    if(challengeScore){
+        ctx.font = 'bold 18px system-ui, sans-serif';
+        ctx.fillStyle = `hsl(${(Date.now()/20)%360},80%,65%)`;
+        ctx.fillText('Beat '+challengeScore+'!', W/2, H*0.65);
+    }
+
+    /* Best score */
+    if(bestScore > 0){
+        ctx.font = '13px system-ui, sans-serif';
+        ctx.fillStyle = 'rgba(255,255,255,0.35)';
+        ctx.fillText('Best: '+bestScore, W/2, H*0.72);
+    }
+
+    /* Tap to start */
+    const pulse = 0.5 + Math.sin(Date.now()/400)*0.3;
+    ctx.font = '16px system-ui, sans-serif';
+    ctx.fillStyle = `rgba(255,255,255,${pulse})`;
+    ctx.fillText('Tap to Start', W/2, H*0.82);
+}
+
+function drawGameOverScreen(){
+    /* Overlay */
+    ctx.fillStyle = 'rgba(5,5,15,0.75)';
+    ctx.fillRect(0,0,W,H);
+
+    ctx.textAlign = 'center';
+
+    /* Game Over */
+    ctx.font = 'bold 28px system-ui, sans-serif';
+    ctx.fillStyle = '#fff';
+    ctx.fillText('GAME OVER', W/2, H*0.3);
+
+    /* Score */
+    ctx.font = 'bold 48px system-ui, sans-serif';
+    const scoreHue = (Date.now()/20)%360;
+    ctx.fillStyle = `hsl(${scoreHue},70%,65%)`;
+    ctx.fillText(score, W/2, H*0.42);
+
+    /* Labels */
+    ctx.font = '14px system-ui, sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.fillText('SCORE', W/2, H*0.42+24);
+
+    /* Best & chain */
+    ctx.font = '16px system-ui, sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.fillText('Best: '+lastBest, W/2 - 60, H*0.54);
+    ctx.fillText('Chain: '+maxChain, W/2 + 60, H*0.54);
+
+    /* New best indicator */
+    if(score >= lastBest && score > 0){
+        ctx.font = 'bold 14px system-ui, sans-serif';
+        ctx.fillStyle = `hsl(50,90%,60%)`;
+        ctx.fillText('NEW BEST!', W/2, H*0.35 - 5);
+    }
+
+    /* Challenge result */
+    if(challengeScore){
+        ctx.font = '15px system-ui, sans-serif';
+        if(score > challengeScore){
+            ctx.fillStyle = 'hsl(120,70%,60%)';
+            ctx.fillText('Challenge beaten!', W/2, H*0.61);
+        } else {
+            ctx.fillStyle = 'hsl(0,60%,60%)';
+            ctx.fillText('Challenge: '+challengeScore+' — try again!', W/2, H*0.61);
+        }
+    }
+
+    /* Tap to retry */
+    const pulse = 0.5 + Math.sin(Date.now()/400)*0.3;
+    ctx.font = '16px system-ui, sans-serif';
+    ctx.fillStyle = `rgba(255,255,255,${pulse})`;
+    ctx.fillText('Tap to Retry', W/2, H*0.78);
+}
+
+/* ── HELPERS ── */
+function lerp(a,b,t){ return a+(b-a)*t; }
+
+/* ── POLYFILL roundRect ── */
+if(!ctx.roundRect){
+    CanvasRenderingContext2D.prototype.roundRect = function(x,y,w,h,r){
+        if(typeof r==='number') r=[r,r,r,r];
+        this.moveTo(x+r[0],y);
+        this.arcTo(x+w,y,x+w,y+h,r[1]);
+        this.arcTo(x+w,y+h,x,y+h,r[2]);
+        this.arcTo(x,y+h,x,y,r[3]);
+        this.arcTo(x,y,x+w,y,r[0]);
+    };
+}
+
+/* ── START ── */
+requestAnimationFrame(update);
+
+})();
+</script>
+</body>
+</html>

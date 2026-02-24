@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Root Rush - Free HTML5 Game</title>
+<meta name="description" content="Play Root Rush - Tap to climb winding jungle roots while the screen zooms unpredictably to test your reflexes.">
+<meta name="theme-color" content="#1a0e2e">
+<link rel="canonical" href="https://balinti.github.io/root-rush/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Root Rush - Free HTML5 Game">
+<meta property="og:description" content="Play Root Rush - Tap to climb winding jungle roots while the screen zooms unpredictably to test your reflexes.">
+<meta property="og:url" content="https://balinti.github.io/root-rush/">
+<meta property="og:image" content="https://balinti.github.io/root-rush/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Root Rush - Free HTML5 Game">
+<meta name="twitter:description" content="Play Root Rush - Tap to climb winding jungle roots while the screen zooms unpredictably to test your reflexes.">
+<meta name="twitter:image" content="https://balinti.github.io/root-rush/og.png">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#0d0618;font-family:sans-serif;touch-action:none;user-select:none;-webkit-user-select:none}
+#wrap{display:flex;align-items:center;justify-content:center;width:100%;height:100%;background:linear-gradient(135deg,#0d0618 0%,#1a0e2e 50%,#0d0618 100%)}
+#c{display:block;width:min(420px,100vw);height:min(750px,100vh);border-radius:8px}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="c"></canvas></div>
+<script>
+'use strict';
+(()=>{
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+
+// --- Canvas sizing ---
+const DPR=Math.min(window.devicePixelRatio||1,2);
+let W,H;
+function resize(){
+  const cs=getComputedStyle(canvas);
+  W=parseFloat(cs.width);
+  H=parseFloat(cs.height);
+  canvas.width=W*DPR;
+  canvas.height=H*DPR;
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+resize();
+window.addEventListener('resize',resize);
+
+// --- Constants ---
+const LANE_L=()=>W*0.33;
+const LANE_R=()=>W*0.67;
+const PLAYER_Y=()=>H*0.78;
+const BASE_SPEED=240;
+const SPEED_RAMP=3.2;
+const MAX_SPEED=520;
+const RUSH_BONUS=140;
+const LS_KEY='rootrush_best';
+
+const TYPE_THORN=0,TYPE_BEETLE=1,TYPE_SAP=2;
+
+// --- State ---
+let state='start';
+let score=0,bestScore=+(localStorage.getItem(LS_KEY)||0);
+let gameTime=0;
+let playerLane=0; // 0=left,1=right
+let flipCooldown=0;
+let combo=0,comboDecayTimer=0;
+let rushMeter=0,rushActive=false,rushTimer=0;
+let rushTelegraph=false,rushTelegraphTimer=0;
+let distTraveled=0,nextSpawnDist=0;
+let speed=BASE_SPEED;
+let globalHue=120;
+let shakeX=0,shakeY=0,shakeMag=0;
+let zoomCurrent=1,zoomTarget=1,zoomVel=0;
+let segments=[];
+let particles=[];
+let lastTime=0;
+let bgRoots=[];
+
+// --- Helpers ---
+function clamp(v,lo,hi){return v<lo?lo:v>hi?hi:v}
+function lerp(a,b,t){return a+(b-a)*t}
+function rand(a,b){return a+Math.random()*(b-a)}
+function randInt(a,b){return Math.floor(rand(a,b+1))}
+function hsl(h,s,l,a){return a!==undefined?`hsla(${h%360},${s}%,${l}%,${a})`:`hsl(${h%360},${s}%,${l}%)`}
+
+function playerX(){return playerLane===0?LANE_L():LANE_R()}
+
+function getMultiplier(){return Math.min(1+Math.floor(combo/5),4)}
+
+// --- Background roots ---
+function initBgRoots(){
+  bgRoots=[];
+  for(let i=0;i<12;i++){
+    bgRoots.push({x:rand(0,W),y:rand(0,H),len:rand(80,200),angle:rand(-0.5,0.5),w:rand(2,6),hue:rand(40,100)});
+  }
+}
+
+// --- Segments ---
+function spawnSegment(){
+  const t=gameTime;
+  let lane,type;
+  const beetleChance=clamp(0.05+0.004*t,0.05,0.35);
+  const sapChance=clamp(0.18+0.0025*t,0.18,0.40);
+
+  // Pattern logic by time band
+  const r=Math.random();
+  if(t<10){
+    // Simple: single thorns or sap
+    lane=randInt(0,1);
+    type=r<sapChance?TYPE_SAP:TYPE_THORN;
+  }else if(t<25){
+    // Alternating thorns, some beetles
+    lane=randInt(0,1);
+    if(r<beetleChance) type=TYPE_BEETLE;
+    else if(r<beetleChance+sapChance) type=TYPE_SAP;
+    else type=TYPE_THORN;
+  }else if(t<45){
+    // Double threats: sometimes both lanes have hazards + sap bait
+    if(r<0.15){
+      // Both lanes thorn
+      spawnEntity(0,TYPE_THORN);
+      spawnEntity(1,TYPE_SAP); // sap bait near hazard
+      return;
+    }
+    lane=randInt(0,1);
+    if(r<beetleChance+0.15) type=TYPE_BEETLE;
+    else if(r<beetleChance+0.15+sapChance) type=TYPE_SAP;
+    else type=TYPE_THORN;
+  }else if(t<70){
+    // Fakeout sap near hazards
+    if(r<0.2){
+      const hl=randInt(0,1);
+      spawnEntity(hl,TYPE_THORN);
+      spawnEntity(1-hl,r<0.12?TYPE_SAP:TYPE_THORN);
+      return;
+    }
+    lane=randInt(0,1);
+    if(r<beetleChance+0.2) type=TYPE_BEETLE;
+    else if(r<beetleChance+0.2+sapChance) type=TYPE_SAP;
+    else type=TYPE_THORN;
+  }else{
+    // Max difficulty
+    if(r<0.25){
+      spawnEntity(0,Math.random()<0.5?TYPE_THORN:TYPE_BEETLE);
+      spawnEntity(1,Math.random()<0.3?TYPE_SAP:TYPE_THORN);
+      return;
+    }
+    lane=randInt(0,1);
+    if(r<beetleChance+0.25) type=TYPE_BEETLE;
+    else if(r<beetleChance+0.25+sapChance*0.8) type=TYPE_SAP;
+    else type=TYPE_THORN;
+  }
+  spawnEntity(lane,type);
+}
+
+function spawnEntity(lane,type){
+  segments.push({
+    lane,type,
+    x:lane===0?LANE_L():LANE_R(),
+    y:-30,
+    r:type===TYPE_SAP?12:type===TYPE_BEETLE?14:13,
+    active:false,
+    telegraphTimer:0.25,
+    age:0,
+    wigglePhase:rand(0,Math.PI*2),
+    alive:true
+  });
+}
+
+// --- Particles ---
+function emitParticles(x,y,count,hue,speed,life,size){
+  for(let i=0;i<count;i++){
+    const angle=rand(0,Math.PI*2);
+    const spd=rand(speed*0.3,speed);
+    particles.push({
+      x,y,
+      vx:Math.cos(angle)*spd,
+      vy:Math.sin(angle)*spd,
+      life:rand(life*0.5,life),
+      maxLife:life,
+      size:rand(size*0.5,size),
+      hue:hue+rand(-20,20),
+      sat:rand(60,100),
+      lit:rand(50,80)
+    });
+  }
+}
+
+// --- Input ---
+let inputQueued=false;
+
+function handleAction(){
+  if(state==='start'){
+    startGame();
+  }else if(state==='playing'){
+    if(flipCooldown<=0){
+      playerLane=1-playerLane;
+      flipCooldown=0.12;
+    }
+  }else if(state==='gameover'){
+    startGame();
+  }
+}
+
+canvas.addEventListener('pointerdown',(e)=>{
+  e.preventDefault();
+  handleAction();
+},{passive:false});
+
+document.addEventListener('keydown',(e)=>{
+  if(e.repeat)return;
+  if(e.code==='Space'||e.code==='Enter'){
+    e.preventDefault();
+    handleAction();
+  }
+});
+
+// --- Game lifecycle ---
+function startGame(){
+  state='playing';
+  score=0;gameTime=0;
+  playerLane=0;flipCooldown=0;
+  combo=0;comboDecayTimer=0;
+  rushMeter=0;rushActive=false;rushTimer=0;
+  rushTelegraph=false;rushTelegraphTimer=0;
+  distTraveled=0;nextSpawnDist=200;
+  speed=BASE_SPEED;
+  segments=[];particles=[];
+  shakeMag=0;shakeX=0;shakeY=0;
+  zoomCurrent=1;zoomTarget=1;zoomVel=0;
+  globalHue=120;
+  initBgRoots();
+}
+
+function die(){
+  state='gameover';
+  if(score>bestScore){
+    bestScore=score;
+    localStorage.setItem(LS_KEY,bestScore);
+  }
+  shakeMag=12;
+  emitParticles(playerX(),PLAYER_Y(),30,30,200,0.8,5);
+  emitParticles(playerX(),PLAYER_Y(),15,globalHue,150,0.6,4);
+}
+
+// --- Update ---
+function update(dt){
+  globalHue=(globalHue+20*dt)%360;
+
+  if(state==='playing'){
+    gameTime+=dt;
+    flipCooldown=Math.max(0,flipCooldown-dt);
+
+    // Speed
+    speed=Math.min(BASE_SPEED+SPEED_RAMP*gameTime,MAX_SPEED);
+    const curSpeed=speed+(rushActive?RUSH_BONUS:0);
+
+    // Distance
+    const dist=curSpeed*dt;
+    distTraveled+=dist;
+
+    // Spawn
+    if(distTraveled>=nextSpawnDist){
+      spawnSegment();
+      const spacing=clamp(220-0.9*gameTime,120,220);
+      nextSpawnDist=distTraveled+spacing;
+    }
+
+    // Combo decay
+    comboDecayTimer+=dt;
+    if(comboDecayTimer>2.5&&combo>0){
+      combo=Math.max(0,combo-dt*2);
+    }
+
+    // Rush telegraph
+    if(rushTelegraph){
+      rushTelegraphTimer-=dt;
+      if(rushTelegraphTimer<=0){
+        rushTelegraph=false;
+        rushActive=true;
+        rushTimer=5;
+        shakeMag=4;
+        zoomVel+=0.3;
+        emitParticles(playerX(),PLAYER_Y(),20,globalHue,180,0.7,4);
+      }
+    }
+
+    // Rush active
+    if(rushActive){
+      rushTimer-=dt;
+      zoomTarget=1.08;
+      // Rush trail particles
+      if(Math.random()<0.5){
+        emitParticles(playerX()+rand(-8,8),PLAYER_Y()+rand(5,15),1,globalHue+60,60,0.4,3);
+      }
+      if(rushTimer<=0){
+        rushActive=false;
+        rushMeter=0;
+        zoomTarget=1;
+      }
+    }else{
+      zoomTarget=1;
+    }
+
+    // Update segments
+    const px=playerX(),py=PLAYER_Y();
+    for(let i=segments.length-1;i>=0;i--){
+      const s=segments[i];
+      s.y+=curSpeed*dt;
+      s.age+=dt;
+      s.x=s.lane===0?LANE_L():LANE_R();
+
+      // Telegraph
+      if(!s.active){
+        s.telegraphTimer-=dt;
+        if(s.telegraphTimer<=0) s.active=true;
+      }
+
+      // Beetle wiggle (visual only)
+      let drawX=s.x;
+      if(s.type===TYPE_BEETLE&&s.active){
+        drawX+=Math.sin(s.age*8+s.wigglePhase)*6;
+      }
+      s.drawX=drawX;
+
+      // Collision
+      if(s.alive&&s.active){
+        const dx=px-drawX,dy=py-s.y;
+        const dist=Math.sqrt(dx*dx+dy*dy);
+        const collR=s.r+(s.type===TYPE_SAP?14:11);
+
+        if(dist<collR){
+          if(s.type===TYPE_SAP){
+            // Collect sap
+            s.alive=false;
+            const mult=getMultiplier();
+            const pts=rushActive?10:5;
+            score+=pts*mult;
+            combo+=1;
+            comboDecayTimer=0;
+            rushMeter=Math.min(rushMeter+0.2,1);
+            emitParticles(s.drawX,s.y,12,120,120,0.5,3);
+
+            // Rush trigger
+            if(rushMeter>=1&&!rushActive&&!rushTelegraph){
+              rushTelegraph=true;
+              rushTelegraphTimer=0.6;
+            }
+          }else{
+            // Hit hazard
+            die();
+            return;
+          }
+        }
+      }
+
+      // Score for passing
+      if(s.alive&&s.y>py+30&&!s.scored){
+        s.scored=true;
+        if(s.type!==TYPE_SAP){
+          const mult=getMultiplier();
+          const pts=rushActive?2:1;
+          score+=pts*mult;
+        }
+      }
+
+      // Remove off-screen
+      if(s.y>H+50){
+        segments.splice(i,1);
+      }
+    }
+
+    // Zoom spring
+    const zoomDiff=zoomTarget-zoomCurrent;
+    const springK=8,damping=4;
+    zoomVel+=(zoomDiff*springK-zoomVel*damping)*dt;
+    zoomCurrent+=zoomVel*dt;
+  }
+
+  // Shake decay
+  if(shakeMag>0){
+    shakeX=rand(-shakeMag,shakeMag);
+    shakeY=rand(-shakeMag,shakeMag);
+    shakeMag*=Math.pow(0.05,dt);
+    if(shakeMag<0.3)shakeMag=0;
+  }else{
+    shakeX=0;shakeY=0;
+  }
+
+  // Particles
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    p.x+=p.vx*dt;
+    p.y+=p.vy*dt;
+    p.vy+=300*dt; // gravity
+    p.life-=dt;
+    if(p.life<=0)particles.splice(i,1);
+  }
+}
+
+// --- Draw ---
+function draw(){
+  ctx.save();
+
+  // Clear
+  ctx.fillStyle='#0d0618';
+  ctx.fillRect(0,0,W,H);
+
+  // Apply shake and zoom
+  const cx=W/2,cy=H/2;
+  ctx.translate(cx+shakeX,cy+shakeY);
+  ctx.scale(zoomCurrent,zoomCurrent);
+  ctx.translate(-cx,-cy);
+
+  // Background gradient
+  const bgGrad=ctx.createLinearGradient(0,0,0,H);
+  bgGrad.addColorStop(0,hsl(270+globalHue*0.1,40,8));
+  bgGrad.addColorStop(0.5,hsl(260+globalHue*0.1,35,12));
+  bgGrad.addColorStop(1,hsl(250+globalHue*0.1,30,6));
+  ctx.fillStyle=bgGrad;
+  ctx.fillRect(0,0,W,H);
+
+  // Background roots
+  ctx.globalAlpha=0.08;
+  for(const r of bgRoots){
+    ctx.strokeStyle=hsl(r.hue,40,30);
+    ctx.lineWidth=r.w;
+    ctx.beginPath();
+    ctx.moveTo(r.x,r.y);
+    ctx.lineTo(r.x+Math.sin(r.angle)*r.len,r.y+r.len);
+    ctx.stroke();
+  }
+  ctx.globalAlpha=1;
+
+  // Lane trunks
+  const ll=LANE_L(),lr=LANE_R();
+  const trunkW=32;
+  ctx.fillStyle=hsl(30,50,15,0.6);
+  ctx.fillRect(ll-trunkW/2,0,trunkW,H);
+  ctx.fillRect(lr-trunkW/2,0,trunkW,H);
+
+  // Trunk bark lines
+  ctx.strokeStyle=hsl(30,40,20,0.3);
+  ctx.lineWidth=1;
+  for(let i=0;i<H;i+=18){
+    const off=(distTraveled*0.5+i)%H;
+    ctx.beginPath();
+    ctx.moveTo(ll-trunkW/2+3,off);
+    ctx.lineTo(ll+trunkW/2-3,off);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(lr-trunkW/2+3,off);
+    ctx.lineTo(lr+trunkW/2-3,off);
+    ctx.stroke();
+  }
+
+  // Lane connection vines
+  ctx.strokeStyle=hsl(120,30,20,0.15);
+  ctx.lineWidth=2;
+  for(let i=0;i<H;i+=80){
+    const off=(distTraveled*0.3+i)%H;
+    ctx.beginPath();
+    ctx.moveTo(ll+trunkW/2,off);
+    ctx.quadraticCurveTo(W/2,off+20,lr-trunkW/2,off);
+    ctx.stroke();
+  }
+
+  if(state==='start'){
+    drawStartScreen();
+  }else if(state==='playing'||state==='gameover'){
+    drawSegments();
+    drawPlayer();
+    drawHUD();
+
+    if(state==='gameover'){
+      drawGameOver();
+    }
+  }
+
+  // Particles (always draw)
+  drawParticles();
+
+  // Rush vignette
+  if(rushActive){
+    const vigGrad=ctx.createRadialGradient(cx,cy,W*0.2,cx,cy,W*0.8);
+    vigGrad.addColorStop(0,'rgba(0,0,0,0)');
+    vigGrad.addColorStop(1,hsl(globalHue+180,80,10,0.25));
+    ctx.fillStyle=vigGrad;
+    ctx.fillRect(0,0,W,H);
+  }
+
+  // Rush telegraph flash
+  if(rushTelegraph){
+    const flashAlpha=0.15*(0.5+0.5*Math.sin(rushTelegraphTimer*20));
+    ctx.fillStyle=`rgba(255,220,50,${flashAlpha})`;
+    ctx.fillRect(0,0,W,H);
+
+    ctx.save();
+    ctx.font='bold 36px sans-serif';
+    ctx.textAlign='center';
+    ctx.fillStyle=hsl(50,100,70,0.6+0.4*Math.sin(rushTelegraphTimer*15));
+    ctx.fillText('RUSH!',W/2,H/2);
+    ctx.restore();
+  }
+
+  ctx.restore();
+}
+
+function drawStartScreen(){
+  // Title
+  ctx.save();
+  ctx.textAlign='center';
+
+  // Logo glow
+  ctx.shadowColor=hsl(120,80,50);
+  ctx.shadowBlur=20;
+  ctx.font='bold 48px sans-serif';
+  ctx.fillStyle=hsl(120,70,65);
+  ctx.fillText('ROOT RUSH',W/2,H*0.32);
+  ctx.shadowBlur=0;
+
+  ctx.font='18px sans-serif';
+  ctx.fillStyle=hsl(90,50,60);
+  ctx.fillText('Branch Flip',W/2,H*0.38);
+
+  // Tap to start (pulsing)
+  const pulse=0.6+0.4*Math.sin(performance.now()/400);
+  ctx.font='20px sans-serif';
+  ctx.fillStyle=hsl(60,60,70,pulse);
+  ctx.fillText('Tap to Start',W/2,H*0.55);
+
+  // Instructions
+  ctx.font='14px sans-serif';
+  ctx.fillStyle=hsl(0,0,60,0.7);
+  ctx.fillText('Tap or Space to flip lanes',W/2,H*0.65);
+  ctx.fillText('Avoid thorns & beetles',W/2,H*0.70);
+  ctx.fillText('Collect glowing sap nodes',W/2,H*0.75);
+
+  if(bestScore>0){
+    ctx.font='16px sans-serif';
+    ctx.fillStyle=hsl(45,70,65,0.8);
+    ctx.fillText(`Best: ${bestScore}`,W/2,H*0.85);
+  }
+  ctx.restore();
+}
+
+function drawSegments(){
+  for(const s of segments){
+    const dx=s.drawX||s.x;
+    ctx.save();
+    ctx.translate(dx,s.y);
+
+    if(!s.active){
+      // Telegraph glow
+      const tProg=1-s.telegraphTimer/0.25;
+      ctx.globalAlpha=0.3+0.3*tProg;
+      ctx.beginPath();
+      ctx.arc(0,0,s.r+6,0,Math.PI*2);
+      if(s.type===TYPE_SAP){
+        ctx.fillStyle=hsl(120,70,50);
+      }else{
+        ctx.fillStyle=hsl(0,70,50);
+      }
+      ctx.fill();
+      ctx.globalAlpha=1;
+      ctx.restore();
+      continue;
+    }
+
+    if(!s.alive){ctx.restore();continue;}
+
+    if(s.type===TYPE_THORN){
+      // Thorn: spiky red circle
+      ctx.fillStyle=hsl(0,70,35);
+      ctx.beginPath();
+      const spikes=6;
+      for(let i=0;i<spikes*2;i++){
+        const a=(i*Math.PI)/spikes-Math.PI/2;
+        const r2=i%2===0?s.r:s.r*0.55;
+        ctx.lineTo(Math.cos(a)*r2,Math.sin(a)*r2);
+      }
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.strokeStyle=hsl(0,80,50);
+      ctx.lineWidth=2;
+      ctx.stroke();
+
+      // Inner glow
+      ctx.beginPath();
+      ctx.arc(0,0,s.r*0.35,0,Math.PI*2);
+      ctx.fillStyle=hsl(0,80,55,0.6);
+      ctx.fill();
+    }else if(s.type===TYPE_BEETLE){
+      // Beetle: dark brown with legs
+      ctx.fillStyle=hsl(30,60,20);
+      ctx.beginPath();
+      ctx.ellipse(0,0,s.r*0.8,s.r,0,0,Math.PI*2);
+      ctx.fill();
+
+      ctx.strokeStyle=hsl(30,50,30);
+      ctx.lineWidth=2;
+      ctx.stroke();
+
+      // Eyes
+      ctx.fillStyle=hsl(60,90,60);
+      ctx.beginPath();
+      ctx.arc(-4,-s.r*0.4,2.5,0,Math.PI*2);
+      ctx.arc(4,-s.r*0.4,2.5,0,Math.PI*2);
+      ctx.fill();
+
+      // Legs
+      ctx.strokeStyle=hsl(30,40,25);
+      ctx.lineWidth=1.5;
+      const legAnim=Math.sin(s.age*12)*0.3;
+      for(let side=-1;side<=1;side+=2){
+        for(let j=-1;j<=1;j++){
+          ctx.beginPath();
+          ctx.moveTo(side*s.r*0.6,j*5);
+          ctx.lineTo(side*(s.r+5),j*5+legAnim*side*8);
+          ctx.stroke();
+        }
+      }
+    }else if(s.type===TYPE_SAP){
+      // Sap: glowing green orb
+      const glow=0.5+0.5*Math.sin(s.age*4);
+      ctx.shadowColor=hsl(120,80,60);
+      ctx.shadowBlur=10+5*glow;
+
+      ctx.fillStyle=hsl(120,75,50+15*glow);
+      ctx.beginPath();
+      ctx.arc(0,0,s.r,0,Math.PI*2);
+      ctx.fill();
+
+      ctx.shadowBlur=0;
+
+      // Inner highlight
+      ctx.fillStyle=hsl(100,60,75,0.5);
+      ctx.beginPath();
+      ctx.arc(-2,-3,s.r*0.4,0,Math.PI*2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+}
+
+function drawPlayer(){
+  const px=playerX(),py=PLAYER_Y();
+  ctx.save();
+  ctx.translate(px,py);
+
+  // Glow based on combo
+  const comboGlow=Math.min(combo/10,1);
+  const playerHue=rushActive?globalHue+60:120+comboGlow*60;
+  ctx.shadowColor=hsl(playerHue,80,60);
+  ctx.shadowBlur=8+comboGlow*12;
+
+  // Body
+  ctx.fillStyle=hsl(playerHue,70,55);
+  ctx.beginPath();
+  ctx.arc(0,0,13,0,Math.PI*2);
+  ctx.fill();
+
+  ctx.shadowBlur=0;
+
+  // Inner ring
+  ctx.strokeStyle=hsl(playerHue,60,75,0.7);
+  ctx.lineWidth=2;
+  ctx.beginPath();
+  ctx.arc(0,0,8,0,Math.PI*2);
+  ctx.stroke();
+
+  // Core
+  ctx.fillStyle=hsl(playerHue,50,80,0.8);
+  ctx.beginPath();
+  ctx.arc(0,0,4,0,Math.PI*2);
+  ctx.fill();
+
+  // Rush aura
+  if(rushActive){
+    const auraSize=18+Math.sin(performance.now()/100)*4;
+    ctx.strokeStyle=hsl(globalHue+60,90,60,0.3);
+    ctx.lineWidth=3;
+    ctx.beginPath();
+    ctx.arc(0,0,auraSize,0,Math.PI*2);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+function drawHUD(){
+  ctx.save();
+  ctx.textAlign='left';
+
+  // Score
+  ctx.font='bold 24px sans-serif';
+  ctx.fillStyle=hsl(0,0,90);
+  ctx.fillText(score,15,35);
+
+  // Multiplier
+  const mult=getMultiplier();
+  if(mult>1){
+    ctx.font='bold 16px sans-serif';
+    ctx.fillStyle=hsl(45,90,65);
+    ctx.fillText(`x${mult}`,15,55);
+  }
+
+  // Rush meter bar
+  const barW=80,barH=8,barX=W-barW-15,barY=15;
+  ctx.fillStyle=hsl(0,0,30,0.5);
+  ctx.fillRect(barX,barY,barW,barH);
+
+  if(rushActive){
+    ctx.fillStyle=hsl(globalHue+60,90,60,0.8);
+    ctx.fillRect(barX,barY,barW*(rushTimer/5),barH);
+  }else{
+    ctx.fillStyle=hsl(120,70,50,0.8);
+    ctx.fillRect(barX,barY,barW*rushMeter,barH);
+  }
+
+  ctx.strokeStyle=hsl(0,0,50,0.5);
+  ctx.lineWidth=1;
+  ctx.strokeRect(barX,barY,barW,barH);
+
+  // Rush label
+  ctx.font='10px sans-serif';
+  ctx.textAlign='right';
+  ctx.fillStyle=hsl(0,0,60);
+  ctx.fillText(rushActive?'RUSH!':'RUSH',barX+barW,barY+barH+12);
+
+  // Combo pips
+  if(combo>=1){
+    ctx.textAlign='left';
+    ctx.font='12px sans-serif';
+    ctx.fillStyle=hsl(120,60,60,0.7);
+    const comboDisplay=Math.floor(combo);
+    ctx.fillText(`Combo: ${comboDisplay}`,15,72);
+  }
+
+  ctx.restore();
+}
+
+function drawGameOver(){
+  ctx.save();
+
+  // Overlay
+  ctx.fillStyle='rgba(0,0,0,0.6)';
+  ctx.fillRect(0,0,W,H);
+
+  ctx.textAlign='center';
+
+  ctx.font='bold 36px sans-serif';
+  ctx.fillStyle=hsl(0,70,60);
+  ctx.fillText('GAME OVER',W/2,H*0.33);
+
+  ctx.font='24px sans-serif';
+  ctx.fillStyle=hsl(0,0,85);
+  ctx.fillText(`Score: ${score}`,W/2,H*0.43);
+
+  ctx.font='18px sans-serif';
+  ctx.fillStyle=hsl(45,70,65);
+  ctx.fillText(`Best: ${bestScore}`,W/2,H*0.50);
+
+  if(score>=bestScore&&score>0){
+    ctx.font='bold 16px sans-serif';
+    ctx.fillStyle=hsl(50,90,65);
+    ctx.fillText('NEW BEST!',W/2,H*0.56);
+  }
+
+  const pulse=0.6+0.4*Math.sin(performance.now()/400);
+  ctx.font='20px sans-serif';
+  ctx.fillStyle=hsl(60,60,70,pulse);
+  ctx.fillText('Tap to Retry',W/2,H*0.68);
+
+  ctx.restore();
+}
+
+function drawParticles(){
+  for(const p of particles){
+    const prog=p.life/p.maxLife;
+    ctx.globalAlpha=prog;
+    ctx.fillStyle=hsl(p.hue,p.sat,p.lit);
+    ctx.beginPath();
+    ctx.arc(p.x,p.y,p.size*prog,0,Math.PI*2);
+    ctx.fill();
+  }
+  ctx.globalAlpha=1;
+}
+
+// --- Main loop ---
+function loop(ts){
+  const dt=Math.min((ts-lastTime)/1000,0.05);
+  lastTime=ts;
+
+  update(dt);
+  draw();
+
+  requestAnimationFrame(loop);
+}
+
+// --- Init ---
+initBgRoots();
+lastTime=performance.now();
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Dot Sprint: Orbit Flip – Hyper-Casual Ring Game</title>
+  <meta name="description" content="Dot Sprint: Orbit Flip – tap to flip between two rings, dodge danger gates, pass safe gates to score. Free hyper-casual browser game.">
+  <meta name="theme-color" content="#0a0a1a">
+  <meta property="og:title" content="Dot Sprint: Orbit Flip">
+  <meta property="og:description" content="Flip between rings, dodge danger gates, chase high scores. Free hyper-casual HTML5 game.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://balinti.github.io/dot-sprint/">
+  <meta property="og:image" content="https://balinti.github.io/dot-sprint/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Dot Sprint: Orbit Flip">
+  <meta name="twitter:description" content="Flip between rings, dodge danger gates, chase high scores.">
+  <meta name="twitter:image" content="https://balinti.github.io/dot-sprint/og.png">
+  <link rel="canonical" href="https://balinti.github.io/dot-sprint/">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "VideoGame",
+    "name": "Dot Sprint: Orbit Flip",
+    "description": "A hyper-casual HTML5 game where you flip a dot between two orbit rings, passing safe gates and avoiding danger gates.",
+    "url": "https://balinti.github.io/dot-sprint/",
+    "image": "https://balinti.github.io/dot-sprint/og.png",
+    "genre": ["Hyper-Casual", "Arcade"],
+    "gamePlatform": "Web Browser",
+    "applicationCategory": "Game",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  }
+  </script>
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXXXXXXXXXX" crossorigin="anonymous"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #050510;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: flex-start;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      color: #fff;
+      overflow-x: hidden;
+      touch-action: manipulation;
+    }
+    #game-wrap {
+      position: relative;
+      width: min(420px, 100vw);
+      height: min(750px, 100vh);
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+    canvas {
+      position: absolute; top: 0; left: 0;
+      width: 100%; height: 100%;
+      display: block;
+      touch-action: none;
+    }
+    .overlay {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 10px;
+      transition: opacity 0.25s;
+    }
+    .overlay.hidden { opacity: 0; pointer-events: none; }
+    .overlay.active { pointer-events: auto; }
+
+    #start-overlay { background: rgba(5,5,16,0.80); }
+    #gameover-overlay { background: rgba(5,5,16,0.86); }
+
+    .game-title {
+      font-size: clamp(2rem, 9vw, 2.8rem); font-weight: 900;
+      letter-spacing: 2px;
+      background: linear-gradient(135deg, #a78bfa 0%, #60a5fa 50%, #34d399 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text; line-height: 1.1; text-align: center;
+    }
+    .game-subtitle {
+      font-size: clamp(0.75rem, 3vw, 1rem); font-weight: 600;
+      color: rgba(255,255,255,0.45); letter-spacing: 5px; text-transform: uppercase;
+    }
+    .tap-hint {
+      margin-top: 22px; font-size: clamp(1rem, 4vw, 1.2rem); font-weight: 700;
+      color: #a78bfa; animation: pulse 1.4s ease-in-out infinite;
+    }
+    .controls-hint {
+      font-size: clamp(0.65rem, 2.5vw, 0.78rem);
+      color: rgba(255,255,255,0.3); text-align: center; line-height: 1.7; margin-top: 4px;
+    }
+    @keyframes pulse {
+      0%,100% { opacity: 1; transform: scale(1); }
+      50%      { opacity: 0.5; transform: scale(0.96); }
+    }
+
+    .score-block { text-align: center; line-height: 1.2; }
+    .score-label { font-size: 0.72rem; color: rgba(255,255,255,0.38); text-transform: uppercase; letter-spacing: 2px; }
+    .score-val   { font-size: clamp(2.5rem, 11vw, 3.4rem); font-weight: 900; color: #fff; }
+    .score-best  { font-size: 0.95rem; color: rgba(255,255,255,0.45); margin-top: 2px; }
+    .new-best-badge {
+      display: inline-block;
+      background: linear-gradient(135deg, #f59e0b, #f97316);
+      color: #fff; font-size: 0.62rem; font-weight: 800;
+      padding: 2px 8px; border-radius: 99px;
+      letter-spacing: 1px; text-transform: uppercase;
+      margin-left: 8px; vertical-align: middle;
+    }
+    .streak-line { font-size: 0.82rem; color: rgba(255,255,255,0.38); margin-top: 4px; }
+    .trail-line  { font-size: 0.72rem; color: rgba(160,130,255,0.55); margin-top: 2px; }
+
+    .btn-primary {
+      margin-top: 20px; padding: 13px 38px; border-radius: 99px;
+      border: none; cursor: pointer; font-size: 1rem; font-weight: 800;
+      letter-spacing: 1px; text-transform: uppercase;
+      background: linear-gradient(135deg, #7c3aed, #3b82f6);
+      color: #fff; box-shadow: 0 0 28px rgba(124,58,237,0.5);
+      transition: transform 0.1s, box-shadow 0.1s;
+      pointer-events: auto;
+    }
+    .btn-primary:active { transform: scale(0.95); }
+    .btn-primary.locked { opacity: 0.35; cursor: default; pointer-events: none; }
+
+    .btn-row { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; justify-content: center; pointer-events: auto; }
+    .btn-secondary {
+      padding: 8px 18px; border-radius: 99px;
+      border: 1.5px solid rgba(255,255,255,0.18);
+      background: rgba(255,255,255,0.05);
+      color: rgba(255,255,255,0.7); font-size: 0.78rem; font-weight: 700;
+      cursor: pointer; letter-spacing: 0.5px;
+      transition: background 0.15s, transform 0.1s;
+      pointer-events: auto;
+    }
+    .btn-secondary:active { background: rgba(255,255,255,0.13); transform: scale(0.95); }
+
+    #hud {
+      position: absolute; top: 0; left: 0; right: 0;
+      padding: 14px 18px; display: flex; justify-content: space-between; align-items: flex-start;
+      pointer-events: none;
+    }
+    #hud-score { font-size: clamp(1.5rem, 7vw, 1.9rem); font-weight: 900; color: #fff; text-shadow: 0 0 14px rgba(167,139,250,0.7); }
+    #hud-right  { text-align: right; }
+    #hud-best   { font-size: 0.72rem; color: rgba(255,255,255,0.3); }
+    #hud-streak { font-size: 0.75rem; color: #a78bfa; font-weight: 700; }
+    #hud-mult   { font-size: 0.82rem; color: #fbbf24; font-weight: 800; }
+
+    #toast {
+      position: absolute; bottom: 28px; left: 50%; transform: translateX(-50%);
+      background: rgba(255,255,255,0.11); backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,0.14);
+      color: #fff; padding: 9px 20px; border-radius: 99px;
+      font-size: 0.82rem; font-weight: 600;
+      opacity: 0; transition: opacity 0.3s; pointer-events: none;
+      white-space: nowrap; z-index: 99;
+    }
+    #toast.show { opacity: 1; }
+
+    #seo-section {
+      width: min(420px, 100vw); padding: 8px 18px 18px;
+    }
+    details summary {
+      cursor: pointer; font-size: 0.72rem; color: rgba(255,255,255,0.25);
+      user-select: none; list-style: none;
+    }
+    details summary::-webkit-details-marker { display: none; }
+    details[open] summary { color: rgba(255,255,255,0.4); }
+    .seo-text { font-size: 0.68rem; color: rgba(255,255,255,0.22); line-height: 1.75; margin-top: 7px; }
+    .seo-text h2 { font-size: 0.78rem; color: rgba(255,255,255,0.3); margin: 7px 0 3px; }
+  </style>
+</head>
+<body>
+<div id="game-wrap">
+  <canvas id="c"></canvas>
+
+  <!-- HUD -->
+  <div id="hud" style="display:none">
+    <div id="hud-score">0</div>
+    <div id="hud-right">
+      <div id="hud-best"></div>
+      <div id="hud-streak"></div>
+      <div id="hud-mult"></div>
+    </div>
+  </div>
+
+  <!-- Start overlay -->
+  <div class="overlay active" id="start-overlay">
+    <div class="game-title">Dot Sprint</div>
+    <div class="game-subtitle">Orbit Flip</div>
+    <div class="tap-hint">Tap to Start</div>
+    <div class="controls-hint">
+      Tap / Space / Enter to flip rings<br>
+      Pass <span style="color:#6ee7b7">green</span> gates &nbsp;·&nbsp; Avoid <span style="color:#f87171">red</span> gates
+    </div>
+  </div>
+
+  <!-- Game over overlay -->
+  <div class="overlay hidden" id="gameover-overlay">
+    <div class="score-block">
+      <div class="score-label">Score</div>
+      <div class="score-val" id="go-score">0</div>
+      <div class="score-best" id="go-best">Best: 0</div>
+      <div class="streak-line" id="go-streak"></div>
+      <div class="trail-line" id="go-trail"></div>
+    </div>
+    <button class="btn-primary locked" id="btn-retry">TAP TO RETRY</button>
+    <div class="btn-row">
+      <button class="btn-secondary" id="btn-challenge">Challenge a Friend</button>
+      <button class="btn-secondary" id="btn-share">Share</button>
+      <button class="btn-secondary" id="btn-mute">Mute</button>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+</div>
+
+<!-- SEO text (collapsible) -->
+<section id="seo-section">
+  <details>
+    <summary>▾ About Dot Sprint: Orbit Flip</summary>
+    <div class="seo-text">
+      <h2>How to Play</h2>
+      <p>Your dot orbits two concentric rings. Tap the screen (or press Space / Enter) to instantly flip between the inner and outer ring. Gates travel along the rings — pass through <strong>green safe gates</strong> to score, and dodge <strong>red danger gates</strong> or the game ends.</p>
+      <h2>Scoring &amp; Streaks</h2>
+      <p>Each safe gate earns <strong>+10 points</strong>, multiplied up to 6× by your streak. Near-misses with danger gates earn +2 bonus. Every 10 gates in a streak, your dot shifts colour.</p>
+      <h2>Controls</h2>
+      <p><strong>Mobile:</strong> Tap anywhere · <strong>Desktop:</strong> Click, Space, or Enter to flip rings.</p>
+      <h2>Challenge Mode</h2>
+      <p>After a game, tap "Challenge a Friend" to share your score. Your friend plays the same daily seed — see who comes out on top!</p>
+    </div>
+  </details>
+</section>
+
+<script>
+'use strict';
+/* ═══════════════════════════════════════════════════════════════
+   SEEDED LCG RNG  (for gate patterns — must be deterministic)
+═══════════════════════════════════════════════════════════════ */
+function makeLCG(seed) {
+  let s = seed >>> 0;
+  return function rng() {
+    s = (Math.imul(1664525, s) + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+}
+function strToSeed(str) {
+  let h = 0x811c9dc5 >>> 0;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h;
+}
+function dailySeed() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   URL PARAMS / SEED
+═══════════════════════════════════════════════════════════════ */
+const urlParams      = new URLSearchParams(location.search);
+const challengeScore = urlParams.has('challenge') ? parseInt(urlParams.get('challenge')) : null;
+const seedStr        = urlParams.get('seed') || dailySeed();
+let   gateRng        = makeLCG(strToSeed(seedStr)); // seeded RNG for gates
+const rand           = () => Math.random();          // unseeded for visuals
+
+/* ═══════════════════════════════════════════════════════════════
+   AUDIO
+═══════════════════════════════════════════════════════════════ */
+const LS_MUTE = 'ds_orbitflip_mute';
+let muted    = localStorage.getItem(LS_MUTE) === '1';
+let audioCtx = null;
+function getCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+function beep(freq, dur, vol, type = 'sine') {
+  if (muted) return;
+  try {
+    const ac = getCtx();
+    const o  = ac.createOscillator();
+    const g  = ac.createGain();
+    o.connect(g); g.connect(ac.destination);
+    o.type = type; o.frequency.value = freq;
+    g.gain.setValueAtTime(vol, ac.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + dur);
+    o.start(ac.currentTime); o.stop(ac.currentTime + dur);
+  } catch (_) {}
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   LOCAL STORAGE
+═══════════════════════════════════════════════════════════════ */
+const LS_HS   = 'ds_orbitflip_highscore';
+const LS_LIFE = 'ds_orbitflip_lifetime';
+let highScore     = parseInt(localStorage.getItem(LS_HS)   || '0');
+let lifetimeGates = parseInt(localStorage.getItem(LS_LIFE) || '0');
+
+/* ═══════════════════════════════════════════════════════════════
+   CANVAS / SIZING
+═══════════════════════════════════════════════════════════════ */
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+const wrap   = document.getElementById('game-wrap');
+
+let W, H, dpr;
+function resize() {
+  const r = wrap.getBoundingClientRect();
+  W = r.width; H = r.height;
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width  = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+resize();
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', () => setTimeout(resize, 200));
+
+/* World geometry — recalculated each render (safe after resize) */
+function geo() {
+  const cx    = W * 0.5;
+  const cy    = H * 0.52;
+  const R_OUT = Math.min(W, H) * 0.36;
+  const R_IN  = R_OUT * 0.72;
+  const RW    = Math.max(10, Math.min(W, H) * 0.03);
+  return { cx, cy, R_OUT, R_IN, RW, r: [R_IN, R_OUT] };
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   GAME STATE
+═══════════════════════════════════════════════════════════════ */
+const S = { START: 0, PLAYING: 1, GAMEOVER: 2 };
+let state = S.START;
+
+/* mutable game objects */
+let player, gates, particles, trail;
+let score, streak, bestStreak, mult, t, spawnAcc, lastSpawnRing, spawnsSinceSafe;
+let shakeX, shakeY, shakeMag, shakeDecay;
+let hitStopEnd;
+let dead; // flag to prevent double-die
+
+function initGame() {
+  gateRng = makeLCG(strToSeed(seedStr)); // reset seed each game
+  player = { theta: -Math.PI / 2, ring: 1, radius: 7, hue: 260 };
+  gates  = []; particles = []; trail = [];
+  score  = 0; streak = 0; bestStreak = 0; mult = 1;
+  t = 0; spawnAcc = 0; lastSpawnRing = -1; spawnsSinceSafe = 0;
+  shakeX = 0; shakeY = 0; shakeMag = 0; shakeDecay = 0.1;
+  hitStopEnd = 0; dead = false;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   DOM REFS
+═══════════════════════════════════════════════════════════════ */
+const startOvl  = document.getElementById('start-overlay');
+const goOvl     = document.getElementById('gameover-overlay');
+const hud       = document.getElementById('hud');
+const btnRetry  = document.getElementById('btn-retry');
+const btnChal   = document.getElementById('btn-challenge');
+const btnShare  = document.getElementById('btn-share');
+const btnMute   = document.getElementById('btn-mute');
+const goScoreEl = document.getElementById('go-score');
+const goBestEl  = document.getElementById('go-best');
+const goStreakEl= document.getElementById('go-streak');
+const goTrailEl = document.getElementById('go-trail');
+const hudScoreEl= document.getElementById('hud-score');
+const hudBestEl = document.getElementById('hud-best');
+const hudStrEl  = document.getElementById('hud-streak');
+const hudMultEl = document.getElementById('hud-mult');
+const toastEl   = document.getElementById('toast');
+
+let retryEnabledAt = 0;
+let challengeShown = false;
+
+function showToast(msg, dur = 2200) {
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => toastEl.classList.remove('show'), dur);
+}
+
+function setOverlay(which) { // 'start' | 'gameover' | 'none'
+  startOvl.classList.toggle('hidden', which !== 'start');
+  startOvl.classList.toggle('active', which === 'start');
+  goOvl.classList.toggle('hidden',   which !== 'gameover');
+  goOvl.classList.toggle('active',   which === 'gameover');
+  hud.style.display = which === 'none' ? 'flex' : 'none';
+}
+
+function showStart() {
+  state = S.START;
+  setOverlay('start');
+  if (challengeScore !== null && !challengeShown) {
+    challengeShown = true;
+    setTimeout(() => showToast(`Beat ${challengeScore} pts — challenge accepted!`, 3200), 700);
+  }
+}
+
+function showPlaying() {
+  state = S.PLAYING;
+  setOverlay('none');
+}
+
+function showGameover() {
+  state = S.GAMEOVER;
+  setOverlay('gameover');
+
+  const isNew = score > highScore;
+  if (isNew) { highScore = score; localStorage.setItem(LS_HS, highScore); }
+
+  goScoreEl.innerHTML = score + (isNew ? '<span class="new-best-badge">New Best!</span>' : '');
+  goBestEl.textContent  = 'Best: ' + highScore;
+  goStreakEl.textContent = bestStreak > 0 ? `Best streak this run: ${bestStreak}` : '';
+
+  const needed = 100 - (lifetimeGates % 100);
+  goTrailEl.textContent = `Next trail unlock: ${needed}/100 gates away`;
+
+  retryEnabledAt = performance.now() + 850;
+  btnRetry.classList.add('locked');
+  setTimeout(() => btnRetry.classList.remove('locked'), 850);
+  updateMuteBtn();
+}
+
+function updateMuteBtn() { btnMute.textContent = muted ? 'Unmute' : 'Mute'; }
+
+/* ═══════════════════════════════════════════════════════════════
+   INPUT
+═══════════════════════════════════════════════════════════════ */
+function onFlip() {
+  if (state === S.START) {
+    initGame(); showPlaying();
+  } else if (state === S.GAMEOVER) {
+    if (performance.now() >= retryEnabledAt) { initGame(); showPlaying(); }
+  } else if (state === S.PLAYING) {
+    doFlip();
+  }
+}
+
+function doFlip() {
+  player.ring = player.ring === 1 ? 0 : 1;
+  beep(player.ring === 1 ? 520 : 360, 0.07, 0.11, 'square');
+  doShake(2.5, 0.08);
+}
+
+canvas.addEventListener('pointerdown', e => { e.preventDefault(); onFlip(); }, { passive: false });
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); onFlip(); }
+}, { passive: false });
+window.addEventListener('keydown', e => { if (e.code === 'Space') e.preventDefault(); }, { passive: false });
+
+btnRetry.addEventListener('click',  e => { e.stopPropagation(); if (performance.now() >= retryEnabledAt) { initGame(); showPlaying(); } });
+btnChal.addEventListener('click',   e => { e.stopPropagation(); shareChallenge(true); });
+btnShare.addEventListener('click',  e => { e.stopPropagation(); shareChallenge(false); });
+btnMute.addEventListener('click',   e => {
+  e.stopPropagation();
+  muted = !muted; localStorage.setItem(LS_MUTE, muted ? '1' : '0');
+  updateMuteBtn(); showToast(muted ? 'Sound off' : 'Sound on', 1400);
+});
+
+// Tap anywhere on gameover overlay to retry
+goOvl.addEventListener('pointerdown', e => {
+  if (e.target === goOvl && performance.now() >= retryEnabledAt) { initGame(); showPlaying(); }
+});
+
+function shareChallenge(isChallenge) {
+  const base = 'https://balinti.github.io/dot-sprint/';
+  const url  = `${base}?challenge=${score}&seed=${encodeURIComponent(seedStr)}`;
+  const text = isChallenge
+    ? `I scored ${score} in Dot Sprint: Orbit Flip — can you beat me? ${url}`
+    : `Play Dot Sprint: Orbit Flip – hyper-casual ring game! ${url}`;
+  if (navigator.share) {
+    navigator.share({ title: 'Dot Sprint: Orbit Flip', text, url }).catch(() => copyFallback(url));
+  } else {
+    copyFallback(url);
+  }
+}
+function copyFallback(url) {
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(url).then(() => showToast('Challenge link copied!'));
+  } else {
+    const ta = document.createElement('textarea');
+    ta.value = url; ta.style.cssText = 'position:fixed;opacity:0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); showToast('Link copied!'); } catch (_) { showToast('Copy: ' + url, 4000); }
+    document.body.removeChild(ta);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   SHAKE / EFFECTS
+═══════════════════════════════════════════════════════════════ */
+function doShake(mag, decay) {
+  if (mag > shakeMag) { shakeMag = mag; shakeDecay = decay; }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   PARTICLES
+═══════════════════════════════════════════════════════════════ */
+const MAX_PARTICLES = 220;
+function spawnParticles(x, y, count, hue, radial, speed) {
+  for (let i = 0; i < count && particles.length < MAX_PARTICLES; i++) {
+    const angle = radial
+      ? (Math.PI * 2 * i / count) + (rand() - 0.5) * 0.5
+      : rand() * Math.PI * 2;
+    const spd = speed * (0.4 + rand() * 0.9);
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * spd,
+      vy: Math.sin(angle) * spd,
+      life: 1, decay: 0.6 + rand() * 0.6,
+      r: 2 + rand() * 3,
+      hue: hue + (rand() - 0.5) * 45,
+    });
+  }
+}
+function spawnSafeParticles(x, y, hue, tanX, tanY) {
+  for (let i = 0; i < 18 && particles.length < MAX_PARTICLES; i++) {
+    const spread = (rand() - 0.5) * Math.PI * 0.65;
+    const base   = Math.atan2(tanY, tanX) + spread;
+    const spd    = 70 + rand() * 130;
+    particles.push({
+      x: x + (rand()-0.5)*7, y: y + (rand()-0.5)*7,
+      vx: Math.cos(base) * spd, vy: Math.sin(base) * spd,
+      life: 1, decay: 0.8 + rand() * 0.5,
+      r: 1.5 + rand() * 2.5,
+      hue: hue + (rand()-0.5)*30,
+    });
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   TRAIL
+═══════════════════════════════════════════════════════════════ */
+function pushTrail(x, y) {
+  trail.unshift({ x, y });
+  if (trail.length > 18) trail.pop();
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ANGLE HELPERS
+═══════════════════════════════════════════════════════════════ */
+// Signed angular difference a − b, wrapped to (−π, π]
+function angDiff(a, b) {
+  return ((a - b + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   GATE SPAWNING
+═══════════════════════════════════════════════════════════════ */
+const BASE_OMEGAS = [-1.1, -1.4, 1.2];
+
+function spawnGate() {
+  const g = geo();
+  const t_ = t;
+
+  // Ring selection with 65% alternation bias
+  let ring;
+  if (lastSpawnRing < 0) ring = gateRng() < 0.5 ? 0 : 1;
+  else                   ring = gateRng() < 0.65 ? 1 - lastSpawnRing : lastSpawnRing;
+  lastSpawnRing = ring;
+
+  // pSafe — clamp(0.78 − 0.006t, 0.45, 0.78)
+  const pSafe = Math.max(0.45, Math.min(0.78, 0.78 - 0.006 * t_));
+  let safe;
+  if (t_ < 20 && spawnsSinceSafe >= 2) safe = true;  // fairness guarantee
+  else                                  safe = gateRng() < pSafe;
+  if (safe) spawnsSinceSafe = 0; else spawnsSinceSafe++;
+
+  const halfWidth      = Math.max(0.16, 0.42 - 0.0045 * t_);
+  const gateOmegaScale = 1 + 0.018 * t_;
+  const omegaBase      = BASE_OMEGAS[Math.floor(gateRng() * BASE_OMEGAS.length)];
+  const omega          = omegaBase * gateOmegaScale;
+
+  // Spawn angle: 1.9 rad ahead of player
+  const playerOmega = Math.min(6.2, 2.6 + 0.035 * t_);
+  const leadDir     = playerOmega >= 0 ? 1 : -1;
+  const spawnTheta  = player.theta + leadDir * 1.9;
+
+  // Pair probability: clamp(0.10 + 0.003t, 0.10, 0.28)
+  const pPair = Math.max(0.10, Math.min(0.28, 0.10 + 0.003 * t_));
+  const doPair = t_ > 10 && gateRng() < pPair;
+
+  if (doPair) {
+    const safeRing = gateRng() < 0.5 ? 0 : 1;
+    const off0 = t_ > 25 ?  0.22 : 0; // inner offset after 25s
+    const off1 = t_ > 25 ? -0.10 : 0; // outer offset after 25s
+    gates.push(makeGate(0, spawnTheta + off0, halfWidth, omega, safeRing === 0));
+    gates.push(makeGate(1, spawnTheta + off1, halfWidth, omega, safeRing === 1));
+  } else {
+    gates.push(makeGate(ring, spawnTheta, halfWidth, omega, safe));
+  }
+}
+
+function makeGate(ring, theta, halfWidth, omega, safe) {
+  return {
+    ring, theta, halfWidth, omega, safe,
+    triggered: false,  // fired event (score or die)
+    playerInArc: false, // player was inside safe arc
+    prevAhead: null,   // was gate ahead of player last frame?
+  };
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   COLLISION CHECK
+═══════════════════════════════════════════════════════════════ */
+function inGateArc(gate, playerTheta, playerRadius) {
+  const pad = player.radius / playerRadius; // angular padding
+  return Math.abs(angDiff(playerTheta, gate.theta)) < gate.halfWidth + pad;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   DIE
+═══════════════════════════════════════════════════════════════ */
+function die(px, py) {
+  if (dead) return;
+  dead = true;
+  hitStopEnd = performance.now() + 60;
+  doShake(9, 0.28);
+  beep(110, 0.38, 0.18, 'sawtooth');
+  spawnParticles(px, py, 60, (player.hue + 180) % 360, true, 270);
+  setTimeout(() => showGameover(), 180);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   UPDATE
+═══════════════════════════════════════════════════════════════ */
+function update(dt, g) {
+  if (dead) return;
+  t += dt;
+
+  // Player orbit
+  const playerOmega = Math.min(6.2, 2.6 + 0.035 * t);
+  player.theta += playerOmega * dt;
+
+  // Player world position
+  const pR  = g.r[player.ring];
+  const ppx = g.cx + Math.cos(player.theta) * pR;
+  const ppy = g.cy + Math.sin(player.theta) * pR;
+  pushTrail(ppx, ppy);
+
+  // Spawn gates
+  const spawnRate = Math.min(1.55, 0.85 + 0.012 * t);
+  spawnAcc += spawnRate * dt;
+  while (spawnAcc >= 1) { spawnAcc -= 1; spawnGate(); }
+
+  // Near-miss margin
+  const nmMargin = Math.max(0.05, 0.12 - 0.0012 * t);
+
+  // Update & check gates
+  for (let i = gates.length - 1; i >= 0; i--) {
+    const gate = gates[i];
+    gate.theta += gate.omega * dt;
+
+    // Cull gate if far behind player
+    const relToPlayer = angDiff(gate.theta, player.theta); // gate − player, wrapped
+    if (Math.abs(relToPlayer) > Math.PI + 0.8) {
+      gates.splice(i, 1);
+      continue;
+    }
+
+    if (gate.triggered) continue;
+
+    const sameRing = gate.ring === player.ring;
+    const r        = g.r[gate.ring];
+    const gateAhead = relToPlayer > 0; // gate is ahead (+) or behind (-) player
+
+    if (sameRing) {
+      const inside = inGateArc(gate, player.theta, r);
+
+      if (!gate.safe) {
+        // DANGER GATE: immediate collision if player is inside arc on same ring
+        if (inside) {
+          gate.triggered = true;
+          die(ppx, ppy);
+          break; // stop processing after death
+        }
+        // Near-miss: danger gate just passed with close call
+        if (gate.prevAhead === true && !gateAhead) {
+          const closeCall = Math.abs(relToPlayer) < gate.halfWidth + nmMargin;
+          if (closeCall && !inside) {
+            score += 2;
+            doShake(3, 0.12);
+            showToast('Near miss! +2', 900);
+            beep(880, 0.06, 0.08, 'sine');
+          }
+          gate.triggered = true; // danger gate fully passed — done
+        }
+      } else {
+        // SAFE GATE: track if player enters the arc
+        if (inside) gate.playerInArc = true;
+
+        // Score when gate transitions from ahead to behind
+        if (gate.prevAhead === true && !gateAhead) {
+          gate.triggered = true;
+          if (gate.playerInArc) {
+            // Successful pass!
+            streak++;
+            if (streak > bestStreak) bestStreak = streak;
+            mult = Math.min(6, 1 + Math.floor(streak / 5));
+            score += 10 * mult;
+            lifetimeGates++;
+            localStorage.setItem(LS_LIFE, lifetimeGates);
+            beep(600 + Math.min(streak * 12, 400), 0.08, 0.09, 'triangle');
+            doShake(1.8, 0.06);
+            // Hue cycle every 10 streak
+            if (streak % 10 === 0) player.hue = (player.hue + 24) % 360;
+            // Tangent velocity
+            const tanX = -Math.sin(player.theta), tanY = Math.cos(player.theta);
+            spawnSafeParticles(ppx, ppy, player.hue, tanX, tanY);
+          } else {
+            // Missed safe gate — reset streak
+            streak = 0; mult = 1;
+          }
+        }
+      }
+    }
+
+    gate.prevAhead = gateAhead;
+  }
+
+  // Particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.vy += 520 * dt;            // gravity
+    p.vx *= (1 - 1.8 * dt);     // drag
+    p.vy *= (1 - 1.8 * dt);
+    p.x  += p.vx * dt;
+    p.y  += p.vy * dt;
+    p.life -= p.decay * dt;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+
+  // Shake decay
+  shakeMag *= Math.exp(-shakeDecay * 60 * dt);
+  if (shakeMag > 0.5) {
+    shakeX = (rand() - 0.5) * shakeMag * 2.2;
+    shakeY = (rand() - 0.5) * shakeMag * 2.2;
+  } else { shakeX = 0; shakeY = 0; }
+
+  // HUD
+  hudScoreEl.textContent = score;
+  hudBestEl.textContent  = highScore > 0 ? 'Best: ' + highScore : '';
+  hudStrEl.textContent   = streak > 2 ? `×${streak}🔥` : '';
+  hudMultEl.textContent  = mult > 1 ? `${mult}×` : '';
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   RENDER
+═══════════════════════════════════════════════════════════════ */
+function render(g, now) {
+  ctx.clearRect(0, 0, W, H);
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
+
+  /* Background */
+  const bg = ctx.createRadialGradient(g.cx, g.cy, 0, g.cx, g.cy, Math.hypot(W, H) * 0.7);
+  bg.addColorStop(0, `hsl(${player.hue},30%,9%)`);
+  bg.addColorStop(1, '#030309');
+  ctx.fillStyle = bg;
+  ctx.fillRect(-shakeX, -shakeY, W, H);
+
+  /* Vignette */
+  const vg = ctx.createRadialGradient(g.cx, g.cy, Math.min(W,H)*0.22, g.cx, g.cy, Math.hypot(W,H)*0.7);
+  vg.addColorStop(0, 'rgba(0,0,0,0)');
+  vg.addColorStop(1, 'rgba(0,0,0,0.5)');
+  ctx.fillStyle = vg;
+  ctx.fillRect(-shakeX, -shakeY, W, H);
+
+  const dangerHue = (player.hue + 180) % 360;
+
+  /* Rings */
+  [g.R_IN, g.R_OUT].forEach(r => {
+    ctx.beginPath(); ctx.arc(g.cx, g.cy, r, 0, Math.PI * 2);
+    ctx.strokeStyle = `hsla(${player.hue},40%,55%,0.16)`;
+    ctx.lineWidth = g.RW; ctx.stroke();
+    // soft glow
+    ctx.beginPath(); ctx.arc(g.cx, g.cy, r, 0, Math.PI * 2);
+    ctx.strokeStyle = `hsla(${player.hue},60%,65%,0.04)`;
+    ctx.lineWidth = g.RW * 3; ctx.stroke();
+  });
+
+  /* Gates */
+  gates.forEach(gate => {
+    if (gate.triggered) return;
+    const h   = gate.safe ? player.hue : dangerHue;
+    const col = `hsl(${h},88%,${gate.safe ? 62 : 58}%)`;
+    const glo = `hsla(${h},95%,65%,${gate.safe ? 0.55 : 0.7})`;
+    ctx.save();
+    ctx.shadowBlur = 20; ctx.shadowColor = glo;
+    ctx.beginPath();
+    ctx.arc(g.cx, g.cy, g.r[gate.ring], gate.theta - gate.halfWidth, gate.theta + gate.halfWidth);
+    ctx.strokeStyle = col; ctx.lineWidth = g.RW; ctx.lineCap = 'round';
+    ctx.stroke();
+    ctx.restore();
+  });
+
+  /* Trail */
+  for (let i = trail.length - 1; i >= 0; i--) {
+    const pt   = trail[i];
+    const frac = 1 - i / trail.length;
+    ctx.beginPath();
+    ctx.arc(pt.x, pt.y, Math.max(0.5, player.radius * frac * 0.85), 0, Math.PI * 2);
+    ctx.fillStyle = `hsla(${player.hue},75%,70%,${frac * 0.45})`;
+    ctx.fill();
+  }
+
+  /* Player */
+  const pR  = g.r[player.ring];
+  const ppx = g.cx + Math.cos(player.theta) * pR;
+  const ppy = g.cy + Math.sin(player.theta) * pR;
+
+  // halo
+  ctx.save();
+  ctx.shadowBlur = 30; ctx.shadowColor = `hsl(${player.hue},80%,65%)`;
+  ctx.beginPath(); ctx.arc(ppx, ppy, player.radius + 4, 0, Math.PI * 2);
+  ctx.fillStyle = `hsla(${player.hue},70%,70%,0.22)`; ctx.fill();
+  ctx.restore();
+
+  // core with gradient
+  ctx.save();
+  ctx.shadowBlur = 16; ctx.shadowColor = `hsl(${player.hue},90%,70%)`;
+  const pg = ctx.createRadialGradient(ppx - 2, ppy - 2, 0.5, ppx, ppy, player.radius);
+  pg.addColorStop(0, `hsl(${player.hue},60%,94%)`);
+  pg.addColorStop(1, `hsl(${player.hue},75%,58%)`);
+  ctx.beginPath(); ctx.arc(ppx, ppy, player.radius, 0, Math.PI * 2);
+  ctx.fillStyle = pg; ctx.fill();
+  ctx.restore();
+
+  /* Particles */
+  particles.forEach(p => {
+    if (p.life <= 0) return;
+    ctx.save();
+    ctx.globalAlpha = p.life;
+    ctx.shadowBlur  = 8; ctx.shadowColor = `hsl(${p.hue},80%,65%)`;
+    ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(0.2, p.r * p.life), 0, Math.PI * 2);
+    ctx.fillStyle = `hsl(${p.hue},85%,65%)`; ctx.fill();
+    ctx.restore();
+  });
+
+  /* Start screen decoration */
+  if (state === S.START) {
+    const pulse = 0.5 + 0.5 * Math.sin(now * 0.0022);
+    ctx.save();
+    ctx.globalAlpha = 0.25 + pulse * 0.35;
+    ctx.shadowBlur  = 25 + pulse * 18; ctx.shadowColor = `hsl(260,80%,65%)`;
+    [g.R_OUT, g.R_IN].forEach((r, i) => {
+      ctx.beginPath(); ctx.arc(g.cx, g.cy, r, 0, Math.PI * 2);
+      ctx.strokeStyle = `hsl(${i === 0 ? 260 : 200},80%,65%)`;
+      ctx.lineWidth = g.RW; ctx.stroke();
+    });
+    ctx.restore();
+  }
+
+  ctx.restore(); // end shake
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   MAIN LOOP
+═══════════════════════════════════════════════════════════════ */
+let lastNow = 0;
+function loop(now) {
+  requestAnimationFrame(loop);
+  let dt = Math.min((now - lastNow) / 1000, 1 / 30);
+  lastNow = now;
+
+  // Hit-stop: freeze dt during death freeze
+  if (now < hitStopEnd) dt = 0;
+
+  const g = geo();
+  if (state === S.PLAYING) update(dt, g);
+  render(g, now);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   BOOT
+═══════════════════════════════════════════════════════════════ */
+showStart();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

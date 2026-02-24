@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Circuit Coil - Free HTML5 Game</title>
+<meta name="description" content="Play Circuit Coil - Tap to twist a glowing snake around electronic nodes while its pace accelerates rapidly.">
+<meta name="theme-color" content="#0a0a1a">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Circuit Coil - Free HTML5 Game">
+<meta property="og:description" content="Play Circuit Coil - Tap to twist a glowing snake around electronic nodes while its pace accelerates rapidly.">
+<meta property="og:url" content="https://balinti.github.io/circuit-coil/">
+<meta property="og:image" content="https://balinti.github.io/circuit-coil/og-image.png">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#05050f;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;touch-action:manipulation;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
+body{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;min-height:100vh;min-height:100dvh;background:linear-gradient(170deg,#05050f 0%,#0a0a2e 40%,#0f0a1e 100%)}
+#game-container{position:relative;width:100%;max-width:420px;height:100vh;height:100dvh;max-height:750px;margin:0 auto;display:flex;align-items:center;justify-content:center}
+canvas{display:block;width:100%;height:100%;border-radius:4px;touch-action:none}
+#how-to-play{max-width:420px;margin:16px auto;padding:12px 20px;color:#667;font-size:13px;line-height:1.5;text-align:center}
+#how-to-play h2{font-size:15px;color:#889;margin-bottom:6px}
+#how-to-play p{margin-bottom:4px}
+@media(max-height:760px){#how-to-play{display:none}}
+</style>
+</head>
+<body>
+<div id="game-container">
+<canvas id="gc"></canvas>
+</div>
+<section id="how-to-play">
+<h2>How to Play Circuit Coil</h2>
+<p>Tap or press Space to flip between the Cyan and Magenta rails. Pass through matching color nodes to charge them and score points. Avoid grey burnt nodes and spark hazards. Build combos for multiplier bonuses. How far can you ride the circuit?</p>
+</section>
+<script>
+'use strict';
+(()=>{
+const canvas=document.getElementById('gc');
+const ctx=canvas.getContext('2d');
+const container=document.getElementById('game-container');
+
+// --- High-DPI scaling ---
+let W,H,dpr;
+function resize(){
+  const rect=container.getBoundingClientRect();
+  dpr=window.devicePixelRatio||1;
+  W=rect.width;
+  H=rect.height;
+  canvas.width=W*dpr;
+  canvas.height=H*dpr;
+  canvas.style.width=W+'px';
+  canvas.style.height=H+'px';
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+window.addEventListener('resize',resize);
+resize();
+
+// --- Constants ---
+const RAIL_CYAN='#00e5ff';
+const RAIL_MAGENTA='#ff00c8';
+const BURNT_COLOR='#555';
+const BG_COLOR='#0a0a1a';
+const COIL_RADIUS=10;
+const NODE_RADIUS=14;
+const SPARK_RADIUS=8;
+const CLUTCH_WINDOW=0.12;// seconds
+const BURST_SLOW_DURATION=0.35;
+const COMBO_THRESHOLDS=[5,10,15];
+const MULTIPLIER_LADDER=[1,2,3,5];
+
+// --- State ---
+let state='start';// start | playing | gameover
+let score=0;
+let bestScore=parseInt(localStorage.getItem('circuitCoilBest'))||0;
+let combo=0;
+let multiplierIndex=0;
+let clutchCount=0;
+let gameTime=0;
+let scrollSpeed=0;
+let baseSpeed=150;
+let worldX=0;
+let coilRail=0;// 0=top(cyan), 1=bottom(magenta)
+let coilX=80;
+let shakeTimer=0;
+let shakeIntensity=0;
+let burstSlowTimer=0;
+let hue=0;
+let lastFlipTime=-999;
+let nodes=[];
+let sparks=[];
+let particles=[];
+let rings=[];
+let popTexts=[];
+let spawnTimer=0;
+let sparkSpawnTimer=0;
+let nextNodeId=0;
+let difficultyLevel=0;
+
+// --- Rail Y positions ---
+function railY(rail){
+  const center=H*0.5;
+  const gap=H*0.14;
+  return rail===0?center-gap:center+gap;
+}
+
+// --- Coil screen position ---
+function coilScreenY(){return railY(coilRail);}
+
+// --- Input ---
+function handleInput(e){
+  if(e)e.preventDefault();
+  if(state==='start'){
+    startGame();
+  }else if(state==='playing'){
+    flipRail();
+  }else if(state==='gameover'){
+    startGame();
+  }
+}
+canvas.addEventListener('pointerdown',handleInput,{passive:false});
+document.addEventListener('keydown',(e)=>{
+  if(e.code==='Space'||e.code==='Enter'){
+    e.preventDefault();
+    handleInput(null);
+  }
+});
+
+// --- Game init ---
+function startGame(){
+  state='playing';
+  score=0;
+  combo=0;
+  multiplierIndex=0;
+  clutchCount=0;
+  gameTime=0;
+  scrollSpeed=baseSpeed;
+  worldX=0;
+  coilRail=0;
+  shakeTimer=0;
+  shakeIntensity=0;
+  burstSlowTimer=0;
+  lastFlipTime=-999;
+  nodes=[];
+  sparks=[];
+  particles=[];
+  rings=[];
+  popTexts=[];
+  spawnTimer=0;
+  sparkSpawnTimer=0;
+  nextNodeId=0;
+  difficultyLevel=0;
+  // Seed a few initial nodes
+  for(let i=0;i<4;i++){
+    spawnNode(W+100+i*140);
+  }
+}
+
+function flipRail(){
+  coilRail=coilRail===0?1:0;
+  lastFlipTime=gameTime;
+  // Flip particles
+  for(let i=0;i<6;i++){
+    particles.push(createParticle(coilX,coilScreenY(),coilRail===0?RAIL_CYAN:RAIL_MAGENTA,1.5));
+  }
+}
+
+// --- Node spawning ---
+function spawnNode(xOverride){
+  const rail=Math.random()<0.5?0:1;
+  const x=xOverride!==undefined?xOverride:worldX+W+60+Math.random()*80;
+  const isBurnt=Math.random()<Math.min(0.15+difficultyLevel*0.02,0.35);
+  nodes.push({
+    id:nextNodeId++,
+    worldX:x,
+    rail,
+    radius:NODE_RADIUS,
+    charged:false,
+    burnt:isBurnt,
+    passed:false,
+    missed:false
+  });
+}
+
+function spawnSpark(xOverride){
+  const rail=Math.random()<0.5?0:1;
+  const x=xOverride!==undefined?xOverride:worldX+W+100+Math.random()*120;
+  const speed=60+Math.random()*40+difficultyLevel*5;
+  sparks.push({
+    worldX:x,
+    rail,
+    speed,
+    radius:SPARK_RADIUS,
+    telegraph:1.5,// seconds of telegraph before becoming dangerous
+    alive:true
+  });
+}
+
+// --- Particles ---
+function createParticle(x,y,color,life){
+  const angle=Math.random()*Math.PI*2;
+  const spd=30+Math.random()*80;
+  return{
+    x,y,
+    vx:Math.cos(angle)*spd,
+    vy:Math.sin(angle)*spd,
+    life,
+    maxLife:life,
+    color,
+    size:2+Math.random()*3
+  };
+}
+
+function createRing(x,y,color){
+  rings.push({x,y,radius:5,maxRadius:50,life:0.4,maxLife:0.4,color});
+}
+
+function createPopText(x,y,text,color){
+  popTexts.push({x,y,text,color,life:1.0,maxLife:1.0,vy:-40});
+}
+
+// --- Burst effect ---
+function triggerBurst(){
+  const cx=coilX;
+  const cy=coilScreenY();
+  const color=coilRail===0?RAIL_CYAN:RAIL_MAGENTA;
+  // Big ring
+  createRing(cx,cy,color);
+  // Lots of particles
+  for(let i=0;i<20;i++){
+    particles.push(createParticle(cx,cy,color,1.2));
+  }
+  // Slow time
+  burstSlowTimer=BURST_SLOW_DURATION;
+  // Small shake
+  shakeTimer=0.15;
+  shakeIntensity=3;
+  // Bonus score
+  const bonus=10*getMultiplier();
+  score+=bonus;
+  createPopText(cx,cy-30,'BURST +'+bonus,'#fff');
+  // Clear one upcoming spark hazard on current rail
+  let cleared=false;
+  for(const s of sparks){
+    if(!cleared&&s.rail===coilRail&&s.worldX-worldX>coilX){
+      s.alive=false;
+      cleared=true;
+      // Particles where spark was
+      const sx=s.worldX-worldX;
+      const sy=railY(s.rail);
+      for(let i=0;i<8;i++){
+        particles.push(createParticle(sx,sy,'#ff0',0.8));
+      }
+    }
+  }
+}
+
+function getMultiplier(){
+  return MULTIPLIER_LADDER[Math.min(multiplierIndex,MULTIPLIER_LADDER.length-1)];
+}
+
+function updateMultiplier(){
+  if(combo>=15)multiplierIndex=3;
+  else if(combo>=10)multiplierIndex=2;
+  else if(combo>=5)multiplierIndex=1;
+  else multiplierIndex=0;
+}
+
+// --- Game Over ---
+function gameOver(){
+  state='gameover';
+  shakeTimer=0.4;
+  shakeIntensity=8;
+  if(score>bestScore){
+    bestScore=score;
+    localStorage.setItem('circuitCoilBest',bestScore.toString());
+  }
+  // Explosion particles
+  for(let i=0;i<30;i++){
+    particles.push(createParticle(coilX,coilScreenY(),'#f44',1.5));
+  }
+}
+
+// --- Update ---
+function update(dt){
+  hue=(hue+30*dt)%360;
+  if(state!=='playing')return;
+
+  // Burst slow
+  let timeMult=1;
+  if(burstSlowTimer>0){
+    burstSlowTimer-=dt;
+    timeMult=0.3;
+  }
+  const adt=dt*timeMult;
+
+  gameTime+=adt;
+  difficultyLevel=Math.min(gameTime/10,8);
+
+  // Speed ramp: gentle increase, capped
+  scrollSpeed=baseSpeed+difficultyLevel*12;
+  scrollSpeed=Math.min(scrollSpeed,280);
+
+  worldX+=scrollSpeed*adt;
+
+  // Spawn nodes
+  const spawnInterval=Math.max(0.6-difficultyLevel*0.04,0.3);
+  spawnTimer-=adt;
+  if(spawnTimer<=0){
+    spawnTimer=spawnInterval+Math.random()*0.3;
+    spawnNode();
+    // Sometimes spawn pair
+    if(difficultyLevel>2&&Math.random()<0.3){
+      spawnNode(worldX+W+60);
+    }
+  }
+
+  // Spawn sparks
+  const sparkInterval=Math.max(3.5-difficultyLevel*0.25,1.2);
+  sparkSpawnTimer-=adt;
+  if(sparkSpawnTimer<=0&&difficultyLevel>1){
+    sparkSpawnTimer=sparkInterval+Math.random()*1.0;
+    spawnSpark();
+  }
+
+  // Update sparks
+  for(const s of sparks){
+    if(!s.alive)continue;
+    s.telegraph-=adt;
+    s.worldX-=s.speed*adt;
+  }
+  sparks=sparks.filter(s=>s.alive&&s.worldX-worldX>-60);
+
+  // Update nodes & collisions
+  const csx=coilX;
+  const csy=coilScreenY();
+  for(const n of nodes){
+    if(n.passed||n.charged||n.missed)continue;
+    const nx=n.worldX-worldX;
+    const ny=railY(n.rail);
+    const dist=Math.hypot(nx-csx,ny-csy);
+
+    if(nx<csx-NODE_RADIUS-COIL_RADIUS){
+      // Passed without touching
+      if(!n.burnt){
+        // Missed a required node
+        n.missed=true;
+        combo=0;
+        updateMultiplier();
+        gameOver();
+        return;
+      }else{
+        n.passed=true;// Safely avoided burnt node
+      }
+    }else if(dist<NODE_RADIUS+COIL_RADIUS){
+      // Collision
+      if(n.burnt){
+        // Hit a hazard
+        n.passed=true;
+        gameOver();
+        return;
+      }else{
+        // Charge the node!
+        n.charged=true;
+        // Check clutch
+        const timeSinceFlip=gameTime-lastFlipTime;
+        let clutchBonus=false;
+        if(timeSinceFlip<CLUTCH_WINDOW&&timeSinceFlip>=0){
+          clutchBonus=true;
+          clutchCount++;
+        }
+        combo++;
+        updateMultiplier();
+        const mult=getMultiplier();
+        const pts=1*mult+(clutchBonus?2:0);
+        score+=pts;
+        // Particles
+        const col=n.rail===0?RAIL_CYAN:RAIL_MAGENTA;
+        for(let i=0;i<8;i++){
+          particles.push(createParticle(nx,ny,col,0.8));
+        }
+        createRing(nx,ny,col);
+        if(clutchBonus){
+          createPopText(nx,ny-25,'CLUTCH +2','#ffe040');
+        }
+        // Burst check
+        if(combo>0&&combo%5===0){
+          triggerBurst();
+        }
+      }
+    }
+  }
+  // Remove off-screen nodes
+  nodes=nodes.filter(n=>(n.worldX-worldX)>-80);
+
+  // Spark collision
+  for(const s of sparks){
+    if(!s.alive||s.telegraph>0)continue;
+    const sx=s.worldX-worldX;
+    const sy=railY(s.rail);
+    const dist=Math.hypot(sx-csx,sy-csy);
+    if(dist<SPARK_RADIUS+COIL_RADIUS){
+      s.alive=false;
+      gameOver();
+      return;
+    }
+  }
+}
+
+// --- Update particles/rings/popTexts (always, even in menus for lingering effects) ---
+function updateEffects(dt){
+  for(const p of particles){
+    p.x+=p.vx*dt;
+    p.y+=p.vy*dt;
+    p.vy+=120*dt;// gravity
+    p.life-=dt;
+  }
+  particles=particles.filter(p=>p.life>0);
+
+  for(const r of rings){
+    r.life-=dt;
+    r.radius+=(r.maxRadius-5)*(dt/r.maxLife);
+  }
+  rings=rings.filter(r=>r.life>0);
+
+  for(const t of popTexts){
+    t.life-=dt;
+    t.y+=t.vy*dt;
+    t.vy*=0.95;
+  }
+  popTexts=popTexts.filter(t=>t.life>0);
+}
+
+// --- Draw ---
+function draw(){
+  ctx.save();
+
+  // Screen shake
+  let sx=0,sy=0;
+  if(shakeTimer>0){
+    sx=(Math.random()-0.5)*shakeIntensity*2;
+    sy=(Math.random()-0.5)*shakeIntensity*2;
+    ctx.translate(sx,sy);
+  }
+
+  // Background
+  ctx.fillStyle=BG_COLOR;
+  ctx.fillRect(-10,-10,W+20,H+20);
+
+  // Grid lines (subtle)
+  ctx.strokeStyle='rgba(255,255,255,0.03)';
+  ctx.lineWidth=1;
+  const gridSize=40;
+  const gridOffset=worldX%gridSize;
+  for(let x=-gridOffset;x<W+gridSize;x+=gridSize){
+    ctx.beginPath();
+    ctx.moveTo(x,0);
+    ctx.lineTo(x,H);
+    ctx.stroke();
+  }
+  for(let y=0;y<H;y+=gridSize){
+    ctx.beginPath();
+    ctx.moveTo(0,y);
+    ctx.lineTo(W,y);
+    ctx.stroke();
+  }
+
+  // Rails
+  const ry0=railY(0);
+  const ry1=railY(1);
+  // Glow
+  ctx.shadowBlur=12;
+  ctx.shadowColor=RAIL_CYAN;
+  ctx.strokeStyle=RAIL_CYAN;
+  ctx.lineWidth=2;
+  ctx.globalAlpha=0.6;
+  ctx.beginPath();
+  ctx.moveTo(0,ry0);
+  ctx.lineTo(W,ry0);
+  ctx.stroke();
+  ctx.shadowColor=RAIL_MAGENTA;
+  ctx.strokeStyle=RAIL_MAGENTA;
+  ctx.beginPath();
+  ctx.moveTo(0,ry1);
+  ctx.lineTo(W,ry1);
+  ctx.stroke();
+  ctx.globalAlpha=1;
+  ctx.shadowBlur=0;
+
+  // Rail labels
+  ctx.font='bold 10px monospace';
+  ctx.globalAlpha=0.3;
+  ctx.fillStyle=RAIL_CYAN;
+  ctx.fillText('CYAN',8,ry0-10);
+  ctx.fillStyle=RAIL_MAGENTA;
+  ctx.fillText('MAGENTA',8,ry1+18);
+  ctx.globalAlpha=1;
+
+  if(state==='playing'||state==='gameover'){
+    // Draw nodes
+    for(const n of nodes){
+      const nx=n.worldX-worldX;
+      const ny=railY(n.rail);
+      if(nx<-40||nx>W+40)continue;
+      ctx.save();
+      if(n.burnt){
+        ctx.fillStyle=BURNT_COLOR;
+        ctx.strokeStyle='#333';
+        ctx.shadowBlur=0;
+      }else if(n.charged){
+        const col=n.rail===0?RAIL_CYAN:RAIL_MAGENTA;
+        ctx.fillStyle=col;
+        ctx.strokeStyle='#fff';
+        ctx.shadowBlur=15;
+        ctx.shadowColor=col;
+      }else{
+        const col=n.rail===0?RAIL_CYAN:RAIL_MAGENTA;
+        ctx.fillStyle='transparent';
+        ctx.strokeStyle=col;
+        ctx.shadowBlur=8;
+        ctx.shadowColor=col;
+      }
+      ctx.lineWidth=2.5;
+      ctx.beginPath();
+      ctx.arc(nx,ny,NODE_RADIUS,0,Math.PI*2);
+      if(n.charged){
+        ctx.fill();
+      }
+      ctx.stroke();
+      // Inner symbol
+      if(!n.burnt&&!n.charged){
+        ctx.fillStyle=n.rail===0?RAIL_CYAN:RAIL_MAGENTA;
+        ctx.globalAlpha=0.6;
+        ctx.beginPath();
+        ctx.arc(nx,ny,4,0,Math.PI*2);
+        ctx.fill();
+        ctx.globalAlpha=1;
+      }
+      if(n.burnt){
+        // X mark
+        ctx.strokeStyle='#888';
+        ctx.lineWidth=2;
+        ctx.beginPath();
+        ctx.moveTo(nx-5,ny-5);
+        ctx.lineTo(nx+5,ny+5);
+        ctx.moveTo(nx+5,ny-5);
+        ctx.lineTo(nx-5,ny+5);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // Draw sparks
+    for(const s of sparks){
+      if(!s.alive)continue;
+      const sx2=s.worldX-worldX;
+      const sy2=railY(s.rail);
+      if(sx2<-40||sx2>W+40)continue;
+      ctx.save();
+      if(s.telegraph>0){
+        // Telegraphing: pulsing outline
+        ctx.globalAlpha=0.3+0.3*Math.sin(gameTime*12);
+        ctx.strokeStyle='#ff4040';
+        ctx.lineWidth=2;
+        ctx.beginPath();
+        ctx.arc(sx2,sy2,SPARK_RADIUS+4,0,Math.PI*2);
+        ctx.stroke();
+        ctx.globalAlpha=0.4;
+        ctx.fillStyle='#ff4040';
+        ctx.beginPath();
+        ctx.arc(sx2,sy2,SPARK_RADIUS*0.5,0,Math.PI*2);
+        ctx.fill();
+      }else{
+        // Active spark
+        ctx.shadowBlur=12;
+        ctx.shadowColor='#ff2020';
+        ctx.fillStyle='#ff4040';
+        ctx.beginPath();
+        ctx.arc(sx2,sy2,SPARK_RADIUS,0,Math.PI*2);
+        ctx.fill();
+        // Inner core
+        ctx.fillStyle='#ffaa40';
+        ctx.beginPath();
+        ctx.arc(sx2,sy2,SPARK_RADIUS*0.4,0,Math.PI*2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    // Draw coil
+    const cy=coilScreenY();
+    ctx.save();
+    const coilColor=coilRail===0?RAIL_CYAN:RAIL_MAGENTA;
+    ctx.shadowBlur=18;
+    ctx.shadowColor=coilColor;
+    ctx.fillStyle=coilColor;
+    ctx.beginPath();
+    ctx.arc(coilX,cy,COIL_RADIUS,0,Math.PI*2);
+    ctx.fill();
+    // Inner bright core
+    ctx.fillStyle='#fff';
+    ctx.globalAlpha=0.7;
+    ctx.beginPath();
+    ctx.arc(coilX,cy,COIL_RADIUS*0.4,0,Math.PI*2);
+    ctx.fill();
+    ctx.globalAlpha=1;
+    // Outer ring animation
+    const pulseR=COIL_RADIUS+3+Math.sin(gameTime*6)*2;
+    ctx.strokeStyle=coilColor;
+    ctx.globalAlpha=0.4;
+    ctx.lineWidth=1.5;
+    ctx.beginPath();
+    ctx.arc(coilX,cy,pulseR,0,Math.PI*2);
+    ctx.stroke();
+    ctx.globalAlpha=1;
+    ctx.restore();
+
+    // Trail particles (auto-spawn when playing)
+    if(state==='playing'&&Math.random()<0.5){
+      particles.push({
+        x:coilX-COIL_RADIUS,
+        y:cy+(Math.random()-0.5)*6,
+        vx:-20-Math.random()*30,
+        vy:(Math.random()-0.5)*15,
+        life:0.4+Math.random()*0.3,
+        maxLife:0.7,
+        color:coilColor,
+        size:1.5+Math.random()*1.5
+      });
+    }
+  }
+
+  // Draw rings
+  for(const r of rings){
+    const alpha=r.life/r.maxLife;
+    ctx.save();
+    ctx.globalAlpha=alpha*0.6;
+    ctx.strokeStyle=r.color;
+    ctx.lineWidth=2;
+    ctx.beginPath();
+    ctx.arc(r.x,r.y,r.radius,0,Math.PI*2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Draw particles
+  for(const p of particles){
+    const alpha=Math.max(0,p.life/p.maxLife);
+    ctx.save();
+    ctx.globalAlpha=alpha;
+    ctx.fillStyle=p.color;
+    ctx.beginPath();
+    ctx.arc(p.x,p.y,p.size*alpha,0,Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Draw pop texts
+  for(const t of popTexts){
+    const alpha=Math.max(0,t.life/t.maxLife);
+    ctx.save();
+    ctx.globalAlpha=alpha;
+    ctx.fillStyle=t.color;
+    ctx.font='bold 14px monospace';
+    ctx.textAlign='center';
+    ctx.fillText(t.text,t.x,t.y);
+    ctx.restore();
+  }
+
+  // HUD
+  if(state==='playing'){
+    // Score
+    ctx.save();
+    ctx.fillStyle='#fff';
+    ctx.font='bold 28px monospace';
+    ctx.textAlign='center';
+    ctx.shadowBlur=6;
+    ctx.shadowColor='rgba(0,229,255,0.5)';
+    ctx.fillText(score,W/2,40);
+    ctx.shadowBlur=0;
+    // Multiplier
+    const mult=getMultiplier();
+    if(mult>1){
+      ctx.font='bold 14px monospace';
+      ctx.fillStyle=`hsl(${hue},100%,70%)`;
+      ctx.fillText('x'+mult,W/2,58);
+    }
+    // Combo
+    if(combo>1){
+      ctx.font='12px monospace';
+      ctx.fillStyle='rgba(255,255,255,0.5)';
+      ctx.fillText('combo '+combo,W/2,74);
+    }
+    ctx.restore();
+  }
+
+  // --- Menus ---
+  if(state==='start'){
+    drawOverlay();
+    // Title
+    ctx.save();
+    ctx.textAlign='center';
+    ctx.shadowBlur=20;
+    ctx.shadowColor=RAIL_CYAN;
+    ctx.fillStyle='#fff';
+    ctx.font='bold 32px monospace';
+    ctx.fillText('CIRCUIT',W/2,H*0.32);
+    ctx.shadowColor=RAIL_MAGENTA;
+    ctx.fillText('COIL',W/2,H*0.32+36);
+    ctx.shadowBlur=0;
+    // Decorative line
+    ctx.strokeStyle=RAIL_CYAN;
+    ctx.lineWidth=1;
+    ctx.globalAlpha=0.4;
+    ctx.beginPath();
+    ctx.moveTo(W*0.25,H*0.32+50);
+    ctx.lineTo(W*0.75,H*0.32+50);
+    ctx.stroke();
+    ctx.globalAlpha=1;
+    // Instruction
+    ctx.font='16px monospace';
+    ctx.fillStyle='rgba(255,255,255,0.7)';
+    const blink=Math.sin(Date.now()*0.004)>0;
+    if(blink)ctx.fillText('Tap to Start',W/2,H*0.55);
+    // Best score
+    if(bestScore>0){
+      ctx.font='12px monospace';
+      ctx.fillStyle='rgba(255,255,255,0.35)';
+      ctx.fillText('Best: '+bestScore,W/2,H*0.62);
+    }
+    // Controls hint
+    ctx.font='11px monospace';
+    ctx.fillStyle='rgba(255,255,255,0.25)';
+    ctx.fillText('Space / Tap = Flip Rails',W/2,H*0.75);
+    ctx.restore();
+  }
+
+  if(state==='gameover'){
+    drawOverlay();
+    ctx.save();
+    ctx.textAlign='center';
+    ctx.fillStyle='#ff4444';
+    ctx.font='bold 28px monospace';
+    ctx.shadowBlur=15;
+    ctx.shadowColor='#ff0000';
+    ctx.fillText('GAME OVER',W/2,H*0.33);
+    ctx.shadowBlur=0;
+    // Score
+    ctx.fillStyle='#fff';
+    ctx.font='bold 40px monospace';
+    ctx.fillText(score,W/2,H*0.43);
+    ctx.font='13px monospace';
+    ctx.fillStyle='rgba(255,255,255,0.5)';
+    ctx.fillText('SCORE',W/2,H*0.43+20);
+    // Best
+    ctx.font='bold 18px monospace';
+    ctx.fillStyle=score>=bestScore?'#ffe040':'rgba(255,255,255,0.6)';
+    ctx.fillText('Best: '+bestScore,W/2,H*0.55);
+    if(score>=bestScore&&score>0){
+      ctx.font='12px monospace';
+      ctx.fillStyle='#ffe040';
+      ctx.fillText('NEW RECORD!',W/2,H*0.55+18);
+    }
+    // Stats
+    if(clutchCount>0){
+      ctx.font='11px monospace';
+      ctx.fillStyle='rgba(255,255,255,0.35)';
+      ctx.fillText('Clutch flips: '+clutchCount,W/2,H*0.65);
+    }
+    // Retry
+    ctx.font='16px monospace';
+    ctx.fillStyle='rgba(255,255,255,0.7)';
+    const blink=Math.sin(Date.now()*0.004)>0;
+    if(blink)ctx.fillText('Tap to Retry',W/2,H*0.76);
+    ctx.restore();
+  }
+
+  ctx.restore();
+}
+
+function drawOverlay(){
+  ctx.fillStyle='rgba(5,5,15,0.75)';
+  ctx.fillRect(0,0,W,H);
+}
+
+// --- Shake update ---
+function updateShake(dt){
+  if(shakeTimer>0){
+    shakeTimer-=dt;
+    if(shakeTimer<=0){
+      shakeTimer=0;
+      shakeIntensity=0;
+    }
+  }
+}
+
+// --- Main Loop ---
+let lastTime=0;
+function loop(ts){
+  const dt=Math.min((ts-lastTime)/1000,0.05);
+  lastTime=ts;
+  update(dt);
+  updateEffects(dt);
+  updateShake(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame((ts)=>{
+  lastTime=ts;
+  requestAnimationFrame(loop);
+});
+
+})();
+</script>
+</body>
+</html>

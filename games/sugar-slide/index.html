@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Sugar Slide - Free HTML5 Game</title>
+  <meta name="description" content="Play Sugar Slide - Swipe left or right to slide a chocolate bar and catch sweets as speed ramps up.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#1a0a2e">
+  <link rel="canonical" href="https://balinti.github.io/sugar-slide/">
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="Sugar Slide - Free HTML5 Game">
+  <meta property="og:description" content="Slide a chocolate bar and catch sweets as speed ramps up. Build combos, avoid Bitter Beans!">
+  <meta property="og:image" content="https://balinti.github.io/sugar-slide/og-1200x630.png">
+  <meta property="og:url" content="https://balinti.github.io/sugar-slide/">
+  <meta property="og:type" content="website">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Sugar Slide - Free HTML5 Game">
+  <meta name="twitter:description" content="Slide a chocolate bar and catch sweets as speed ramps up. Build combos, avoid Bitter Beans!">
+  <meta name="twitter:image" content="https://balinti.github.io/sugar-slide/og-1200x630.png">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #0d0520;
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+    }
+    #wrapper {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      height: 100vh;
+      max-height: 750px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+<div id="wrapper">
+  <canvas id="c"></canvas>
+</div>
+<script>
+(function(){
+'use strict';
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+const LS_KEY = 'SS_HIGHSCORE';
+const MAX_PARTICLES = 200;
+const DPR = Math.min(window.devicePixelRatio || 1, 2);
+const LANE_COUNT = 3;
+const CANDY_COLORS = ['#FF6B9D','#FFD93D','#6BCEFF'];
+const CANDY_HUE_OFFSETS = [330, 50, 200]; // pink, yellow, cyan
+const SUGAR_COLOR = '#FFFFFF';
+const BEAN_COLOR = '#1A0A0A';
+const BEAN_RING = '#5a3a1a';
+
+// Game states
+const STATE_START = 'start';
+const STATE_PLAY  = 'play';
+const STATE_OVER  = 'over';
+
+// ─── Canvas Setup ─────────────────────────────────────────────────────────────
+const wrapper = document.getElementById('wrapper');
+const canvas  = document.getElementById('c');
+const ctx     = canvas.getContext('2d');
+
+let W, H, laneW, laneCX = [];
+
+function resize() {
+  const rect = wrapper.getBoundingClientRect();
+  W = rect.width;
+  H = rect.height;
+  canvas.width  = W * DPR;
+  canvas.height = H * DPR;
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  laneW = W / LANE_COUNT;
+  for(let i=0;i<LANE_COUNT;i++) laneCX[i] = laneW*i + laneW/2;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ─── State ────────────────────────────────────────────────────────────────────
+let state, score, best, combo, maxCombo, streak, hue,
+    elapsed, diffTime, spawnTimer, patternQueue, patternIdx,
+    fallers, particles, shakeAmp, shakeDur, shakeTime,
+    player, meltBar, sticky, stickyTime, queuedTap,
+    laneFlash, speedLines, challengeScore, challengeCombo;
+
+function getChallenge(){
+  const p = new URLSearchParams(location.search);
+  challengeScore = parseInt(p.get('challenge')) || 0;
+  challengeCombo = parseInt(p.get('combo')) || 0;
+}
+getChallenge();
+
+function initGame(){
+  score     = 0;
+  combo     = 1;
+  maxCombo  = 1;
+  streak    = 0;
+  hue       = 0;
+  elapsed   = 0;
+  diffTime  = 0;
+  spawnTimer= 0;
+  fallers   = [];
+  particles = [];
+  shakeAmp  = 0;
+  shakeDur  = 0;
+  shakeTime = 0;
+  laneFlash = [{t:0},{t:0},{t:0}];
+  speedLines= [];
+  sticky    = false;
+  stickyTime= 0;
+  queuedTap = false;
+  patternQueue = buildPatternQueue();
+  patternIdx = 0;
+  player = {
+    lane: 1,
+    x: laneCX[1],
+    y: H - 80,
+    w: 70, h: 28,
+    baseW: 70,
+    size: 1.0,    // 0..1 melt
+    targetX: laneCX[1],
+  };
+  meltBar = { x: 12, y: H-18, w: W-24, h:8 };
+  best = parseInt(localStorage.getItem(LS_KEY)) || 0;
+}
+
+// ─── Pattern System ───────────────────────────────────────────────────────────
+const PATTERNS = [
+  // Each entry: array of {lane, type} 'C'=candy, 'S'=sugar, 'B'=bean
+  // Sweep L->R
+  () => [{lane:0,t:'C'},{lane:1,t:'C'},{lane:2,t:'C'}],
+  // Sweep R->L
+  () => [{lane:2,t:'C'},{lane:1,t:'C'},{lane:0,t:'C'}],
+  // Double middle
+  () => [{lane:1,t:'C'},{lane:1,t:'C'}],
+  // Mirror sides
+  () => [{lane:0,t:'C'},{lane:2,t:'C'},{lane:0,t:'C'},{lane:2,t:'C'}],
+  // Zigzag
+  () => [{lane:0,t:'C'},{lane:2,t:'C'},{lane:1,t:'C'},{lane:0,t:'C'},{lane:2,t:'C'}],
+  // Sugar restore
+  () => [{lane:0,t:'S'},{lane:1,t:'S'},{lane:2,t:'S'}],
+  // Single bean + sweets
+  () => [{lane:0,t:'C'},{lane:1,t:'B'},{lane:2,t:'C'}],
+  // Middle safe
+  () => [{lane:0,t:'B'},{lane:1,t:'C'},{lane:2,t:'B'}],
+  // Burst
+  () => [{lane:0,t:'C'},{lane:1,t:'C'},{lane:2,t:'C'},{lane:0,t:'C'},{lane:1,t:'C'},{lane:2,t:'C'}],
+  // Random single
+  () => [{lane:Math.floor(Math.random()*3), t:Math.random()<0.15?'B':Math.random()<0.2?'S':'C'}],
+];
+
+function buildPatternQueue(){
+  let q = [];
+  for(let i=0;i<20;i++) q.push(PATTERNS[Math.floor(Math.random()*PATTERNS.length)]());
+  return q.flat();
+}
+
+function nextFallerSpec(){
+  if(patternIdx >= patternQueue.length){
+    patternQueue = buildPatternQueue();
+    patternIdx = 0;
+  }
+  let spec = patternQueue[patternIdx++];
+  // Late game: more beans, less sugar
+  if(diffTime > 25){
+    if(spec.t === 'S' && Math.random()<0.5) spec = {lane:spec.lane, t:'C'};
+    if(spec.t === 'C' && Math.random()<0.12) spec = {lane:spec.lane, t:'B'};
+  }
+  return spec;
+}
+
+// ─── Difficulty ───────────────────────────────────────────────────────────────
+function getDiff(){
+  const t = diffTime;
+  const speed = Math.min(2.5 + t * 0.045, 7.5);
+  const cadence = Math.max(0.38 - t * 0.006, 0.18);
+  return { speed, cadence };
+}
+
+// ─── Faller ───────────────────────────────────────────────────────────────────
+function spawnFaller(){
+  const spec = nextFallerSpec();
+  const { speed } = getDiff();
+  const colorIdx = Math.floor(Math.random()*3);
+  fallers.push({
+    lane: spec.lane,
+    x: laneCX[spec.lane],
+    y: -20,
+    r: 16,
+    type: spec.t,        // 'C','S','B'
+    colorIdx,
+    hue: hue + CANDY_HUE_OFFSETS[colorIdx],
+    speed: speed + (Math.random()-0.5)*0.4,
+    caught: false,
+    missed: false,
+    alpha: 1,
+  });
+}
+
+// ─── Particles ────────────────────────────────────────────────────────────────
+function spawnParticles(x, y, color, count){
+  for(let i=0;i<count && particles.length<MAX_PARTICLES;i++){
+    const ang = Math.random()*Math.PI*2;
+    const spd = 1.5 + Math.random()*4;
+    particles.push({
+      x, y,
+      vx: Math.cos(ang)*spd, vy: Math.sin(ang)*spd - 2,
+      r: 2 + Math.random()*4,
+      color,
+      alpha: 1,
+      life: 0.6 + Math.random()*0.4,
+      t: 0,
+      gravity: 0.12,
+      drag: 0.97,
+    });
+  }
+}
+
+function spawnText(x, y, text, color){
+  particles.push({
+    isText:true, x, y, text, color,
+    vy: -1.5, alpha:1, life:0.9, t:0,
+    size: 22,
+  });
+}
+
+// ─── Screen Shake ─────────────────────────────────────────────────────────────
+function shake(amp, dur){
+  if(amp > shakeAmp){ shakeAmp = amp; shakeDur = dur; shakeTime = 0; }
+}
+
+// ─── Speed Lines ──────────────────────────────────────────────────────────────
+function spawnSpeedLines(){
+  for(let i=0;i<3;i++){
+    speedLines.push({
+      x: Math.random()*W,
+      y: 0,
+      len: 40 + Math.random()*80,
+      speed: 6 + Math.random()*4,
+      alpha: 0.3 + Math.random()*0.3,
+    });
+  }
+}
+
+// ─── Input ────────────────────────────────────────────────────────────────────
+function handleTap(){
+  if(state === STATE_START){ state = STATE_PLAY; return; }
+  if(state === STATE_OVER){ initGame(); state = STATE_PLAY; return; }
+  if(state !== STATE_PLAY) return;
+
+  if(sticky){
+    queuedTap = true;
+    return;
+  }
+  doLaneTap();
+}
+
+function doLaneTap(){
+  player.lane = (player.lane + 1) % LANE_COUNT;
+  player.targetX = laneCX[player.lane];
+  laneFlash[player.lane].t = 0.3;
+  shake(1.5, 0.08);
+}
+
+canvas.addEventListener('pointerdown', e => { e.preventDefault(); handleTap(); });
+window.addEventListener('keydown', e => {
+  if(e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); handleTap(); }
+});
+
+// ─── Update ───────────────────────────────────────────────────────────────────
+let lastTime = 0;
+function update(dt){
+  if(state !== STATE_PLAY) return;
+  elapsed += dt;
+  diffTime += dt;
+  hue = (hue + dt * 20) % 360;
+
+  // Shake
+  if(shakeDur > 0){
+    shakeTime += dt;
+    if(shakeTime >= shakeDur){ shakeAmp = 0; shakeDur = 0; }
+  }
+
+  // Sticky
+  if(sticky){
+    stickyTime -= dt;
+    if(stickyTime <= 0){
+      sticky = false;
+      if(queuedTap){ queuedTap = false; doLaneTap(); }
+    }
+  }
+
+  // Player lerp
+  player.x += (player.targetX - player.x) * Math.min(dt*14, 1);
+  player.w = player.baseW * player.size;
+  player.h = 28 * (0.5 + player.size*0.5);
+
+  // Melt over time
+  player.size = Math.max(0, player.size - dt * 0.012);
+  if(player.size <= 0){ endGame(); return; }
+
+  // Spawn
+  const { cadence } = getDiff();
+  spawnTimer += dt;
+  if(spawnTimer >= cadence){
+    spawnTimer = 0;
+    spawnFaller();
+  }
+
+  // Speed lines at high diff
+  if(diffTime > 20 && Math.random() < dt * 3) spawnSpeedLines();
+
+  // Update fallers
+  for(let i=fallers.length-1;i>=0;i--){
+    const f = fallers[i];
+    f.y += f.speed;
+    if(f.caught || f.missed){
+      f.alpha -= dt * 4;
+      if(f.alpha <= 0) { fallers.splice(i,1); continue; }
+    }
+    if(!f.caught && !f.missed && f.y >= player.y - player.h/2 - f.r && f.y <= player.y + player.h/2 + f.r){
+      // Lane-based collision first
+      if(f.lane === player.lane){
+        // Circle-rect refined
+        const px = player.x, py = player.y;
+        const hw = player.w/2, hh = player.h/2;
+        const dx = Math.abs(f.x - px), dy = Math.abs(f.y - py);
+        if(dx < hw + f.r && dy < hh + f.r){
+          catchFaller(f);
+          continue;
+        }
+      }
+    }
+    if(f.y > H + 30 && !f.caught && !f.missed){
+      f.missed = true;
+      if(f.type === 'C'){
+        combo = 1;
+        streak = 0;
+      }
+    }
+  }
+
+  // Update particles
+  for(let i=particles.length-1;i>=0;i--){
+    const p = particles[i];
+    p.t += dt;
+    p.alpha = Math.max(0, 1 - p.t/p.life);
+    if(p.t >= p.life){ particles.splice(i,1); continue; }
+    if(!p.isText){
+      p.vy += p.gravity;
+      p.vx *= p.drag; p.vy *= p.drag;
+      p.x += p.vx; p.y += p.vy;
+    } else {
+      p.y += p.vy;
+    }
+  }
+
+  // Speed lines
+  for(let i=speedLines.length-1;i>=0;i--){
+    const s = speedLines[i];
+    s.y += s.speed;
+    if(s.y > H) speedLines.splice(i,1);
+  }
+
+  // Lane flash decay
+  for(let i=0;i<LANE_COUNT;i++){
+    if(laneFlash[i].t > 0) laneFlash[i].t = Math.max(0, laneFlash[i].t - dt);
+  }
+}
+
+function catchFaller(f){
+  f.caught = true;
+  if(f.type === 'C'){
+    const pts = 10 * combo;
+    score += pts;
+    streak++;
+    if(streak >= 5 && streak % 5 === 0){
+      score += 50 * combo;
+      spawnText(f.x, f.y - 30, 'STREAK!', '#FFD93D');
+      shake(2.5, 0.1);
+    }
+    if(combo < 8){
+      // combo increments: 1->2->4->8
+      if(streak >= 3 && combo === 1) combo = 2;
+      else if(streak >= 6 && combo === 2) combo = 4;
+      else if(streak >= 10 && combo === 4) combo = 8;
+    }
+    if(combo > maxCombo) maxCombo = combo;
+    const color = `hsl(${f.hue % 360},90%,65%)`;
+    spawnParticles(f.x, f.y, color, 10 + combo * 3);
+    spawnText(f.x, f.y - 20, '+' + pts, color);
+    if(score > best) best = score;
+  } else if(f.type === 'S'){
+    player.size = Math.min(1, player.size + 0.2);
+    spawnParticles(f.x, f.y, '#ffffff', 14);
+    spawnText(f.x, f.y - 20, 'SUGAR!', '#fff');
+  } else if(f.type === 'B'){
+    player.size = Math.max(0.05, player.size - 0.18);
+    combo = 1; streak = 0;
+    sticky = true; stickyTime = 1.0; queuedTap = false;
+    shake(5, 0.25);
+    spawnParticles(f.x, f.y, '#5a3a1a', 16);
+    spawnText(f.x, f.y - 20, 'BITTER!', '#ff4444');
+    if(player.size <= 0.01){ endGame(); }
+  }
+}
+
+function endGame(){
+  state = STATE_OVER;
+  if(score > best) best = score;
+  localStorage.setItem(LS_KEY, best);
+  shake(9, 0.5);
+  spawnParticles(player.x, player.y, `hsl(${hue},80%,60%)`, 50);
+}
+
+// ─── Draw ─────────────────────────────────────────────────────────────────────
+function draw(){
+  // Background gradient
+  const bg = ctx.createLinearGradient(0,0,0,H);
+  bg.addColorStop(0, `hsl(${(hue+240)%360},40%,8%)`);
+  bg.addColorStop(1, `hsl(${(hue+260)%360},50%,4%)`);
+  ctx.fillStyle = bg;
+  ctx.fillRect(0,0,W,H);
+
+  // Shake offset
+  let sx=0, sy=0;
+  if(shakeAmp > 0){
+    const prog = shakeTime / Math.max(shakeDur,0.001);
+    const amp = shakeAmp * (1 - prog);
+    sx = (Math.random()*2-1)*amp;
+    sy = (Math.random()*2-1)*amp;
+  }
+
+  ctx.save();
+  ctx.translate(sx, sy);
+
+  // Speed lines
+  if(diffTime > 20){
+    ctx.save();
+    for(const s of speedLines){
+      ctx.globalAlpha = s.alpha * Math.min(1,(diffTime-20)/10);
+      ctx.strokeStyle = `hsl(${hue},70%,70%)`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(s.x, s.y);
+      ctx.lineTo(s.x, s.y + s.len);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  // Lane dividers
+  ctx.save();
+  for(let i=1;i<LANE_COUNT;i++){
+    ctx.strokeStyle = `hsla(${hue},30%,50%,0.2)`;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([6,12]);
+    ctx.beginPath();
+    ctx.moveTo(laneW*i, 0);
+    ctx.lineTo(laneW*i, H);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  ctx.restore();
+
+  // Lane flash
+  for(let i=0;i<LANE_COUNT;i++){
+    const f = laneFlash[i];
+    if(f.t > 0){
+      ctx.save();
+      ctx.globalAlpha = f.t * 0.35;
+      ctx.fillStyle = `hsl(${hue},80%,70%)`;
+      ctx.fillRect(laneW*i, 0, laneW, H);
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+  }
+
+  // Fallers
+  for(const f of fallers){
+    ctx.save();
+    ctx.globalAlpha = f.alpha;
+    if(f.type === 'C'){
+      const h2 = (f.hue + hue*0.5) % 360;
+      const grad = ctx.createRadialGradient(f.x-4, f.y-4, 2, f.x, f.y, f.r);
+      grad.addColorStop(0, `hsl(${h2},90%,80%)`);
+      grad.addColorStop(1, `hsl(${h2},80%,50%)`);
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(f.x, f.y, f.r, 0, Math.PI*2);
+      ctx.fill();
+      // Sprinkle lines
+      ctx.strokeStyle = `hsl(${(h2+60)%360},90%,70%)`;
+      ctx.lineWidth = 2;
+      for(let k=0;k<3;k++){
+        const a = (k/3)*Math.PI*2;
+        ctx.beginPath();
+        ctx.moveTo(f.x + Math.cos(a)*5, f.y + Math.sin(a)*5);
+        ctx.lineTo(f.x + Math.cos(a)*11, f.y + Math.sin(a)*11);
+        ctx.stroke();
+      }
+    } else if(f.type === 'S'){
+      // Sugar cube
+      ctx.fillStyle = '#ffffff';
+      ctx.shadowColor = '#aaeeff';
+      ctx.shadowBlur = 10;
+      ctx.fillRect(f.x-13, f.y-13, 26, 26);
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = '#ccf0ff';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(f.x-13, f.y-13, 26, 26);
+      // Crystal lines
+      ctx.strokeStyle = 'rgba(200,240,255,0.5)';
+      ctx.beginPath(); ctx.moveTo(f.x-13,f.y); ctx.lineTo(f.x+13,f.y); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(f.x,f.y-13); ctx.lineTo(f.x,f.y+13); ctx.stroke();
+    } else if(f.type === 'B'){
+      // Bitter bean
+      ctx.fillStyle = '#1a0808';
+      ctx.shadowColor = '#ff2200';
+      ctx.shadowBlur = 12;
+      ctx.beginPath();
+      ctx.ellipse(f.x, f.y, f.r, f.r*1.2, 0, 0, Math.PI*2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = BEAN_RING;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(f.x, f.y, f.r-3, (f.r-3)*1.2, 0, 0, Math.PI*2);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  // Particles
+  for(const p of particles){
+    ctx.save();
+    ctx.globalAlpha = p.alpha;
+    if(p.isText){
+      ctx.font = `bold ${p.size}px 'Segoe UI', sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillStyle = p.color;
+      ctx.shadowColor = p.color;
+      ctx.shadowBlur = 8;
+      ctx.fillText(p.text, p.x, p.y);
+    } else {
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // Player (chocolate bar)
+  if(state === STATE_PLAY || state === STATE_OVER){
+    drawPlayer();
+  }
+
+  // HUD
+  if(state === STATE_PLAY){
+    drawHUD();
+  }
+
+  ctx.restore(); // shake
+
+  // Overlays (no shake)
+  if(state === STATE_START) drawStart();
+  else if(state === STATE_OVER) drawOver();
+}
+
+function drawPlayer(){
+  const px = player.x, py = player.y;
+  const pw = player.w, ph = player.h;
+
+  ctx.save();
+  // Shadow glow
+  ctx.shadowColor = `hsl(${hue},70%,60%)`;
+  ctx.shadowBlur = 12 + player.size * 8;
+
+  // Chocolate bar body
+  const br = 6;
+  const grad = ctx.createLinearGradient(px-pw/2, py-ph/2, px-pw/2, py+ph/2);
+  grad.addColorStop(0, '#7B3F00');
+  grad.addColorStop(0.4, '#5C2D00');
+  grad.addColorStop(1, '#3B1A00');
+  ctx.fillStyle = grad;
+  roundRect(ctx, px-pw/2, py-ph/2, pw, ph, br);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Chocolate segments
+  const segs = Math.max(2, Math.floor(pw/18));
+  ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+  ctx.lineWidth = 1.5;
+  for(let i=1;i<segs;i++){
+    const sx = px - pw/2 + (pw/segs)*i;
+    ctx.beginPath();
+    ctx.moveTo(sx, py-ph/2+3);
+    ctx.lineTo(sx, py+ph/2-3);
+    ctx.stroke();
+  }
+
+  // Highlight
+  ctx.fillStyle = 'rgba(255,255,255,0.12)';
+  roundRect(ctx, px-pw/2+3, py-ph/2+2, pw-6, ph*0.35, 3);
+  ctx.fill();
+
+  // Melt drip if low
+  if(player.size < 0.5){
+    const drips = Math.floor((0.5-player.size)*6)+1;
+    ctx.fillStyle = '#3B1A00';
+    for(let d=0;d<drips;d++){
+      const dx = px - pw/2 + 8 + (d * pw/(drips+1));
+      const dh = 6 + (0.5-player.size)*20;
+      ctx.beginPath();
+      ctx.ellipse(dx, py+ph/2+dh/2, 4*(player.size+0.2), dh/2, 0, 0, Math.PI*2);
+      ctx.fill();
+    }
+  }
+
+  // Sticky overlay
+  if(sticky){
+    ctx.globalAlpha = 0.4 + Math.sin(Date.now()*0.01)*0.2;
+    ctx.fillStyle = '#aa6600';
+    roundRect(ctx, px-pw/2, py-ph/2, pw, ph, br);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  ctx.restore();
+}
+
+function drawHUD(){
+  // Score
+  ctx.save();
+  ctx.font = 'bold 28px Segoe UI, sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#fff';
+  ctx.shadowColor = `hsl(${hue},80%,60%)`;
+  ctx.shadowBlur = 10;
+  ctx.fillText(score, W-14, 38);
+  ctx.shadowBlur = 0;
+
+  ctx.font = '13px Segoe UI, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.fillText('BEST ' + best, W-14, 56);
+
+  // Combo
+  if(combo > 1){
+    ctx.textAlign = 'left';
+    ctx.font = `bold ${20+combo*2}px Segoe UI, sans-serif`;
+    const pulse = 1 + Math.sin(Date.now()*0.008)*0.06;
+    ctx.save();
+    ctx.translate(14, 40);
+    ctx.scale(pulse, pulse);
+    ctx.fillStyle = `hsl(${hue},90%,65%)`;
+    ctx.shadowColor = `hsl(${hue},90%,65%)`;
+    ctx.shadowBlur = 14;
+    ctx.fillText(`x${combo}`, 0, 0);
+    ctx.restore();
+  }
+
+  // Streak
+  ctx.textAlign = 'left';
+  ctx.font = '13px Segoe UI, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.fillText('streak ' + streak, 14, 58);
+
+  // Melt bar
+  const mb = meltBar;
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  roundRect(ctx, mb.x, mb.y, mb.w, mb.h, 4);
+  ctx.fill();
+  const meltColor = player.size > 0.5 ? `hsl(${hue},80%,55%)` :
+                    player.size > 0.25 ? '#FFD93D' : '#FF4444';
+  const grad2 = ctx.createLinearGradient(mb.x, 0, mb.x+mb.w*player.size, 0);
+  grad2.addColorStop(0, meltColor);
+  grad2.addColorStop(1, `hsl(${(hue+30)%360},90%,70%)`);
+  ctx.fillStyle = grad2;
+  roundRect(ctx, mb.x, mb.y, mb.w * player.size, mb.h, 4);
+  ctx.fill();
+
+  // Melt bar label
+  ctx.textAlign = 'center';
+  ctx.font = '10px Segoe UI, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  ctx.fillText('CHOCOLATE', W/2, mb.y - 3);
+
+  // Sticky indicator
+  if(sticky){
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 12px Segoe UI, sans-serif';
+    ctx.fillStyle = '#aa6600';
+    ctx.fillText('STICKY!', W/2, H-32);
+  }
+
+  ctx.restore();
+}
+
+function drawStart(){
+  // Dark overlay
+  ctx.save();
+  ctx.fillStyle = 'rgba(10,5,25,0.78)';
+  ctx.fillRect(0,0,W,H);
+
+  // Title
+  const titleY = H*0.32;
+  ctx.textAlign = 'center';
+  ctx.font = `bold 54px Segoe UI, sans-serif`;
+  ctx.fillStyle = `hsl(${hue},85%,65%)`;
+  ctx.shadowColor = `hsl(${hue},90%,55%)`;
+  ctx.shadowBlur = 30;
+  ctx.fillText('Sugar', W/2, titleY);
+  ctx.fillStyle = `hsl(${(hue+40)%360},85%,65%)`;
+  ctx.fillText('Slide', W/2, titleY+58);
+  ctx.shadowBlur = 0;
+
+  // Tagline
+  ctx.font = '15px Segoe UI, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  ctx.fillText('Catch sweets. Build combos. Survive.', W/2, titleY+95);
+
+  // Tap to start
+  const pulse = 0.85 + Math.sin(Date.now()*0.003)*0.15;
+  ctx.globalAlpha = pulse;
+  ctx.font = 'bold 20px Segoe UI, sans-serif';
+  ctx.fillStyle = '#fff';
+  ctx.fillText('Tap to Start', W/2, H*0.72);
+  ctx.globalAlpha = 1;
+
+  // Controls hint
+  ctx.font = '12px Segoe UI, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.fillText('Tap / Space / Enter to move lanes', W/2, H*0.72 + 28);
+
+  // Challenge banner
+  if(challengeScore > 0){
+    drawChallengeBanner(`Beat ${challengeScore} to win!`);
+  }
+
+  ctx.restore();
+}
+
+function drawOver(){
+  ctx.save();
+  ctx.fillStyle = 'rgba(10,5,25,0.82)';
+  ctx.fillRect(0,0,W,H);
+
+  ctx.textAlign = 'center';
+
+  // Game Over title
+  ctx.font = 'bold 42px Segoe UI, sans-serif';
+  ctx.fillStyle = `hsl(${hue},80%,60%)`;
+  ctx.shadowColor = `hsl(${hue},80%,60%)`;
+  ctx.shadowBlur = 20;
+  ctx.fillText('Game Over', W/2, H*0.28);
+  ctx.shadowBlur = 0;
+
+  // Score
+  ctx.font = 'bold 64px Segoe UI, sans-serif';
+  ctx.fillStyle = '#fff';
+  ctx.fillText(score, W/2, H*0.42);
+
+  ctx.font = '16px Segoe UI, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.fillText('BEST  ' + best + '   |   MAX COMBO  x' + maxCombo, W/2, H*0.49);
+
+  // New best badge
+  if(score >= best && score > 0){
+    ctx.font = 'bold 14px Segoe UI, sans-serif';
+    ctx.fillStyle = '#FFD93D';
+    ctx.shadowColor = '#FFD93D';
+    ctx.shadowBlur = 12;
+    ctx.fillText('NEW BEST!', W/2, H*0.49 - 28);
+    ctx.shadowBlur = 0;
+  }
+
+  // Tap to retry
+  const pulse = 0.85 + Math.sin(Date.now()*0.003)*0.15;
+  ctx.globalAlpha = pulse;
+  ctx.font = 'bold 20px Segoe UI, sans-serif';
+  ctx.fillStyle = '#fff';
+  ctx.fillText('Tap to Retry', W/2, H*0.68);
+  ctx.globalAlpha = 1;
+
+  // Share button area
+  ctx.fillStyle = `hsl(${hue},70%,55%)`;
+  roundRect(ctx, W/2-70, H*0.75, 140, 40, 20);
+  ctx.fill();
+  ctx.font = 'bold 15px Segoe UI, sans-serif';
+  ctx.fillStyle = '#fff';
+  ctx.fillText('Share Challenge', W/2, H*0.75+26);
+
+  // Challenge banner
+  if(challengeScore > 0){
+    const won = score > challengeScore;
+    drawChallengeBanner(won ? `You beat ${challengeScore}!` : `Beat ${challengeScore} to win!`);
+  }
+
+  ctx.restore();
+}
+
+function drawChallengeBanner(msg){
+  const bh = 36, by = H*0.08;
+  ctx.fillStyle = 'rgba(255,165,0,0.25)';
+  roundRect(ctx, 20, by, W-40, bh, 10);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,200,0,0.5)';
+  ctx.lineWidth = 1;
+  roundRect(ctx, 20, by, W-40, bh, 10);
+  ctx.stroke();
+  ctx.font = 'bold 13px Segoe UI, sans-serif';
+  ctx.fillStyle = '#FFD93D';
+  ctx.textAlign = 'center';
+  ctx.fillText(msg, W/2, by + 23);
+}
+
+// Share button tap detection on gameover
+canvas.addEventListener('pointerup', e => {
+  if(state !== STATE_OVER) return;
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = W / rect.width;
+  const scaleY = H / rect.height;
+  const cx = (e.clientX - rect.left) * scaleX;
+  const cy = (e.clientY - rect.top) * scaleY;
+  const bx = W/2-70, by = H*0.75, bw = 140, bh = 40;
+  if(cx >= bx && cx <= bx+bw && cy >= by && cy <= by+bh){
+    doShare();
+    e.stopPropagation();
+  }
+});
+
+function doShare(){
+  const url = `https://balinti.github.io/sugar-slide/?challenge=${score}&combo=${maxCombo}`;
+  const text = `I scored ${score} in Sugar Slide! Can you beat me? Max combo x${maxCombo}`;
+  if(navigator.share){
+    navigator.share({ title:'Sugar Slide Challenge', text, url }).catch(()=>{});
+  } else {
+    navigator.clipboard.writeText(url).then(()=>{
+      spawnText(W/2, H*0.73, 'Link Copied!', '#FFD93D');
+    }).catch(()=>{});
+  }
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function roundRect(ctx, x, y, w, h, r){
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.lineTo(x+w-r, y);
+  ctx.quadraticCurveTo(x+w, y, x+w, y+r);
+  ctx.lineTo(x+w, y+h-r);
+  ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+  ctx.lineTo(x+r, y+h);
+  ctx.quadraticCurveTo(x, y+h, x, y+h-r);
+  ctx.lineTo(x, y+r);
+  ctx.quadraticCurveTo(x, y, x+r, y);
+  ctx.closePath();
+}
+
+// ─── Loop ─────────────────────────────────────────────────────────────────────
+function loop(ts){
+  const dt = Math.min((ts - lastTime) / 1000, 0.05);
+  lastTime = ts;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+state = STATE_START;
+initGame();
+requestAnimationFrame(ts => { lastTime = ts; requestAnimationFrame(loop); });
+
+})();
+</script>
+</body>
+</html>

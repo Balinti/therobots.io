@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Pulse Chase - Free HTML5 Game</title>
+<meta name="description" content="Play Pulse Chase - Tap to grab pulsating neon fragments as random powerup cells appear for brief boosts.">
+<meta name="theme-color" content="#0a0a1a">
+<link rel="canonical" href="https://balinti.github.io/pulse-chase/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Pulse Chase - Free HTML5 Game">
+<meta property="og:description" content="Play Pulse Chase - Tap to grab pulsating neon fragments as random powerup cells appear for brief boosts.">
+<meta property="og:url" content="https://balinti.github.io/pulse-chase/">
+<meta property="og:image" content="https://balinti.github.io/pulse-chase/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Pulse Chase - Free HTML5 Game">
+<meta name="twitter:description" content="Play Pulse Chase - Tap to grab pulsating neon fragments as random powerup cells appear for brief boosts.">
+<meta name="twitter:image" content="https://balinti.github.io/pulse-chase/og-image.png">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;height:100svh;overflow:hidden;background:#050510;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;touch-action:none;user-select:none;-webkit-user-select:none}
+#wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;height:100svh}
+#gameContainer{position:relative;width:100%;max-width:420px;height:100%;max-height:750px;overflow:hidden;border-radius:8px}
+canvas{display:block;width:100%;height:100%;image-rendering:crisp-edges}
+#seo{position:absolute;bottom:0;left:0;right:0;padding:8px 12px;font-size:10px;color:rgba(255,255,255,0.15);text-align:center;pointer-events:none;z-index:1}
+</style>
+</head>
+<body>
+<div id="wrap">
+<div id="gameContainer">
+<canvas id="c"></canvas>
+<div id="seo">Pulse Chase - A hyper-casual rhythm game. Snap to rotating rails and catch neon fragments. How long can you survive?</div>
+</div>
+</div>
+<script>
+'use strict';
+(()=>{
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const container = document.getElementById('gameContainer');
+
+// --- High-DPI scaling ---
+let W, H, dpr;
+function resize() {
+  const rect = container.getBoundingClientRect();
+  dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+  W = rect.width;
+  H = rect.height;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+// --- Constants ---
+const CX = () => W / 2;
+const CY = () => H / 2;
+const RAIL_LEN = () => Math.min(W, H) * 0.38;
+const CORE_R = 14;
+const FRAG_R = 8;
+const POWER_R = 10;
+const MAX_MISSES = 3;
+
+// --- State ---
+let state = 'start'; // start | playing | gameover
+let score = 0;
+let best = parseInt(localStorage.getItem('pulse_chase_best')) || 0;
+let misses = 0;
+let streak = 0;
+let multiplier = 1;
+let railCount = 6;
+let currentRail = 0;
+let railAngleOffset = 0;
+let fragments = [];
+let particles = [];
+let pulseRings = [];
+let skylineBuildings = [];
+let shakeX = 0, shakeY = 0, shakeDur = 0, shakeIntensity = 0;
+let redFlash = 0;
+let gameTime = 0;
+let spawnTimer = 0;
+let spawnInterval = 1.8;
+let fragSpeed = 0.6;
+let fragmentsCaught = 0;
+let perfectFlash = 0;
+let perfectText = '';
+let perfectTextY = 0;
+let hue = 200;
+let gameoverLock = 0;
+let lastTime = 0;
+let skylineOffset = 0;
+
+// --- Skyline ---
+function generateSkyline() {
+  skylineBuildings = [];
+  const count = 40;
+  for (let i = 0; i < count; i++) {
+    skylineBuildings.push({
+      x: (i / count) * (W * 2),
+      w: 8 + Math.random() * 18,
+      h: 15 + Math.random() * 60,
+      bright: 0.04 + Math.random() * 0.06
+    });
+  }
+}
+
+function drawSkyline() {
+  const baseY = H * 0.85;
+  for (const b of skylineBuildings) {
+    const x = ((b.x - skylineOffset) % (W * 2) + W * 2) % (W * 2) - W * 0.3;
+    ctx.fillStyle = `rgba(120,140,255,${b.bright})`;
+    ctx.fillRect(x, baseY - b.h, b.w, b.h);
+    // tiny windows
+    ctx.fillStyle = `rgba(180,200,255,${b.bright * 1.5})`;
+    for (let wy = baseY - b.h + 4; wy < baseY - 3; wy += 8) {
+      for (let wx = x + 2; wx < x + b.w - 2; wx += 5) {
+        if (Math.random() > 0.4) ctx.fillRect(wx, wy, 2, 3);
+      }
+    }
+  }
+}
+
+// --- Helpers ---
+function railAngle(i) {
+  return (Math.PI * 2 / railCount) * i - Math.PI / 2 + railAngleOffset;
+}
+
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+function shake(intensity, duration) {
+  shakeIntensity = intensity;
+  shakeDur = duration;
+}
+
+function spawnParticles(x, y, color, count, speed) {
+  for (let i = 0; i < count; i++) {
+    const ang = Math.random() * Math.PI * 2;
+    const spd = (0.5 + Math.random()) * speed;
+    particles.push({
+      x, y,
+      vx: Math.cos(ang) * spd,
+      vy: Math.sin(ang) * spd,
+      life: 1,
+      decay: 0.015 + Math.random() * 0.025,
+      r: 2 + Math.random() * 3,
+      color
+    });
+  }
+}
+
+function spawnPulseRing(x, y, color) {
+  pulseRings.push({ x, y, r: CORE_R, maxR: RAIL_LEN() * 0.6, life: 1, color });
+}
+
+// --- Fragment class ---
+function createFragment(rail, isPower) {
+  const a = railAngle(rail);
+  const dist = RAIL_LEN() + 20;
+  return {
+    rail,
+    dist,
+    speed: fragSpeed,
+    isPower: isPower || false,
+    feint: false,
+    feintDone: false,
+    originalRail: rail,
+    alive: true,
+    pulse: 0
+  };
+}
+
+// --- Spawning logic ---
+function spawnFragment() {
+  // Pick a random rail
+  let rail = Math.floor(Math.random() * railCount);
+  const isPower = fragmentsCaught > 0 && fragmentsCaught % 12 === 0;
+
+  fragments.push(createFragment(rail, isPower));
+
+  // Double beat after score 10
+  if (score >= 10 && Math.random() < 0.25) {
+    let rail2 = (rail + 1 + Math.floor(Math.random() * (railCount - 1))) % railCount;
+    setTimeout(() => {
+      if (state === 'playing') fragments.push(createFragment(rail2, false));
+    }, 200);
+  }
+}
+
+// --- Difficulty ---
+function updateDifficulty() {
+  if (score < 10) {
+    railCount = 6;
+    spawnInterval = lerp(1.8, 1.2, score / 10);
+    fragSpeed = lerp(0.6, 0.85, score / 10);
+  } else if (score < 25) {
+    railCount = 6;
+    spawnInterval = lerp(1.2, 0.85, (score - 10) / 15);
+    fragSpeed = lerp(0.85, 1.1, (score - 10) / 15);
+  } else if (score < 50) {
+    railCount = 8;
+    spawnInterval = lerp(0.85, 0.65, (score - 25) / 25);
+    fragSpeed = lerp(1.1, 1.4, (score - 25) / 25);
+  } else {
+    railCount = 8;
+    spawnInterval = Math.max(0.4, 0.65 - (score - 50) * 0.003);
+    fragSpeed = Math.min(2.0, 1.4 + (score - 50) * 0.008);
+  }
+  // Clamp currentRail
+  if (currentRail >= railCount) currentRail = currentRail % railCount;
+}
+
+// --- Input ---
+function handleInput() {
+  if (state === 'start') {
+    startGame();
+    return;
+  }
+  if (state === 'gameover') {
+    if (gameoverLock > 0) return;
+    resetGame();
+    startGame();
+    return;
+  }
+  if (state === 'playing') {
+    // Snap to next rail clockwise
+    currentRail = (currentRail + 1) % railCount;
+    const a = railAngle(currentRail);
+    const cx = CX(), cy = CY();
+    spawnPulseRing(cx, cy, `hsl(${hue}, 80%, 60%)`);
+    spawnParticles(cx + Math.cos(a) * 25, cy + Math.sin(a) * 25, `hsl(${hue}, 90%, 70%)`, 4, 1.5);
+  }
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  handleInput();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    handleInput();
+  }
+});
+
+// --- Game lifecycle ---
+function resetGame() {
+  state = 'start';
+  score = 0;
+  misses = 0;
+  streak = 0;
+  multiplier = 1;
+  currentRail = 0;
+  railCount = 6;
+  fragments = [];
+  particles = [];
+  pulseRings = [];
+  shakeX = 0; shakeY = 0; shakeDur = 0;
+  redFlash = 0;
+  gameTime = 0;
+  spawnTimer = 0;
+  fragmentsCaught = 0;
+  perfectFlash = 0;
+  gameoverLock = 0;
+}
+
+function startGame() {
+  state = 'playing';
+  spawnTimer = 0.3; // Quick first spawn
+  generateSkyline();
+}
+
+function gameOver() {
+  state = 'gameover';
+  if (score > best) {
+    best = score;
+    localStorage.setItem('pulse_chase_best', best);
+  }
+  shake(12, 0.5);
+  redFlash = 0.6;
+  gameoverLock = 0.8;
+  spawnParticles(CX(), CY(), '#ff2244', 30, 4);
+}
+
+// --- Feint logic ---
+function maybeFeint(frag) {
+  if (score >= 25 && !frag.isPower && !frag.feint && !frag.feintDone && frag.dist < RAIL_LEN() * 0.6 && Math.random() < 0.15) {
+    frag.feint = true;
+    const dir = Math.random() < 0.5 ? -1 : 1;
+    frag.rail = (frag.rail + dir + railCount) % railCount;
+    frag.feintDone = true;
+    // Brief telegraph
+    spawnParticles(
+      CX() + Math.cos(railAngle(frag.rail)) * frag.dist * 0.5,
+      CY() + Math.sin(railAngle(frag.rail)) * frag.dist * 0.5,
+      '#ffaa00', 3, 1
+    );
+  }
+}
+
+// --- Update ---
+function update(dt) {
+  hue = (hue + dt * 15) % 360;
+  skylineOffset += dt * 8;
+
+  if (state !== 'playing') return;
+
+  gameTime += dt;
+  updateDifficulty();
+  railAngleOffset += dt * 0.15;
+
+  // Spawn
+  spawnTimer -= dt;
+  if (spawnTimer <= 0) {
+    spawnFragment();
+    spawnTimer = spawnInterval;
+  }
+
+  // Update fragments
+  for (let i = fragments.length - 1; i >= 0; i--) {
+    const f = fragments[i];
+    const speed = f.isPower ? fragSpeed * 0.85 : fragSpeed;
+    f.dist -= speed * dt * 120;
+    f.pulse += dt * 6;
+    maybeFeint(f);
+
+    // Reached center
+    if (f.dist <= CORE_R + FRAG_R) {
+      if (f.rail === currentRail) {
+        // Caught!
+        score += f.isPower ? 3 * multiplier : multiplier;
+        streak++;
+        fragmentsCaught++;
+        if (streak >= 5) {
+          multiplier = Math.min(8, 1 + Math.floor(streak / 5));
+        }
+        const a = railAngle(f.rail);
+        const px = CX() + Math.cos(a) * (CORE_R + 5);
+        const py = CY() + Math.sin(a) * (CORE_R + 5);
+        const col = f.isPower ? '#ff44ff' : `hsl(${hue}, 90%, 65%)`;
+        spawnParticles(px, py, col, f.isPower ? 18 : 10, 3);
+        if (streak >= 5) {
+          perfectFlash = 0.4;
+          perfectText = streak >= 15 ? 'INSANE!' : streak >= 10 ? 'AMAZING!' : 'PERFECT!';
+          perfectTextY = CY() - 60;
+        }
+      } else {
+        // Missed
+        misses++;
+        streak = 0;
+        multiplier = 1;
+        redFlash = 0.25;
+        shake(5, 0.2);
+        spawnParticles(CX(), CY(), '#ff3333', 8, 2);
+        if (misses >= MAX_MISSES) {
+          gameOver();
+        }
+      }
+      f.alive = false;
+    }
+  }
+  fragments = fragments.filter(f => f.alive);
+
+  // Update particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vx *= 0.97;
+    p.vy *= 0.97;
+    p.life -= p.decay;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+
+  // Update pulse rings
+  for (let i = pulseRings.length - 1; i >= 0; i--) {
+    const r = pulseRings[i];
+    r.r += dt * 200;
+    r.life -= dt * 2.5;
+    if (r.life <= 0) pulseRings.splice(i, 1);
+  }
+
+  // Shake
+  if (shakeDur > 0) {
+    shakeDur -= dt;
+    shakeX = (Math.random() - 0.5) * shakeIntensity * 2;
+    shakeY = (Math.random() - 0.5) * shakeIntensity * 2;
+    shakeIntensity *= 0.92;
+  } else {
+    shakeX = 0; shakeY = 0;
+  }
+
+  // Red flash
+  if (redFlash > 0) redFlash -= dt * 2;
+  // Perfect flash
+  if (perfectFlash > 0) {
+    perfectFlash -= dt * 1.5;
+    perfectTextY -= dt * 30;
+  }
+  // Gameover lock
+  if (gameoverLock > 0) gameoverLock -= dt;
+}
+
+// --- Draw ---
+function draw() {
+  const cx = CX(), cy = CY();
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
+
+  // BG gradient
+  const bg = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(W, H) * 0.8);
+  bg.addColorStop(0, '#0f0f2a');
+  bg.addColorStop(1, '#050510');
+  ctx.fillStyle = bg;
+  ctx.fillRect(-10, -10, W + 20, H + 20);
+
+  // Skyline
+  drawSkyline();
+
+  if (state === 'start') {
+    drawStartScreen(cx, cy);
+    ctx.restore();
+    return;
+  }
+
+  // --- PLAYING / GAMEOVER ---
+
+  // Pulse rings (additive)
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (const r of pulseRings) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, r.r, 0, Math.PI * 2);
+    ctx.strokeStyle = r.color.replace(')', `,${r.life * 0.3})`).replace('hsl', 'hsla');
+    ctx.lineWidth = 2 + r.life * 3;
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // Rails
+  for (let i = 0; i < railCount; i++) {
+    const a = railAngle(i);
+    const ex = cx + Math.cos(a) * RAIL_LEN();
+    const ey = cy + Math.sin(a) * RAIL_LEN();
+    const isActive = i === currentRail;
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(a) * (CORE_R + 8), cy + Math.sin(a) * (CORE_R + 8));
+    ctx.lineTo(ex, ey);
+    ctx.strokeStyle = isActive ? `hsla(${hue}, 80%, 65%, 0.7)` : 'rgba(100,120,200,0.15)';
+    ctx.lineWidth = isActive ? 2.5 : 1;
+    ctx.stroke();
+
+    // Rail end dot
+    ctx.beginPath();
+    ctx.arc(ex, ey, 3, 0, Math.PI * 2);
+    ctx.fillStyle = isActive ? `hsla(${hue}, 80%, 65%, 0.5)` : 'rgba(100,120,200,0.1)';
+    ctx.fill();
+  }
+
+  // Fragments
+  for (const f of fragments) {
+    const a = railAngle(f.rail);
+    const fx = cx + Math.cos(a) * f.dist;
+    const fy = cy + Math.sin(a) * f.dist;
+    const pulseSize = 1 + Math.sin(f.pulse) * 0.15;
+
+    if (f.isPower) {
+      // Power cell - diamond/star
+      ctx.save();
+      ctx.translate(fx, fy);
+      ctx.rotate(f.pulse * 0.5);
+      ctx.scale(pulseSize, pulseSize);
+      ctx.beginPath();
+      const pts = 4;
+      for (let j = 0; j < pts * 2; j++) {
+        const angle = (j / (pts * 2)) * Math.PI * 2 - Math.PI / 2;
+        const rd = j % 2 === 0 ? POWER_R : POWER_R * 0.45;
+        ctx.lineTo(Math.cos(angle) * rd, Math.sin(angle) * rd);
+      }
+      ctx.closePath();
+      ctx.fillStyle = '#ff44ff';
+      ctx.shadowColor = '#ff44ff';
+      ctx.shadowBlur = 12;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      // Inner glow
+      ctx.beginPath();
+      ctx.arc(0, 0, POWER_R * 0.3, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,200,255,0.8)';
+      ctx.fill();
+      ctx.restore();
+    } else {
+      // Normal fragment - circle
+      ctx.beginPath();
+      ctx.arc(fx, fy, FRAG_R * pulseSize, 0, Math.PI * 2);
+      const fHue = (hue + f.rail * 40) % 360;
+      ctx.fillStyle = `hsl(${fHue}, 85%, 60%)`;
+      ctx.shadowColor = `hsl(${fHue}, 85%, 60%)`;
+      ctx.shadowBlur = 8;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      // Inner bright
+      ctx.beginPath();
+      ctx.arc(fx, fy, FRAG_R * 0.4, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      ctx.fill();
+    }
+
+    // Warning line when close
+    if (f.dist < RAIL_LEN() * 0.35) {
+      ctx.beginPath();
+      ctx.arc(fx, fy, FRAG_R * 1.8, 0, Math.PI * 2);
+      ctx.strokeStyle = f.rail === currentRail ? 'rgba(100,255,100,0.3)' : 'rgba(255,80,80,0.2)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+  }
+
+  // Core
+  const coreGlow = 1 + Math.sin(gameTime * 4) * 0.1;
+  ctx.beginPath();
+  ctx.arc(cx, cy, CORE_R * coreGlow, 0, Math.PI * 2);
+  const coreGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, CORE_R * coreGlow);
+  coreGrad.addColorStop(0, `hsla(${hue}, 80%, 80%, 0.9)`);
+  coreGrad.addColorStop(1, `hsla(${hue}, 70%, 50%, 0.4)`);
+  ctx.fillStyle = coreGrad;
+  ctx.shadowColor = `hsl(${hue}, 80%, 60%)`;
+  ctx.shadowBlur = 20;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Core direction indicator
+  const dirAngle = railAngle(currentRail);
+  ctx.beginPath();
+  ctx.arc(cx + Math.cos(dirAngle) * (CORE_R + 5), cy + Math.sin(dirAngle) * (CORE_R + 5), 4, 0, Math.PI * 2);
+  ctx.fillStyle = `hsla(${hue}, 90%, 75%, 0.9)`;
+  ctx.fill();
+
+  // Particles
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (const p of particles) {
+    ctx.globalAlpha = p.life;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r * p.life, 0, Math.PI * 2);
+    ctx.fillStyle = p.color;
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+
+  // Red flash overlay
+  if (redFlash > 0) {
+    ctx.fillStyle = `rgba(255, 20, 40, ${redFlash * 0.3})`;
+    ctx.fillRect(-10, -10, W + 20, H + 20);
+  }
+
+  // HUD
+  drawHUD(cx);
+
+  // Perfect text
+  if (perfectFlash > 0) {
+    ctx.save();
+    ctx.globalAlpha = perfectFlash * 2;
+    ctx.font = `bold ${24 + (1 - perfectFlash) * 8}px 'Segoe UI', system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ffdd44';
+    ctx.shadowColor = '#ffdd44';
+    ctx.shadowBlur = 15;
+    ctx.fillText(perfectText, cx, perfectTextY);
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+
+  // Gameover overlay
+  if (state === 'gameover') {
+    drawGameOver(cx, cy);
+  }
+
+  ctx.restore();
+}
+
+function drawHUD(cx) {
+  // Score
+  ctx.font = 'bold 28px "Segoe UI", system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.fillText(score, cx, 44);
+
+  // Multiplier
+  if (multiplier > 1) {
+    ctx.font = 'bold 14px "Segoe UI", system-ui, sans-serif';
+    ctx.fillStyle = '#ffdd44';
+    ctx.fillText(`x${multiplier}`, cx, 62);
+  }
+
+  // Streak
+  if (streak >= 3) {
+    ctx.font = '12px "Segoe UI", system-ui, sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.fillText(`streak: ${streak}`, cx, 78);
+  }
+
+  // Misses (hearts)
+  const heartsY = 20;
+  const heartsX = W - 16;
+  for (let i = 0; i < MAX_MISSES; i++) {
+    const x = heartsX - i * 22;
+    ctx.font = '16px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillStyle = i < (MAX_MISSES - misses) ? '#ff4466' : 'rgba(100,100,100,0.3)';
+    ctx.fillText('\u2665', x, heartsY);
+  }
+
+  // Rail count indicator
+  ctx.font = '10px "Segoe UI", system-ui, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  ctx.fillText(`${railCount} rails`, 10, 20);
+}
+
+function drawStartScreen(cx, cy) {
+  // Title
+  ctx.save();
+  const titlePulse = 1 + Math.sin(Date.now() * 0.003) * 0.03;
+  ctx.font = `bold ${42 * titlePulse}px "Segoe UI", system-ui, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillStyle = `hsl(${hue}, 80%, 70%)`;
+  ctx.shadowColor = `hsl(${hue}, 80%, 60%)`;
+  ctx.shadowBlur = 20;
+  ctx.fillText('PULSE CHASE', cx, cy - 60);
+  ctx.shadowBlur = 0;
+
+  // Subtitle
+  ctx.font = '16px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.fillText('Sync Snap', cx, cy - 28);
+
+  // Decorative spinning ring
+  ctx.beginPath();
+  const ringR = 50;
+  const ringPhase = Date.now() * 0.002;
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2 + ringPhase;
+    const px = cx + Math.cos(a) * ringR;
+    const py = cy + 30 + Math.sin(a) * ringR;
+    ctx.beginPath();
+    ctx.arc(px, py, 4, 0, Math.PI * 2);
+    ctx.fillStyle = `hsla(${(hue + i * 60) % 360}, 80%, 60%, 0.6)`;
+    ctx.fill();
+  }
+  ctx.beginPath();
+  ctx.arc(cx, cy + 30, ringR, 0, Math.PI * 2);
+  ctx.strokeStyle = `hsla(${hue}, 60%, 50%, 0.15)`;
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // Tap prompt
+  const tapAlpha = 0.4 + Math.sin(Date.now() * 0.004) * 0.3;
+  ctx.font = '18px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = `rgba(255,255,255,${tapAlpha})`;
+  ctx.fillText('Tap to Start', cx, cy + 120);
+
+  // Best score
+  if (best > 0) {
+    ctx.font = '13px "Segoe UI", system-ui, sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.fillText(`Best: ${best}`, cx, cy + 150);
+  }
+
+  // Instructions
+  ctx.font = '11px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.2)';
+  ctx.fillText('Tap / Space = snap to next rail', cx, H - 50);
+  ctx.fillText('Catch fragments, avoid misses!', cx, H - 34);
+
+  ctx.restore();
+}
+
+function drawGameOver(cx, cy) {
+  ctx.fillStyle = 'rgba(5, 5, 16, 0.7)';
+  ctx.fillRect(-10, -10, W + 20, H + 20);
+
+  ctx.font = 'bold 36px "Segoe UI", system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ff4466';
+  ctx.fillText('GAME OVER', cx, cy - 50);
+
+  ctx.font = '22px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.fillText(`Score: ${score}`, cx, cy);
+
+  ctx.font = '16px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.fillText(`Best: ${best}`, cx, cy + 30);
+
+  if (score === best && score > 0) {
+    ctx.font = 'bold 14px "Segoe UI", system-ui, sans-serif';
+    ctx.fillStyle = '#ffdd44';
+    ctx.fillText('NEW BEST!', cx, cy + 54);
+  }
+
+  const tapAlpha = gameoverLock > 0 ? 0.1 : (0.4 + Math.sin(Date.now() * 0.004) * 0.3);
+  ctx.font = '16px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = `rgba(255,255,255,${tapAlpha})`;
+  ctx.fillText('Tap to Retry', cx, cy + 90);
+}
+
+// --- Game Loop ---
+function loop(timestamp) {
+  if (!lastTime) lastTime = timestamp;
+  let dt = (timestamp - lastTime) / 1000;
+  lastTime = timestamp;
+  // Cap dt to avoid spiral of death
+  if (dt > 0.1) dt = 0.1;
+
+  resize(); // responsive
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// Init
+generateSkyline();
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,967 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Pulse Collector - Free HTML5 Game</title>
+  <meta name="description" content="Play Pulse Collector - Tap to toggle magnetic attraction and gather synthwave gems while avoiding corrupt signals.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a0a1a">
+  <link rel="canonical" href="https://balinti.github.io/pulse-collector/">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Pulse Collector - Free HTML5 Game">
+  <meta property="og:description" content="Tap to toggle magnetic attraction and gather synthwave gems while avoiding corrupt signals.">
+  <meta property="og:url" content="https://balinti.github.io/pulse-collector/">
+  <meta property="og:image" content="https://balinti.github.io/pulse-collector/preview.png">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Pulse Collector - Free HTML5 Game">
+  <meta name="twitter:description" content="Tap to toggle magnetic attraction and gather synthwave gems while avoiding corrupt signals.">
+  <meta name="twitter:image" content="https://balinti.github.io/pulse-collector/preview.png">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      min-height: 100vh;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      overflow-x: hidden;
+      color: #ccc;
+    }
+
+    #game-wrap {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      height: 100vh;
+      max-height: 750px;
+      overflow: hidden;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+      cursor: pointer;
+    }
+
+    #how-to-play {
+      max-width: 420px;
+      width: 100%;
+      padding: 16px;
+      font-size: 14px;
+      line-height: 1.6;
+      color: #888;
+    }
+
+    #how-to-play h2 { color: #aaa; margin-bottom: 8px; font-size: 16px; }
+    #how-to-play ul { padding-left: 18px; }
+    #how-to-play li { margin-bottom: 4px; }
+  </style>
+</head>
+<body>
+
+<div id="game-wrap">
+  <canvas id="c"></canvas>
+</div>
+
+<section id="how-to-play">
+  <h2>How to Play Pulse Collector</h2>
+  <ul>
+    <li><strong>Tap / Space / Enter</strong> to activate a Pulse Burst — a magnetic ring that attracts nearby gems.</li>
+    <li>Each tap also flips your orb's drift direction.</li>
+    <li>Collect gems to score points. Chain multiple gems in one pulse for a combo multiplier.</li>
+    <li><strong>Corrupt Shards</strong> (red/magenta) are immune to your magnet — avoid them.</li>
+    <li>If the pulse ring touches a corrupt shard, it detonates. Stay back when that happens.</li>
+    <li><strong>On-Beat Bonus:</strong> Tap in sync with the visual beat for a larger pull radius and PERFECT bonus.</li>
+    <li><strong>Near-Miss Bonus:</strong> Pulse right next to a corrupt shard without touching — earn INTERFERENCE bonus.</li>
+    <li>Difficulty increases over time. How long can you survive?</li>
+  </ul>
+</section>
+
+<script>
+(function() {
+  'use strict';
+
+  // ─── CANVAS SETUP ───────────────────────────────────────────────────────────
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+  let W, H, dpr;
+
+  function resize() {
+    const wrap = document.getElementById('game-wrap');
+    const rect = wrap.getBoundingClientRect();
+    dpr = window.devicePixelRatio || 1;
+    W = rect.width;
+    H = rect.height;
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.scale(dpr, dpr);
+  }
+
+  window.addEventListener('resize', () => { resize(); });
+  resize();
+
+  // ─── CONSTANTS ───────────────────────────────────────────────────────────────
+  const BEAT_MS        = 500;       // 120 BPM
+  const PULSE_DURATION = 250;       // ms pulse ring expands
+  const PULSE_RADIUS   = 160;       // max pull radius
+  const ON_BEAT_WINDOW = 80;        // ms around beat boundary = on-beat
+  const NEAR_MISS_GAP  = 30;        // pixels outside ring = interference
+  const PLAYER_ARC_Y   = 0.85;      // player Y position as fraction of H
+  const LANE_COUNT     = 5;
+
+  // ─── STATE ───────────────────────────────────────────────────────────────────
+  let state = 'start';  // 'start' | 'playing' | 'gameover'
+  let score, best, combo, comboTimer;
+  let hue;
+  let beatTime, elapsed;
+  let shakeAmt, shakeTimer;
+  let lastTime;
+  let spawnTimer, spawnInterval;
+  let diffTimer;
+
+  // Player
+  let px, py, pdx;
+
+  // Entities
+  let gems, corrupts, particles, floatTexts, pulseRings, laneFlashes;
+
+  // Pulse state
+  let pulseActive, pulseTimer, pulsePerfect, lastPulseDir;
+
+  function initGame() {
+    score       = 0;
+    combo       = 0;
+    comboTimer  = 0;
+    hue         = 180;
+    beatTime    = 0;
+    elapsed     = 0;
+    shakeAmt    = 0;
+    shakeTimer  = 0;
+    spawnTimer  = 0;
+    spawnInterval = 1800;
+    diffTimer   = 0;
+
+    px  = W / 2;
+    py  = H * PLAYER_ARC_Y;
+    pdx = 80; // px per second drift speed
+
+    gems       = [];
+    corrupts   = [];
+    particles  = [];
+    floatTexts = [];
+    pulseRings = [];
+    laneFlashes= [];
+
+    pulseActive = false;
+    pulseTimer  = 0;
+    pulsePerfect= false;
+    lastPulseDir = 1;
+
+    // Spawn first wave immediately for instant satisfaction
+    spawnBeatWave();
+    best = parseInt(localStorage.getItem('pc_best') || '0', 10);
+  }
+
+  // ─── LANES ───────────────────────────────────────────────────────────────────
+  function laneX(i) {
+    const margin = W * 0.12;
+    const step = (W - margin * 2) / (LANE_COUNT - 1);
+    return margin + i * step;
+  }
+
+  // ─── SPAWNING ────────────────────────────────────────────────────────────────
+  function spawnBeatWave() {
+    // Spawn 3 gems in a row for instant vacuum satisfaction
+    const row = [1, 2, 3];
+    row.forEach((li, idx) => {
+      gems.push({
+        x: laneX(li),
+        y: -20 - idx * 0,
+        vy: 80 + Math.random() * 20,
+        vx: (Math.random() - 0.5) * 15,
+        radius: 10,
+        hue: hue,
+        collected: false,
+        wobble: 0,
+        age: 0,
+      });
+    });
+  }
+
+  function spawnGem(li) {
+    const speed = 80 + elapsed / 30000 * 60;
+    gems.push({
+      x: laneX(li != null ? li : Math.floor(Math.random() * LANE_COUNT)),
+      y: -15,
+      vy: speed + Math.random() * 20,
+      vx: (Math.random() - 0.5) * 20,
+      radius: 10,
+      hue: hue,
+      collected: false,
+      wobble: 0,
+      age: 0,
+    });
+  }
+
+  function spawnCorrupt(li) {
+    const lane = li != null ? li : Math.floor(Math.random() * LANE_COUNT);
+    // Telegraph: lane flash first
+    laneFlashes.push({ x: laneX(lane), timer: 300, maxTimer: 300 });
+    setTimeout(() => {
+      if (state !== 'playing') return;
+      const speed = 60 + elapsed / 30000 * 50;
+      corrupts.push({
+        x: laneX(lane),
+        y: -20,
+        vy: speed + Math.random() * 15,
+        vx: (Math.random() - 0.5) * 25,
+        radius: 12,
+        collected: false,
+        detonated: false,
+        wobblePhase: Math.random() * Math.PI * 2,
+        age: 0,
+      });
+    }, 300);
+  }
+
+  function spawnWave() {
+    const t = elapsed / 1000;
+    const numGems    = Math.min(3, 1 + Math.floor(t / 20));
+    const numCorrupt = t > 10 ? (Math.random() < 0.4 + t / 200 ? 1 : 0) : 0;
+
+    // Pick random lanes
+    const lanes = shuffle([0,1,2,3,4]);
+    for (let i = 0; i < numGems; i++) spawnGem(lanes[i]);
+    for (let i = 0; i < numCorrupt; i++) spawnCorrupt(lanes[numGems + i]);
+  }
+
+  function shuffle(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }
+
+  // ─── PARTICLES ───────────────────────────────────────────────────────────────
+  function spawnGemParticles(x, y, h) {
+    for (let i = 0; i < 10; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 60 + Math.random() * 100;
+      particles.push({
+        x, y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 1, decay: 0.03 + Math.random() * 0.02,
+        size: 3 + Math.random() * 4,
+        hue: h, type: 'gem',
+      });
+    }
+  }
+
+  function spawnComboParticles(x, y, mult) {
+    for (let i = 0; i < mult * 5; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 80 + Math.random() * 120;
+      particles.push({
+        x, y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 1, decay: 0.025 + Math.random() * 0.015,
+        size: 4 + Math.random() * 6,
+        hue: 60, type: 'combo',
+      });
+    }
+  }
+
+  function spawnExplosion(x, y) {
+    for (let i = 0; i < 22; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 100 + Math.random() * 180;
+      particles.push({
+        x, y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 1, decay: 0.018 + Math.random() * 0.015,
+        size: 5 + Math.random() * 8,
+        hue: 0 + Math.random() * 40, type: 'explode',
+      });
+    }
+  }
+
+  function spawnStreakParticles(x, y, tx, ty, h) {
+    const dx = tx - x, dy = ty - y;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    const steps = Math.floor(dist / 10);
+    for (let i = 0; i < steps; i++) {
+      const t = i / steps;
+      particles.push({
+        x: x + dx * t + (Math.random()-0.5)*6,
+        y: y + dy * t + (Math.random()-0.5)*6,
+        vx: (Math.random()-0.5)*30,
+        vy: (Math.random()-0.5)*30,
+        life: 0.6, decay: 0.07,
+        size: 2 + Math.random() * 3,
+        hue: h, type: 'streak',
+      });
+    }
+  }
+
+  // ─── FLOAT TEXTS ─────────────────────────────────────────────────────────────
+  function addFloat(x, y, text, color) {
+    floatTexts.push({ x, y, text, color, life: 1, decay: 0.025, vy: -60 });
+  }
+
+  // ─── PULSE ───────────────────────────────────────────────────────────────────
+  function triggerPulse() {
+    if (state !== 'playing') return;
+
+    // Check on-beat
+    const beatFrac = (beatTime % BEAT_MS) / BEAT_MS;
+    const nearBeat = beatFrac < ON_BEAT_WINDOW / BEAT_MS || beatFrac > 1 - ON_BEAT_WINDOW / BEAT_MS;
+    pulsePerfect = nearBeat;
+
+    pulseActive = true;
+    pulseTimer  = PULSE_DURATION;
+    pdx = -pdx; // flip drift
+
+    const ring = {
+      x: px, y: py,
+      maxR: pulsePerfect ? PULSE_RADIUS * 1.35 : PULSE_RADIUS,
+      r: 0,
+      timer: PULSE_DURATION,
+      maxTimer: PULSE_DURATION,
+      perfect: pulsePerfect,
+      combo: combo,
+    };
+    pulseRings.push(ring);
+
+    if (pulsePerfect) {
+      addFloat(px, py - 30, 'PERFECT!', '#ffe066');
+    }
+  }
+
+  // ─── SCREEN SHAKE ────────────────────────────────────────────────────────────
+  function shake(amount, duration) {
+    shakeAmt   = amount;
+    shakeTimer = duration;
+  }
+
+  // ─── UPDATE ──────────────────────────────────────────────────────────────────
+  function update(dt) {
+    const dtS = dt / 1000;
+    elapsed += dt;
+    beatTime += dt;
+    hue = (hue + 20 * dtS) % 360;
+
+    // Difficulty ramp
+    diffTimer += dt;
+    if (diffTimer > 5000) {
+      diffTimer = 0;
+      spawnInterval = Math.max(700, spawnInterval - 80);
+    }
+
+    // Beat tracking
+    if (beatTime >= BEAT_MS) beatTime -= BEAT_MS;
+
+    // Shake
+    if (shakeTimer > 0) {
+      shakeTimer -= dt;
+      if (shakeTimer <= 0) shakeAmt = 0;
+    }
+
+    // Player movement
+    px += pdx * dtS;
+    if (px < 30)       { px = 30; pdx = Math.abs(pdx); }
+    if (px > W - 30)   { px = W - 30; pdx = -Math.abs(pdx); }
+
+    // Speed ramp
+    const speedMult = 1 + elapsed / 60000;
+    const baseSpeed = 80 + elapsed / 30000 * 60;
+
+    // Pulse rings update
+    for (let i = pulseRings.length - 1; i >= 0; i--) {
+      const ring = pulseRings[i];
+      ring.timer -= dt;
+      ring.r = ring.maxR * (1 - ring.timer / ring.maxTimer);
+      if (ring.timer <= 0) pulseRings.splice(i, 1);
+    }
+
+    // Pulse timer
+    if (pulseActive) {
+      pulseTimer -= dt;
+      if (pulseTimer <= 0) {
+        pulseActive = false;
+        // Check near-miss interference
+        corrupts.forEach(c => {
+          if (c.collected || c.detonated) return;
+          const dx = c.x - px, dy = c.y - py;
+          const dist = Math.sqrt(dx*dx + dy*dy);
+          const outerLimit = PULSE_RADIUS + NEAR_MISS_GAP;
+          if (dist > PULSE_RADIUS && dist < outerLimit) {
+            const bonus = 25;
+            score += bonus;
+            addFloat(c.x, c.y - 20, 'INTERFERENCE +' + bonus, '#ff88ff');
+            shake(3, 150);
+          }
+        });
+      }
+    }
+
+    // Gems
+    for (let i = gems.length - 1; i >= 0; i--) {
+      const g = gems[i];
+      if (g.collected) { gems.splice(i, 1); continue; }
+
+      g.age += dt;
+      g.wobble = Math.sin(g.age / 300) * 3;
+
+      // Attract during pulse
+      if (pulseActive) {
+        const dx = px - g.x, dy = py - g.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        const activeRing = pulseRings[pulseRings.length - 1];
+        const pullR = activeRing ? activeRing.maxR : PULSE_RADIUS;
+        if (dist < pullR) {
+          const pullStr = pulsePerfect ? 900 : 650;
+          const norm = dist < 1 ? 1 : dist;
+          g.vx += (dx / norm) * pullStr * dtS;
+          g.vy += (dy / norm) * pullStr * dtS;
+          spawnStreakParticles(g.x, g.y, px, py, g.hue);
+        }
+      }
+
+      g.x += g.vx * dtS;
+      g.y += g.vy * dtS;
+      g.vx *= 0.95;
+
+      // Collect
+      const cgDx = g.x - px, cgDy = g.y - py;
+      const cgDist = Math.sqrt(cgDx*cgDx + cgDy*cgDy);
+      if (cgDist < 22) {
+        g.collected = true;
+        combo++;
+        comboTimer = 800;
+        const mult = Math.max(1, Math.floor(combo / 2));
+        const pts = 10 * mult;
+        score += pts;
+        spawnGemParticles(g.x, g.y, g.hue);
+        if (mult > 1) {
+          spawnComboParticles(g.x, g.y, mult);
+          addFloat(g.x, g.y - 20, 'x' + mult, '#ffe066');
+        }
+        addFloat(g.x, g.y - 40, '+' + pts, `hsl(${g.hue},100%,70%)`);
+        shake(2, 80);
+      }
+
+      // Off screen
+      if (g.y > H + 30) gems.splice(i, 1);
+    }
+
+    // Combo timer
+    if (combo > 0) {
+      comboTimer -= dt;
+      if (comboTimer <= 0) combo = 0;
+    }
+
+    // Corrupts
+    for (let i = corrupts.length - 1; i >= 0; i--) {
+      const c = corrupts[i];
+      if (c.collected) { corrupts.splice(i, 1); continue; }
+
+      c.age += dt;
+      c.wobblePhase += dtS * 4;
+
+      // Wobble
+      c.x += Math.sin(c.wobblePhase) * 1.5;
+      c.y += c.vy * dtS;
+
+      // Check if pulse ring hits corrupt
+      for (let ri = 0; ri < pulseRings.length; ri++) {
+        const ring = pulseRings[ri];
+        const rdx = c.x - ring.x, rdy = c.y - ring.y;
+        const rdist = Math.sqrt(rdx*rdx + rdy*rdy);
+        if (Math.abs(rdist - ring.r) < 20 && !c.detonated) {
+          c.detonated = true;
+          spawnExplosion(c.x, c.y);
+          shake(8, 200);
+          addFloat(c.x, c.y - 20, 'BOOM!', '#ff4444');
+
+          // Player close = game over
+          const playerDist = Math.sqrt((px - c.x)**2 + (py - c.y)**2);
+          if (playerDist < 60) {
+            endGame();
+            return;
+          }
+          c.collected = true;
+          break;
+        }
+      }
+
+      if (c.detonated && !c.collected) {
+        corrupts.splice(i, 1);
+        continue;
+      }
+
+      // Player hit
+      if (!c.collected) {
+        const cDx = c.x - px, cDy = c.y - py;
+        const cDist = Math.sqrt(cDx*cDx + cDy*cDy);
+        if (cDist < 20) {
+          endGame();
+          return;
+        }
+      }
+
+      if (c.y > H + 30) corrupts.splice(i, 1);
+    }
+
+    // Particles
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.life -= p.decay;
+      p.x += p.vx * dtS;
+      p.y += p.vy * dtS;
+      p.vx *= 0.92;
+      p.vy *= 0.92;
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+
+    // Float texts
+    for (let i = floatTexts.length - 1; i >= 0; i--) {
+      const ft = floatTexts[i];
+      ft.life -= ft.decay;
+      ft.y += ft.vy * dtS;
+      if (ft.life <= 0) floatTexts.splice(i, 1);
+    }
+
+    // Lane flashes
+    for (let i = laneFlashes.length - 1; i >= 0; i--) {
+      laneFlashes[i].timer -= dt;
+      if (laneFlashes[i].timer <= 0) laneFlashes.splice(i, 1);
+    }
+
+    // Spawn
+    spawnTimer += dt;
+    if (spawnTimer >= spawnInterval) {
+      spawnTimer = 0;
+      spawnWave();
+    }
+  }
+
+  function endGame() {
+    state = 'gameover';
+    shake(18, 500);
+    if (score > best) {
+      best = score;
+      localStorage.setItem('pc_best', best);
+    }
+  }
+
+  // ─── DRAW ────────────────────────────────────────────────────────────────────
+  function draw() {
+    ctx.save();
+
+    // Screen shake
+    if (shakeAmt > 0) {
+      const sx = (Math.random() - 0.5) * shakeAmt * 2;
+      const sy = (Math.random() - 0.5) * shakeAmt * 2;
+      ctx.translate(sx, sy);
+    }
+
+    // Background gradient
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, `hsl(${(hue + 200) % 360},40%,5%)`);
+    grad.addColorStop(1, `hsl(${hue},35%,8%)`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    // Scanlines (lightweight)
+    ctx.fillStyle = 'rgba(0,0,0,0.06)';
+    for (let y = 0; y < H; y += 4) {
+      ctx.fillRect(0, y, W, 2);
+    }
+
+    // Beat pulse visual (background glow)
+    const beatFrac = beatTime / BEAT_MS;
+    const beatGlow = Math.max(0, 1 - beatFrac * 3);
+    if (beatGlow > 0) {
+      const bg = ctx.createRadialGradient(W/2, H/2, 0, W/2, H/2, W*0.6);
+      bg.addColorStop(0, `hsla(${hue},100%,60%,${beatGlow * 0.08})`);
+      bg.addColorStop(1, 'transparent');
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, W, H);
+    }
+
+    if (state === 'playing' || state === 'gameover') {
+      drawGame();
+    }
+
+    if (state === 'start')    drawStart();
+    if (state === 'gameover') drawGameOver();
+    if (state === 'playing')  drawHUD();
+
+    ctx.restore();
+  }
+
+  function drawGame() {
+    // Lane flashes (corrupt telegraph)
+    laneFlashes.forEach(lf => {
+      const t = lf.timer / lf.maxTimer;
+      ctx.save();
+      ctx.globalAlpha = t * 0.35;
+      const flashGrad = ctx.createLinearGradient(lf.x - 25, 0, lf.x + 25, 0);
+      flashGrad.addColorStop(0, 'transparent');
+      flashGrad.addColorStop(0.5, '#ff2266');
+      flashGrad.addColorStop(1, 'transparent');
+      ctx.fillStyle = flashGrad;
+      ctx.fillRect(lf.x - 25, 0, 50, H);
+      ctx.restore();
+    });
+
+    // Particles
+    particles.forEach(p => {
+      ctx.save();
+      ctx.globalAlpha = p.life;
+      if (p.type === 'gem') {
+        ctx.fillStyle = `hsl(${p.hue},100%,70%)`;
+        ctx.shadowColor = `hsl(${p.hue},100%,60%)`;
+        ctx.shadowBlur = 8;
+      } else if (p.type === 'combo') {
+        ctx.fillStyle = `hsl(${p.hue},100%,65%)`;
+        ctx.shadowColor = `hsl(${p.hue},100%,60%)`;
+        ctx.shadowBlur = 12;
+      } else if (p.type === 'explode') {
+        ctx.fillStyle = `hsl(${p.hue},100%,60%)`;
+        ctx.shadowColor = `hsl(${p.hue},100%,50%)`;
+        ctx.shadowBlur = 15;
+      } else {
+        ctx.fillStyle = `hsl(${p.hue},100%,80%)`;
+        ctx.shadowBlur = 4;
+      }
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    });
+
+    // Pulse rings
+    pulseRings.forEach(ring => {
+      const t = 1 - ring.timer / ring.maxTimer;
+      const alpha = (1 - t) * 0.8;
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = ring.perfect
+        ? `hsl(60,100%,70%)`
+        : `hsl(${hue},100%,65%)`;
+      ctx.lineWidth = ring.perfect ? 3 : 2;
+      ctx.shadowColor = ring.perfect ? '#ffe066' : `hsl(${hue},100%,60%)`;
+      ctx.shadowBlur = 20;
+      ctx.beginPath();
+      ctx.arc(ring.x, ring.y, ring.r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    });
+
+    // Gems (diamonds)
+    gems.forEach(g => {
+      ctx.save();
+      ctx.translate(g.x + g.wobble, g.y);
+
+      // Glow
+      ctx.shadowColor = `hsl(${g.hue},100%,60%)`;
+      ctx.shadowBlur = 18;
+
+      // Diamond shape
+      const r = g.radius;
+      ctx.beginPath();
+      ctx.moveTo(0, -r);
+      ctx.lineTo(r, 0);
+      ctx.lineTo(0, r);
+      ctx.lineTo(-r, 0);
+      ctx.closePath();
+
+      const gemGrad = ctx.createLinearGradient(0, -r, 0, r);
+      gemGrad.addColorStop(0, `hsl(${g.hue},100%,80%)`);
+      gemGrad.addColorStop(0.5, `hsl(${g.hue},100%,60%)`);
+      gemGrad.addColorStop(1, `hsl(${(g.hue+30)%360},100%,50%)`);
+      ctx.fillStyle = gemGrad;
+      ctx.fill();
+
+      ctx.strokeStyle = `hsl(${g.hue},100%,90%)`;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      ctx.restore();
+    });
+
+    // Corrupt shards
+    corrupts.forEach(c => {
+      if (c.detonated) return;
+      ctx.save();
+      ctx.translate(c.x, c.y);
+      ctx.rotate(c.wobblePhase * 0.5);
+
+      // Jagged shard shape
+      ctx.shadowColor = '#ff0044';
+      ctx.shadowBlur = 20;
+
+      const points = 7;
+      const outer = c.radius + 4;
+      const inner = c.radius * 0.5;
+      ctx.beginPath();
+      for (let i = 0; i < points * 2; i++) {
+        const angle = (i / (points * 2)) * Math.PI * 2 - Math.PI / 2;
+        const r = i % 2 === 0 ? outer : inner;
+        const jitter = i % 2 === 0 ? (Math.random() - 0.5) * 4 : 0;
+        ctx.lineTo(Math.cos(angle) * (r + jitter), Math.sin(angle) * (r + jitter));
+      }
+      ctx.closePath();
+
+      const shardGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, outer);
+      shardGrad.addColorStop(0, '#ff66aa');
+      shardGrad.addColorStop(0.5, '#ff0044');
+      shardGrad.addColorStop(1, '#880022');
+      ctx.fillStyle = shardGrad;
+      ctx.fill();
+
+      ctx.strokeStyle = '#ff88cc';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.restore();
+    });
+
+    // Player orb
+    drawPlayer();
+
+    // Float texts
+    floatTexts.forEach(ft => {
+      ctx.save();
+      ctx.globalAlpha = ft.life;
+      ctx.fillStyle = ft.color;
+      ctx.shadowColor = ft.color;
+      ctx.shadowBlur = 12;
+      ctx.font = 'bold 16px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(ft.text, ft.x, ft.y);
+      ctx.restore();
+    });
+  }
+
+  function drawPlayer() {
+    const t = Date.now() / 1000;
+
+    ctx.save();
+    ctx.translate(px, py);
+
+    // Outer glow ring
+    const beatFrac = beatTime / BEAT_MS;
+    const beatPulse = 1 + Math.sin(beatFrac * Math.PI * 2) * 0.15;
+
+    ctx.shadowColor = `hsl(${hue},100%,65%)`;
+    ctx.shadowBlur = 30;
+
+    // Outer orbit ring
+    ctx.beginPath();
+    ctx.arc(0, 0, 18 * beatPulse, 0, Math.PI * 2);
+    ctx.strokeStyle = `hsla(${hue},100%,70%,0.5)`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Core
+    const coreGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, 14);
+    coreGrad.addColorStop(0, `hsl(${hue},100%,90%)`);
+    coreGrad.addColorStop(0.5, `hsl(${hue},100%,65%)`);
+    coreGrad.addColorStop(1, `hsl(${(hue+60)%360},100%,45%)`);
+    ctx.fillStyle = coreGrad;
+    ctx.beginPath();
+    ctx.arc(0, 0, 14, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Inner sparkle
+    ctx.fillStyle = 'rgba(255,255,255,0.8)';
+    ctx.beginPath();
+    ctx.arc(-3, -4, 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Pulse active indicator
+    if (pulseActive) {
+      const pt = pulseTimer / PULSE_DURATION;
+      ctx.globalAlpha = pt;
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.shadowBlur = 20;
+      ctx.shadowColor = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(0, 0, 22 + (1-pt)*20, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  function drawHUD() {
+    // Score
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fillRect(0, 0, W, 60);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 28px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = `hsl(${hue},100%,60%)`;
+    ctx.shadowBlur = 10;
+    ctx.fillText(score, W / 2, 36);
+
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.font = '13px sans-serif';
+    ctx.shadowBlur = 0;
+    ctx.fillText('BEST ' + best, W / 2, 52);
+
+    // Combo
+    if (combo > 1) {
+      ctx.save();
+      const cs = 0.8 + Math.min(combo, 10) * 0.05;
+      ctx.fillStyle = '#ffe066';
+      ctx.font = `bold ${Math.floor(18 * cs)}px sans-serif`;
+      ctx.textAlign = 'right';
+      ctx.shadowColor = '#ffe066';
+      ctx.shadowBlur = 15;
+      ctx.fillText('COMBO x' + combo, W - 12, 36);
+      ctx.restore();
+    }
+
+    // Beat indicator
+    const beatFrac = beatTime / BEAT_MS;
+    const barW = W * 0.3;
+    const barX = W / 2 - barW / 2;
+    ctx.fillStyle = 'rgba(255,255,255,0.1)';
+    ctx.fillRect(barX, H - 10, barW, 4);
+    ctx.fillStyle = `hsl(${hue},100%,65%)`;
+    ctx.fillRect(barX, H - 10, barW * (1 - beatFrac), 4);
+
+    ctx.restore();
+  }
+
+  function drawStart() {
+    // Overlay
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.65)';
+    ctx.fillRect(0, 0, W, H);
+
+    // Title glow
+    const tg = ctx.createLinearGradient(0, H/2 - 80, 0, H/2 - 20);
+    tg.addColorStop(0, `hsl(${hue},100%,80%)`);
+    tg.addColorStop(1, `hsl(${(hue+60)%360},100%,60%)`);
+
+    ctx.font = 'bold 44px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = `hsl(${hue},100%,60%)`;
+    ctx.shadowBlur = 30;
+    ctx.fillStyle = tg;
+    ctx.fillText('PULSE', W/2, H/2 - 20);
+    ctx.fillText('COLLECTOR', W/2, H/2 + 30);
+
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.font = '18px sans-serif';
+    ctx.fillText('Tap to Start', W/2, H/2 + 80);
+
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.font = '13px sans-serif';
+    ctx.fillText('Collect gems · Avoid corrupt shards', W/2, H/2 + 110);
+
+    ctx.restore();
+  }
+
+  function drawGameOver() {
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.75)';
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.textAlign = 'center';
+
+    ctx.fillStyle = '#ff4466';
+    ctx.font = 'bold 36px sans-serif';
+    ctx.shadowColor = '#ff0044';
+    ctx.shadowBlur = 25;
+    ctx.fillText('GAME OVER', W/2, H/2 - 60);
+
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 52px sans-serif';
+    ctx.fillText(score, W/2, H/2 + 10);
+
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.font = '18px sans-serif';
+    ctx.fillText('BEST  ' + best, W/2, H/2 + 44);
+
+    const flash = Math.sin(Date.now() / 300) > 0;
+    ctx.fillStyle = flash ? '#ffffff' : 'rgba(255,255,255,0.6)';
+    ctx.font = '18px sans-serif';
+    ctx.shadowColor = `hsl(${hue},100%,60%)`;
+    ctx.shadowBlur = flash ? 15 : 0;
+    ctx.fillText('Tap to Retry', W/2, H/2 + 90);
+
+    ctx.restore();
+  }
+
+  // ─── LOOP ────────────────────────────────────────────────────────────────────
+  function loop(ts) {
+    const dt = lastTime ? Math.min(ts - lastTime, 50) : 16;
+    lastTime = ts;
+
+    if (state === 'playing') update(dt);
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  // ─── INPUT ───────────────────────────────────────────────────────────────────
+  function handleInput() {
+    if (state === 'start') {
+      state = 'playing';
+      initGame();
+    } else if (state === 'playing') {
+      triggerPulse();
+    } else if (state === 'gameover') {
+      state = 'playing';
+      initGame();
+    }
+  }
+
+  canvas.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    handleInput();
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space' || e.code === 'Enter') {
+      e.preventDefault();
+      handleInput();
+    }
+  });
+
+  // ─── INIT ────────────────────────────────────────────────────────────────────
+  best = parseInt(localStorage.getItem('pc_best') || '0', 10);
+  requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Magma Pulse - Free HTML5 Game</title>
+  <meta name="description" content="Play Magma Pulse - Tap to alternate splits between two erupting lava flows matching the pulsating volcanic beats.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="robots" content="index,follow">
+  <meta name="theme-color" content="#1a0a00">
+  <link rel="canonical" href="https://balinti.github.io/magma-pulse/">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Magma Pulse - Free HTML5 Game">
+  <meta property="og:description" content="Tap to alternate splits between two erupting lava flows matching the pulsating volcanic beats.">
+  <meta property="og:url" content="https://balinti.github.io/magma-pulse/">
+  <meta property="og:image" content="https://balinti.github.io/magma-pulse/og-image.png">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <!-- JSON-LD Schema -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Magma Pulse",
+    "url": "https://balinti.github.io/magma-pulse/",
+    "description": "Tap to alternate splits between two erupting lava flows matching the pulsating volcanic beats.",
+    "applicationCategory": "Game",
+    "operatingSystem": "Any",
+    "browserRequirements": "HTML5, Canvas",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    }
+  }
+  </script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #0d0500;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      color: #e8c090;
+      overflow-x: hidden;
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+    #game-wrap {
+      display: flex;
+      flex-direction: row;
+      align-items: flex-start;
+      justify-content: center;
+      width: 100%;
+      flex: 1;
+    }
+    .rail {
+      flex: 1;
+      min-width: 0;
+      max-width: 160px;
+      height: 100%;
+    }
+    #game-container {
+      position: relative;
+      width: 420px;
+      max-width: 100vw;
+      flex-shrink: 0;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+      cursor: pointer;
+    }
+    #info {
+      width: 420px;
+      max-width: 100vw;
+      padding: 16px 20px 24px;
+      font-size: 13px;
+      color: #a07050;
+      line-height: 1.6;
+    }
+    #info h2 { font-size: 15px; color: #d08040; margin-bottom: 6px; }
+    #info p { margin-bottom: 8px; }
+    #info a { color: #c06030; text-decoration: none; }
+    @media (max-width: 440px) {
+      .rail { display: none; }
+      #game-container { width: 100vw; }
+      #info { width: 100vw; }
+    }
+  </style>
+</head>
+<body>
+
+<div id="game-wrap">
+  <div class="rail" id="rail-left"></div>
+  <div id="game-container">
+    <canvas id="gameCanvas"></canvas>
+  </div>
+  <div class="rail" id="rail-right"></div>
+</div>
+
+<div id="info">
+  <h2>How to Play Magma Pulse</h2>
+  <p>Tap or press <strong>Space / Enter</strong> to flip the magma gate and route lava safely. Time your flips when the pressure ring hits the gate for a GREAT bonus!</p>
+  <p>Each side can take 3 hits before the town is destroyed. Build a streak of perfect flips to multiply your score up to x5.</p>
+  <h2>About</h2>
+  <p>Magma Pulse is a free browser-based hyper-casual HTML5 game. No download required — just tap and play.</p>
+  <p><a href="https://balinti.github.io/magma-pulse/">Play Magma Pulse online</a> &mdash; works on mobile and desktop.</p>
+  <h2>Privacy</h2>
+  <p>This game saves your high score locally in your browser. No personal data is collected. This site uses Google AdSense for advertising. <a href="https://policies.google.com/privacy" rel="nofollow">Google Privacy Policy</a>.</p>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+// ─── CONSTANTS ───────────────────────────────────────────────────────────────
+const LW = 420, LH = 750;
+const SRC   = { x: 210, y:  90 };
+const GATE  = { x: 210, y: 420 };
+const LEFT  = { x:  95, y: 690 };
+const RIGHT = { x: 325, y: 690 };
+const LS_KEY = 'mpg_best';
+
+// ─── CANVAS SETUP ────────────────────────────────────────────────────────────
+const canvas = document.getElementById('gameCanvas');
+const ctx    = canvas.getContext('2d');
+
+let DPR = 1, scaleX = 1, scaleY = 1;
+function resize() {
+  DPR = window.devicePixelRatio || 1;
+  const container = document.getElementById('game-container');
+  const cw = Math.min(container.clientWidth || LW, LW);
+  const ch = cw * LH / LW;
+  canvas.style.width  = cw + 'px';
+  canvas.style.height = ch + 'px';
+  canvas.width  = cw * DPR;
+  canvas.height = ch * DPR;
+  scaleX = (cw / LW) * DPR;
+  scaleY = (ch / LH) * DPR;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ─── STATE ───────────────────────────────────────────────────────────────────
+let gameState   = 'start'; // start | playing | gameover
+let score       = 0;
+let bestScore   = parseInt(localStorage.getItem(LS_KEY) || '0', 10);
+let gateDir     = 1;       // 1=right, -1=left
+let gateAngle   = 35;      // degrees, animated
+let gateTarget  = 35;
+let leftCracks  = 0;
+let rightCracks = 0;
+let heat        = 1;       // multiplier x1..x5
+let streak      = 0;
+let elapsed     = 0;
+let lastTime    = 0;
+let lastFlipTime = -9999;
+
+// rings
+let rings = [];
+let ringIdCounter = 0;
+let nextRingTime = 1.5;
+
+// particles
+let particles = [];
+
+// shake
+let shakeAmt = 0;
+let shakeDec = 0;
+
+// lava flow animation
+let flowPhase = 0;
+
+// gate glow state
+let gateGlow = 0;     // 0..1 cyan sweet zone glow
+let gateGreat = 0;    // 0..1 gold great glow
+
+// color cycling
+let hue = 0;
+
+// blocked outlet
+let blockedSide = null; // 'left'|'right'|null
+let blockedTimer = 0;
+const BLOCKED_DUR = 3.5;
+
+// smoke particles
+let smoke = [];
+
+// ─── DIFFICULTY ──────────────────────────────────────────────────────────────
+function getDiff(t) {
+  // t = elapsed seconds
+  const lvl = Math.min(1, t / 90);
+  return {
+    ringSpeed:    200 + lvl * 220,      // px/s logical
+    spawnInterval: 2.8 - lvl * 1.5,    // seconds; min ~1.3
+    sweetTime:    0.55 - lvl * 0.25,   // |delta| < sweetTime => Good; min 0.30
+    greatTime:    0.22 - lvl * 0.10,   // |delta| < greatTime => Great; min 0.12
+  };
+}
+
+// ─── RING PATTERNS ───────────────────────────────────────────────────────────
+// types: 'normal','double','long','fake','blocked'
+function spawnRing(t) {
+  const d = getDiff(t);
+  let type = 'normal';
+  const r = Math.random();
+  if (t > 28 && r < 0.10) type = 'long';
+  else if (t > 10 && r < 0.20) type = 'double';
+  else if (r < 0.15) type = 'fake';
+
+  // blocked outlet: start after 22s
+  if (t > 22 && Math.random() < 0.08 && !blockedSide && type === 'normal') {
+    type = 'blocked';
+  }
+
+  const travelDist = GATE.y - SRC.y; // ~330px logical
+  const travelTime = travelDist / d.ringSpeed;
+  const arrivalTime = t + travelTime;
+
+  const ring = {
+    id: ringIdCounter++,
+    type,
+    y: SRC.y,
+    speed: d.ringSpeed,
+    arrivalTime,
+    sweet: d.sweetTime,
+    great: d.greatTime,
+    evaluated: false,
+    alpha: 1,
+    // for long rings: tail still visible
+    tail: type === 'long' ? 40 : 0,
+    tailPassed: false,
+    // for double: spawn a second ring shortly after
+    spawnedSecond: false,
+  };
+
+  if (type === 'fake') {
+    ring.width = 3;
+  } else if (type === 'long') {
+    ring.width = 8;
+  } else {
+    ring.width = 5;
+  }
+
+  rings.push(ring);
+
+  // blocked outlet setup
+  if (type === 'blocked') {
+    blockedSide  = Math.random() < 0.5 ? 'left' : 'right';
+    blockedTimer = BLOCKED_DUR;
+  }
+}
+
+// ─── PARTICLES ───────────────────────────────────────────────────────────────
+function spawnLavaDroplets(x, y, count, hue) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 60 + Math.random() * 120;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 80,
+      life: 1, decay: 0.9 + Math.random() * 0.6,
+      r: 3 + Math.random() * 4,
+      hue: hue || 25,
+      type: 'drop'
+    });
+  }
+}
+
+function spawnSparks(x, y, count) {
+  for (let i = 0; i < count; i++) {
+    const angle = -Math.PI/2 + (Math.random()-0.5)*Math.PI;
+    const speed = 120 + Math.random() * 180;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 1, decay: 1.8 + Math.random() * 1.2,
+      r: 2 + Math.random() * 2,
+      hue: 50 + Math.random() * 30,
+      type: 'spark'
+    });
+  }
+}
+
+function spawnRockShards(x, y, count) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 40 + Math.random() * 90;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 60,
+      life: 1, decay: 0.7 + Math.random() * 0.5,
+      r: 4 + Math.random() * 6,
+      hue: 20 + Math.random() * 20,
+      type: 'shard',
+      rotation: Math.random() * Math.PI * 2,
+      rotSpeed: (Math.random()-0.5)*4
+    });
+  }
+}
+
+function spawnSmoke() {
+  if (smoke.length > 30) return;
+  smoke.push({
+    x: SRC.x + (Math.random()-0.5)*30,
+    y: SRC.y - 10,
+    vx: (Math.random()-0.5)*15,
+    vy: -20 - Math.random()*20,
+    life: 1, decay: 0.25 + Math.random()*0.15,
+    r: 8 + Math.random()*14,
+    alpha: 0.18 + Math.random()*0.12
+  });
+}
+
+// ─── INPUT ───────────────────────────────────────────────────────────────────
+function handleInput() {
+  if (gameState === 'start') {
+    startGame();
+    return;
+  }
+  if (gameState === 'gameover') {
+    startGame();
+    return;
+  }
+  doFlip();
+}
+
+canvas.addEventListener('pointerdown', handleInput);
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    handleInput();
+  }
+});
+document.getElementById('game-container').addEventListener('pointerdown', handleInput);
+
+// ─── GAME LIFECYCLE ───────────────────────────────────────────────────────────
+function startGame() {
+  gameState   = 'playing';
+  score       = 0;
+  gateDir     = 1;
+  gateAngle   = 35;
+  gateTarget  = 35;
+  leftCracks  = 0;
+  rightCracks = 0;
+  heat        = 1;
+  streak      = 0;
+  elapsed     = 0;
+  lastFlipTime= -9999;
+  rings       = [];
+  particles   = [];
+  smoke       = [];
+  shakeAmt    = 0;
+  blockedSide = null;
+  blockedTimer= 0;
+  nextRingTime= 1.5;
+  ringIdCounter=0;
+  lastTime    = performance.now();
+}
+
+function endGame() {
+  gameState = 'gameover';
+  if (score > bestScore) {
+    bestScore = score;
+    localStorage.setItem(LS_KEY, bestScore);
+  }
+  shakeAmt = 18;
+  shakeDec = 0.88;
+  spawnRockShards(GATE.x, GATE.y, 20);
+  spawnLavaDroplets(GATE.x, GATE.y, 25, 15);
+}
+
+// ─── FLIP LOGIC ───────────────────────────────────────────────────────────────
+function doFlip() {
+  gateDir    = -gateDir;
+  gateTarget = gateDir === 1 ? 35 : -35;
+  lastFlipTime = elapsed;
+  shakeAmt = Math.max(shakeAmt, 3);
+  shakeDec = 0.82;
+
+  // spawn flip droplets
+  spawnLavaDroplets(GATE.x, GATE.y, 8, 25 + Math.random()*10);
+
+  // Evaluate rings that haven't been evaluated yet
+  evaluateRings();
+}
+
+function evaluateRings() {
+  // Find the nearest unevaluated ring that's closest to gate
+  let bestRing = null, bestDist = Infinity;
+  for (const ring of rings) {
+    if (ring.evaluated) continue;
+    const dist = Math.abs(ring.arrivalTime - lastFlipTime);
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestRing = ring;
+    }
+  }
+  if (!bestRing) return; // no ring to evaluate
+
+  // Also handle double: if this ring has a pair, treat separately
+  bestRing.evaluated = true;
+  gradeFlip(bestRing, bestDist);
+}
+
+function gradeFlip(ring, delta) {
+  const isBlocked = blockedSide && (
+    (gateDir === 1 && blockedSide === 'right') ||
+    (gateDir === -1 && blockedSide === 'left')
+  );
+
+  if (isBlocked) {
+    // Routed lava into blocked side => damage
+    applyDamage(gateDir === 1 ? 'right' : 'left');
+    streak = 0;
+    heat   = Math.max(1, heat - 0.5);
+    showFeedback('BLOCKED!', '#ff4444');
+    return;
+  }
+
+  if (ring.type === 'fake') {
+    // Fake rings: just give small score, no damage regardless
+    const pts = Math.round(4 * heat);
+    score += pts;
+    showFeedback('+' + pts + ' (fake)', '#aaaaaa');
+    return;
+  }
+
+  if (delta <= ring.great) {
+    // GREAT
+    const base = ring.type === 'fake' ? 4 : 10;
+    const pts  = Math.round((base + 8) * heat);
+    score  += pts;
+    streak += 1;
+    heat    = Math.min(5, 1 + Math.floor(streak / 3) * 0.5);
+    gateGreat = 1;
+    spawnSparks(GATE.x, GATE.y, 20);
+    showFeedback('GREAT! +' + pts, '#ffd700');
+  } else if (delta <= ring.sweet) {
+    // GOOD
+    const base = ring.type === 'fake' ? 4 : 10;
+    const pts  = Math.round(base * heat);
+    score  += pts;
+    streak += 1;
+    if (streak % 5 === 0) heat = Math.min(5, heat + 0.25);
+    gateGlow = 0.5;
+    showFeedback('GOOD +' + pts, '#88ff88');
+  } else {
+    // MISS
+    const side = gateDir === 1 ? 'right' : 'left';
+    applyDamage(side);
+    streak = Math.max(0, streak - 2);
+    heat   = Math.max(1, heat - 0.5);
+    showFeedback('MISS!', '#ff6622');
+  }
+}
+
+function applyDamage(side) {
+  if (side === 'left') leftCracks++;
+  else rightCracks++;
+  shakeAmt = Math.max(shakeAmt, 9);
+  shakeDec = 0.85;
+  spawnRockShards(side === 'left' ? LEFT.x : RIGHT.x, side === 'left' ? LEFT.y : RIGHT.y, 12);
+  spawnLavaDroplets(side === 'left' ? LEFT.x : RIGHT.x, side === 'left' ? LEFT.y - 30 : RIGHT.y - 30, 14, 15);
+  if (leftCracks >= 3 || rightCracks >= 3) {
+    endGame();
+  }
+}
+
+// ─── FEEDBACK ───────────────────────────────────────────────────────────────
+let feedbacks = [];
+function showFeedback(text, color) {
+  feedbacks.push({ text, color, x: GATE.x, y: GATE.y - 30, vy: -60, life: 1, decay: 1.4 });
+}
+
+// ─── UPDATE ───────────────────────────────────────────────────────────────────
+function update(dt) {
+  if (gameState !== 'playing') return;
+
+  elapsed   += dt;
+  flowPhase += dt * 2;
+  hue        = (hue + dt * 20) % 360;
+
+  // smoke
+  if (Math.random() < dt * 4) spawnSmoke();
+
+  // gate angle animation
+  const diff = gateTarget - gateAngle;
+  gateAngle += diff * Math.min(1, dt * 14);
+
+  // glow decay
+  gateGlow  = Math.max(0, gateGlow  - dt * 2);
+  gateGreat = Math.max(0, gateGreat - dt * 2.5);
+
+  // blocked timer
+  if (blockedTimer > 0) {
+    blockedTimer -= dt;
+    if (blockedTimer <= 0) {
+      blockedSide  = null;
+      blockedTimer = 0;
+    }
+  }
+
+  // spawn rings
+  if (elapsed >= nextRingTime) {
+    spawnRing(elapsed);
+    const d = getDiff(elapsed);
+    nextRingTime = elapsed + Math.max(1.3, d.spawnInterval * (0.85 + Math.random() * 0.3));
+  }
+
+  // update rings
+  for (let i = rings.length - 1; i >= 0; i--) {
+    const ring = rings[i];
+    ring.y += ring.speed * dt;
+
+    // double: spawn second ring
+    if (ring.type === 'double' && !ring.spawnedSecond && ring.y > SRC.y + 40) {
+      ring.spawnedSecond = true;
+      const d2 = getDiff(elapsed);
+      const gap = 35 + Math.random() * 25;
+      const travelDist = GATE.y - ring.y - gap;
+      const travelTime = travelDist / ring.speed;
+      rings.push({
+        id: ringIdCounter++,
+        type: 'normal',
+        y: ring.y + gap,
+        speed: ring.speed,
+        arrivalTime: elapsed + travelTime,
+        sweet: d2.sweetTime,
+        great: d2.greatTime,
+        evaluated: false,
+        alpha: 1,
+        tail: 0, tailPassed: false,
+        spawnedSecond: true,
+        width: 5
+      });
+    }
+
+    // check for unevaluated rings that passed gate without flip
+    if (!ring.evaluated && ring.y > GATE.y + 60) {
+      ring.evaluated = true;
+      // missed ring — apply damage unless fake
+      if (ring.type !== 'fake') {
+        const side = gateDir === 1 ? 'right' : 'left';
+        applyDamage(side);
+        streak = 0;
+        heat   = Math.max(1, heat - 1);
+        showFeedback('MISS!', '#ff4444');
+      }
+    }
+
+    // fade out after passing outlet
+    if (ring.y > LEFT.y + 20) {
+      ring.alpha -= dt * 3;
+      if (ring.alpha <= 0) { rings.splice(i, 1); }
+    }
+  }
+
+  // update particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x  += p.vx * dt;
+    p.y  += p.vy * dt;
+    p.vy += 200 * dt; // gravity
+    p.life -= p.decay * dt;
+    if (p.type === 'shard') p.rotation += p.rotSpeed * dt;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+
+  // update smoke
+  for (let i = smoke.length - 1; i >= 0; i--) {
+    const s = smoke[i];
+    s.x  += s.vx * dt;
+    s.y  += s.vy * dt;
+    s.r  += 8 * dt;
+    s.life -= s.decay * dt;
+    if (s.life <= 0) smoke.splice(i, 1);
+  }
+
+  // update feedbacks
+  for (let i = feedbacks.length - 1; i >= 0; i--) {
+    const f = feedbacks[i];
+    f.y  += f.vy * dt;
+    f.vy *= (1 - dt * 3);
+    f.life -= f.decay * dt;
+    if (f.life <= 0) feedbacks.splice(i, 1);
+  }
+
+  // shake
+  if (shakeAmt > 0.2) {
+    shakeAmt *= shakeDec;
+  } else {
+    shakeAmt = 0;
+  }
+
+  // sweet zone glow: check if any ring near gate
+  let nearGate = false;
+  for (const ring of rings) {
+    if (!ring.evaluated && Math.abs(ring.y - GATE.y) < 55) {
+      nearGate = true;
+    }
+  }
+  if (nearGate) {
+    gateGlow = Math.min(1, gateGlow + dt * 3);
+  }
+}
+
+// ─── DRAW HELPERS ─────────────────────────────────────────────────────────────
+function lx(x) { return x * scaleX; }
+function ly(y) { return y * scaleY; }
+function ls(s) { return s * scaleX; }
+
+function drawThickLine(x1,y1,x2,y2,width,color,alpha=1) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.strokeStyle = color;
+  ctx.lineWidth   = ls(width);
+  ctx.lineCap     = 'round';
+  ctx.beginPath();
+  ctx.moveTo(lx(x1), ly(y1));
+  ctx.lineTo(lx(x2), ly(y2));
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawGradientLine(x1,y1,x2,y2,width,c1,c2) {
+  const grad = ctx.createLinearGradient(lx(x1),ly(y1),lx(x2),ly(y2));
+  grad.addColorStop(0, c1);
+  grad.addColorStop(1, c2);
+  ctx.save();
+  ctx.strokeStyle = grad;
+  ctx.lineWidth   = ls(width);
+  ctx.lineCap     = 'round';
+  ctx.beginPath();
+  ctx.moveTo(lx(x1), ly(y1));
+  ctx.lineTo(lx(x2), ly(y2));
+  ctx.stroke();
+  ctx.restore();
+}
+
+// ─── DRAW ─────────────────────────────────────────────────────────────────────
+function draw() {
+  const W = canvas.width, H = canvas.height;
+
+  // Background gradient
+  const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+  bgGrad.addColorStop(0, '#0d0500');
+  bgGrad.addColorStop(0.5, '#1a0800');
+  bgGrad.addColorStop(1, '#0a0200');
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.save();
+
+  // Screen shake
+  if (shakeAmt > 0.2) {
+    const sx = (Math.random() - 0.5) * shakeAmt * 2 * scaleX;
+    const sy = (Math.random() - 0.5) * shakeAmt * 2 * scaleY;
+    ctx.translate(sx, sy);
+  }
+
+  // Smoke
+  ctx.save();
+  for (const s of smoke) {
+    const a = s.life * s.alpha;
+    ctx.beginPath();
+    ctx.arc(lx(s.x), ly(s.y), ls(s.r), 0, Math.PI*2);
+    ctx.fillStyle = `rgba(100,60,30,${a.toFixed(3)})`;
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // ── Volcano source ──
+  drawVolcanoSource();
+
+  // ── Lava channels ──
+  drawChannels();
+
+  // ── Towns ──
+  drawTown('left',  LEFT.x,  LEFT.y,  leftCracks);
+  drawTown('right', RIGHT.x, RIGHT.y, rightCracks);
+
+  // ── Blocked outlet indicator ──
+  if (blockedSide) {
+    const bx = blockedSide === 'left' ? LEFT.x  : RIGHT.x;
+    const by = blockedSide === 'left' ? LEFT.y  : RIGHT.y;
+    const pulse = 0.5 + 0.5 * Math.sin(elapsed * 6);
+    ctx.save();
+    ctx.globalAlpha = 0.5 + pulse * 0.3;
+    ctx.font = `bold ${ls(22)}px Arial`;
+    ctx.fillStyle = '#ff3300';
+    ctx.textAlign = 'center';
+    ctx.fillText('🧱', lx(bx), ly(by - 50));
+    ctx.restore();
+    // Red X overlay
+    drawThickLine(bx-18, by-70, bx+18, by-36, 5, '#ff2200', 0.7);
+    drawThickLine(bx+18, by-70, bx-18, by-36, 5, '#ff2200', 0.7);
+  }
+
+  // ── Gate ──
+  drawGate();
+
+  // ── Rings ──
+  drawRings();
+
+  // ── Particles ──
+  drawParticles();
+
+  // ── Feedbacks ──
+  for (const f of feedbacks) {
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, f.life);
+    ctx.font = `bold ${ls(20)}px Arial`;
+    ctx.fillStyle = f.color;
+    ctx.textAlign = 'center';
+    ctx.shadowColor = f.color;
+    ctx.shadowBlur  = ls(8);
+    ctx.fillText(f.text, lx(f.x), ly(f.y));
+    ctx.restore();
+  }
+
+  // ── HUD ──
+  drawHUD();
+
+  // ── Overlays ──
+  if (gameState === 'start')    drawStartScreen();
+  if (gameState === 'gameover') drawGameoverScreen();
+
+  ctx.restore();
+}
+
+function drawVolcanoSource() {
+  // Volcano cone
+  ctx.save();
+  const vGrad = ctx.createRadialGradient(lx(SRC.x),ly(SRC.y),0, lx(SRC.x),ly(SRC.y),ls(45));
+  vGrad.addColorStop(0, '#ff6600');
+  vGrad.addColorStop(0.5,'#cc2200');
+  vGrad.addColorStop(1, '#551100');
+  ctx.fillStyle = vGrad;
+  ctx.beginPath();
+  ctx.arc(lx(SRC.x), ly(SRC.y), ls(38), 0, Math.PI*2);
+  ctx.fill();
+
+  // Glowing core
+  ctx.beginPath();
+  ctx.arc(lx(SRC.x), ly(SRC.y), ls(18), 0, Math.PI*2);
+  const coreGrad = ctx.createRadialGradient(lx(SRC.x),ly(SRC.y),0, lx(SRC.x),ly(SRC.y),ls(18));
+  coreGrad.addColorStop(0, '#ffdd00');
+  coreGrad.addColorStop(1, '#ff4400');
+  ctx.fillStyle = coreGrad;
+  ctx.fill();
+
+  // Pulsing ring
+  const pulse = 0.5 + 0.5 * Math.sin(elapsed * 4);
+  ctx.strokeStyle = `hsla(${30+pulse*20},100%,60%,${0.4+pulse*0.3})`;
+  ctx.lineWidth   = ls(3);
+  ctx.beginPath();
+  ctx.arc(lx(SRC.x), ly(SRC.y), ls(42 + pulse*6), 0, Math.PI*2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawChannels() {
+  // Main stem SRC -> GATE
+  for (let i = 0; i < 3; i++) {
+    const alpha = 0.25 + i*0.25;
+    const w     = 18 - i*5;
+    drawGradientLine(SRC.x, SRC.y, GATE.x, GATE.y, w,
+      `hsla(25,100%,${40+i*10}%,${alpha})`,
+      `hsla(15,100%,${30+i*10}%,${alpha})`
+    );
+  }
+
+  // Animated lava flow dots on main stem
+  ctx.save();
+  for (let d = 0; d < 4; d++) {
+    const t = ((flowPhase * 0.5 + d * 0.25) % 1);
+    const fx = SRC.x + (GATE.x - SRC.x) * t;
+    const fy = SRC.y + (GATE.y - SRC.y) * t;
+    const r  = 4 + 2 * Math.sin(flowPhase*3 + d);
+    ctx.beginPath();
+    ctx.arc(lx(fx), ly(fy), ls(r), 0, Math.PI*2);
+    const g = ctx.createRadialGradient(lx(fx),ly(fy),0, lx(fx),ly(fy),ls(r));
+    g.addColorStop(0,'#ffdd44');
+    g.addColorStop(1,'#ff5500');
+    ctx.fillStyle = g;
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // Left branch GATE -> LEFT
+  const leftColor = leftCracks >= 2 ? '#ff3300' : leftCracks === 1 ? '#ff7700' : '#cc4400';
+  for (let i = 0; i < 3; i++) {
+    const alpha = 0.2 + i*0.2;
+    const w     = 14 - i*4;
+    drawGradientLine(GATE.x, GATE.y, LEFT.x, LEFT.y, w,
+      `hsla(20,90%,${35+i*8}%,${alpha})`,
+      leftColor.replace(')', `,${alpha})`).replace('rgb','rgba') || `rgba(180,50,0,${alpha})`
+    );
+  }
+
+  // Right branch GATE -> RIGHT
+  const rightColor = rightCracks >= 2 ? '#ff3300' : rightCracks === 1 ? '#ff7700' : '#cc4400';
+  for (let i = 0; i < 3; i++) {
+    const alpha = 0.2 + i*0.2;
+    const w     = 14 - i*4;
+    drawGradientLine(GATE.x, GATE.y, RIGHT.x, RIGHT.y, w,
+      `hsla(20,90%,${35+i*8}%,${alpha})`,
+      rightColor.replace(')', `,${alpha})`).replace('rgb','rgba') || `rgba(180,50,0,${alpha})`
+    );
+  }
+
+  // Crack markings on damaged sides
+  drawCracks('left',  GATE.x, GATE.y, LEFT.x,  LEFT.y,  leftCracks);
+  drawCracks('right', GATE.x, GATE.y, RIGHT.x, RIGHT.y, rightCracks);
+}
+
+function drawCracks(side, x1,y1,x2,y2, cracks) {
+  if (cracks === 0) return;
+  ctx.save();
+  const pulse = 0.5 + 0.5*Math.sin(elapsed*5 + (side==='left'?0:Math.PI));
+  ctx.globalAlpha = 0.6 + pulse*0.3;
+  ctx.strokeStyle = cracks >= 2 ? `rgba(255,50,0,${0.7+pulse*0.2})` : `rgba(220,80,0,0.5)`;
+  ctx.lineWidth   = ls(2);
+  ctx.setLineDash([ls(6), ls(10)]);
+  for (let c = 0; c < cracks; c++) {
+    const t  = 0.3 + c * 0.25;
+    const cx = x1 + (x2-x1)*t;
+    const cy = y1 + (y2-y1)*t;
+    const perp = { x: -(y2-y1), y: x2-x1 };
+    const len  = Math.sqrt(perp.x*perp.x + perp.y*perp.y);
+    const nx   = perp.x/len * 12;
+    const ny   = perp.y/len * 12;
+    ctx.beginPath();
+    ctx.moveTo(lx(cx-nx), ly(cy-ny));
+    ctx.lineTo(lx(cx+nx), ly(cy+ny));
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+function drawTown(side, x, y, cracks) {
+  ctx.save();
+  const damaged = cracks > 0;
+  const critical= cracks >= 2;
+  const pulse   = critical ? 0.5 + 0.5*Math.sin(elapsed*8) : 0;
+
+  // base circle
+  const grad = ctx.createRadialGradient(lx(x),ly(y),0, lx(x),ly(y),ls(28));
+  if (critical) {
+    grad.addColorStop(0, `rgba(255,${100-pulse*80},0,${0.8+pulse*0.2})`);
+    grad.addColorStop(1, `rgba(120,20,0,0.6)`);
+  } else if (damaged) {
+    grad.addColorStop(0, 'rgba(200,80,0,0.7)');
+    grad.addColorStop(1, 'rgba(80,20,0,0.5)');
+  } else {
+    grad.addColorStop(0, 'rgba(60,140,60,0.8)');
+    grad.addColorStop(1, 'rgba(20,60,20,0.5)');
+  }
+  ctx.beginPath();
+  ctx.arc(lx(x), ly(y), ls(26), 0, Math.PI*2);
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // house icon
+  ctx.font = `${ls(22)}px Arial`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(cracks >= 3 ? '💥' : cracks >= 2 ? '🔥' : cracks === 1 ? '🏚️' : '🏘️', lx(x), ly(y));
+
+  // crack count
+  ctx.font = `bold ${ls(11)}px Arial`;
+  ctx.fillStyle = cracks >= 2 ? '#ff4400' : '#ffaa44';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillText('❤'.repeat(3-cracks) + '🖤'.repeat(cracks), lx(x), ly(y+38));
+  ctx.restore();
+
+  // label
+  ctx.save();
+  ctx.font = `bold ${ls(11)}px Arial`;
+  ctx.fillStyle = '#cc7733';
+  ctx.textAlign = 'center';
+  ctx.fillText(side.toUpperCase(), lx(x), ly(y-36));
+  ctx.restore();
+}
+
+function drawGate() {
+  const rad    = gateAngle * Math.PI / 180;
+  const armLen = 55;
+  const ex     = GATE.x + Math.sin(rad)*armLen;
+  const ey     = GATE.y + Math.cos(rad)*armLen;
+
+  ctx.save();
+
+  // Glow when in sweet zone
+  if (gateGlow > 0 || gateGreat > 0) {
+    const glowColor = gateGreat > 0
+      ? `rgba(255,215,0,${(gateGreat*0.6).toFixed(3)})`
+      : `rgba(0,255,220,${(gateGlow*0.5).toFixed(3)})`;
+    ctx.shadowColor = glowColor;
+    ctx.shadowBlur  = ls(30) * Math.max(gateGlow, gateGreat);
+  }
+
+  // Pivot point
+  ctx.beginPath();
+  ctx.arc(lx(GATE.x), ly(GATE.y), ls(7), 0, Math.PI*2);
+  ctx.fillStyle = '#ffcc44';
+  ctx.fill();
+
+  // Gate arm
+  const gateColor = gateGreat > 0
+    ? `rgba(255,215,0,1)`
+    : gateGlow > 0
+      ? `rgba(0,255,220,0.9)`
+      : '#ff8833';
+
+  ctx.strokeStyle = gateColor;
+  ctx.lineWidth   = ls(9);
+  ctx.lineCap     = 'round';
+  ctx.beginPath();
+  ctx.moveTo(lx(GATE.x), ly(GATE.y));
+  ctx.lineTo(lx(ex), ly(ey));
+  ctx.stroke();
+
+  // Arrow head
+  ctx.beginPath();
+  ctx.arc(lx(ex), ly(ey), ls(5), 0, Math.PI*2);
+  ctx.fillStyle = gateColor;
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawRings() {
+  for (const ring of rings) {
+    if (ring.alpha <= 0) continue;
+
+    const isNear  = Math.abs(ring.y - GATE.y) < 50;
+    const isFake  = ring.type === 'fake';
+    const isLong  = ring.type === 'long';
+
+    let ringColor;
+    if (isFake) {
+      ringColor = `rgba(150,150,150,${ring.alpha*0.7})`;
+    } else if (isNear) {
+      ringColor = `rgba(255,220,60,${ring.alpha})`;
+    } else {
+      ringColor = `rgba(255,120,30,${ring.alpha*0.85})`;
+    }
+
+    const baseRadius = 22 + (isLong ? 8 : 0);
+    const w          = ring.width || 5;
+
+    ctx.save();
+    ctx.strokeStyle = ringColor;
+    ctx.lineWidth   = ls(w);
+    ctx.shadowColor = ringColor;
+    ctx.shadowBlur  = ls(isNear ? 18 : 8);
+
+    // Draw ring as ellipse (main channel is vertical, so ellipse flattened)
+    ctx.beginPath();
+    ctx.ellipse(lx(SRC.x), ly(ring.y), ls(baseRadius), ls(baseRadius*0.3), 0, 0, Math.PI*2);
+    ctx.stroke();
+
+    // Long ring: draw tail
+    if (isLong && ring.tail > 0) {
+      ctx.setLineDash([ls(8), ls(8)]);
+      ctx.beginPath();
+      ctx.moveTo(lx(SRC.x - baseRadius), ly(ring.y - ring.tail));
+      ctx.lineTo(lx(SRC.x - baseRadius), ly(ring.y));
+      ctx.moveTo(lx(SRC.x + baseRadius), ly(ring.y - ring.tail));
+      ctx.lineTo(lx(SRC.x + baseRadius), ly(ring.y));
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // Type label
+    if (isFake) {
+      ctx.font = `${ls(9)}px Arial`;
+      ctx.fillStyle = `rgba(180,180,180,${ring.alpha*0.8})`;
+      ctx.textAlign = 'center';
+      ctx.fillText('FAKE', lx(SRC.x), ly(ring.y) - ls(baseRadius*0.3) - ls(6));
+    } else if (ring.type === 'double') {
+      ctx.font = `${ls(9)}px Arial`;
+      ctx.fillStyle = `rgba(255,200,80,${ring.alpha*0.8})`;
+      ctx.textAlign = 'center';
+      ctx.fillText('×2', lx(SRC.x), ly(ring.y) - ls(baseRadius*0.3) - ls(6));
+    } else if (isLong) {
+      ctx.font = `${ls(9)}px Arial`;
+      ctx.fillStyle = `rgba(180,220,255,${ring.alpha*0.8})`;
+      ctx.textAlign = 'center';
+      ctx.fillText('HOLD', lx(SRC.x), ly(ring.y) - ls(baseRadius*0.3) - ls(6));
+    }
+
+    ctx.restore();
+  }
+}
+
+function drawParticles() {
+  ctx.save();
+  for (const p of particles) {
+    if (p.life <= 0) continue;
+    ctx.globalAlpha = Math.max(0, p.life);
+    if (p.type === 'shard') {
+      ctx.save();
+      ctx.translate(lx(p.x), ly(p.y));
+      ctx.rotate(p.rotation);
+      ctx.fillStyle = `hsl(${p.hue},70%,40%)`;
+      ctx.fillRect(-ls(p.r/2), -ls(p.r/3), ls(p.r), ls(p.r*0.6));
+      ctx.restore();
+    } else {
+      ctx.beginPath();
+      ctx.arc(lx(p.x), ly(p.y), ls(p.r * p.life), 0, Math.PI*2);
+      const bright = p.type === 'spark' ? 70 : 50;
+      ctx.fillStyle = `hsl(${p.hue},100%,${bright}%)`;
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
+function drawHUD() {
+  if (gameState === 'start') return;
+  ctx.save();
+
+  // Score
+  ctx.font = `bold ${ls(28)}px Arial`;
+  ctx.fillStyle = '#ffcc44';
+  ctx.textAlign = 'center';
+  ctx.shadowColor = '#ff6600';
+  ctx.shadowBlur  = ls(10);
+  ctx.fillText(score, lx(210), ly(38));
+
+  // Best score
+  ctx.font = `${ls(11)}px Arial`;
+  ctx.fillStyle = '#aa7733';
+  ctx.shadowBlur = 0;
+  ctx.fillText('BEST: ' + bestScore, lx(210), ly(58));
+
+  // Heat multiplier
+  if (heat > 1) {
+    const heatHue = 30 + (heat-1)/4 * 120;
+    ctx.font = `bold ${ls(15)}px Arial`;
+    ctx.fillStyle = `hsl(${heatHue},100%,60%)`;
+    ctx.shadowColor = `hsl(${heatHue},100%,50%)`;
+    ctx.shadowBlur  = ls(8);
+    ctx.fillText('×' + heat.toFixed(1) + ' HEAT', lx(210), ly(73));
+  }
+
+  // Time indicator / elapsed
+  ctx.font = `${ls(10)}px Arial`;
+  ctx.fillStyle = '#774422';
+  ctx.shadowBlur = 0;
+  ctx.textAlign  = 'right';
+  ctx.fillText(Math.floor(elapsed) + 's', lx(408), ly(18));
+
+  // Gate direction arrow hint
+  ctx.font = `${ls(13)}px Arial`;
+  ctx.fillStyle = '#cc6622';
+  ctx.textAlign = 'center';
+  const arrowDir = gateDir === 1 ? '→ RIGHT' : '← LEFT';
+  ctx.fillText(arrowDir, lx(210), ly(LH - 15));
+
+  ctx.restore();
+}
+
+function drawStartScreen() {
+  ctx.save();
+  // Dim overlay
+  ctx.fillStyle = 'rgba(0,0,0,0.65)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.textAlign = 'center';
+
+  // Title
+  const titlePulse = 0.5 + 0.5*Math.sin(Date.now()*0.002);
+  const tHue = (hue) % 360;
+  ctx.font = `bold ${ls(44)}px Arial`;
+  ctx.fillStyle = `hsl(${tHue},100%,60%)`;
+  ctx.shadowColor = `hsl(${tHue},100%,40%)`;
+  ctx.shadowBlur  = ls(20 + titlePulse*10);
+  ctx.fillText('MAGMA', lx(210), ly(260));
+  ctx.font = `bold ${ls(36)}px Arial`;
+  ctx.fillStyle = `hsl(${(tHue+30)%360},100%,55%)`;
+  ctx.fillText('PULSE', lx(210), ly(310));
+
+  ctx.shadowBlur = 0;
+  ctx.font = `${ls(14)}px Arial`;
+  ctx.fillStyle = '#cc9955';
+  ctx.fillText('Route lava safely — time your flips!', lx(210), ly(360));
+
+  ctx.font = `${ls(12)}px Arial`;
+  ctx.fillStyle = '#886633';
+  ctx.fillText('3 cracks on either side = GAME OVER', lx(210), ly(385));
+
+  // Tap to start
+  const tapPulse = 0.5 + 0.5*Math.sin(Date.now()*0.003);
+  ctx.font = `bold ${ls(18)}px Arial`;
+  ctx.fillStyle = `rgba(255,200,50,${0.6+tapPulse*0.4})`;
+  ctx.shadowColor = '#ff8800';
+  ctx.shadowBlur  = ls(12*tapPulse);
+  ctx.fillText('TAP or SPACE to Start', lx(210), ly(450));
+
+  if (bestScore > 0) {
+    ctx.shadowBlur = 0;
+    ctx.font = `${ls(13)}px Arial`;
+    ctx.fillStyle = '#aa7722';
+    ctx.fillText('Best: ' + bestScore, lx(210), ly(490));
+  }
+
+  ctx.restore();
+}
+
+function drawGameoverScreen() {
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.72)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.textAlign = 'center';
+
+  ctx.font = `bold ${ls(40)}px Arial`;
+  ctx.fillStyle = '#ff3300';
+  ctx.shadowColor = '#ff0000';
+  ctx.shadowBlur  = ls(20);
+  ctx.fillText('ERUPTION!', lx(210), ly(260));
+
+  ctx.shadowBlur = 0;
+  ctx.font = `${ls(16)}px Arial`;
+  ctx.fillStyle = '#ee8833';
+  ctx.fillText('Town destroyed!', lx(210), ly(300));
+
+  ctx.font = `bold ${ls(32)}px Arial`;
+  ctx.fillStyle = '#ffcc44';
+  ctx.fillText(score + ' pts', lx(210), ly(360));
+
+  if (score >= bestScore && score > 0) {
+    ctx.font = `bold ${ls(16)}px Arial`;
+    ctx.fillStyle = '#ffdd00';
+    ctx.shadowColor = '#ffaa00';
+    ctx.shadowBlur  = ls(10);
+    ctx.fillText('NEW BEST!', lx(210), ly(395));
+    ctx.shadowBlur = 0;
+  } else if (bestScore > 0) {
+    ctx.font = `${ls(13)}px Arial`;
+    ctx.fillStyle = '#997744';
+    ctx.fillText('Best: ' + bestScore, lx(210), ly(395));
+  }
+
+  const tapPulse = 0.5 + 0.5*Math.sin(Date.now()*0.003);
+  ctx.font = `bold ${ls(18)}px Arial`;
+  ctx.fillStyle = `rgba(255,200,50,${0.6+tapPulse*0.4})`;
+  ctx.shadowColor = '#ff8800';
+  ctx.shadowBlur  = ls(12*tapPulse);
+  ctx.fillText('TAP or SPACE to Retry', lx(210), ly(460));
+
+  ctx.restore();
+}
+
+// ─── LOOP ─────────────────────────────────────────────────────────────────────
+function loop(now) {
+  const dt = Math.min((now - lastTime) / 1000, 0.05);
+  lastTime = now;
+
+  // always advance flow/hue even on start/gameover for visual life
+  if (gameState !== 'playing') {
+    flowPhase += dt * 2;
+    hue        = (hue + dt * 20) % 360;
+    if (shakeAmt > 0.2) shakeAmt *= shakeDec; else shakeAmt = 0;
+    for (let i = particles.length-1; i>=0; i--) {
+      const p = particles[i];
+      p.x += p.vx*dt; p.y += p.vy*dt; p.vy += 200*dt; p.life -= p.decay*dt;
+      if (p.type==='shard') p.rotation += p.rotSpeed*dt;
+      if (p.life<=0) particles.splice(i,1);
+    }
+    for (let i = feedbacks.length-1; i>=0; i--) {
+      const f=feedbacks[i]; f.y+=f.vy*dt; f.vy*=(1-dt*3); f.life-=f.decay*dt;
+      if (f.life<=0) feedbacks.splice(i,1);
+    }
+    for (let i = smoke.length-1; i>=0; i--) {
+      const s=smoke[i]; s.x+=s.vx*dt; s.y+=s.vy*dt; s.r+=8*dt; s.life-=s.decay*dt;
+      if (s.life<=0) smoke.splice(i,1);
+    }
+    if (Math.random() < dt*3) spawnSmoke();
+  } else {
+    update(dt);
+  }
+  draw();
+  requestAnimationFrame(loop);
+}
+
+lastTime = performance.now();
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Dot Drift - Free HTML5 Game</title>
+<meta name="description" content="Play Dot Drift - Swipe to link floating pixel dots while gravity changes direction unpredictably.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0b0f1a">
+<link rel="canonical" href="https://balinti.github.io/dot-drift/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Dot Drift: Gravity Beat - Free HTML5 Game">
+<meta property="og:description" content="Play Dot Drift - Swipe to link floating pixel dots while gravity changes direction unpredictably.">
+<meta property="og:url" content="https://balinti.github.io/dot-drift/">
+<meta property="og:image" content="https://balinti.github.io/dot-drift/og-1200x630.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Dot Drift: Gravity Beat - Free HTML5 Game">
+<meta name="twitter:description" content="Play Dot Drift - Swipe to link floating pixel dots while gravity changes direction unpredictably.">
+<meta name="twitter:image" content="https://balinti.github.io/dot-drift/og-1200x630.png">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#0b0f1a;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;color:#e0e0e0}
+body{display:flex;flex-direction:column;align-items:center;min-height:100svh}
+#wrap{width:100%;max-width:420px;height:100svh;max-height:750px;position:relative;margin:0 auto;display:flex;flex-direction:column}
+canvas{display:block;width:100%;height:100%;touch-action:none;border-radius:8px}
+#seo{max-width:420px;width:100%;margin:0 auto;padding:18px 16px 32px;text-align:center}
+#seo h1{font-size:1.25rem;margin-bottom:10px;color:#8af;letter-spacing:1px}
+#seo p{font-size:0.82rem;line-height:1.55;color:#889;max-width:380px;margin:0 auto}
+@media(min-height:780px){body{justify-content:flex-start;padding-top:10px}}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="c"></canvas></div>
+<div id="seo">
+<h1>Dot Drift: Gravity Beat</h1>
+<p>Dot Drift is a one-tap rhythm chaining game. Tap to snap-link the nearest dot that matches the active color while gravity flips on a predictable beat. Each successful link builds your combo and refreshes your timer. Watch for the shrinking beat ring that telegraphs the next gravity flip — tap within 80 ms of a flip for a perfect timing bonus. As you survive longer the beat speeds up, decoy gray dots appear, and heavy dots resist gravity. Miss a link or let the combo timer expire and it's game over. How long can you keep the chain alive?</p>
+</div>
+<script>
+(()=>{
+'use strict';
+const cv=document.getElementById('c');
+const ctx=cv.getContext('2d');
+const dpr=window.devicePixelRatio||1;
+let W,H;
+
+function resize(){
+  const wrap=document.getElementById('wrap');
+  const r=wrap.getBoundingClientRect();
+  W=r.width;H=r.height;
+  cv.width=W*dpr;cv.height=H*dpr;
+  cv.style.width=W+'px';cv.style.height=H+'px';
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+window.addEventListener('resize',resize);
+resize();
+
+// --- Constants ---
+const LS_KEY='dotdrift_best';
+const G0=900;
+const DRAG_X=1.8,DRAG_Y=0.6;
+const NORMAL_R=12,HEAVY_R=14,HEAVY_MASS=1.6;
+const PERFECT_WINDOW=0.08;
+const DOT_COLORS=['#ff5577','#44bbff','#77ff55','#ffaa33','#dd66ff'];
+
+let state='start'; // start, playing, gameover
+let score,best,combo,comboTimer,comboTimerMax,survivalTime;
+let gravDir,beatTimer,beatInterval,beatIndex;
+let dots,particles,shakeX,shakeY,shakeDur;
+let spawnTimer,activeColorIdx,flipCount;
+let missX,missY,missTimer;
+let lastTime;
+let hueShift=0;
+
+best=parseInt(localStorage.getItem(LS_KEY))||0;
+
+// --- Helpers ---
+function rand(a,b){return a+Math.random()*(b-a)}
+function clamp(v,lo,hi){return v<lo?lo:v>hi?hi:v}
+function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
+
+// --- Beat pattern ---
+function getBeatInterval(t){
+  if(t<60){
+    return clamp(1.4-0.012*t,0.7,1.4);
+  }
+  // patterned beat after 60s
+  const pat=[0.8,0.8,0.6];
+  return pat[beatIndex%pat.length];
+}
+
+function getSnapRadius(t){return clamp(92-0.25*t,72,92)}
+function getComboTimerMax(t){return clamp(0.95-0.0035*t,0.55,0.95)}
+function getMultiplier(c){return Math.min(8,Math.pow(2,Math.floor(c/6)))}
+function getTargetDotCount(t){return clamp(5+Math.floor(t/12),5,10)}
+function getSpawnInterval(t){return clamp(1.10-0.010*t,0.55,1.10)}
+function getHeavyChance(t){return t<10?0:clamp(0.02+0.02*(t-10),0,0.22)}
+function getDecoyChance(t){return t<30?0:clamp(0.02+0.005*(t-30),0,0.18)}
+function getGravScale(t){return clamp(1+0.01*t,1,1.6)}
+
+// --- Init ---
+function initGame(){
+  score=0;combo=0;survivalTime=0;
+  gravDir=1;beatTimer=0;beatInterval=getBeatInterval(0);beatIndex=0;
+  comboTimerMax=getComboTimerMax(0);comboTimer=comboTimerMax;
+  dots=[];particles=[];
+  shakeX=0;shakeY=0;shakeDur=0;
+  spawnTimer=0;flipCount=0;
+  activeColorIdx=Math.floor(Math.random()*DOT_COLORS.length);
+  missX=-99;missY=-99;missTimer=0;
+  for(let i=0;i<4;i++) spawnDot(true);
+}
+
+function spawnDot(initial){
+  const t=survivalTime;
+  const isDecoy=!initial&&Math.random()<getDecoyChance(t);
+  const isHeavy=!isDecoy&&!initial&&Math.random()<getHeavyChance(t);
+  const r=isHeavy?HEAVY_R:NORMAL_R;
+  const mass=isHeavy?HEAVY_MASS:1;
+  let col;
+  if(isDecoy){
+    col='#667';
+  } else {
+    col=DOT_COLORS[activeColorIdx];
+  }
+  const x=rand(r+10,W-r-10);
+  const y=rand(r+10,H-r-10);
+  dots.push({x,y,vx:rand(-40,40),vy:rand(-40,40),r,mass,col,isDecoy,isHeavy,alive:true,age:0});
+}
+
+// --- Particles ---
+function emitParticles(x,y,col,count,speed){
+  for(let i=0;i<count;i++){
+    const a=rand(0,Math.PI*2);
+    const s=rand(speed*0.3,speed);
+    particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,r:rand(2,5),col,life:1,decay:rand(1.5,3)});
+  }
+}
+
+function emitGravityParticles(){
+  for(let i=0;i<12;i++){
+    const x=rand(20,W-20);
+    const y=gravDir>0?H-10:10;
+    particles.push({x,y,vx:rand(-15,15),vy:gravDir>0?rand(-60,-20):rand(20,60),r:rand(1.5,3),col:'rgba(130,200,255,0.5)',life:1,decay:rand(2,3.5)});
+  }
+}
+
+// --- Shake ---
+function triggerShake(intensity,dur){
+  shakeDur=dur;
+  shakeX=rand(-intensity,intensity);
+  shakeY=rand(-intensity,intensity);
+}
+
+// --- Input ---
+function handleTap(px,py){
+  if(state==='start'){
+    state='playing';initGame();lastTime=performance.now();return;
+  }
+  if(state==='gameover'){
+    state='playing';initGame();lastTime=performance.now();return;
+  }
+  if(state!=='playing') return;
+
+  const snapR=getSnapRadius(survivalTime);
+  let nearest=null,nearDist=Infinity;
+  for(const d of dots){
+    if(!d.alive) continue;
+    const dd=Math.hypot(d.x-px,d.y-py);
+    if(dd<nearDist){nearDist=dd;nearest=d;}
+  }
+
+  if(!nearest||nearDist>snapR||nearest.isDecoy){
+    // Miss — gameover
+    missX=px;missY=py;missTimer=0.15;
+    triggerShake(8,0.3);
+    gameOver();
+    return;
+  }
+
+  // Successful link
+  nearest.alive=false;
+  combo++;
+  comboTimerMax=getComboTimerMax(survivalTime);
+  comboTimer=comboTimerMax;
+
+  // Perfect timing check
+  const timeToFlip=beatInterval-beatTimer;
+  const timeSinceFlip=beatTimer;
+  const nearestFlipDist=Math.min(timeToFlip,timeSinceFlip);
+  const isPerfect=nearestFlipDist<=PERFECT_WINDOW;
+
+  const mult=getMultiplier(combo);
+  let pts=(10+combo)*mult;
+  if(isPerfect) pts+=25*mult;
+  score+=pts;
+
+  emitParticles(nearest.x,nearest.y,nearest.col,isPerfect?24:12,isPerfect?200:120);
+  triggerShake(isPerfect?5:2,isPerfect?0.15:0.08);
+}
+
+cv.addEventListener('pointerdown',(e)=>{
+  e.preventDefault();
+  const r=cv.getBoundingClientRect();
+  handleTap(e.clientX-r.left,e.clientY-r.top);
+});
+document.addEventListener('keydown',(e)=>{
+  if(e.code==='Space'||e.code==='Enter'){
+    e.preventDefault();
+    handleTap(W/2,H/2);
+  }
+});
+
+function gameOver(){
+  state='gameover';
+  if(score>best){best=score;localStorage.setItem(LS_KEY,best);}
+  triggerShake(12,0.5);
+}
+
+// --- Update ---
+function update(dt){
+  if(state!=='playing') return;
+  survivalTime+=dt;
+  hueShift+=dt*20;
+
+  // Beat / gravity flip
+  beatInterval=getBeatInterval(survivalTime);
+  beatTimer+=dt;
+  if(beatTimer>=beatInterval){
+    beatTimer-=beatInterval;
+    gravDir*=-1;
+    flipCount++;
+    beatIndex++;
+    emitGravityParticles();
+  }
+
+  // Combo timer
+  comboTimer-=dt;
+  if(comboTimer<=0){
+    comboTimer=0;
+    missTimer=0.15;missX=W/2;missY=H/2;
+    triggerShake(8,0.3);
+    gameOver();
+    return;
+  }
+
+  // Spawn
+  spawnTimer-=dt;
+  if(spawnTimer<=0){
+    const target=getTargetDotCount(survivalTime);
+    const alive=dots.filter(d=>d.alive).length;
+    if(alive<target) spawnDot(false);
+    spawnTimer=getSpawnInterval(survivalTime);
+  }
+
+  // Ensure active color dots exist
+  const activeAlive=dots.filter(d=>d.alive&&!d.isDecoy&&d.col===DOT_COLORS[activeColorIdx]).length;
+  if(activeAlive===0){
+    activeColorIdx=(activeColorIdx+1)%DOT_COLORS.length;
+    // recolor any non-decoy dot or spawn new
+    let recolored=false;
+    for(const d of dots){
+      if(d.alive&&!d.isDecoy){d.col=DOT_COLORS[activeColorIdx];recolored=true;break;}
+    }
+    if(!recolored) spawnDot(false);
+  }
+
+  // Physics
+  const gMag=G0*getGravScale(survivalTime);
+  for(const d of dots){
+    if(!d.alive) continue;
+    d.age+=dt;
+    d.vy+=gravDir*gMag/d.mass*dt;
+    d.vx*=(1-DRAG_X*dt);
+    d.vy*=(1-DRAG_Y*dt);
+    d.x+=d.vx*dt;
+    d.y+=d.vy*dt;
+
+    // Walls
+    if(d.x<d.r){d.x=d.r;d.vx=Math.abs(d.vx)*0.6;}
+    if(d.x>W-d.r){d.x=W-d.r;d.vx=-Math.abs(d.vx)*0.6;}
+    if(d.y<d.r){d.y=d.r;d.vy=Math.abs(d.vy)*0.6;}
+    if(d.y>H-d.r){d.y=H-d.r;d.vy=-Math.abs(d.vy)*0.6;}
+  }
+
+  // Dot-dot collision
+  const aliveDots=dots.filter(d=>d.alive);
+  for(let i=0;i<aliveDots.length;i++){
+    for(let j=i+1;j<aliveDots.length;j++){
+      const a=aliveDots[i],b=aliveDots[j];
+      const dx=b.x-a.x,dy=b.y-a.y;
+      const dd=Math.hypot(dx,dy);
+      const minD=a.r+b.r;
+      if(dd<minD&&dd>0.01){
+        const nx=dx/dd,ny=dy/dd;
+        const overlap=(minD-dd)/2;
+        a.x-=nx*overlap;a.y-=ny*overlap;
+        b.x+=nx*overlap;b.y+=ny*overlap;
+        const imp=40;
+        a.vx-=nx*imp;a.vy-=ny*imp;
+        b.vx+=nx*imp;b.vy+=ny*imp;
+      }
+    }
+  }
+
+  // Remove dead dots
+  dots=dots.filter(d=>d.alive);
+
+  // Particles
+  for(const p of particles){
+    p.x+=p.vx*dt;p.y+=p.vy*dt;
+    p.life-=p.decay*dt;
+    p.vx*=0.96;p.vy*=0.96;
+  }
+  particles=particles.filter(p=>p.life>0);
+
+  // Shake decay
+  if(shakeDur>0){
+    shakeDur-=dt;
+    shakeX*=0.85;shakeY*=0.85;
+  } else {shakeX=0;shakeY=0;}
+
+  // Miss timer
+  if(missTimer>0) missTimer-=dt;
+}
+
+// --- Draw ---
+function draw(){
+  ctx.save();
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+
+  // Apply shake
+  if(shakeDur>0){
+    ctx.translate(shakeX,shakeY);
+  }
+
+  // Background gradient
+  const grad=ctx.createLinearGradient(0,0,0,H);
+  grad.addColorStop(0,'#0b0f1a');
+  grad.addColorStop(1,'#141a2e');
+  ctx.fillStyle=grad;
+  ctx.fillRect(-20,-20,W+40,H+40);
+
+  if(state==='start'){
+    drawStartScreen();
+    ctx.restore();
+    return;
+  }
+
+  if(state==='playing'||state==='gameover'){
+    // Beat ring
+    if(state==='playing'){
+      const p=beatTimer/beatInterval;
+      const minDim=Math.min(W,H);
+      const rOuter=minDim*(0.42-0.24*p);
+      const thickness=survivalTime>=60?(beatIndex%3===2?3:1.5):1.5;
+      ctx.beginPath();
+      ctx.arc(W/2,H/2,rOuter,0,Math.PI*2);
+      ctx.strokeStyle=`rgba(130,200,255,${0.12+0.18*(1-p)})`;
+      ctx.lineWidth=thickness;
+      ctx.stroke();
+    }
+
+    // Dots
+    for(const d of dots){
+      if(!d.alive) continue;
+      ctx.beginPath();
+      ctx.arc(d.x,d.y,d.r,0,Math.PI*2);
+      ctx.fillStyle=d.col;
+      ctx.fill();
+      if(d.isHeavy){
+        ctx.lineWidth=2;
+        ctx.strokeStyle='rgba(255,255,255,0.4)';
+        ctx.stroke();
+      }
+      if(d.isDecoy){
+        // X mark on decoy
+        ctx.save();
+        ctx.translate(d.x,d.y);
+        ctx.strokeStyle='rgba(255,255,255,0.25)';
+        ctx.lineWidth=1.5;
+        const s=d.r*0.5;
+        ctx.beginPath();ctx.moveTo(-s,-s);ctx.lineTo(s,s);ctx.stroke();
+        ctx.beginPath();ctx.moveTo(s,-s);ctx.lineTo(-s,s);ctx.stroke();
+        ctx.restore();
+      }
+      // Glow for active color
+      if(!d.isDecoy&&d.col===DOT_COLORS[activeColorIdx]){
+        ctx.beginPath();
+        ctx.arc(d.x,d.y,d.r+4+Math.sin(survivalTime*6)*2,0,Math.PI*2);
+        ctx.strokeStyle=d.col.replace(')',',0.3)').replace('rgb','rgba').replace('#','');
+        // simple glow
+        ctx.lineWidth=2;
+        ctx.globalAlpha=0.4+0.15*Math.sin(survivalTime*8);
+        ctx.strokeStyle=d.col;
+        ctx.stroke();
+        ctx.globalAlpha=1;
+      }
+    }
+
+    // Particles
+    for(const p of particles){
+      ctx.globalAlpha=clamp(p.life,0,1);
+      ctx.beginPath();
+      ctx.arc(p.x,p.y,p.r*p.life,0,Math.PI*2);
+      ctx.fillStyle=p.col;
+      ctx.fill();
+    }
+    ctx.globalAlpha=1;
+
+    // Miss indicator
+    if(missTimer>0){
+      const mp=missTimer/0.15;
+      ctx.save();
+      ctx.globalAlpha=mp;
+      ctx.strokeStyle='#ff3344';
+      ctx.lineWidth=3;
+      // X
+      const s=14;
+      ctx.beginPath();ctx.moveTo(missX-s,missY-s);ctx.lineTo(missX+s,missY+s);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(missX+s,missY-s);ctx.lineTo(missX-s,missY+s);ctx.stroke();
+      // Ripple ring
+      const rr=20+(1-mp)*40;
+      ctx.beginPath();ctx.arc(missX,missY,rr,0,Math.PI*2);
+      ctx.lineWidth=2;ctx.stroke();
+      ctx.restore();
+    }
+
+    // UI Overlay
+    drawUI();
+
+    if(state==='gameover'){
+      drawGameOver();
+    }
+  }
+
+  ctx.restore();
+}
+
+function drawUI(){
+  const pad=14;
+  // Score
+  ctx.fillStyle='#fff';
+  ctx.font='bold 22px "Segoe UI",system-ui,sans-serif';
+  ctx.textAlign='left';
+  ctx.fillText(score,pad,32);
+
+  // Best
+  ctx.font='12px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle='#889';
+  ctx.fillText('BEST '+best,pad,50);
+
+  // Combo
+  if(combo>0){
+    ctx.textAlign='right';
+    ctx.font='bold 18px "Segoe UI",system-ui,sans-serif';
+    const mult=getMultiplier(combo);
+    ctx.fillStyle=`hsl(${(hueShift+combo*30)%360},80%,65%)`;
+    ctx.fillText(combo+'x',W-pad,32);
+    if(mult>1){
+      ctx.font='11px "Segoe UI",system-ui,sans-serif';
+      ctx.fillStyle='#aab';
+      ctx.fillText(mult+'x mult',W-pad,48);
+    }
+  }
+
+  // Beat interval indicator
+  ctx.textAlign='center';
+  ctx.font='10px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle='#556';
+  ctx.fillText('beat '+beatInterval.toFixed(2)+'s',W/2,16);
+
+  // Combo timer bar
+  if(state==='playing'){
+    const barW=W-pad*2;
+    const barH=4;
+    const barY=H-12;
+    const pct=clamp(comboTimer/comboTimerMax,0,1);
+    ctx.fillStyle='rgba(255,255,255,0.08)';
+    ctx.fillRect(pad,barY,barW,barH);
+    const barHue=pct>0.4?120*pct:0;
+    ctx.fillStyle=`hsl(${barHue},80%,55%)`;
+    ctx.fillRect(pad,barY,barW*pct,barH);
+  }
+}
+
+function drawStartScreen(){
+  ctx.fillStyle='#fff';
+  ctx.textAlign='center';
+  ctx.font='bold 28px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText('Dot Drift',W/2,H*0.35);
+  ctx.font='16px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle=`hsl(${(hueShift*2)%360},70%,65%)`;
+  ctx.fillText('Gravity Beat',W/2,H*0.35+30);
+
+  ctx.font='13px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle='#889';
+  ctx.fillText('Tap to link same-color dots',W/2,H*0.50);
+  ctx.fillText('before the combo timer runs out!',W/2,H*0.50+20);
+
+  ctx.font='bold 16px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle='#fff';
+  const pulse=0.7+0.3*Math.sin(performance.now()/400);
+  ctx.globalAlpha=pulse;
+  ctx.fillText('Tap to Start',W/2,H*0.65);
+  ctx.globalAlpha=1;
+
+  if(best>0){
+    ctx.font='12px "Segoe UI",system-ui,sans-serif';
+    ctx.fillStyle='#667';
+    ctx.fillText('Best: '+best,W/2,H*0.72);
+  }
+
+  // Floating decorative dots
+  const t=performance.now()/1000;
+  for(let i=0;i<5;i++){
+    const a=t*0.5+i*Math.PI*2/5;
+    const cx=W/2+Math.cos(a)*80;
+    const cy=H*0.45+Math.sin(a*1.3)*30;
+    ctx.beginPath();
+    ctx.arc(cx,cy,6,0,Math.PI*2);
+    ctx.fillStyle=DOT_COLORS[i];
+    ctx.globalAlpha=0.5;
+    ctx.fill();
+  }
+  ctx.globalAlpha=1;
+}
+
+function drawGameOver(){
+  ctx.fillStyle='rgba(0,0,0,0.55)';
+  ctx.fillRect(0,0,W,H);
+
+  ctx.textAlign='center';
+  ctx.fillStyle='#ff5577';
+  ctx.font='bold 26px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText('Game Over',W/2,H*0.35);
+
+  ctx.fillStyle='#fff';
+  ctx.font='bold 36px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText(score,W/2,H*0.45);
+
+  ctx.font='13px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle='#889';
+  ctx.fillText('Score',W/2,H*0.45+22);
+
+  ctx.fillStyle='#aab';
+  ctx.font='14px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText('Best: '+best,W/2,H*0.55);
+
+  if(score===best&&score>0){
+    ctx.fillStyle='#ffaa33';
+    ctx.font='bold 13px "Segoe UI",system-ui,sans-serif';
+    ctx.fillText('New Best!',W/2,H*0.55+22);
+  }
+
+  ctx.font='bold 15px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle='#fff';
+  const pulse=0.6+0.4*Math.sin(performance.now()/350);
+  ctx.globalAlpha=pulse;
+  ctx.fillText('Tap to Retry',W/2,H*0.67);
+  ctx.globalAlpha=1;
+}
+
+// --- Loop ---
+function loop(now){
+  requestAnimationFrame(loop);
+  if(!lastTime) lastTime=now;
+  let dt=(now-lastTime)/1000;
+  lastTime=now;
+  dt=Math.min(dt,0.05); // clamp large dt
+
+  // Animate hue on start screen too
+  if(state==='start') hueShift+=dt*20;
+
+  update(dt);
+  draw();
+}
+
+lastTime=null;
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

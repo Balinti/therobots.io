@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Glide Catch - Free HTML5 Game</title>
+  <meta name="description" content="Play Glide Catch - Swipe to move the catcher and collect falling orbs while leaving a glowing trail.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a0a1a">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Glide Catch - Free HTML5 Game">
+  <meta property="og:description" content="Play Glide Catch - Swipe to move the catcher and collect falling orbs while leaving a glowing trail.">
+  <meta property="og:url" content="https://balinti.github.io/glide-catch/">
+  <meta property="og:image" content="https://balinti.github.io/glide-catch/preview.png">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Glide Catch - Free HTML5 Game">
+  <meta name="twitter:description" content="Play Glide Catch - Swipe to move the catcher and collect falling orbs while leaving a glowing trail.">
+  <meta name="twitter:image" content="https://balinti.github.io/glide-catch/preview.png">
+
+  <link rel="canonical" href="https://balinti.github.io/glide-catch/">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #0a0a1a;
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden;
+      font-family: 'Segoe UI', sans-serif;
+      touch-action: manipulation;
+      user-select: none;
+    }
+    #game-wrap {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      height: 100%;
+      max-height: 750px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 4px 0;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: manipulation;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+<div id="game-wrap">
+  <canvas id="c"></canvas>
+</div>
+<script>
+'use strict';
+// ─── State Machine ────────────────────────────────────────────────────────────
+const STATE = { START: 0, PLAYING: 1, GAMEOVER: 2 };
+let state = STATE.START;
+
+// ─── Canvas / DPR Setup ──────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const wrap = document.getElementById('game-wrap');
+let W = 0, H = 0, DPR = 1;
+
+function resize() {
+  const rect = wrap.getBoundingClientRect();
+  W = rect.width;
+  H = rect.height;
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width  = Math.round(W * DPR);
+  canvas.height = Math.round(H * DPR);
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ─── Persistent High Score ────────────────────────────────────────────────────
+const HS_KEY = 'glidecatch_highscore_v1';
+let bestScore = parseInt(localStorage.getItem(HS_KEY) || '0', 10);
+function saveBest(s) {
+  if (s > bestScore) { bestScore = s; localStorage.setItem(HS_KEY, s); }
+}
+
+// ─── Challenge Param ─────────────────────────────────────────────────────────
+const urlParams = new URLSearchParams(window.location.search);
+const challengeScore = parseInt(urlParams.get('challenge') || '0', 10);
+
+// ─── Game State Variables ────────────────────────────────────────────────────
+let score = 0, shields = 3;
+let combo = 0, comboTimer = 0;
+let baseHue = 180;
+let diffTime = 0;
+let graceTimer = 0;
+let spawnTimer = 0;
+let shakeAmt = 0, shakeDecay = 0;
+let lastTs = 0;
+
+// Glider
+let glider = { angle: 0, speed: 1.4, r: 14, orbitR: 0, x: 0, y: 0 };
+let orbitDir = 1;
+
+// Trail
+let trail = [];
+const TRAIL_MAX_BASE = 40;
+let trailMaxLen = TRAIL_MAX_BASE;
+const TRAIL_LIFETIME = 2200; // ms
+
+// Orbs
+let orbs = [];
+// Particles
+let particles = [];
+
+// ─── Orb Types ────────────────────────────────────────────────────────────────
+const ORB_TYPES = {
+  normal: { r: 11, speed: 1.0, hue: 190, pts: 10, mass: 1 },
+  heavy:  { r: 16, speed: 0.6, hue: 300, pts: 20, mass: 2 },
+  fast:   { r:  7, speed: 1.8, hue:  55, pts: 30, mass: 0.5 }
+};
+
+// ─── Difficulty Curve ─────────────────────────────────────────────────────────
+function getDiff() {
+  const t = Math.min(diffTime / 60, 1); // saturate at 60s
+  return {
+    spawnInterval: 1800 - t * 1000,  // 1800ms -> 800ms
+    speedMult: 1 + t * 1.4,
+    heavyChance: t * 0.25,
+    fastChance: t * 0.3,
+    pairChance: t * 0.35
+  };
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function rand(a, b) { return a + Math.random() * (b - a); }
+function randInt(a, b) { return Math.floor(rand(a, b + 1)); }
+function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+function hsl(h, s, l, a = 1) {
+  return `hsla(${h % 360},${s}%,${l}%,${a})`;
+}
+
+// Segment closest point
+function closestPointOnSegment(px, py, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return { x: ax, y: ay, t: 0 };
+  const t = clamp(((px - ax) * dx + (py - ay) * dy) / lenSq, 0, 1);
+  return { x: ax + t * dx, y: ay + t * dy, t };
+}
+
+// ─── Particles ────────────────────────────────────────────────────────────────
+function spawnParticles(x, y, count, hue, speed = 3, size = 4) {
+  for (let i = 0; i < count; i++) {
+    const angle = rand(0, Math.PI * 2);
+    const spd = rand(speed * 0.4, speed);
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * spd,
+      vy: Math.sin(angle) * spd,
+      life: 1.0,
+      decay: rand(0.015, 0.04),
+      r: rand(size * 0.5, size),
+      hue: hue + rand(-20, 20),
+      sat: rand(70, 100),
+      lit: rand(55, 80)
+    });
+  }
+}
+
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx * dt * 60;
+    p.y += p.vy * dt * 60;
+    p.vx *= 0.92;
+    p.vy *= 0.92;
+    p.life -= p.decay * dt * 60;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = hsl(p.hue, p.sat, p.lit);
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r * p.life, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ─── Screen Shake ─────────────────────────────────────────────────────────────
+function triggerShake(amount) {
+  shakeAmt = Math.max(shakeAmt, amount);
+  shakeDecay = shakeAmt / 25;
+}
+
+// ─── Orb Spawning ─────────────────────────────────────────────────────────────
+function makeOrb(type, fromAngle) {
+  const cfg = ORB_TYPES[type];
+  const diff = getDiff();
+  // Spawn from a random edge point
+  const side = randInt(0, 3);
+  let sx, sy;
+  if (side === 0) { sx = rand(0, W); sy = -cfg.r; }
+  else if (side === 1) { sx = W + cfg.r; sy = rand(0, H); }
+  else if (side === 2) { sx = rand(0, W); sy = H + cfg.r; }
+  else { sx = -cfg.r; sy = rand(0, H); }
+
+  // Target: center ± some offset
+  const tx = W / 2 + rand(-W * 0.2, W * 0.2);
+  const ty = H / 2 + rand(-H * 0.2, H * 0.2);
+  const dx = tx - sx, dy = ty - sy;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  const spd = cfg.speed * diff.speedMult;
+
+  return {
+    x: sx, y: sy,
+    vx: (dx / dist) * spd,
+    vy: (dy / dist) * spd,
+    r: cfg.r,
+    hue: cfg.hue + baseHue * 0.1,
+    type,
+    pts: cfg.pts,
+    netTouched: false,
+    bounceCount: 0,
+    alpha: 1
+  };
+}
+
+function spawnPattern() {
+  const diff = getDiff();
+  const r = Math.random();
+  if (r < diff.pairChance) {
+    // pair or staggered triple
+    const t = pickType(diff);
+    orbs.push(makeOrb(t));
+    setTimeout(() => { if (state === STATE.PLAYING) orbs.push(makeOrb(t)); }, 250);
+    if (Math.random() < 0.4) {
+      setTimeout(() => { if (state === STATE.PLAYING) orbs.push(makeOrb(pickType(diff))); }, 550);
+    }
+  } else {
+    orbs.push(makeOrb(pickType(diff)));
+  }
+}
+
+function pickType(diff) {
+  const r = Math.random();
+  if (r < diff.fastChance) return 'fast';
+  if (r < diff.fastChance + diff.heavyChance) return 'heavy';
+  return 'normal';
+}
+
+// ─── Net Collision ─────────────────────────────────────────────────────────────
+function checkNetCollision(orb) {
+  if (trail.length < 2) return false;
+  for (let i = 0; i < trail.length - 1; i++) {
+    const a = trail[i], b = trail[i + 1];
+    const cp = closestPointOnSegment(orb.x, orb.y, a.x, a.y, b.x, b.y);
+    const ddx = orb.x - cp.x, ddy = orb.y - cp.y;
+    const dist = Math.sqrt(ddx * ddx + ddy * ddy);
+    if (dist < orb.r + 2) {
+      // Reflect velocity about normal
+      const nx = ddx / (dist || 1), ny = ddy / (dist || 1);
+      const dot = orb.vx * nx + orb.vy * ny;
+      orb.vx = (orb.vx - 2 * dot * nx) * 0.85;
+      orb.vy = (orb.vy - 2 * dot * ny) * 0.85;
+      // Push out of segment
+      orb.x = cp.x + nx * (orb.r + 3);
+      orb.y = cp.y + ny * (orb.r + 3);
+      orb.netTouched = true;
+      orb.bounceCount++;
+      // Particles on net hit
+      spawnParticles(cp.x, cp.y, 6, orb.hue, 2.5, 3);
+      return true;
+    }
+  }
+  return false;
+}
+
+// ─── Player Catch Collision ───────────────────────────────────────────────────
+function checkCatch(orb) {
+  const dx = orb.x - glider.x, dy = orb.y - glider.y;
+  return Math.sqrt(dx * dx + dy * dy) < orb.r + glider.r;
+}
+
+// ─── Game Init ────────────────────────────────────────────────────────────────
+function initGame() {
+  score = 0; shields = 3; combo = 0; comboTimer = 0;
+  diffTime = 0; graceTimer = 0.5; spawnTimer = 0;
+  shakeAmt = 0; shakeDecay = 0; baseHue = 180;
+  orbs = []; particles = []; trail = [];
+  trailMaxLen = TRAIL_MAX_BASE;
+  glider.angle = 0; orbitDir = 1;
+  glider.orbitR = Math.min(W, H) * 0.28;
+  glider.x = W / 2 + Math.cos(glider.angle) * glider.orbitR;
+  glider.y = H / 2 + Math.sin(glider.angle) * glider.orbitR;
+}
+
+// ─── Input ────────────────────────────────────────────────────────────────────
+function handleInput() {
+  if (state === STATE.START) {
+    state = STATE.PLAYING;
+    initGame();
+  } else if (state === STATE.PLAYING) {
+    orbitDir *= -1;
+  } else if (state === STATE.GAMEOVER) {
+    state = STATE.PLAYING;
+    initGame();
+  }
+}
+
+canvas.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  // Check share button area on gameover
+  if (state === STATE.GAMEOVER && shareBtn) {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = W / rect.width;
+    const scaleY = H / rect.height;
+    const cx = (e.clientX - rect.left) * scaleX;
+    const cy = (e.clientY - rect.top) * scaleY;
+    if (cx > shareBtn.x && cx < shareBtn.x + shareBtn.w &&
+        cy > shareBtn.y && cy < shareBtn.y + shareBtn.h) {
+      doShare();
+      return;
+    }
+  }
+  handleInput();
+});
+
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    handleInput();
+  }
+});
+
+// ─── Share ────────────────────────────────────────────────────────────────────
+let shareBtn = null;
+function doShare() {
+  const url = `https://balinti.github.io/glide-catch/?challenge=${score}`;
+  const text = `I scored ${score} in Glide Catch! Can you beat me?`;
+  if (navigator.share) {
+    navigator.share({ title: 'Glide Catch', text, url }).catch(() => {});
+  } else {
+    navigator.clipboard.writeText(url).then(() => {
+      showToast('Link copied!');
+    }).catch(() => {
+      showToast('Share: ' + url);
+    });
+  }
+}
+
+let toastMsg = '', toastAlpha = 0, toastTimer = 0;
+function showToast(msg) {
+  toastMsg = msg; toastAlpha = 1; toastTimer = 2;
+}
+
+// ─── UPDATE ───────────────────────────────────────────────────────────────────
+function update(dt) {
+  if (state !== STATE.PLAYING) return;
+
+  diffTime += dt;
+  baseHue += dt * 8;
+
+  // Grace period
+  if (graceTimer > 0) { graceTimer -= dt; return; }
+
+  // Shake decay
+  if (shakeAmt > 0) {
+    shakeAmt -= shakeDecay * dt * 60;
+    if (shakeAmt < 0) shakeAmt = 0;
+  }
+
+  // Combo timer
+  if (comboTimer > 0) {
+    comboTimer -= dt;
+    if (comboTimer <= 0) {
+      combo = 0;
+      trailMaxLen = TRAIL_MAX_BASE;
+    }
+  }
+
+  // Glider orbit
+  const orbSpeed = glider.speed + diffTime * 0.008;
+  glider.angle += orbitDir * orbSpeed * dt;
+  glider.x = W / 2 + Math.cos(glider.angle) * glider.orbitR;
+  glider.y = H / 2 + Math.sin(glider.angle) * glider.orbitR;
+
+  // Trail
+  trail.unshift({ x: glider.x, y: glider.y, age: 0 });
+  const now = performance.now();
+  for (let i = trail.length - 1; i >= 0; i--) {
+    trail[i].age += dt * 1000;
+    if (trail[i].age > TRAIL_LIFETIME || i >= trailMaxLen) {
+      trail.splice(i, 1);
+    }
+  }
+
+  // Spawn orbs
+  const diff = getDiff();
+  spawnTimer += dt * 1000;
+  if (spawnTimer >= diff.spawnInterval) {
+    spawnTimer -= diff.spawnInterval;
+    spawnPattern();
+  }
+
+  // Update orbs
+  updateParticles(dt);
+
+  for (let i = orbs.length - 1; i >= 0; i--) {
+    const orb = orbs[i];
+    orb.x += orb.vx * dt * 60;
+    orb.y += orb.vy * dt * 60;
+
+    // Net collision
+    checkNetCollision(orb);
+
+    // Player catch
+    if (checkCatch(orb)) {
+      let pts = orb.pts;
+      if (orb.netTouched) {
+        // combo bonus
+        combo++;
+        comboTimer = 3;
+        pts *= (1 + combo * 0.5);
+        pts = Math.round(pts);
+        // shorten trail on combo (self-balancing)
+        trailMaxLen = Math.max(8, TRAIL_MAX_BASE - combo * 2);
+        spawnParticles(orb.x, orb.y, 18, orb.hue, 5, 6);
+        spawnParticles(glider.x, glider.y, 10, baseHue, 4, 4);
+      } else {
+        spawnParticles(orb.x, orb.y, 10, orb.hue, 3.5, 5);
+      }
+      score += pts;
+      orbs.splice(i, 1);
+      continue;
+    }
+
+    // Out of bounds
+    const margin = orb.r + 20;
+    if (orb.x < -margin || orb.x > W + margin ||
+        orb.y < -margin || orb.y > H + margin) {
+      if (orb.netTouched) {
+        // Lost a shield
+        shields--;
+        combo = 0; comboTimer = 0; trailMaxLen = TRAIL_MAX_BASE;
+        triggerShake(10);
+        spawnParticles(W / 2, H / 2, 20, 0, 4, 5);
+        if (shields <= 0) {
+          endGame();
+          orbs.splice(i, 1);
+          continue;
+        }
+      }
+      orbs.splice(i, 1);
+    }
+  }
+
+  // Toast timer
+  if (toastTimer > 0) {
+    toastTimer -= dt;
+    toastAlpha = Math.min(1, toastTimer);
+  }
+}
+
+function endGame() {
+  saveBest(score);
+  triggerShake(18);
+  spawnParticles(W / 2, H / 2, 60, baseHue, 6, 7);
+  state = STATE.GAMEOVER;
+}
+
+// ─── DRAW ─────────────────────────────────────────────────────────────────────
+function draw() {
+  // Apply shake
+  ctx.save();
+  if (shakeAmt > 0) {
+    ctx.translate(
+      (Math.random() - 0.5) * shakeAmt * 2,
+      (Math.random() - 0.5) * shakeAmt * 2
+    );
+  }
+
+  // Background
+  const bg = ctx.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, Math.max(W, H) * 0.75);
+  bg.addColorStop(0, hsl(baseHue, 25, 8));
+  bg.addColorStop(1, '#050510');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  if (state === STATE.PLAYING || state === STATE.GAMEOVER) {
+    drawTrail();
+    drawOrbs();
+    drawGlider();
+    drawParticles();
+    drawHUD();
+  }
+
+  ctx.restore();
+
+  if (state === STATE.START) drawStartScreen();
+  else if (state === STATE.GAMEOVER) drawGameoverScreen();
+
+  drawToast();
+}
+
+function drawTrail() {
+  if (trail.length < 2) return;
+  for (let i = 0; i < trail.length - 1; i++) {
+    const a = trail[i], b = trail[i + 1];
+    const ageFrac = a.age / TRAIL_LIFETIME;
+    const alpha = (1 - ageFrac) * 0.75;
+    const hue = (baseHue + i * 2) % 360;
+    ctx.strokeStyle = hsl(hue, 90, 65, alpha);
+    ctx.lineWidth = lerp(3.5, 1, ageFrac);
+    ctx.lineCap = 'round';
+    ctx.shadowBlur = 0;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+  }
+  // Node dots
+  for (let i = 0; i < trail.length; i += 4) {
+    const p = trail[i];
+    const ageFrac = p.age / TRAIL_LIFETIME;
+    const alpha = (1 - ageFrac) * 0.5;
+    ctx.fillStyle = hsl((baseHue + i * 2) % 360, 80, 75, alpha);
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 2.5 * (1 - ageFrac * 0.5), 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawGlider() {
+  const x = glider.x, y = glider.y, r = glider.r;
+  const hue = (baseHue + 40) % 360;
+
+  // Outer glow
+  ctx.beginPath();
+  ctx.arc(x, y, r + 5, 0, Math.PI * 2);
+  ctx.fillStyle = hsl(hue, 100, 70, 0.15);
+  ctx.fill();
+
+  // Body
+  const grad = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, 0, x, y, r);
+  grad.addColorStop(0, hsl(hue, 100, 90));
+  grad.addColorStop(1, hsl(hue, 100, 50));
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Wing lines
+  const a = glider.angle;
+  ctx.strokeStyle = hsl(hue, 80, 95, 0.6);
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(x + Math.cos(a + 2.4) * r * 0.8, y + Math.sin(a + 2.4) * r * 0.8);
+  ctx.lineTo(x, y);
+  ctx.lineTo(x + Math.cos(a - 2.4) * r * 0.8, y + Math.sin(a - 2.4) * r * 0.8);
+  ctx.stroke();
+
+  // Direction indicator (small dot toward center)
+  const cx = W / 2, cy = H / 2;
+  const toCenter = Math.atan2(cy - y, cx - x);
+  ctx.fillStyle = hsl(hue, 100, 95);
+  ctx.beginPath();
+  ctx.arc(x + Math.cos(toCenter) * r * 0.45, y + Math.sin(toCenter) * r * 0.45, 2.5, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawOrbs() {
+  for (const orb of orbs) {
+    const hue = (orb.hue + baseHue * 0.05) % 360;
+
+    // Glow
+    ctx.beginPath();
+    ctx.arc(orb.x, orb.y, orb.r + 6, 0, Math.PI * 2);
+    ctx.fillStyle = hsl(hue, 100, 60, 0.12);
+    ctx.fill();
+
+    // Body
+    const grad = ctx.createRadialGradient(orb.x - orb.r * 0.3, orb.y - orb.r * 0.35, 0, orb.x, orb.y, orb.r);
+    grad.addColorStop(0, hsl(hue, 80, 90));
+    grad.addColorStop(0.6, hsl(hue, 100, 55));
+    grad.addColorStop(1, hsl(hue, 100, 30));
+    ctx.beginPath();
+    ctx.arc(orb.x, orb.y, orb.r, 0, Math.PI * 2);
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // Rim
+    ctx.strokeStyle = hsl(hue, 100, 80, 0.5);
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Net-touched indicator
+    if (orb.netTouched) {
+      ctx.strokeStyle = hsl(hue, 100, 90, 0.8);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(orb.x, orb.y, orb.r + 4, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+}
+
+function drawHUD() {
+  // Score
+  ctx.textAlign = 'center';
+  ctx.fillStyle = hsl(baseHue, 90, 85);
+  ctx.font = 'bold 32px monospace';
+  ctx.fillText(score, W / 2, 42);
+
+  // Best
+  ctx.font = '12px monospace';
+  ctx.fillStyle = hsl(baseHue, 60, 65, 0.8);
+  ctx.fillText('BEST ' + bestScore, W / 2, 60);
+
+  // Challenge
+  if (challengeScore > 0) {
+    const beating = score >= challengeScore;
+    ctx.fillStyle = beating ? hsl(120, 90, 70) : hsl(0, 90, 70);
+    ctx.font = '11px monospace';
+    ctx.fillText((beating ? '✓ BEAT ' : 'BEAT ') + challengeScore, W / 2, 76);
+  }
+
+  // Shields
+  const sx = W / 2 - (shields * 18 - 6) / 2;
+  for (let i = 0; i < 3; i++) {
+    ctx.globalAlpha = i < shields ? 1 : 0.2;
+    ctx.fillStyle = i < shields ? hsl(210, 100, 70) : hsl(210, 20, 40);
+    ctx.beginPath();
+    // Shield shape (simple hexagon)
+    for (let k = 0; k < 6; k++) {
+      const ang = (k / 6) * Math.PI * 2 - Math.PI / 2;
+      const ex = sx + i * 18 + Math.cos(ang) * 7;
+      const ey = H - 24 + Math.sin(ang) * 7;
+      k === 0 ? ctx.moveTo(ex, ey) : ctx.lineTo(ex, ey);
+    }
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // Combo
+  if (combo > 1) {
+    ctx.textAlign = 'center';
+    ctx.font = `bold ${14 + combo}px monospace`;
+    ctx.fillStyle = hsl((baseHue + 60) % 360, 100, 75, Math.min(1, comboTimer));
+    ctx.fillText(`×${combo} COMBO`, W / 2, H - 42);
+  }
+
+  // Trail length bar
+  const barW = 80, barH = 4;
+  const bx = W / 2 - barW / 2, by = H - 8;
+  const trailFrac = trail.length / trailMaxLen;
+  ctx.fillStyle = hsl(baseHue, 30, 30, 0.5);
+  ctx.fillRect(bx, by, barW, barH);
+  ctx.fillStyle = hsl(baseHue, 90, 65, 0.7);
+  ctx.fillRect(bx, by, barW * Math.min(trailFrac, 1), barH);
+}
+
+function drawStartScreen() {
+  // Overlay
+  ctx.fillStyle = 'rgba(5,5,20,0.82)';
+  ctx.fillRect(0, 0, W, H);
+
+  const cx = W / 2, cy = H / 2;
+
+  // Title glow
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 44px monospace';
+  ctx.fillStyle = hsl(180, 100, 70, 0.15);
+  for (let s = 20; s > 0; s -= 5) {
+    ctx.shadowBlur = s;
+    ctx.shadowColor = hsl(180, 100, 70);
+    ctx.fillStyle = hsl(180, 100, 70, 0.08);
+    ctx.fillText('GLIDE CATCH', cx, cy - 60);
+  }
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = hsl(180, 100, 80);
+  ctx.fillText('GLIDE CATCH', cx, cy - 60);
+
+  ctx.font = '16px monospace';
+  ctx.fillStyle = hsl(180, 60, 60, 0.85);
+  ctx.fillText('NET FLIP', cx, cy - 35);
+
+  // Instructions
+  ctx.font = '13px monospace';
+  ctx.fillStyle = 'rgba(180,220,255,0.7)';
+  const lines = [
+    'Tap  → Reverse orbit direction',
+    'Catch orbs with the glider',
+    'Net deflects orbs for combos',
+    'Catch deflected orbs for big pts!',
+    'Orb escapes after net hit = shield lost'
+  ];
+  lines.forEach((l, i) => {
+    ctx.fillText(l, cx, cy + 10 + i * 22);
+  });
+
+  // Challenge
+  if (challengeScore > 0) {
+    ctx.font = 'bold 15px monospace';
+    ctx.fillStyle = hsl(50, 100, 70);
+    ctx.fillText(`Beat ${challengeScore}!`, cx, cy + 140);
+  }
+
+  // Tap to start
+  const pulse = 0.6 + 0.4 * Math.sin(performance.now() * 0.003);
+  ctx.font = 'bold 20px monospace';
+  ctx.fillStyle = hsl(180, 100, 75, pulse);
+  ctx.fillText('TAP TO START', cx, cy + 175);
+}
+
+function drawGameoverScreen() {
+  ctx.fillStyle = 'rgba(5,5,20,0.85)';
+  ctx.fillRect(0, 0, W, H);
+
+  const cx = W / 2, cy = H / 2;
+
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 32px monospace';
+  ctx.fillStyle = hsl(0, 90, 65);
+  ctx.fillText('GAME OVER', cx, cy - 80);
+
+  ctx.font = 'bold 52px monospace';
+  ctx.fillStyle = hsl(baseHue, 100, 80);
+  ctx.fillText(score, cx, cy - 20);
+
+  ctx.font = '15px monospace';
+  ctx.fillStyle = hsl(baseHue, 60, 65, 0.85);
+  ctx.fillText('BEST  ' + bestScore, cx, cy + 12);
+
+  if (challengeScore > 0) {
+    const beating = score >= challengeScore;
+    ctx.font = 'bold 14px monospace';
+    ctx.fillStyle = beating ? hsl(120, 90, 70) : hsl(30, 90, 70);
+    ctx.fillText(beating ? `✓ You beat ${challengeScore}!` : `Try to beat ${challengeScore}`, cx, cy + 36);
+  }
+
+  // Tap to retry
+  const pulse = 0.6 + 0.4 * Math.sin(performance.now() * 0.003);
+  ctx.font = 'bold 20px monospace';
+  ctx.fillStyle = hsl(180, 100, 75, pulse);
+  ctx.fillText('TAP TO RETRY', cx, cy + 75);
+
+  // Share / Challenge button
+  const btnW = 200, btnH = 38, btnX = cx - btnW / 2, btnY = cy + 95;
+  shareBtn = { x: btnX, y: btnY, w: btnW, h: btnH };
+
+  const bgBtn = ctx.createLinearGradient(btnX, btnY, btnX, btnY + btnH);
+  bgBtn.addColorStop(0, hsl((baseHue + 40) % 360, 80, 30, 0.9));
+  bgBtn.addColorStop(1, hsl((baseHue + 40) % 360, 80, 20, 0.9));
+  ctx.fillStyle = bgBtn;
+  ctx.beginPath();
+  ctx.roundRect(btnX, btnY, btnW, btnH, 8);
+  ctx.fill();
+  ctx.strokeStyle = hsl((baseHue + 40) % 360, 90, 60, 0.7);
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  ctx.font = 'bold 13px monospace';
+  ctx.fillStyle = hsl((baseHue + 40) % 360, 80, 85);
+  ctx.fillText('⚡ Challenge a Friend', cx, btnY + 24);
+}
+
+function drawToast() {
+  if (toastAlpha <= 0 || !toastMsg) return;
+  const a = Math.min(toastAlpha, 1);
+  ctx.globalAlpha = a;
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 14px monospace';
+  const tw = ctx.measureText(toastMsg).width;
+  const tx = W / 2, ty = H * 0.15;
+  ctx.fillStyle = 'rgba(10,10,30,0.85)';
+  ctx.beginPath();
+  ctx.roundRect(tx - tw / 2 - 12, ty - 18, tw + 24, 28, 6);
+  ctx.fill();
+  ctx.fillStyle = hsl(130, 100, 75);
+  ctx.fillText(toastMsg, tx, ty);
+  ctx.globalAlpha = 1;
+}
+
+// ─── MAIN LOOP ────────────────────────────────────────────────────────────────
+let animId;
+function loop(ts) {
+  const dt = Math.min((ts - (lastTs || ts)) / 1000, 0.05);
+  lastTs = ts;
+  update(dt);
+  draw();
+  animId = requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

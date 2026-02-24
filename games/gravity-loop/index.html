@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Gravity Loop - Free HTML5 Game</title>
+  <meta name="description" content="Play Gravity Loop - Tap to reverse gravity and smoothly loop pixel circles in a constantly shifting retro world.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a0a1a">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Gravity Loop - Free HTML5 Game">
+  <meta property="og:description" content="Play Gravity Loop - Tap to reverse gravity and smoothly loop pixel circles in a constantly shifting retro world.">
+  <meta property="og:url" content="https://balinti.github.io/gravity-loop/">
+  <meta property="og:image" content="https://balinti.github.io/gravity-loop/preview.png">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #0a0a1a;
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden;
+      font-family: 'Courier New', monospace;
+      touch-action: none;
+      user-select: none;
+    }
+    #wrap {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      height: 100vh;
+      max-height: 750px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+</div>
+<script>
+'use strict';
+(function() {
+
+  // ── Canvas / DPR setup ─────────────────────────────────────────────────────
+  const wrap   = document.getElementById('wrap');
+  const canvas = document.getElementById('c');
+  const ctx    = canvas.getContext('2d');
+  let W = 0, H = 0, DPR = 1;
+
+  function resize() {
+    DPR = window.devicePixelRatio || 1;
+    const r = wrap.getBoundingClientRect();
+    W = r.width;
+    H = r.height;
+    canvas.width  = Math.round(W * DPR);
+    canvas.height = Math.round(H * DPR);
+    canvas.style.width  = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  // ── Constants ──────────────────────────────────────────────────────────────
+  const ORBIT_R    = 85;   // ball orbit radius around node
+  const BALL_R     = 9;
+  const NODE_R     = 13;
+  const GATE_THICK = 20;   // visual half-thickness (ring width)
+  const MIN_GAP    = 44;   // minimum gap degrees
+  const MAX_GAP    = 88;   // starting gap degrees
+  const NEAR_ZONE  = 9;    // degrees near gap edge = near-miss
+  const LS_KEY     = 'gravityLoop_best';
+
+  // ── Persistent best score ──────────────────────────────────────────────────
+  let best = 0;
+  try { best = parseInt(localStorage.getItem(LS_KEY)) || 0; } catch(e) {}
+  function saveBest() {
+    try { if (score > best) { best = score; localStorage.setItem(LS_KEY, best); } } catch(e) {}
+  }
+
+  // ── Game state ─────────────────────────────────────────────────────────────
+  // Exactly 3 states: 'start', 'playing', 'gameover'
+  let state = 'start';
+
+  let score, combo, comboMult;
+  let hue, lastTime;
+  let shake, freeze, deathFlash;
+
+  // Ball
+  let ballAngle, ballNode, ballSpeed;
+
+  // Nodes (static positions computed after W/H known)
+  let nodeTop, nodeBot;
+
+  // Arrays
+  let gates, particles, trail;
+
+  // Difficulty
+  let diffTime, gateSpeed, gapDeg, rotSpeed, doubleChance;
+
+  // ── Init ───────────────────────────────────────────────────────────────────
+  function initGame() {
+    score      = 0;
+    combo      = 0;
+    comboMult  = 1;
+    shake      = 0;
+    freeze     = 0;
+    deathFlash = 0;
+    diffTime   = 0;
+    gateSpeed  = 55;
+    gapDeg     = MAX_GAP;
+    rotSpeed   = 0.65;
+    doubleChance = 0;
+
+    nodeTop = { x: W / 2, y: H / 2 - ORBIT_R };
+    nodeBot = { x: W / 2, y: H / 2 + ORBIT_R };
+
+    // Ball starts orbiting top node, positioned at bottom of its orbit
+    ballNode  = 0;
+    ballAngle = Math.PI / 2;   // pointing down from top node centre
+    ballSpeed = 2.6;           // rad/s
+
+    trail     = [];
+    particles = [];
+    gates     = [];
+
+    spawnGate(H * 0.12);
+    spawnGate(H * 0.52);
+  }
+
+  // ── Gate helpers ───────────────────────────────────────────────────────────
+  function spawnGate(yOverride, counter) {
+    gates.push({
+      y:        (yOverride !== undefined) ? yOverride : -(GATE_THICK + 5),
+      gapStart: Math.random() * 360,
+      gapDeg:   gapDeg,
+      rotDir:   counter ? -1 : 1,
+      rotAngle: 0,
+      passed:   false,
+      nearMiss: false,
+      double:   false,
+      speed:    gateSpeed,
+    });
+  }
+
+  function spawnDoubleGate(yOverride) {
+    gates.push({
+      y:        (yOverride !== undefined) ? yOverride : -(GATE_THICK + 5),
+      gapStart: Math.random() * 360,
+      gapDeg:   Math.min(gapDeg + 12, MAX_GAP),
+      rotDir:   1,
+      rotAngle: 0,
+      passed:   false,
+      nearMiss: false,
+      double:   true,
+      speed:    gateSpeed,
+    });
+  }
+
+  // ── Particle helpers ───────────────────────────────────────────────────────
+  function burst(x, y, n, h, spd, life, sz) {
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const s = spd * (0.5 + Math.random() * 0.5);
+      particles.push({ x, y, vx: Math.cos(a)*s, vy: Math.sin(a)*s,
+        life, maxLife: life, h: h + (Math.random()-0.5)*30,
+        sz: sz * (0.5 + Math.random()) });
+    }
+  }
+
+  function ringBurst(x, y, n, h) {
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2;
+      const s = 55 + Math.random() * 45;
+      particles.push({ x, y, vx: Math.cos(a)*s, vy: Math.sin(a)*s,
+        life: 0.45, maxLife: 0.45, h: h + Math.random()*40, sz: 3 + Math.random()*3 });
+    }
+  }
+
+  // ── Input ──────────────────────────────────────────────────────────────────
+  function onInput() {
+    if (state === 'start') {
+      state = 'playing';
+      initGame();
+      return;
+    }
+    if (state === 'gameover') {
+      state = 'playing';
+      initGame();
+      return;
+    }
+    if (state === 'playing' && freeze <= 0) {
+      doSnap();
+    }
+  }
+
+  canvas.addEventListener('pointerdown', onInput);
+  window.addEventListener('keydown', function(e) {
+    if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); onInput(); }
+  });
+
+  // ── Snap ball to other node ────────────────────────────────────────────────
+  function doSnap() {
+    // Current ball world position
+    const n0 = ballNode === 0 ? nodeTop : nodeBot;
+    const bx = n0.x + Math.cos(ballAngle) * ORBIT_R;
+    const by = n0.y + Math.sin(ballAngle) * ORBIT_R;
+
+    // Switch to other node
+    ballNode = ballNode === 0 ? 1 : 0;
+    const n1 = ballNode === 0 ? nodeTop : nodeBot;
+
+    // Recompute angle from new node to current ball world pos
+    ballAngle = Math.atan2(by - n1.y, bx - n1.x);
+    // Reverse direction for smooth feel
+    ballSpeed = -ballSpeed;
+
+    burst(bx, by, 10, hue, 85, 0.35, 4);
+  }
+
+  // ── Angle math ─────────────────────────────────────────────────────────────
+  function smallestAngleDiff(a, b) {
+    let d = ((b - a) % 360 + 360) % 360;
+    return d > 180 ? 360 - d : d;
+  }
+
+  function inGap(deg, gapStart, gapSize) {
+    return ((deg - gapStart + 360) % 360) < gapSize;
+  }
+
+  function ballWorldPos() {
+    const n = ballNode === 0 ? nodeTop : nodeBot;
+    return {
+      x: n.x + Math.cos(ballAngle) * ORBIT_R,
+      y: n.y + Math.sin(ballAngle) * ORBIT_R,
+    };
+  }
+
+  function ballAngleFromGate(g) {
+    const b = ballWorldPos();
+    return { ang: (Math.atan2(b.y - g.y, b.x - W/2) * 180/Math.PI + 360) % 360, x: b.x, y: b.y };
+  }
+
+  // ── Difficulty ─────────────────────────────────────────────────────────────
+  function tickDifficulty(dt) {
+    diffTime += dt;
+    const tier = Math.floor(diffTime / 5);
+    gateSpeed    = Math.min(210, 55 + tier * 9);
+    gapDeg       = Math.max(MIN_GAP, MAX_GAP - tier * 3);
+    rotSpeed     = Math.min(3.2, 0.65 + tier * 0.13);
+    doubleChance = Math.min(0.38, tier * 0.045);
+  }
+
+  // ── Master RAF loop ────────────────────────────────────────────────────────
+  function masterLoop(ts) {
+    requestAnimationFrame(masterLoop);
+
+    const dt = Math.min(((lastTime !== undefined) ? ts - lastTime : 16) / 1000, 0.05);
+    lastTime = ts;
+
+    if (state !== 'playing') {
+      // idle hue drift for start / gameover screens
+      hue = ((hue || 180) + 40 * dt) % 360;
+      draw();
+      return;
+    }
+
+    // Freeze frame (death flash)
+    if (freeze > 0) {
+      freeze -= dt;
+      draw();
+      return;
+    }
+
+    // ── Tick ──────────────────────────────────────────────────────────────
+    tickDifficulty(dt);
+    hue = (hue + 40 * dt) % 360;
+    deathFlash = Math.max(0, deathFlash - dt * 4);
+
+    // Move ball along orbit
+    ballAngle += ballSpeed * dt;
+
+    // Ball world position
+    const bp = ballWorldPos();
+
+    // Trail
+    trail.push({ x: bp.x, y: bp.y, life: 1 });
+    if (trail.length > 22) trail.shift();
+    for (const t of trail) t.life -= dt * 3.5;
+    trail = trail.filter(t => t.life > 0);
+
+    // Update gates
+    const dead = [];
+    for (let i = 0; i < gates.length; i++) {
+      const g = gates[i];
+      g.y        += g.speed * dt;
+      g.rotAngle += rotSpeed * g.rotDir * dt;
+
+      const gs1 = ((g.gapStart + g.rotAngle * 180/Math.PI) % 360 + 360) % 360;
+      const gs2 = ((g.gapStart + 180 + g.rotAngle * 180/Math.PI) % 360 + 360) % 360;
+
+      // Collision band: check if ball y is near gate y
+      const dy = Math.abs(bp.y - g.y);
+      if (dy < GATE_THICK + BALL_R) {
+        const { ang } = ballAngleFromGate(g);
+        const pass1 = inGap(ang, gs1, g.gapDeg);
+        const pass2 = g.double && inGap(ang, gs2, g.gapDeg);
+
+        if (!pass1 && !pass2) {
+          // ── Death ──────────────────────────────────────────────────────
+          burst(bp.x, bp.y, 30, hue, 150, 0.75, 6);
+          ringBurst(bp.x, bp.y, 18, hue);
+          shake     = 20;
+          freeze    = 0.07;
+          deathFlash = 1;
+          saveBest();
+          combo     = 0;
+          comboMult = 1;
+          state     = 'gameover';
+          draw();
+          return;
+        }
+
+        // Near-miss
+        if (!g.nearMiss) {
+          const e1 = smallestAngleDiff(ang, gs1) < NEAR_ZONE ||
+                     smallestAngleDiff(ang, (gs1 + g.gapDeg) % 360) < NEAR_ZONE;
+          const e2 = g.double && (smallestAngleDiff(ang, gs2) < NEAR_ZONE ||
+                                  smallestAngleDiff(ang, (gs2 + g.gapDeg) % 360) < NEAR_ZONE);
+          if (e1 || e2) {
+            g.nearMiss = true;
+            burst(bp.x, bp.y, 8, 55, 100, 0.3, 3);
+            shake = Math.max(shake, 6);
+            score += 1;
+          }
+        }
+      }
+
+      // Scoring: gate moved past ball (downward)
+      if (!g.passed && g.y > bp.y + GATE_THICK + BALL_R) {
+        g.passed = true;
+        combo++;
+        comboMult = Math.min(8, 1 + Math.floor(combo / 3));
+        score += comboMult;
+        burst(bp.x, bp.y, 12, hue, 90, 0.4, 4);
+        if (combo % 3 === 0) ringBurst(bp.x, bp.y, 20, (hue + 120) % 360);
+      }
+
+      if (g.y > H + GATE_THICK + 20) dead.push(i);
+    }
+    for (let i = dead.length - 1; i >= 0; i--) gates.splice(dead[i], 1);
+
+    // Replenish gates
+    if (gates.length < 2) {
+      if (Math.random() < doubleChance) {
+        spawnDoubleGate();
+      } else {
+        spawnGate(undefined, Math.random() < 0.3);
+      }
+    }
+
+    // Particles
+    for (const p of particles) {
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vx *= 0.90;
+      p.vy *= 0.90;
+      p.life -= dt;
+    }
+    particles = particles.filter(p => p.life > 0);
+
+    // Shake decay
+    shake *= 0.87;
+    if (shake < 0.1) shake = 0;
+
+    draw();
+  }
+
+  // ── Draw ───────────────────────────────────────────────────────────────────
+  function draw() {
+    const h = hue || 180;
+
+    ctx.save();
+
+    // Screen shake offset
+    if (shake > 0.2) {
+      ctx.translate(
+        (Math.random() - 0.5) * shake * 2,
+        (Math.random() - 0.5) * shake * 2
+      );
+    }
+
+    // Background
+    const bg = ctx.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, '#0d0d22');
+    bg.addColorStop(1, '#080810');
+    ctx.fillStyle = bg;
+    ctx.fillRect(-30, -30, W + 60, H + 60);
+
+    // Subtle grid
+    ctx.strokeStyle = 'rgba(80,80,200,0.06)';
+    ctx.lineWidth = 1;
+    for (let y = 0; y < H; y += 50) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    }
+    for (let x = 0; x < W; x += 50) {
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+    }
+
+    // Death flash overlay
+    if (deathFlash > 0) {
+      ctx.fillStyle = `rgba(255,60,60,${deathFlash * 0.38})`;
+      ctx.fillRect(-30, -30, W + 60, H + 60);
+    }
+
+    if (state === 'start') {
+      drawStartScreen(h);
+    } else {
+      drawPlayField(h);
+      if (state === 'gameover') drawGameOver(h);
+    }
+
+    ctx.restore();
+  }
+
+  // ── Start screen ───────────────────────────────────────────────────────────
+  function drawStartScreen(h) {
+    const cy = H / 2;
+    const t  = Date.now() / 1000;
+
+    // Decorative orbital rings
+    ctx.save();
+    ctx.globalAlpha = 0.18;
+    ctx.strokeStyle = `hsl(${h},80%,60%)`;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(W/2, cy, ORBIT_R * 1.8, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(W/2, cy, ORBIT_R * 1.2, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+
+    // Animated demo ball
+    const demoAngle = t * 2;
+    const dx = W/2 + Math.cos(demoAngle) * ORBIT_R * 1.5;
+    const dy = cy + Math.sin(demoAngle) * ORBIT_R * 1.5;
+    ctx.save();
+    ctx.shadowColor = `hsl(${h},100%,60%)`;
+    ctx.shadowBlur  = 20;
+    ctx.beginPath();
+    ctx.arc(dx, dy, BALL_R, 0, Math.PI * 2);
+    ctx.fillStyle = `hsl(${h},100%,70%)`;
+    ctx.fill();
+    ctx.restore();
+
+    // Title
+    ctx.save();
+    ctx.textAlign = 'center';
+
+    ctx.shadowColor = `hsl(${h},100%,55%)`;
+    ctx.shadowBlur  = 35;
+    ctx.fillStyle   = `hsl(${h},100%,72%)`;
+    ctx.font = 'bold 46px "Courier New", monospace';
+    ctx.fillText('GRAVITY', W/2, cy - 75);
+
+    ctx.fillStyle = `hsl(${(h+70)%360},100%,72%)`;
+    ctx.fillText('LOOP', W/2, cy - 22);
+
+    ctx.shadowBlur = 0;
+    ctx.fillStyle  = 'rgba(180,180,255,0.65)';
+    ctx.font = '13px "Courier New", monospace';
+    ctx.fillText('Tap to snap between orbit nodes', W/2, cy + 18);
+    ctx.fillText('Pass through gate gaps to score', W/2, cy + 36);
+
+    const pulse = 0.55 + 0.45 * Math.sin(t * 2.2);
+    ctx.fillStyle = `rgba(255,255,255,${pulse})`;
+    ctx.font = 'bold 19px "Courier New", monospace';
+    ctx.fillText('TAP TO START', W/2, cy + 88);
+
+    if (best > 0) {
+      ctx.fillStyle = 'rgba(200,200,100,0.75)';
+      ctx.font = '13px "Courier New", monospace';
+      ctx.fillText('BEST  ' + best, W/2, cy + 118);
+    }
+    ctx.restore();
+  }
+
+  // ── Play field ─────────────────────────────────────────────────────────────
+  function drawPlayField(h) {
+    // Nodes
+    drawNode(nodeTop, ballNode === 0, h);
+    drawNode(nodeBot, ballNode === 1, h);
+
+    // Connector line
+    ctx.save();
+    ctx.setLineDash([5, 9]);
+    ctx.strokeStyle = `hsla(${h},60%,60%,0.12)`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(nodeTop.x, nodeTop.y);
+    ctx.lineTo(nodeBot.x, nodeBot.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+
+    // Active orbit ghost
+    const activeNode = ballNode === 0 ? nodeTop : nodeBot;
+    ctx.beginPath();
+    ctx.arc(activeNode.x, activeNode.y, ORBIT_R, 0, Math.PI * 2);
+    ctx.strokeStyle = `hsla(${h},80%,60%,0.09)`;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Gates
+    for (const g of gates) drawGate(g, h);
+
+    // Trail
+    for (let i = 0; i < trail.length; i++) {
+      const t = trail[i];
+      const r = BALL_R * 0.65 * ((i + 1) / trail.length);
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, Math.max(0.5, r), 0, Math.PI * 2);
+      ctx.fillStyle = `hsla(${h},100%,70%,${t.life * 0.55})`;
+      ctx.fill();
+    }
+
+    // Particles
+    for (const p of particles) {
+      const alpha = Math.max(0, p.life / p.maxLife);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, Math.max(0.5, p.sz), 0, Math.PI * 2);
+      ctx.fillStyle = `hsla(${p.h},100%,65%,${alpha})`;
+      ctx.fill();
+    }
+
+    // Ball
+    const bp = ballWorldPos();
+    ctx.save();
+    ctx.shadowColor = `hsl(${h},100%,60%)`;
+    ctx.shadowBlur  = 20;
+    ctx.beginPath();
+    ctx.arc(bp.x, bp.y, BALL_R, 0, Math.PI * 2);
+    const bg2 = ctx.createRadialGradient(bp.x - 3, bp.y - 3, 1, bp.x, bp.y, BALL_R);
+    bg2.addColorStop(0, `hsl(${h},100%,92%)`);
+    bg2.addColorStop(1, `hsl(${h},100%,52%)`);
+    ctx.fillStyle = bg2;
+    ctx.fill();
+    ctx.restore();
+
+    // HUD
+    drawHUD(h);
+  }
+
+  function drawNode(n, active, h) {
+    const t     = Date.now() / 1000;
+    const pulse = active ? 1 + 0.28 * Math.sin(t * 5.5) : 1;
+    const r     = NODE_R * pulse;
+    const nh    = active ? h : (h + 180) % 360;
+    const alpha = active ? 0.45 : 0.2;
+
+    ctx.save();
+    ctx.shadowColor = `hsl(${nh},100%,60%)`;
+    ctx.shadowBlur  = active ? 24 : 10;
+
+    // Outer pulse ring
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, r + 6, 0, Math.PI * 2);
+    ctx.strokeStyle = `hsla(${nh},100%,65%,${alpha})`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Core
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+    const g = ctx.createRadialGradient(n.x - 3, n.y - 3, 1, n.x, n.y, r);
+    g.addColorStop(0, `hsl(${nh},100%,90%)`);
+    g.addColorStop(1, `hsl(${nh},100%,42%)`);
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawGate(g, h) {
+    const cx    = W / 2;
+    const cy    = g.y;
+    const gateR = W * 0.41;
+    const rot   = g.rotAngle * 180 / Math.PI;
+
+    // Effective gap start angles (current rotation)
+    const gs1 = ((g.gapStart + rot) % 360 + 360) % 360;
+    const gs2 = ((g.gapStart + 180 + rot) % 360 + 360) % 360;
+
+    const gs1r = gs1 * Math.PI / 180;
+    const gs2r = gs2 * Math.PI / 180;
+    const gapR = g.gapDeg * Math.PI / 180;
+
+    // Helper: draw arc ring, skipping gap regions
+    function ringArc(skipStart, skipSize) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, gateR, skipStart + skipSize, skipStart + Math.PI * 2, false);
+      ctx.stroke();
+    }
+
+    const ringH = (h + 195) % 360;
+
+    ctx.save();
+    ctx.lineCap = 'round';
+
+    // Main ring glow
+    ctx.shadowColor = `hsl(${ringH},100%,55%)`;
+    ctx.shadowBlur  = 14;
+    ctx.strokeStyle = `hsla(${ringH},90%,55%,0.88)`;
+    ctx.lineWidth   = GATE_THICK * 0.62;
+    ringArc(gs1r, gapR);
+    if (g.double) ringArc(gs2r, gapR);
+
+    // Bright core stripe
+    ctx.shadowBlur  = 5;
+    ctx.strokeStyle = `hsla(${ringH},100%,82%,0.55)`;
+    ctx.lineWidth   = 3;
+    ringArc(gs1r, gapR);
+    if (g.double) ringArc(gs2r, gapR);
+
+    // Edge warning dots at gap boundaries
+    ctx.shadowColor = `hsl(30,100%,60%)`;
+    ctx.shadowBlur  = 10;
+    function edgeDot(ang) {
+      const ex = cx + Math.cos(ang) * gateR;
+      const ey = cy + Math.sin(ang) * gateR;
+      ctx.beginPath();
+      ctx.arc(ex, ey, 4.5, 0, Math.PI * 2);
+      ctx.fillStyle = 'hsl(30,100%,72%)';
+      ctx.fill();
+    }
+    edgeDot(gs1r);
+    edgeDot(gs1r + gapR);
+    if (g.double) {
+      edgeDot(gs2r);
+      edgeDot(gs2r + gapR);
+    }
+
+    ctx.restore();
+  }
+
+  function drawHUD(h) {
+    ctx.save();
+    ctx.textAlign = 'center';
+
+    // Score
+    ctx.shadowColor = `hsl(${h},100%,60%)`;
+    ctx.shadowBlur  = 15;
+    ctx.fillStyle   = `hsl(${h},100%,78%)`;
+    ctx.font = 'bold 40px "Courier New", monospace';
+    ctx.fillText(score, W / 2, 54);
+
+    // Combo
+    if (combo >= 3) {
+      ctx.shadowBlur = 8;
+      ctx.fillStyle  = `hsl(${(h + 120) % 360},100%,72%)`;
+      ctx.font = 'bold 14px "Courier New", monospace';
+      ctx.fillText('×' + comboMult + '  COMBO', W / 2, 76);
+    }
+
+    // Best (top-right)
+    ctx.textAlign   = 'right';
+    ctx.shadowBlur  = 0;
+    ctx.fillStyle   = 'rgba(180,180,255,0.4)';
+    ctx.font = '12px "Courier New", monospace';
+    ctx.fillText('BEST ' + Math.max(best, score), W - 12, 22);
+
+    ctx.restore();
+  }
+
+  // ── Game over overlay ──────────────────────────────────────────────────────
+  function drawGameOver(h) {
+    // Dim overlay
+    ctx.fillStyle = 'rgba(5,5,18,0.78)';
+    ctx.fillRect(0, 0, W, H);
+
+    const cy = H / 2;
+    const t  = Date.now() / 1000;
+
+    ctx.save();
+    ctx.textAlign = 'center';
+
+    // "GAME OVER"
+    ctx.shadowColor = 'rgba(255,70,70,0.9)';
+    ctx.shadowBlur  = 28;
+    ctx.fillStyle   = '#ff4d5e';
+    ctx.font = 'bold 36px "Courier New", monospace';
+    ctx.fillText('GAME OVER', W / 2, cy - 68);
+
+    // Score label
+    ctx.shadowBlur = 0;
+    ctx.fillStyle  = 'rgba(190,190,255,0.55)';
+    ctx.font = '15px "Courier New", monospace';
+    ctx.fillText('SCORE', W / 2, cy - 26);
+
+    // Score value
+    ctx.shadowColor = `hsl(${h},100%,60%)`;
+    ctx.shadowBlur  = 18;
+    ctx.fillStyle   = `hsl(${h},100%,78%)`;
+    ctx.font = 'bold 54px "Courier New", monospace';
+    ctx.fillText(score, W / 2, cy + 22);
+
+    // Best
+    ctx.shadowBlur = 0;
+    ctx.fillStyle  = 'rgba(200,200,100,0.8)';
+    ctx.font = '16px "Courier New", monospace';
+    ctx.fillText('BEST  ' + best, W / 2, cy + 60);
+
+    // Tap to retry (pulse)
+    const pulse = 0.55 + 0.45 * Math.sin(t * 2.3);
+    ctx.fillStyle = `rgba(255,255,255,${pulse})`;
+    ctx.font = 'bold 18px "Courier New", monospace';
+    ctx.fillText('TAP TO RETRY', W / 2, cy + 108);
+
+    ctx.restore();
+  }
+
+  // ── Kick off ───────────────────────────────────────────────────────────────
+  hue = 180;
+  requestAnimationFrame(masterLoop);
+
+})();
+</script>
+</body>
+</html>

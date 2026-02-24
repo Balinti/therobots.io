@@ -1,0 +1,983 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Sunset Scoop - Free HTML5 Game</title>
+<meta name="description" content="Play Sunset Scoop - Tap to catch falling colors before the sun sets completely.">
+<meta name="theme-color" content="#1a0a2e">
+<link rel="canonical" href="https://balinti.github.io/sunset-scoop/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Sunset Scoop - Free HTML5 Game">
+<meta property="og:description" content="Play Sunset Scoop - Tap to catch falling colors before the sun sets completely. Match falling orbs to the sky bands in this addictive hyper-casual game.">
+<meta property="og:url" content="https://balinti.github.io/sunset-scoop/">
+<meta property="og:image" content="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='315' viewBox='0 0 600 315'%3E%3Cdefs%3E%3ClinearGradient id='bg' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0%25' stop-color='%231a0a2e'/%3E%3Cstop offset='50%25' stop-color='%23ff6b35'/%3E%3Cstop offset='100%25' stop-color='%23ffd700'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='600' height='315' fill='url(%23bg)'/%3E%3Ccircle cx='300' cy='250' r='40' fill='%23FFD700' opacity='0.9'/%3E%3Ctext x='300' y='120' text-anchor='middle' font-family='Arial,sans-serif' font-size='42' font-weight='bold' fill='white'%3ESunset Scoop%3C/text%3E%3Ctext x='300' y='160' text-anchor='middle' font-family='Arial,sans-serif' font-size='18' fill='%23ffffffcc'%3ESky-Match Dash%3C/text%3E%3C/svg%3E">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Sunset Scoop - Free HTML5 Game">
+<meta name="twitter:description" content="Play Sunset Scoop - Tap to catch falling colors before the sun sets completely.">
+<meta name="twitter:image" content="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='315' viewBox='0 0 600 315'%3E%3Cdefs%3E%3ClinearGradient id='bg' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0%25' stop-color='%231a0a2e'/%3E%3Cstop offset='50%25' stop-color='%23ff6b35'/%3E%3Cstop offset='100%25' stop-color='%23ffd700'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='600' height='315' fill='url(%23bg)'/%3E%3Ccircle cx='300' cy='250' r='40' fill='%23FFD700' opacity='0.9'/%3E%3Ctext x='300' y='120' text-anchor='middle' font-family='Arial,sans-serif' font-size='42' font-weight='bold' fill='white'%3ESunset Scoop%3C/text%3E%3Ctext x='300' y='160' text-anchor='middle' font-family='Arial,sans-serif' font-size='18' fill='%23ffffffcc'%3ESky-Match Dash%3C/text%3E%3C/svg%3E">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow-x:hidden;background:#1a0a2e;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;color:#e0d0ff;touch-action:manipulation;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
+body{display:flex;flex-direction:column;min-height:100vh;min-height:100dvh}
+#topbar{display:flex;align-items:center;justify-content:space-between;padding:6px 12px;background:rgba(10,5,30,0.85);font-size:13px;gap:8px;flex-shrink:0;z-index:10;border-bottom:1px solid rgba(255,200,100,0.15)}
+#topbar .score-area{display:flex;gap:12px;font-weight:600}
+#topbar .score-area span{opacity:0.7;font-weight:400}
+#topbar .btn-group{display:flex;gap:6px}
+#topbar button{background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.15);color:#e0d0ff;border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;transition:background 0.2s}
+#topbar button:hover{background:rgba(255,255,255,0.2)}
+#shell{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;width:100%;max-width:420px;margin:0 auto;padding:0}
+#gameWrap{width:100%;max-width:420px;position:relative;aspect-ratio:420/750;max-height:750px;flex-shrink:0}
+@media(max-height:700px){#gameWrap{max-height:calc(100dvh - 90px)}}
+#c{display:block;width:100%;height:100%;border-radius:0 0 10px 10px;cursor:pointer}
+#below{width:100%;max-width:420px;margin:0 auto;padding:20px 16px 30px}
+#below h2{font-size:16px;margin:18px 0 6px;color:#ffb347}
+#below h2:first-child{margin-top:0}
+#below p,#below li{font-size:13px;line-height:1.6;color:#b8a0d8;margin-bottom:4px}
+#below ul{padding-left:18px;margin-bottom:8px}
+#below details{margin:6px 0;border:1px solid rgba(255,200,100,0.12);border-radius:6px;padding:6px 10px}
+#below summary{cursor:pointer;font-size:13px;color:#ffb347;font-weight:600}
+#below details p{margin-top:4px}
+#foot{text-align:center;padding:10px;font-size:11px;color:#6a5a8a;border-top:1px solid rgba(255,200,100,0.08);flex-shrink:0}
+#foot a{color:#9a8aba;text-decoration:none}
+#foot a:hover{text-decoration:underline}
+.help-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:100;align-items:center;justify-content:center;padding:20px}
+.help-overlay.show{display:flex}
+.help-box{background:#1e1040;border:1px solid rgba(255,200,100,0.2);border-radius:12px;padding:20px;max-width:360px;width:100%;max-height:80vh;overflow-y:auto}
+.help-box h3{color:#ffb347;margin-bottom:8px;font-size:16px}
+.help-box p{font-size:13px;line-height:1.6;color:#c0b0e0;margin-bottom:8px}
+.help-box button{margin-top:10px;background:#ff6b35;border:none;color:#fff;padding:8px 20px;border-radius:8px;font-size:14px;cursor:pointer}
+</style>
+</head>
+<body>
+<header id="topbar">
+  <div class="score-area">
+    <div id="hud-score">Score: <span>0</span></div>
+    <div id="hud-best">Best: <span>0</span></div>
+  </div>
+  <div class="btn-group">
+    <button id="btn-mute" title="Toggle Sound">Sound: ON</button>
+    <button id="btn-help" title="How to Play">?</button>
+  </div>
+</header>
+<main id="shell">
+  <div id="gameWrap"><canvas id="c"></canvas></div>
+  <section id="below">
+    <h2>How to Play Sunset Scoop</h2>
+    <p>Sunset Scoop is a hyper-casual sky-matching game. Three lanes, three sky bands, falling orbs. Tap to switch lanes and catch orbs that match the sky color behind your catcher. Build streaks for Golden Minutes!</p>
+    <ul>
+      <li><strong>Tap or click</strong> the canvas to cycle between lanes (1 &rarr; 2 &rarr; 3 &rarr; 1).</li>
+      <li><strong>Arrow keys / A-D</strong> to move lanes directly on keyboard.</li>
+      <li><strong>Space or Enter</strong> to start or restart the game.</li>
+    </ul>
+    <h2>Tips &amp; Strategy</h2>
+    <ul>
+      <li>Watch the sky bands &mdash; each band has a distinct color that changes over time.</li>
+      <li>Orbs have icons (stripes, dots, triangles) for extra readability beyond color.</li>
+      <li>Missing an orb accelerates the sunset &mdash; keep catching to slow the sun!</li>
+      <li>At streak milestones (10, 20, 30...) you get a 3-second Golden Minute: +2 per catch, reduced sun sink, bonus particles.</li>
+      <li>Wrong catch = instant game over. When in doubt, let it pass!</li>
+    </ul>
+    <h2>Frequently Asked Questions</h2>
+    <details><summary>Is Sunset Scoop free to play?</summary><p>Yes! Sunset Scoop is 100% free, runs in your browser, and requires no downloads or sign-ups.</p></details>
+    <details><summary>Does it work on mobile?</summary><p>Absolutely. The game is designed for mobile-first touch controls and scales to any screen size.</p></details>
+    <details><summary>How is the high score saved?</summary><p>Your best score is stored locally in your browser using localStorage. It persists between sessions but is device-specific.</p></details>
+    <details><summary>What is a Golden Minute?</summary><p>Every 10 catches in a streak, you enter a 3-second Golden Minute: the sun sinks slower, each catch is worth +2 points, and you get extra particle effects.</p></details>
+    <details><summary>How does difficulty increase?</summary><p>The game starts slow with single orb spawns. As your score grows, orbs fall faster, double spawns appear, decoy orbs show up, and burst waves challenge your reflexes.</p></details>
+  </section>
+</main>
+<footer id="foot">
+  <a href="https://balinti.github.io/sunset-scoop/">Sunset Scoop</a> &middot; A hyper-casual HTML5 game
+</footer>
+<div class="help-overlay" id="help-overlay">
+  <div class="help-box">
+    <h3>How to Play</h3>
+    <p><strong>Goal:</strong> Catch falling orbs whose color matches the sky band behind your catcher. Don't let the sun set!</p>
+    <p><strong>Controls:</strong> Tap/click to cycle lanes. Arrow keys or A/D for direct lane control. Space/Enter to start.</p>
+    <p><strong>Scoring:</strong> +1 per correct catch (+2 during Golden Minute). Wrong color = game over. Missed orbs make the sun sink faster.</p>
+    <p><strong>Streaks:</strong> Every 10 catches triggers a 3-second Golden Minute with bonus points and slower sunset.</p>
+    <button onclick="document.getElementById('help-overlay').classList.remove('show')">Got it!</button>
+  </div>
+</div>
+<script>
+'use strict';
+(()=>{
+// === CONSTANTS ===
+const W=420, H=750;
+const LANE_W=W/3;
+const CATCHER_H=36, CATCHER_W=90;
+const ORB_R=20;
+const SUN_R=30;
+const BAND_H=H/3;
+const LS_KEY='ss_best';
+
+// === CANVAS SETUP ===
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+const wrap=document.getElementById('gameWrap');
+
+function resize(){
+  const rect=wrap.getBoundingClientRect();
+  const dpr=window.devicePixelRatio||1;
+  canvas.width=rect.width*dpr;
+  canvas.height=rect.height*dpr;
+  canvas.style.width=rect.width+'px';
+  canvas.style.height=rect.height+'px';
+  ctx.setTransform(1,0,0,1,0,0);
+  const scaleX=(rect.width*dpr)/W;
+  const scaleY=(rect.height*dpr)/H;
+  const s=Math.min(scaleX,scaleY);
+  const ox=(rect.width*dpr - W*s)/2;
+  const oy=(rect.height*dpr - H*s)/2;
+  ctx.setTransform(s,0,0,s,ox,oy);
+}
+window.addEventListener('resize',resize);
+resize();
+
+// === AUDIO ===
+let audioCtx=null;
+let muted=false;
+function initAudio(){if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)()}
+function playTone(freq,dur,type='sine',vol=0.12){
+  if(muted||!audioCtx)return;
+  try{
+    const o=audioCtx.createOscillator();
+    const g=audioCtx.createGain();
+    o.type=type;o.frequency.value=freq;
+    g.gain.setValueAtTime(vol,audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+dur);
+    o.connect(g);g.connect(audioCtx.destination);
+    o.start();o.stop(audioCtx.currentTime+dur);
+  }catch(e){}
+}
+function sfxCatch(){playTone(600,0.15,'sine',0.1);playTone(900,0.1,'sine',0.08)}
+function sfxPerfect(){playTone(800,0.2,'sine',0.12);playTone(1200,0.15,'triangle',0.1);playTone(1600,0.1,'sine',0.06)}
+function sfxFail(){playTone(200,0.4,'sawtooth',0.15);playTone(150,0.5,'square',0.1)}
+function sfxMiss(){playTone(300,0.2,'triangle',0.08)}
+function sfxGolden(){playTone(1000,0.15,'sine',0.12);playTone(1200,0.12,'sine',0.1);playTone(1500,0.1,'sine',0.08)}
+
+// === STATE ===
+let state='start'; // start, playing, gameover
+let score=0, best=parseInt(localStorage.getItem(LS_KEY))||0;
+let streak=0, combo=0;
+let lane=1; // 0,1,2
+let sunY=80; // sun vertical position (0=top, H=bottom)
+let sunBaseSpeed=8; // pixels per second base
+let sunExtraSpeed=0;
+let missPenalty=0;
+let orbs=[];
+let particles=[];
+let shakeX=0, shakeY=0, shakeDur=0, shakeInt=0;
+let hitStop=0;
+let goldenTimer=0;
+let goldenFlash=0;
+let failCause='';
+let hueShift=0;
+let spawnTimer=0;
+let gameTime=0;
+let redFlash=0;
+let catcherGlow=0;
+let lastGoldenMilestone=0;
+
+// HUD elements
+const hudScore=document.querySelector('#hud-score span');
+const hudBest=document.querySelector('#hud-best span');
+hudBest.textContent=best;
+
+// === SKY BAND COLORS ===
+// 3 distinct bands with HSL cycling
+function getBandColors(){
+  const h=hueShift;
+  return [
+    {h:(240+h)%360, s:65, l:35, icon:'stripe'},   // top - deep blue/purple
+    {h:(25+h)%360,  s:80, l:50, icon:'dot'},       // mid - orange/warm
+    {h:(50+h)%360,  s:75, l:55, icon:'triangle'}   // bottom - gold/yellow
+  ];
+}
+function bandHSL(band){return `hsl(${band.h},${band.s}%,${band.l}%)`}
+function bandHSLLight(band){return `hsl(${band.h},${band.s}%,${band.l+15}%)`}
+function bandHSLDark(band){return `hsl(${band.h},${band.s}%,${band.l-10}%)`}
+
+// Which band index is at y position
+function bandAt(y){
+  if(y<BAND_H) return 0;
+  if(y<BAND_H*2) return 1;
+  return 2;
+}
+
+// === ORB CLASS ===
+function createOrb(laneIdx, bandIdx, isDecoy=false){
+  const bands=getBandColors();
+  let colorIdx=bandIdx;
+  if(isDecoy){
+    // Pick a wrong color
+    const options=[0,1,2].filter(i=>i!==bandIdx);
+    colorIdx=options[Math.floor(Math.random()*options.length)];
+  }
+  return {
+    x: LANE_W*laneIdx + LANE_W/2,
+    y: -ORB_R*2,
+    lane: laneIdx,
+    colorIdx: colorIdx,  // which band color this orb has
+    targetBand: bandIdx,  // which band it's "meant" for (for spawning logic)
+    isDecoy: isDecoy,
+    speed: getOrbSpeed(),
+    r: ORB_R,
+    alive: true,
+    glow: 0
+  };
+}
+
+function getOrbSpeed(){
+  const base=120;
+  const add=Math.min(score*1.8, 200);
+  return base+add;
+}
+
+function getCatcherWidth(){
+  if(score<50) return CATCHER_W;
+  if(score<80) return CATCHER_W-6;
+  return CATCHER_W-12;
+}
+
+// === SPAWNER ===
+function getSpawnInterval(){
+  if(score<10) return 1.4;
+  if(score<25) return 1.1;
+  if(score<50) return 0.85;
+  if(score<80) return 0.7;
+  return 0.55;
+}
+
+function spawnOrbs(){
+  const laneIdx=Math.floor(Math.random()*3);
+  const bandIdx=Math.floor(Math.random()*3);
+
+  // Decide pattern
+  if(score>=25 && Math.random()<0.25){
+    // Decoy
+    orbs.push(createOrb(laneIdx, bandIdx, true));
+  }
+
+  orbs.push(createOrb(laneIdx, bandIdx, false));
+
+  // Double spawn
+  if(score>=10 && Math.random()<0.3){
+    let lane2=(laneIdx+1+Math.floor(Math.random()*2))%3;
+    let band2=Math.floor(Math.random()*3);
+    orbs.push(createOrb(lane2, band2, false));
+  }
+
+  // Burst wave
+  if(score>=50 && Math.random()<0.15){
+    for(let i=0;i<Math.min(3+Math.floor(Math.random()*3),5);i++){
+      setTimeout(()=>{
+        if(state==='playing'){
+          let bLane=Math.floor(Math.random()*3);
+          let bBand=Math.floor(Math.random()*3);
+          orbs.push(createOrb(bLane, bBand, Math.random()<0.2));
+        }
+      }, i*200);
+    }
+  }
+}
+
+// === PARTICLES ===
+function spawnParticles(x,y,color,count,spread=1){
+  for(let i=0;i<count;i++){
+    const angle=Math.random()*Math.PI*2;
+    const speed=(40+Math.random()*120)*spread;
+    particles.push({
+      x,y,
+      vx:Math.cos(angle)*speed,
+      vy:Math.sin(angle)*speed-30,
+      life:0.5+Math.random()*0.5,
+      maxLife:0.5+Math.random()*0.5,
+      r:2+Math.random()*4,
+      color:color,
+      golden: goldenTimer>0
+    });
+  }
+}
+
+// === SCREEN SHAKE ===
+function triggerShake(intensity, duration){
+  shakeInt=intensity; shakeDur=duration;
+}
+
+// === GAME LOGIC ===
+function resetGame(){
+  score=0; streak=0; combo=0;
+  lane=1;
+  sunY=80;
+  sunBaseSpeed=8;
+  sunExtraSpeed=0;
+  missPenalty=0;
+  orbs=[];
+  particles=[];
+  shakeX=0;shakeY=0;shakeDur=0;
+  hitStop=0;
+  goldenTimer=0;
+  goldenFlash=0;
+  hueShift=0;
+  spawnTimer=0;
+  gameTime=0;
+  redFlash=0;
+  catcherGlow=0;
+  lastGoldenMilestone=0;
+  failCause='';
+}
+
+function startGame(){
+  initAudio();
+  resetGame();
+  state='playing';
+}
+
+function gameOver(cause){
+  state='gameover';
+  failCause=cause;
+  if(score>best){
+    best=score;
+    localStorage.setItem(LS_KEY, best);
+  }
+  hudBest.textContent=best;
+  sfxFail();
+  triggerShake(12, 0.5);
+  redFlash=0.6;
+}
+
+// === COLLISION ===
+function checkCollisions(){
+  const catcherY=H-60;
+  const cw=getCatcherWidth();
+  const cx=LANE_W*lane+LANE_W/2;
+  const bands=getBandColors();
+  const catcherBand=bandAt(catcherY);
+
+  for(let i=orbs.length-1;i>=0;i--){
+    const o=orbs[i];
+    if(!o.alive) continue;
+
+    // Check if orb is at catcher level
+    if(o.y+o.r >= catcherY-CATCHER_H/2 && o.y-o.r <= catcherY+CATCHER_H/2){
+      // Check if in same lane area
+      if(Math.abs(o.x - cx) < cw/2 + o.r/2){
+        // Caught!
+        if(o.colorIdx === catcherBand){
+          // Correct catch!
+          const pts = goldenTimer>0 ? 2 : 1;
+          score += pts;
+          streak++;
+          combo++;
+          catcherGlow=0.4;
+
+          const perfect = Math.abs(o.y - catcherY) < 8;
+          if(perfect){
+            hitStop=0.075;
+            spawnParticles(o.x, o.y, bandHSL(bands[o.colorIdx]), 25, 1.3);
+            sfxPerfect();
+            triggerShake(3, 0.12);
+          } else {
+            spawnParticles(o.x, o.y, bandHSL(bands[o.colorIdx]), 12, 0.8);
+            sfxCatch();
+            triggerShake(1.5, 0.08);
+          }
+
+          // Sun lift
+          sunY = Math.max(40, sunY - 3);
+          sunExtraSpeed = Math.max(0, sunExtraSpeed - 0.5);
+
+          // Golden minute check
+          const milestone = Math.floor(streak/10)*10;
+          if(milestone > 0 && milestone > lastGoldenMilestone && streak % 10 === 0){
+            goldenTimer=3;
+            goldenFlash=0.5;
+            lastGoldenMilestone=milestone;
+            sfxGolden();
+            spawnParticles(W/2, H/2, '#FFD700', 40, 2);
+          }
+
+          hudScore.textContent=score;
+        } else {
+          // Wrong color - instant fail
+          spawnParticles(o.x, o.y, '#ff2222', 30, 1.5);
+          gameOver('Wrong color! You caught a mismatched orb.');
+        }
+        o.alive=false;
+      }
+    }
+
+    // Missed - fell past bottom
+    if(o.y > H + o.r*2){
+      o.alive=false;
+      streak=0;
+      combo=0;
+      missPenalty++;
+      const penaltyMult = score>=80 ? 5 : 3;
+      sunExtraSpeed += penaltyMult;
+      sfxMiss();
+    }
+  }
+
+  orbs=orbs.filter(o=>o.alive);
+}
+
+// === UPDATE ===
+function update(dt){
+  if(state!=='playing') return;
+  if(hitStop>0){hitStop-=dt;return;}
+
+  gameTime+=dt;
+  hueShift+=dt*6; // slow color cycling
+
+  // Sun sinking
+  const totalSunSpeed = sunBaseSpeed + sunExtraSpeed;
+  sunY += totalSunSpeed * dt;
+  sunExtraSpeed *= 0.995; // slow decay
+
+  if(sunY >= H-SUN_R){
+    gameOver('The sun has set! Too many missed orbs.');
+    return;
+  }
+
+  // Golden timer
+  if(goldenTimer>0){
+    goldenTimer-=dt;
+    goldenFlash-=dt;
+  }
+
+  // Spawn
+  spawnTimer-=dt;
+  if(spawnTimer<=0){
+    spawnOrbs();
+    spawnTimer=getSpawnInterval();
+  }
+
+  // Move orbs
+  for(const o of orbs){
+    o.speed=getOrbSpeed();
+    o.y+=o.speed*dt;
+  }
+
+  // Collisions
+  checkCollisions();
+
+  // Particles
+  for(const p of particles){
+    p.x+=p.vx*dt;
+    p.y+=p.vy*dt;
+    p.vy+=200*dt; // gravity
+    p.life-=dt;
+  }
+  particles=particles.filter(p=>p.life>0);
+
+  // Shake
+  if(shakeDur>0){
+    shakeDur-=dt;
+    shakeX=(Math.random()-0.5)*shakeInt*2;
+    shakeY=(Math.random()-0.5)*shakeInt*2;
+  } else {
+    shakeX=0;shakeY=0;
+  }
+
+  // Red flash decay
+  if(redFlash>0) redFlash-=dt*2;
+
+  // Catcher glow decay
+  if(catcherGlow>0) catcherGlow-=dt*2;
+}
+
+// === DRAW ===
+function drawOrbIcon(ctx, x, y, r, icon, color){
+  ctx.save();
+  ctx.globalAlpha=0.6;
+  ctx.strokeStyle='#fff';
+  ctx.lineWidth=2;
+  if(icon==='stripe'){
+    for(let i=-1;i<=1;i++){
+      ctx.beginPath();
+      ctx.moveTo(x+i*8, y-r*0.6);
+      ctx.lineTo(x+i*8, y+r*0.6);
+      ctx.stroke();
+    }
+  } else if(icon==='dot'){
+    ctx.fillStyle='#fff';
+    ctx.beginPath();ctx.arc(x,y,4,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.arc(x-8,y,2.5,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.arc(x+8,y,2.5,0,Math.PI*2);ctx.fill();
+  } else if(icon==='triangle'){
+    ctx.beginPath();
+    ctx.moveTo(x, y-r*0.5);
+    ctx.lineTo(x-r*0.45, y+r*0.35);
+    ctx.lineTo(x+r*0.45, y+r*0.35);
+    ctx.closePath();
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function draw(){
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
+
+  const bands=getBandColors();
+
+  // Draw sky bands
+  for(let i=0;i<3;i++){
+    const gy=i*BAND_H;
+    const grad=ctx.createLinearGradient(0,gy,0,gy+BAND_H);
+    grad.addColorStop(0, bandHSLDark(bands[i]));
+    grad.addColorStop(1, bandHSL(bands[i]));
+    ctx.fillStyle=grad;
+    ctx.fillRect(0,gy,W,BAND_H);
+
+    // Band divider
+    if(i>0){
+      ctx.strokeStyle='rgba(255,255,255,0.08)';
+      ctx.lineWidth=1;
+      ctx.beginPath();
+      ctx.moveTo(0,gy);ctx.lineTo(W,gy);
+      ctx.stroke();
+    }
+  }
+
+  // Lane lines
+  for(let i=1;i<3;i++){
+    ctx.strokeStyle='rgba(255,255,255,0.06)';
+    ctx.lineWidth=1;
+    ctx.setLineDash([8,8]);
+    ctx.beginPath();
+    ctx.moveTo(LANE_W*i, 0);
+    ctx.lineTo(LANE_W*i, H);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Sun
+  const sunGrad=ctx.createRadialGradient(W/2,sunY,0,W/2,sunY,SUN_R*2);
+  sunGrad.addColorStop(0,'rgba(255,220,50,0.9)');
+  sunGrad.addColorStop(0.4,'rgba(255,180,30,0.6)');
+  sunGrad.addColorStop(1,'rgba(255,100,0,0)');
+  ctx.fillStyle=sunGrad;
+  ctx.beginPath();ctx.arc(W/2,sunY,SUN_R*2,0,Math.PI*2);ctx.fill();
+
+  ctx.fillStyle='#FFD700';
+  ctx.beginPath();ctx.arc(W/2,sunY,SUN_R,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle='rgba(255,255,255,0.3)';
+  ctx.lineWidth=2;
+  ctx.stroke();
+
+  // Sun danger bar
+  const dangerPct=Math.min(1, sunY/(H-SUN_R));
+  if(state==='playing'){
+    ctx.fillStyle='rgba(0,0,0,0.3)';
+    ctx.fillRect(W-20,20,8,200);
+    ctx.fillStyle=dangerPct>0.7?'#ff4444':'#ffaa33';
+    ctx.fillRect(W-20,20+(200*(1-dangerPct)),8,200*dangerPct);
+    ctx.strokeStyle='rgba(255,255,255,0.2)';
+    ctx.strokeRect(W-20,20,8,200);
+    // Sun icon
+    ctx.fillStyle='#FFD700';
+    ctx.font='10px sans-serif';
+    ctx.textAlign='center';
+    ctx.fillText('☀',W-16,16);
+  }
+
+  // Orbs
+  for(const o of orbs){
+    const band=bands[o.colorIdx];
+    const color=bandHSL(band);
+
+    // Shadow
+    ctx.fillStyle='rgba(0,0,0,0.2)';
+    ctx.beginPath();ctx.ellipse(o.x+2,o.y+3,o.r,o.r*0.7,0,0,Math.PI*2);ctx.fill();
+
+    // Main orb
+    const orbGrad=ctx.createRadialGradient(o.x-4,o.y-4,2,o.x,o.y,o.r);
+    orbGrad.addColorStop(0, bandHSLLight(band));
+    orbGrad.addColorStop(1, color);
+    ctx.fillStyle=orbGrad;
+    ctx.beginPath();ctx.arc(o.x,o.y,o.r,0,Math.PI*2);ctx.fill();
+
+    // Thick outline
+    ctx.strokeStyle='rgba(255,255,255,0.7)';
+    ctx.lineWidth=3;
+    ctx.stroke();
+
+    // Inner outline
+    ctx.strokeStyle=bandHSLDark(band);
+    ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.arc(o.x,o.y,o.r-3,0,Math.PI*2);ctx.stroke();
+
+    // Icon stamp
+    drawOrbIcon(ctx, o.x, o.y, o.r, band.icon, color);
+
+    // Decoy marker (subtle sparkle to distinguish)
+    if(o.isDecoy){
+      ctx.globalAlpha=0.4+Math.sin(gameTime*10)*0.2;
+      ctx.strokeStyle='#fff';
+      ctx.lineWidth=1;
+      ctx.beginPath();ctx.arc(o.x,o.y,o.r+4,0,Math.PI*2);ctx.stroke();
+      ctx.globalAlpha=1;
+    }
+  }
+
+  // Catcher
+  const catcherY=H-60;
+  const cx=LANE_W*lane+LANE_W/2;
+  const cw=getCatcherWidth();
+  const catcherBand=bandAt(catcherY);
+  const cbColor=bandHSL(bands[catcherBand]);
+
+  // Catcher glow
+  if(catcherGlow>0 || goldenTimer>0){
+    const glowColor=goldenTimer>0?'rgba(255,215,0,':'rgba(255,255,255,';
+    ctx.fillStyle=glowColor+(Math.min(0.4,catcherGlow+((goldenTimer>0)?0.2:0)))+')';
+    ctx.beginPath();
+    ctx.ellipse(cx,catcherY,cw*0.8,CATCHER_H,0,0,Math.PI*2);
+    ctx.fill();
+  }
+
+  // Catcher body
+  const catchGrad=ctx.createLinearGradient(cx-cw/2,catcherY-CATCHER_H/2,cx+cw/2,catcherY+CATCHER_H/2);
+  catchGrad.addColorStop(0,'rgba(255,255,255,0.9)');
+  catchGrad.addColorStop(1,'rgba(220,220,255,0.7)');
+  ctx.fillStyle=catchGrad;
+  roundRect(ctx, cx-cw/2, catcherY-CATCHER_H/2, cw, CATCHER_H, 10);
+  ctx.fill();
+
+  // Band color indicator on catcher
+  ctx.fillStyle=cbColor;
+  roundRect(ctx, cx-cw/2+4, catcherY-CATCHER_H/2+4, cw-8, CATCHER_H-8, 6);
+  ctx.fill();
+  ctx.globalAlpha=0.8;
+  drawOrbIcon(ctx, cx, catcherY, CATCHER_H/2, bands[catcherBand].icon, cbColor);
+  ctx.globalAlpha=1;
+
+  // Catcher outline
+  ctx.strokeStyle=goldenTimer>0?'#FFD700':'rgba(255,255,255,0.5)';
+  ctx.lineWidth=goldenTimer>0?3:2;
+  roundRect(ctx, cx-cw/2, catcherY-CATCHER_H/2, cw, CATCHER_H, 10);
+  ctx.stroke();
+
+  // Lane indicator dots
+  for(let i=0;i<3;i++){
+    ctx.fillStyle=i===lane?'rgba(255,255,255,0.8)':'rgba(255,255,255,0.2)';
+    ctx.beginPath();
+    ctx.arc(LANE_W*i+LANE_W/2, H-20, 4, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  // Particles
+  for(const p of particles){
+    const alpha=Math.max(0,p.life/p.maxLife);
+    ctx.globalAlpha=alpha;
+    ctx.fillStyle=p.golden?`hsl(${45+Math.random()*20},100%,${60+Math.random()*20}%)`:p.color;
+    ctx.beginPath();ctx.arc(p.x,p.y,p.r*alpha,0,Math.PI*2);ctx.fill();
+  }
+  ctx.globalAlpha=1;
+
+  // Streak / Combo display
+  if(state==='playing' && streak>0){
+    ctx.fillStyle='rgba(255,255,255,0.7)';
+    ctx.font='bold 14px sans-serif';
+    ctx.textAlign='left';
+    ctx.fillText(`Streak: ${streak}`,12,H-8);
+  }
+
+  // Golden Minute indicator
+  if(goldenTimer>0){
+    ctx.fillStyle='#FFD700';
+    ctx.font='bold 18px sans-serif';
+    ctx.textAlign='center';
+    ctx.fillText('GOLDEN MINUTE!',W/2,40);
+    ctx.fillStyle='rgba(255,215,0,0.3)';
+    ctx.fillRect(0,0,W*(goldenTimer/3),4);
+  }
+
+  // Red flash vignette
+  if(redFlash>0){
+    const vg=ctx.createRadialGradient(W/2,H/2,W*0.3,W/2,H/2,W);
+    vg.addColorStop(0,'rgba(255,0,0,0)');
+    vg.addColorStop(1,`rgba(255,0,0,${Math.min(0.5,redFlash)})`);
+    ctx.fillStyle=vg;
+    ctx.fillRect(0,0,W,H);
+  }
+
+  // === STATE OVERLAYS ===
+  if(state==='start'){
+    ctx.fillStyle='rgba(10,5,30,0.75)';
+    ctx.fillRect(0,0,W,H);
+
+    ctx.fillStyle='#FFD700';
+    ctx.font='bold 38px sans-serif';
+    ctx.textAlign='center';
+    ctx.fillText('Sunset Scoop',W/2,H*0.28);
+
+    ctx.fillStyle='#ffb347';
+    ctx.font='16px sans-serif';
+    ctx.fillText('Sky-Match Dash',W/2,H*0.33);
+
+    ctx.fillStyle='rgba(255,255,255,0.8)';
+    ctx.font='14px sans-serif';
+    ctx.fillText('Tap to cycle lanes',W/2,H*0.43);
+    ctx.fillText('Catch orbs matching the sky band',W/2,H*0.47);
+    ctx.fillText('behind your catcher!',W/2,H*0.51);
+
+    // Pulsing start text
+    const pulse=0.7+Math.sin(Date.now()/400)*0.3;
+    ctx.globalAlpha=pulse;
+    ctx.fillStyle='#fff';
+    ctx.font='bold 22px sans-serif';
+    ctx.fillText('Tap / Space to Start',W/2,H*0.65);
+    ctx.globalAlpha=1;
+
+    ctx.fillStyle='rgba(255,255,255,0.4)';
+    ctx.font='12px sans-serif';
+    ctx.fillText('Arrow keys / A-D for direct lane control',W/2,H*0.72);
+
+    if(best>0){
+      ctx.fillStyle='#ffb347';
+      ctx.font='bold 14px sans-serif';
+      ctx.fillText(`Best: ${best}`,W/2,H*0.80);
+    }
+  }
+
+  if(state==='gameover'){
+    ctx.fillStyle='rgba(10,5,30,0.82)';
+    ctx.fillRect(0,0,W,H);
+
+    ctx.fillStyle='#ff4444';
+    ctx.font='bold 34px sans-serif';
+    ctx.textAlign='center';
+    ctx.fillText('Game Over',W/2,H*0.22);
+
+    ctx.fillStyle='#fff';
+    ctx.font='bold 48px sans-serif';
+    ctx.fillText(score,W/2,H*0.33);
+
+    ctx.fillStyle='rgba(255,255,255,0.5)';
+    ctx.font='14px sans-serif';
+    ctx.fillText('SCORE',W/2,H*0.36);
+
+    if(score>=best && score>0){
+      ctx.fillStyle='#FFD700';
+      ctx.font='bold 16px sans-serif';
+      ctx.fillText('NEW BEST!',W/2,H*0.40);
+    } else {
+      ctx.fillStyle='#ffb347';
+      ctx.font='14px sans-serif';
+      ctx.fillText(`Best: ${best}`,W/2,H*0.40);
+    }
+
+    // Fail cause
+    ctx.fillStyle='rgba(255,200,200,0.7)';
+    ctx.font='13px sans-serif';
+    wrapText(ctx,failCause,W/2,H*0.47,W-40,16);
+
+    // Next golden tease
+    const nextMilestone=Math.ceil((streak+1)/10)*10;
+    if(streak>2){
+      ctx.fillStyle='rgba(255,215,0,0.6)';
+      ctx.font='12px sans-serif';
+      ctx.fillText(`Streak was ${streak} - Golden at ${nextMilestone}!`,W/2,H*0.55);
+    }
+
+    // Retry
+    const rPulse=0.7+Math.sin(Date.now()/400)*0.3;
+    ctx.globalAlpha=rPulse;
+    ctx.fillStyle='#fff';
+    ctx.font='bold 20px sans-serif';
+    ctx.fillText('Tap to Retry',W/2,H*0.65);
+    ctx.globalAlpha=1;
+
+    // Share button area
+    ctx.fillStyle='rgba(255,255,255,0.15)';
+    roundRect(ctx,W/2-70,H*0.71-14,140,32,8);
+    ctx.fill();
+    ctx.strokeStyle='rgba(255,255,255,0.3)';
+    ctx.lineWidth=1;
+    roundRect(ctx,W/2-70,H*0.71-14,140,32,8);
+    ctx.stroke();
+    ctx.fillStyle='#fff';
+    ctx.font='14px sans-serif';
+    ctx.fillText('Share / Challenge',W/2,H*0.71+6);
+  }
+
+  ctx.restore();
+}
+
+function wrapText(ctx,text,x,y,maxW,lineH){
+  const words=text.split(' ');
+  let line='';
+  for(const w of words){
+    const test=line+w+' ';
+    if(ctx.measureText(test).width>maxW && line!==''){
+      ctx.fillText(line.trim(),x,y);
+      line=w+' ';
+      y+=lineH;
+    } else {
+      line=test;
+    }
+  }
+  ctx.fillText(line.trim(),x,y);
+}
+
+function roundRect(ctx,x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.lineTo(x+w-r,y);
+  ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+  ctx.lineTo(x+w,y+h-r);
+  ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  ctx.lineTo(x+r,y+h);
+  ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+  ctx.lineTo(x,y+r);
+  ctx.quadraticCurveTo(x,y,x+r,y);
+  ctx.closePath();
+}
+
+// === MAIN LOOP ===
+let lastTime=0;
+function loop(ts){
+  const dt=Math.min((ts-lastTime)/1000, 0.05);
+  lastTime=ts;
+
+  resize();
+  update(dt);
+  draw();
+
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame((ts)=>{lastTime=ts;loop(ts);});
+
+// === INPUT ===
+function handleAction(e){
+  if(e) e.preventDefault();
+  initAudio();
+  if(state==='start'){
+    startGame();
+  } else if(state==='playing'){
+    lane=(lane+1)%3;
+    playTone(400+lane*100,0.05,'sine',0.06);
+  } else if(state==='gameover'){
+    startGame();
+  }
+}
+
+function handleShare(e){
+  if(e) e.preventDefault();
+  e.stopPropagation();
+  const text=`I scored ${score} in Sunset Scoop! Can you beat me?\nhttps://balinti.github.io/sunset-scoop/`;
+
+  // Try generating a share card
+  try{
+    const sc=document.createElement('canvas');
+    sc.width=400;sc.height=210;
+    const sctx=sc.getContext('2d');
+    const sg=sctx.createLinearGradient(0,0,0,210);
+    sg.addColorStop(0,'#1a0a2e');sg.addColorStop(0.5,'#ff6b35');sg.addColorStop(1,'#ffd700');
+    sctx.fillStyle=sg;sctx.fillRect(0,0,400,210);
+    sctx.fillStyle='#fff';sctx.font='bold 28px sans-serif';sctx.textAlign='center';
+    sctx.fillText('Sunset Scoop',200,50);
+    sctx.font='bold 60px sans-serif';sctx.fillText(score,200,120);
+    sctx.font='16px sans-serif';sctx.fillStyle='rgba(255,255,255,0.8)';
+    sctx.fillText('Can you beat my score?',200,155);
+    sctx.font='12px sans-serif';sctx.fillStyle='rgba(255,255,255,0.5)';
+    sctx.fillText('balinti.github.io/sunset-scoop',200,190);
+
+    sc.toBlob((blob)=>{
+      if(navigator.share && blob){
+        const file=new File([blob],'sunset-scoop-score.png',{type:'image/png'});
+        navigator.share({title:'Sunset Scoop',text:text,files:[file]}).catch(()=>{
+          navigator.share({title:'Sunset Scoop',text:text}).catch(()=>copyFallback(text));
+        });
+      } else if(navigator.share){
+        navigator.share({title:'Sunset Scoop',text:text}).catch(()=>copyFallback(text));
+      } else {
+        // Download card + copy
+        const a=document.createElement('a');a.href=sc.toDataURL();a.download='sunset-scoop-score.png';a.click();
+        copyFallback(text);
+      }
+    },'image/png');
+  } catch(err){
+    if(navigator.share){
+      navigator.share({title:'Sunset Scoop',text:text}).catch(()=>copyFallback(text));
+    } else {
+      copyFallback(text);
+    }
+  }
+}
+
+function copyFallback(text){
+  navigator.clipboard.writeText(text).then(()=>alert('Score copied to clipboard!')).catch(()=>alert(text));
+}
+
+canvas.addEventListener('pointerdown',(e)=>{
+  e.preventDefault();
+  // Check if gameover and clicking share area
+  if(state==='gameover'){
+    const rect=canvas.getBoundingClientRect();
+    const scaleX=W/rect.width;
+    const scaleY=H/rect.height;
+    const mx=(e.clientX-rect.left)*scaleX;
+    const my=(e.clientY-rect.top)*scaleY;
+    if(mx>W/2-70 && mx<W/2+70 && my>H*0.71-14 && my<H*0.71+18){
+      handleShare(e);
+      return;
+    }
+  }
+  handleAction(e);
+});
+
+document.addEventListener('keydown',(e)=>{
+  if(e.code==='Space'||e.code==='Enter'){
+    e.preventDefault();
+    if(state==='start'||state==='gameover'){
+      handleAction();
+    } else if(state==='playing' && e.code==='Space'){
+      lane=(lane+1)%3;
+      playTone(400+lane*100,0.05,'sine',0.06);
+    }
+  }
+  if(state==='playing'){
+    if(e.code==='ArrowLeft'||e.code==='KeyA'){
+      lane=Math.max(0,lane-1);
+      playTone(400+lane*100,0.05,'sine',0.06);
+      e.preventDefault();
+    }
+    if(e.code==='ArrowRight'||e.code==='KeyD'){
+      lane=Math.min(2,lane+1);
+      playTone(400+lane*100,0.05,'sine',0.06);
+      e.preventDefault();
+    }
+  }
+});
+
+// Prevent scroll on touch
+canvas.addEventListener('touchstart',(e)=>e.preventDefault(),{passive:false});
+canvas.addEventListener('touchmove',(e)=>e.preventDefault(),{passive:false});
+
+// Mute toggle
+const btnMute=document.getElementById('btn-mute');
+btnMute.addEventListener('click',()=>{
+  muted=!muted;
+  btnMute.textContent=muted?'Sound: OFF':'Sound: ON';
+});
+
+// Help overlay
+document.getElementById('btn-help').addEventListener('click',()=>{
+  document.getElementById('help-overlay').classList.toggle('show');
+});
+document.getElementById('help-overlay').addEventListener('click',(e)=>{
+  if(e.target===document.getElementById('help-overlay')){
+    document.getElementById('help-overlay').classList.remove('show');
+  }
+});
+
+})();
+</script>
+</body>
+</html>

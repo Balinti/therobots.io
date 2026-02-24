@@ -1,0 +1,1095 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Pipe Align - Free HTML5 Game</title>
+  <meta name="description" content="Play Pipe Align - Stack pipes accurately as the steampunk screen rotates to avoid leaks and crashes.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#1a0a00">
+  <link rel="canonical" href="https://balinti.github.io/pipe-align/">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Pipe Align - Free HTML5 Game">
+  <meta property="og:description" content="Play Pipe Align - Stack pipes accurately as the steampunk screen rotates to avoid leaks and crashes.">
+  <meta property="og:url" content="https://balinti.github.io/pipe-align/">
+  <meta property="og:image" content="https://balinti.github.io/pipe-align/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Pipe Align - Free HTML5 Game">
+  <meta name="twitter:description" content="Play Pipe Align - Stack pipes accurately as the steampunk screen rotates to avoid leaks and crashes.">
+  <meta name="twitter:image" content="https://balinti.github.io/pipe-align/og-image.png">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #0d0500;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: flex-start;
+      font-family: 'Courier New', monospace;
+      overflow-x: hidden;
+    }
+    #game-wrap {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      height: 100vh;
+      max-height: 750px;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+    }
+    #gameCanvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: manipulation;
+      cursor: pointer;
+    }
+    #seo-block {
+      width: 100%;
+      max-width: 420px;
+      padding: 18px 16px 40px;
+      color: #7a5c3a;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+    #seo-block h2 { font-size: 14px; color: #b07040; margin: 12px 0 4px; }
+    #seo-block h3 { font-size: 12px; color: #9a6030; margin: 10px 0 3px; }
+    #seo-block p { margin-bottom: 6px; }
+  </style>
+</head>
+<body>
+<div id="game-wrap">
+  <canvas id="gameCanvas"></canvas>
+</div>
+
+<div id="seo-block" aria-label="Game information">
+  <h2>How to Play Pipe Align</h2>
+  <p>Tap or press Space/Enter to weld the incoming pipe segment to the junction when the connector rings align. Hit the tight center window for a <strong>Perfect Weld</strong> — earn bonus score, sparks, and pressure. Hit the wider ring for a <strong>Good Weld</strong>. Miss and you spring a leak, draining pressure!</p>
+  <h3>Tips</h3>
+  <p>Watch for <strong>Valve</strong> segments (orange) — a Perfect on a Valve refills your pressure and boosts your multiplier. Build combos to multiply your score. Speed increases over time, so stay sharp!</p>
+  <h3>About Pipe Align</h3>
+  <p>Pipe Align is a free browser-based steampunk welding timing game. Tap once to weld — but timing is everything. How many pipes can you seal before the pressure drops to zero?</p>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+// ── Canvas / DPR setup ──────────────────────────────────────────────────────
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const wrap = document.getElementById('game-wrap');
+
+let W = 420, H = 750;
+let DPR = Math.min(window.devicePixelRatio || 1, 2.5);
+
+function resize() {
+  const rect = wrap.getBoundingClientRect();
+  W = rect.width; H = rect.height;
+  DPR = Math.min(window.devicePixelRatio || 1, 2.5);
+  canvas.width = W * DPR;
+  canvas.height = H * DPR;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ── Audio ───────────────────────────────────────────────────────────────────
+let audioCtx = null;
+function getAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+
+function playClank(perfect) {
+  try {
+    const ac = getAudio();
+    const t = ac.currentTime;
+    // Metallic clank = short sine burst + noise
+    const osc = ac.createOscillator();
+    const gain = ac.createGain();
+    osc.connect(gain); gain.connect(ac.destination);
+    osc.frequency.setValueAtTime(perfect ? 880 : 660, t);
+    osc.frequency.exponentialRampToValueAtTime(200, t + 0.15);
+    gain.gain.setValueAtTime(perfect ? 0.4 : 0.25, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+    osc.start(t); osc.stop(t + 0.2);
+
+    // Second harmonic
+    const osc2 = ac.createOscillator();
+    const gain2 = ac.createGain();
+    osc2.connect(gain2); gain2.connect(ac.destination);
+    osc2.frequency.setValueAtTime(perfect ? 1320 : 990, t);
+    osc2.frequency.exponentialRampToValueAtTime(400, t + 0.1);
+    gain2.gain.setValueAtTime(perfect ? 0.2 : 0.12, t);
+    gain2.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+    osc2.start(t); osc2.stop(t + 0.12);
+  } catch(e){}
+}
+
+function playHiss() {
+  try {
+    const ac = getAudio();
+    const t = ac.currentTime;
+    const bufSize = ac.sampleRate * 0.3;
+    const buf = ac.createBuffer(1, bufSize, ac.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < bufSize; i++) data[i] = (Math.random() * 2 - 1) * 0.5;
+    const src = ac.createBufferSource();
+    src.buffer = buf;
+    const filter = ac.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(800, t);
+    filter.Q.value = 0.5;
+    const gain = ac.createGain();
+    gain.gain.setValueAtTime(0.35, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+    src.connect(filter); filter.connect(gain); gain.connect(ac.destination);
+    src.start(t); src.stop(t + 0.3);
+  } catch(e){}
+}
+
+function playValve() {
+  try {
+    const ac = getAudio();
+    const t = ac.currentTime;
+    [440, 554, 659, 880].forEach((freq, i) => {
+      const osc = ac.createOscillator();
+      const gain = ac.createGain();
+      osc.connect(gain); gain.connect(ac.destination);
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, t + i * 0.07);
+      gain.gain.setValueAtTime(0.2, t + i * 0.07);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.07 + 0.2);
+      osc.start(t + i * 0.07);
+      osc.stop(t + i * 0.07 + 0.25);
+    });
+  } catch(e){}
+}
+
+// ── Game State ──────────────────────────────────────────────────────────────
+const LS_KEY = 'pipeAlignBest';
+let state = 'start'; // 'start' | 'playing' | 'gameover'
+let score = 0;
+let best = parseInt(localStorage.getItem(LS_KEY) || '0');
+let combo = 0;
+let multiplier = 1;
+let pressure = 100;
+let totalWelds = 0;
+let hue = 180; // HSL color cycling
+
+// Pipe / junction
+const JX = 0; // junction X relative center
+const JY = 0; // junction Y relative center
+let junctionShake = 0;
+let junctionShakeAngle = 0;
+
+// Incoming pipe
+let pipe = null;
+let pipeQueue = [];
+
+// Camera shake
+let trauma = 0;
+let shakeX = 0, shakeY = 0;
+
+// Dial rotation
+let dialAngle = 0;
+
+// Slow-mo
+let slowMo = 0; // seconds remaining
+
+// Particles
+let particles = [];
+
+// Overlay effects
+let vignette = 0; // red vignette alpha
+let flashAlpha = 0; // white flash
+
+// Popup text
+let popups = [];
+
+// Stutter state
+let stutterActive = false;
+let stutterTimer = 0;
+let stutterOffset = 0;
+
+// Multiplier bump timer
+let multiBump = 0;
+
+// Share button area (gameover)
+const SHARE_BTN = { x: 0, y: 0, w: 160, h: 44 };
+
+// ── Pipe segment types ──────────────────────────────────────────────────────
+// Types: 'straight', 'elbow', 'valve'
+function makePipe(weldCount) {
+  // Valve appears < 10% early, gets rarer
+  const valveChance = Math.max(0.04, 0.12 - weldCount * 0.002);
+  const r = Math.random();
+  let type = 'straight';
+  if (r < valveChance) type = 'valve';
+  else if (r < valveChance + 0.3) type = 'elbow';
+
+  // Base speed + difficulty
+  const baseSpeed = 90 + Math.min(weldCount * 3, 160); // px/s
+
+  // Stutter: every 7th pipe after weld 14
+  const isStutter = weldCount >= 14 && (weldCount % 7 === 0);
+
+  return {
+    type,
+    x: W + 80,       // start off right edge
+    y: H / 2,        // vertical center
+    speed: baseSpeed,
+    isStutter,
+    stutterPhase: 0,
+    width: 90,
+    height: 28,
+    connectorX: -45, // left tip (connector end faces junction)
+    gone: false,
+    weldDone: false,
+  };
+}
+
+function spawnPipe() {
+  pipe = makePipe(totalWelds);
+  stutterActive = pipe.isStutter;
+  stutterTimer = 0;
+  stutterOffset = 0;
+}
+
+// ── Perfect / Good windows ──────────────────────────────────────────────────
+function getWindows() {
+  const perfect = Math.max(14, 30 - totalWelds * 0.4); // px half-width
+  const good = 38; // stays fair
+  return { perfect, good };
+}
+
+// ── Junction position (screen center) ──────────────────────────────────────
+function junctionPos() {
+  return { x: W / 2, y: H / 2 };
+}
+
+// ── Particles ───────────────────────────────────────────────────────────────
+function spawnSparks(x, y, count, color) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 60 + Math.random() * 180;
+    particles.push({
+      kind: 'spark',
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 0.3 + Math.random() * 0.4,
+      maxLife: 0.5,
+      color,
+      size: 2 + Math.random() * 3,
+    });
+  }
+}
+
+function spawnSmoke(x, y) {
+  for (let i = 0; i < 8; i++) {
+    particles.push({
+      kind: 'smoke',
+      x: x + (Math.random()-0.5)*20,
+      y: y + (Math.random()-0.5)*10,
+      vx: (Math.random()-0.5)*30,
+      vy: -40 - Math.random()*50,
+      life: 0.8 + Math.random()*0.5,
+      maxLife: 1.2,
+      size: 10 + Math.random()*14,
+    });
+  }
+}
+
+function spawnShockwave(x, y) {
+  particles.push({ kind: 'shockwave', x, y, r: 10, life: 0.4, maxLife: 0.4 });
+}
+
+// ── Popup text ───────────────────────────────────────────────────────────────
+function addPopup(text, x, y, color, size) {
+  popups.push({ text, x, y, vy: -60, life: 1.0, maxLife: 1.0, color, size: size||26 });
+}
+
+// ── Multiplier calculation ───────────────────────────────────────────────────
+function comboToMultiplier(c) {
+  if (c >= 24) return 5;
+  if (c >= 18) return 4;
+  if (c >= 12) return 3;
+  if (c >= 6)  return 2;
+  return 1;
+}
+
+// ── Input ────────────────────────────────────────────────────────────────────
+function handleInput(clientX, clientY) {
+  if (state === 'start') {
+    startGame();
+    return;
+  }
+  if (state === 'gameover') {
+    // Check share button
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = W / rect.width;
+    const scaleY = H / rect.height;
+    const gx = (clientX - rect.left) * scaleX;
+    const gy = (clientY - rect.top)  * scaleY;
+    const sb = SHARE_BTN;
+    if (gx >= sb.x && gx <= sb.x + sb.w && gy >= sb.y && gy <= sb.y + sb.h) {
+      doShare();
+    } else {
+      startGame();
+    }
+    return;
+  }
+  // playing
+  tryWeld();
+}
+
+canvas.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  handleInput(e.clientX, e.clientY);
+});
+
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    handleInput(-999, -999); // won't hit share button
+  }
+});
+
+// ── Share ─────────────────────────────────────────────────────────────────────
+function doShare() {
+  const shareText = `I sealed ${score} pipes in Pipe Align. Can you beat me?`;
+  const shareURL = `https://balinti.github.io/pipe-align/?ref=share&score=${score}`;
+  if (navigator.share) {
+    navigator.share({ title: 'Pipe Align', text: shareText, url: shareURL }).catch(()=>{});
+  } else {
+    navigator.clipboard.writeText(shareURL).then(()=>{
+      addPopup('Link copied!', W/2, H/2 - 60, '#88ffcc', 20);
+    }).catch(()=>{
+      addPopup(shareURL, W/2, H/2 - 60, '#88ffcc', 12);
+    });
+  }
+}
+
+// ── Game flow ─────────────────────────────────────────────────────────────────
+function startGame() {
+  state = 'playing';
+  score = 0;
+  combo = 0;
+  multiplier = 1;
+  pressure = 100;
+  totalWelds = 0;
+  hue = 180;
+  particles = [];
+  popups = [];
+  trauma = 0;
+  vignette = 0;
+  flashAlpha = 0;
+  slowMo = 0;
+  stutterActive = false;
+  pipe = null;
+  spawnPipe();
+}
+
+function endGame() {
+  state = 'gameover';
+  if (score > best) {
+    best = score;
+    localStorage.setItem(LS_KEY, best);
+  }
+  trauma = 0.9;
+  particles = [];
+  popups = [];
+}
+
+// ── Weld logic ────────────────────────────────────────────────────────────────
+function tryWeld() {
+  if (!pipe || pipe.weldDone || pipe.gone) return;
+  const jp = junctionPos();
+  // Pipe connector tip position
+  const tipX = pipe.x + pipe.connectorX;
+  const dist = Math.abs(tipX - jp.x);
+  const { perfect, good } = getWindows();
+
+  if (dist <= perfect) {
+    doWeld('perfect');
+  } else if (dist <= good) {
+    doWeld('good');
+  } else {
+    // Tap outside window — still record miss but pipe continues
+    doLeak();
+  }
+}
+
+function doWeld(quality) {
+  if (!pipe || pipe.weldDone) return;
+  pipe.weldDone = true;
+  pipe.speed = 0;
+  totalWelds++;
+  combo++;
+  multiplier = comboToMultiplier(combo);
+  multiBump = 0.3;
+
+  const jp = junctionPos();
+  hue = (hue + 15) % 360;
+
+  if (quality === 'perfect' && pipe.type === 'valve') {
+    // Valve perfect
+    const pts = 30 * multiplier;
+    score += pts;
+    pressure = Math.min(100, pressure + 40);
+    multiplier = Math.min(5, multiplier + 1);
+    combo += 2; // bonus
+    addPopup('VALVE SEAL!', jp.x, jp.y - 70, '#ffaa00', 30);
+    addPopup(`+${pts}`, jp.x, jp.y - 40, '#ffdd66', 22);
+    spawnSparks(jp.x, jp.y, 28, `hsl(40,100%,65%)`);
+    spawnShockwave(jp.x, jp.y);
+    slowMo = 0.06;
+    flashAlpha = 0.18;
+    junctionShake = 0.35;
+    trauma = 0.15;
+    playValve();
+  } else if (quality === 'perfect') {
+    const pts = 20 * multiplier;
+    score += pts;
+    pressure = Math.min(100, pressure + 5);
+    addPopup('PERFECT!', jp.x, jp.y - 60, `hsl(${hue},100%,70%)`, 28);
+    addPopup(`+${pts}`, jp.x, jp.y - 32, '#ffffaa', 20);
+    spawnSparks(jp.x, jp.y, 18, `hsl(${hue},100%,70%)`);
+    spawnShockwave(jp.x, jp.y);
+    slowMo = 0.05;
+    flashAlpha = 0.12;
+    junctionShake = 0.2;
+    trauma = 0.08;
+    playClank(true);
+  } else {
+    const pts = 10 * multiplier;
+    score += pts;
+    addPopup('GOOD', jp.x, jp.y - 50, '#88ddff', 22);
+    addPopup(`+${pts}`, jp.x, jp.y - 26, '#aaffee', 18);
+    spawnSparks(jp.x, jp.y, 8, '#88ccff');
+    junctionShake = 0.1;
+    playClank(false);
+  }
+
+  // Schedule next pipe
+  setTimeout(() => {
+    if (state === 'playing') spawnPipe();
+  }, 320);
+}
+
+function doLeak() {
+  if (!pipe) return;
+  pipe.gone = true;
+  combo = 0;
+  multiplier = 1;
+
+  const drainBase = 12 + Math.min(totalWelds * 0.5, 20);
+  pressure = Math.max(0, pressure - drainBase);
+
+  const jp = junctionPos();
+  addPopup('LEAK!', jp.x, jp.y - 50, '#ff4444', 28);
+  spawnSmoke(jp.x, jp.y);
+  vignette = 0.55;
+  trauma = 0.4;
+  junctionShake = 0.5;
+  playHiss();
+
+  if (pressure <= 0) {
+    setTimeout(() => endGame(), 400);
+  } else {
+    setTimeout(() => {
+      if (state === 'playing') spawnPipe();
+    }, 500);
+  }
+}
+
+// ── Auto-miss if pipe goes past junction ─────────────────────────────────────
+function checkAutoMiss() {
+  if (!pipe || pipe.weldDone || pipe.gone) return;
+  const jp = junctionPos();
+  const tipX = pipe.x + pipe.connectorX;
+  const { good } = getWindows();
+  // If tip has passed junction by more than good window
+  if (tipX < jp.x - good - 10) {
+    doLeak();
+  }
+}
+
+// ── Main loop ─────────────────────────────────────────────────────────────────
+let lastTime = 0;
+
+function loop(ts) {
+  requestAnimationFrame(loop);
+  let dt = (ts - lastTime) / 1000;
+  lastTime = ts;
+  if (dt > 0.033) dt = 0.033;
+  if (dt <= 0) return;
+
+  // Slow-mo
+  let effDt = dt;
+  if (slowMo > 0) {
+    effDt = dt * 0.25;
+    slowMo -= dt;
+  }
+
+  update(effDt, dt);
+  render();
+}
+
+function update(dt, rawDt) {
+  // Dial rotation
+  dialAngle += dt * 0.18;
+
+  // Camera shake decay
+  trauma = Math.max(0, trauma - rawDt * 1.8);
+  const shakeAmt = trauma * trauma * 14;
+  shakeX = (Math.random() - 0.5) * 2 * shakeAmt;
+  shakeY = (Math.random() - 0.5) * 2 * shakeAmt;
+
+  // Junction shake
+  junctionShake = Math.max(0, junctionShake - rawDt * 3);
+  junctionShakeAngle = Math.sin(Date.now() * 0.05) * junctionShake * 0.18;
+
+  // Vignette decay
+  vignette = Math.max(0, vignette - rawDt * 1.5);
+  flashAlpha = Math.max(0, flashAlpha - rawDt * 3);
+
+  // Multiplier bump decay
+  multiBump = Math.max(0, multiBump - rawDt * 2);
+
+  // HSL cycling (slow)
+  hue = (hue + dt * 8) % 360;
+
+  // Passive pressure drain
+  if (state === 'playing') {
+    const passiveDrain = (0.5 + totalWelds * 0.02) * dt;
+    pressure = Math.max(0, pressure - passiveDrain);
+    if (pressure <= 0 && state === 'playing') endGame();
+  }
+
+  // Update pipe
+  if (state === 'playing' && pipe && !pipe.weldDone && !pipe.gone) {
+    // Stutter
+    let speedMod = 1;
+    if (stutterActive) {
+      stutterTimer += dt;
+      if (stutterTimer < 0.22) {
+        stutterOffset = Math.sin(stutterTimer / 0.22 * Math.PI) * pipe.speed * 0.5;
+        speedMod = 1 - Math.sin(stutterTimer / 0.22 * Math.PI) * 0.5;
+      } else {
+        stutterActive = false;
+        stutterOffset = 0;
+      }
+    }
+    pipe.x -= pipe.speed * speedMod * dt;
+    checkAutoMiss();
+  }
+
+  // Update particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.life -= dt;
+    if (p.life <= 0) { particles.splice(i, 1); continue; }
+    if (p.kind === 'spark') {
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy += 200 * dt; // gravity
+      p.vx *= 0.96;
+    } else if (p.kind === 'smoke') {
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy *= 0.97;
+      p.size += dt * 10;
+    } else if (p.kind === 'shockwave') {
+      p.r += dt * 280;
+    }
+  }
+
+  // Update popups
+  for (let i = popups.length - 1; i >= 0; i--) {
+    const p = popups[i];
+    p.life -= dt;
+    if (p.life <= 0) { popups.splice(i, 1); continue; }
+    p.y += p.vy * dt;
+  }
+}
+
+// ── Render ───────────────────────────────────────────────────────────────────
+function render() {
+  ctx.save();
+  ctx.clearRect(0, 0, W, H);
+
+  // Background gradient
+  const bg = ctx.createRadialGradient(W/2, H/2, 0, W/2, H/2, Math.max(W,H)*0.75);
+  bg.addColorStop(0, '#1e0e04');
+  bg.addColorStop(1, '#080300');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // Apply camera shake
+  ctx.translate(shakeX, shakeY);
+
+  // Rotating background dial
+  drawDial();
+
+  if (state === 'start') {
+    drawStartScreen();
+  } else if (state === 'playing') {
+    drawGame();
+  } else if (state === 'gameover') {
+    drawGameOverScreen();
+  }
+
+  // Red vignette
+  if (vignette > 0) {
+    const vig = ctx.createRadialGradient(W/2, H/2, H*0.25, W/2, H/2, H*0.75);
+    vig.addColorStop(0, `rgba(180,0,0,0)`);
+    vig.addColorStop(1, `rgba(220,0,0,${vignette})`);
+    ctx.fillStyle = vig;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // White flash
+  if (flashAlpha > 0) {
+    ctx.fillStyle = `rgba(255,255,255,${flashAlpha})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  ctx.restore();
+}
+
+function drawDial() {
+  ctx.save();
+  ctx.translate(W/2, H/2);
+  ctx.rotate(dialAngle);
+
+  const numTicks = 32;
+  for (let i = 0; i < numTicks; i++) {
+    const a = (i / numTicks) * Math.PI * 2;
+    const r1 = H * 0.46;
+    const r2 = r1 + (i % 4 === 0 ? 14 : 7);
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(a)*r1, Math.sin(a)*r1);
+    ctx.lineTo(Math.cos(a)*r2, Math.sin(a)*r2);
+    ctx.strokeStyle = i % 4 === 0 ? 'rgba(160,100,30,0.35)' : 'rgba(100,60,20,0.2)';
+    ctx.lineWidth = i % 4 === 0 ? 2 : 1;
+    ctx.stroke();
+  }
+
+  // Arcs
+  for (let k = 0; k < 3; k++) {
+    const r = H * 0.38 + k * 18;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(120,70,20,${0.1 - k*0.025})`;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawGame() {
+  const jp = junctionPos();
+
+  // Junction
+  drawJunction(jp.x, jp.y);
+
+  // Pipe
+  if (pipe) drawPipe(pipe, jp);
+
+  // Particles
+  drawParticles();
+
+  // Popups
+  drawPopups();
+
+  // HUD
+  drawHUD();
+}
+
+function drawJunction(x, y) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(junctionShakeAngle);
+
+  const mult = multiplier;
+  // Hue shifts by multiplier tier
+  const ringHue = mult >= 5 ? 50 : mult >= 4 ? 30 : mult >= 3 ? 280 : mult >= 2 ? 220 : hue;
+
+  // Ghost ring (snap zone guide)
+  const { perfect, good } = getWindows();
+
+  // Good zone ring (outer)
+  ctx.beginPath();
+  ctx.arc(0, 0, good + 8, 0, Math.PI * 2);
+  ctx.strokeStyle = `rgba(100,200,255,0.18)`;
+  ctx.lineWidth = 3;
+  ctx.setLineDash([6, 5]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Perfect zone ring
+  ctx.beginPath();
+  ctx.arc(0, 0, perfect + 8, 0, Math.PI * 2);
+  ctx.strokeStyle = `hsla(${ringHue},100%,70%,0.55)`;
+  ctx.lineWidth = 3;
+  ctx.setLineDash([4, 4]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Glowing junction body
+  const grd = ctx.createRadialGradient(0, 0, 4, 0, 0, 28);
+  grd.addColorStop(0, `hsla(${ringHue},80%,80%,0.9)`);
+  grd.addColorStop(0.5, `hsla(${ringHue},80%,50%,0.4)`);
+  grd.addColorStop(1, `hsla(${ringHue},60%,30%,0)`);
+  ctx.fillStyle = grd;
+  ctx.beginPath();
+  ctx.arc(0, 0, 28, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Center pipe body
+  ctx.fillStyle = '#3a2010';
+  ctx.strokeStyle = '#7a5020';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(-18, -12, 36, 24, 4);
+  ctx.fill(); ctx.stroke();
+
+  // Center connector circle
+  ctx.beginPath();
+  ctx.arc(0, 0, 10, 0, Math.PI * 2);
+  ctx.fillStyle = `hsla(${ringHue},70%,50%,0.8)`;
+  ctx.fill();
+  ctx.strokeStyle = `hsla(${ringHue},90%,75%,0.9)`;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function drawPipe(p, jp) {
+  ctx.save();
+  ctx.translate(p.x, p.y);
+
+  const tw = p.width;
+  const th = p.height;
+
+  // Pipe body color by type
+  let pipeCol = '#4a3018', pipeStroke = '#8a6030';
+  if (p.type === 'valve') { pipeCol = '#5a2800'; pipeStroke = '#cc6020'; }
+  if (p.type === 'elbow') { pipeCol = '#2a3040'; pipeStroke = '#5080a0'; }
+
+  if (p.type === 'elbow') {
+    // Elbow: L-shape drawn as two rects
+    ctx.fillStyle = pipeCol; ctx.strokeStyle = pipeStroke; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.roundRect(-tw/2, -th/2, tw*0.6, th, 3); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.roundRect(-tw/2, -th/2 - th*0.6, tw*0.6, th, 3); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.roundRect(-tw/2, -th/2 - th*0.6, tw, th, 3); ctx.fill(); ctx.stroke();
+  } else if (p.type === 'valve') {
+    // Valve: pipe with a wheel
+    ctx.fillStyle = pipeCol; ctx.strokeStyle = pipeStroke; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.roundRect(-tw/2, -th/2, tw, th, 4); ctx.fill(); ctx.stroke();
+    // Valve wheel
+    ctx.strokeStyle = '#ff8030'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, -14); ctx.lineTo(0, 14); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-14, 0); ctx.lineTo(14, 0); ctx.stroke();
+    ctx.fillStyle = '#cc5010';
+    ctx.beginPath(); ctx.arc(0, 0, 5, 0, Math.PI * 2); ctx.fill();
+  } else {
+    // Straight
+    ctx.fillStyle = pipeCol; ctx.strokeStyle = pipeStroke; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.roundRect(-tw/2, -th/2, tw, th, 4); ctx.fill(); ctx.stroke();
+    // Pipe ribs
+    for (let i = -1; i <= 1; i++) {
+      ctx.beginPath();
+      ctx.moveTo(i * (tw*0.2), -th/2);
+      ctx.lineTo(i * (tw*0.2), th/2);
+      ctx.strokeStyle = `rgba(180,120,50,0.3)`;
+      ctx.lineWidth = 4;
+      ctx.stroke();
+    }
+  }
+
+  // Connector ring at left end (faces junction)
+  const tipX = p.connectorX; // = -tw/2
+  const tipXDraw = -tw/2;
+
+  // Ring glow (shows distance from junction)
+  const dist = Math.abs((p.x + p.connectorX) - jp.x);
+  const { perfect, good } = getWindows();
+  let ringAlpha = 0.5;
+  let ringC = '#88aaff';
+  if (dist <= perfect) { ringC = '#ffff44'; ringAlpha = 1.0; }
+  else if (dist <= good) { ringC = '#44ffaa'; ringAlpha = 0.85; }
+
+  ctx.beginPath();
+  ctx.arc(tipXDraw, 0, 13, 0, Math.PI * 2);
+  ctx.strokeStyle = ringC;
+  ctx.globalAlpha = ringAlpha;
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  // Connector fill
+  ctx.beginPath();
+  ctx.arc(tipXDraw, 0, 8, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(50,30,10,0.9)';
+  ctx.fill();
+  ctx.strokeStyle = ringC;
+  ctx.globalAlpha = ringAlpha;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  ctx.restore();
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    const t = p.life / p.maxLife;
+    ctx.save();
+    if (p.kind === 'spark') {
+      ctx.globalAlpha = t * 0.9;
+      ctx.fillStyle = p.color;
+      ctx.shadowColor = p.color;
+      ctx.shadowBlur = 6;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size * t, 0, Math.PI*2);
+      ctx.fill();
+    } else if (p.kind === 'smoke') {
+      ctx.globalAlpha = t * 0.25;
+      ctx.fillStyle = '#cc3300';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI*2);
+      ctx.fill();
+    } else if (p.kind === 'shockwave') {
+      ctx.globalAlpha = t * 0.5;
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2 * t;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
+function drawPopups() {
+  for (const p of popups) {
+    const t = p.life / p.maxLife;
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, t * 2);
+    ctx.font = `bold ${p.size}px 'Courier New', monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = p.color;
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur = 12;
+    ctx.fillText(p.text, p.x, p.y);
+    ctx.restore();
+  }
+}
+
+function drawHUD() {
+  const barH = 16;
+  const barW = W - 40;
+  const barX = 20, barY = 16;
+
+  // Pressure bar background
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.beginPath();
+  ctx.roundRect(barX, barY, barW, barH, barH/2);
+  ctx.fill();
+
+  // Pressure bar fill
+  const pFrac = pressure / 100;
+  const barCol = pressure > 50 ? `hsl(${100+pFrac*80},80%,50%)` :
+                 pressure > 25 ? `hsl(30,90%,55%)` : `hsl(0,90%,50%)`;
+  ctx.fillStyle = barCol;
+  ctx.shadowColor = barCol;
+  ctx.shadowBlur = 8;
+  ctx.beginPath();
+  ctx.roundRect(barX, barY, barW * pFrac, barH, barH/2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Pressure label
+  ctx.font = '10px Courier New, monospace';
+  ctx.fillStyle = 'rgba(255,220,150,0.7)';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText('PRESSURE', barX + 6, barY + 2);
+
+  // Score
+  ctx.font = `bold ${24 + multiBump * 12}px 'Courier New', monospace`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = `hsl(${hue},80%,75%)`;
+  ctx.shadowColor = `hsl(${hue},80%,75%)`;
+  ctx.shadowBlur = 10;
+  ctx.fillText(score, W/2, barY + barH + 10);
+  ctx.shadowBlur = 0;
+
+  // Multiplier
+  if (multiplier > 1) {
+    const mhue = multiplier >= 5 ? 50 : multiplier >= 4 ? 30 : multiplier >= 3 ? 280 : 220;
+    ctx.font = `bold 16px 'Courier New', monospace`;
+    ctx.textAlign = 'right';
+    ctx.fillStyle = `hsl(${mhue},90%,65%)`;
+    ctx.shadowColor = `hsl(${mhue},90%,65%)`;
+    ctx.shadowBlur = 8;
+    ctx.fillText(`×${multiplier}`, W - 22, barY + barH + 12);
+    ctx.shadowBlur = 0;
+  }
+
+  // Combo
+  if (combo >= 3) {
+    ctx.font = `12px 'Courier New', monospace`;
+    ctx.textAlign = 'left';
+    ctx.fillStyle = 'rgba(200,200,255,0.6)';
+    ctx.fillText(`combo ${combo}`, 22, barY + barH + 14);
+  }
+}
+
+function drawStartScreen() {
+  // Semi-dark overlay
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(0, 0, W, H);
+
+  // Title
+  const ty = H * 0.32;
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  // Glow title
+  ctx.font = `bold 52px 'Courier New', monospace`;
+  ctx.fillStyle = `hsl(${hue},90%,70%)`;
+  ctx.shadowColor = `hsl(${hue},90%,70%)`;
+  ctx.shadowBlur = 30;
+  ctx.fillText('PIPE', W/2, ty - 28);
+  ctx.fillText('ALIGN', W/2, ty + 32);
+  ctx.shadowBlur = 0;
+
+  // Subtitle
+  ctx.font = `14px 'Courier New', monospace`;
+  ctx.fillStyle = 'rgba(200,170,120,0.8)';
+  ctx.fillText('SNAP & SEAL', W/2, ty + 76);
+
+  // Instructions
+  ctx.font = `13px 'Courier New', monospace`;
+  ctx.fillStyle = 'rgba(160,140,100,0.75)';
+  ctx.fillText('Tap when rings align to weld!', W/2, H*0.56);
+  ctx.fillText('Build combos. Watch pressure.', W/2, H*0.56 + 22);
+
+  // Tap to start (pulsing)
+  const pulse = 0.6 + 0.4 * Math.sin(Date.now() * 0.003);
+  ctx.globalAlpha = pulse;
+  ctx.font = `bold 20px 'Courier New', monospace`;
+  ctx.fillStyle = `hsl(${hue},80%,75%)`;
+  ctx.shadowColor = `hsl(${hue},80%,75%)`;
+  ctx.shadowBlur = 15;
+  ctx.fillText('TAP TO START', W/2, H * 0.72);
+  ctx.shadowBlur = 0;
+  ctx.globalAlpha = 1;
+
+  // Best score
+  if (best > 0) {
+    ctx.font = `12px 'Courier New', monospace`;
+    ctx.fillStyle = 'rgba(160,120,60,0.7)';
+    ctx.fillText(`Best: ${best}`, W/2, H * 0.82);
+  }
+  ctx.restore();
+}
+
+function drawGameOverScreen() {
+  ctx.fillStyle = 'rgba(0,0,0,0.65)';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  // Game over title
+  ctx.font = `bold 40px 'Courier New', monospace`;
+  ctx.fillStyle = '#ff4444';
+  ctx.shadowColor = '#ff2222';
+  ctx.shadowBlur = 20;
+  ctx.fillText('PIPE BURST!', W/2, H * 0.28);
+  ctx.shadowBlur = 0;
+
+  ctx.font = `bold 48px 'Courier New', monospace`;
+  ctx.fillStyle = `hsl(${hue},80%,70%)`;
+  ctx.shadowColor = `hsl(${hue},80%,70%)`;
+  ctx.shadowBlur = 14;
+  ctx.fillText(score, W/2, H * 0.42);
+  ctx.shadowBlur = 0;
+
+  ctx.font = `14px 'Courier New', monospace`;
+  ctx.fillStyle = 'rgba(200,180,130,0.8)';
+  ctx.fillText('PIPES SEALED', W/2, H * 0.5);
+
+  if (score >= best) {
+    ctx.font = `bold 16px 'Courier New', monospace`;
+    ctx.fillStyle = '#ffdd44';
+    ctx.shadowColor = '#ffdd44';
+    ctx.shadowBlur = 10;
+    ctx.fillText('NEW BEST!', W/2, H * 0.58);
+    ctx.shadowBlur = 0;
+  } else {
+    ctx.font = `13px 'Courier New', monospace`;
+    ctx.fillStyle = 'rgba(160,130,80,0.7)';
+    ctx.fillText(`Best: ${best}`, W/2, H * 0.58);
+  }
+
+  // Share button
+  const sbW = 160, sbH = 44;
+  const sbX = W/2 - sbW/2, sbY = H * 0.67 - sbH/2;
+  SHARE_BTN.x = sbX; SHARE_BTN.y = sbY; SHARE_BTN.w = sbW; SHARE_BTN.h = sbH;
+  ctx.fillStyle = 'rgba(40,80,60,0.85)';
+  ctx.strokeStyle = '#44bb88';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(sbX, sbY, sbW, sbH, 8);
+  ctx.fill(); ctx.stroke();
+  ctx.font = `bold 16px 'Courier New', monospace`;
+  ctx.fillStyle = '#88ffcc';
+  ctx.fillText('⟳ SHARE', W/2, H * 0.67);
+
+  // Tap to retry
+  const pulse = 0.55 + 0.45 * Math.sin(Date.now() * 0.003);
+  ctx.globalAlpha = pulse;
+  ctx.font = `bold 18px 'Courier New', monospace`;
+  ctx.fillStyle = `hsl(${hue},75%,70%)`;
+  ctx.shadowColor = `hsl(${hue},75%,70%)`;
+  ctx.shadowBlur = 10;
+  ctx.fillText('TAP TO RETRY', W/2, H * 0.82);
+  ctx.shadowBlur = 0;
+  ctx.globalAlpha = 1;
+
+  ctx.restore();
+
+  // Popups on top
+  drawPopups();
+}
+
+// ── Boot ─────────────────────────────────────────────────────────────────────
+requestAnimationFrame(ts => { lastTime = ts; requestAnimationFrame(loop); });
+
+})();
+</script>
+</body>
+</html>

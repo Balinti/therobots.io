@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Valve Flux - Free HTML5 Game</title>
+  <meta name="description" content="Play Valve Flux - Swipe valves to fix the energy flow as the camera zooms dynamically in and out.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a0a1a">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Valve Flux - Free HTML5 Game">
+  <meta property="og:description" content="Play Valve Flux - Swipe valves to fix the energy flow as the camera zooms dynamically in and out.">
+  <meta property="og:url" content="https://balinti.github.io/valve-flux/">
+  <meta property="og:image" content="https://balinti.github.io/valve-flux/og-image.png">
+  <link rel="canonical" href="https://balinti.github.io/valve-flux/">
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #0a0a1a;
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      overflow: hidden;
+      touch-action: none;
+    }
+    #container {
+      position: relative;
+      width: 420px; max-width: 100vw;
+      height: 750px; max-height: 100vh;
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+      width: 100%; height: 100%;
+      background: #0a0a1a;
+    }
+    .overlay {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      background: rgba(5,5,20,0.88);
+      color: #fff;
+      text-align: center;
+      padding: 24px;
+      transition: opacity 0.25s;
+    }
+    .overlay.hidden { display: none; }
+    .overlay h1 {
+      font-size: 2.6rem; font-weight: 900;
+      letter-spacing: 2px;
+      background: linear-gradient(120deg,#00f5d4,#8b5cf6,#f97316);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 8px;
+    }
+    .overlay .sub {
+      font-size: 1rem; color: #aaa; margin-bottom: 24px; letter-spacing: 1px;
+    }
+    .tap-hint {
+      margin-top: 12px; font-size: 1.1rem; color: #00f5d4;
+      animation: pulse-txt 1.4s ease-in-out infinite;
+    }
+    @keyframes pulse-txt {
+      0%,100%{opacity:1} 50%{opacity:0.3}
+    }
+    .score-display {
+      font-size: 2rem; font-weight: 700; color: #fff; margin-bottom: 4px;
+    }
+    .best-display {
+      font-size: 1rem; color: #8b5cf6; margin-bottom: 20px;
+    }
+    .btn {
+      margin-top: 12px; padding: 12px 32px;
+      border: 2px solid #00f5d4; border-radius: 30px;
+      background: transparent; color: #00f5d4;
+      font-size: 1rem; font-weight: 700; cursor: pointer;
+      letter-spacing: 1px;
+      transition: background 0.2s, color 0.2s;
+    }
+    .btn:hover, .btn:active { background: #00f5d4; color: #0a0a1a; }
+    #challenge-banner {
+      display: none;
+      margin-bottom: 14px;
+      padding: 8px 18px;
+      border-radius: 20px;
+      background: rgba(139,92,246,0.22);
+      border: 1px solid #8b5cf6;
+      font-size: 0.92rem; color: #c4b5fd;
+    }
+    #hud {
+      position: absolute; top: 12px; left: 0; right: 0;
+      display: flex; justify-content: space-between;
+      padding: 0 18px;
+      pointer-events: none;
+    }
+    #hud .hud-score { font-size: 1.5rem; font-weight: 700; color: #fff; }
+    #hud .hud-combo { font-size: 0.95rem; color: #f97316; font-weight: 600; }
+    #hud { display: none; }
+  </style>
+</head>
+<body>
+<div id="container">
+  <canvas id="c"></canvas>
+
+  <div id="overlay-start" class="overlay">
+    <h1>VALVE FLUX</h1>
+    <div class="sub">PULSE PANIC</div>
+    <div id="challenge-banner"></div>
+    <div class="tap-hint">TAP TO START</div>
+    <div style="margin-top:28px;font-size:0.82rem;color:#555;line-height:1.5;">
+      Tap to rotate the valve &bull; Route each pulse to the glowing gate<br>
+      Wrong gate = explosion. How far can you go?
+    </div>
+  </div>
+
+  <div id="overlay-gameover" class="overlay hidden">
+    <h1>GAME OVER</h1>
+    <div class="score-display" id="go-score">0</div>
+    <div class="best-display" id="go-best">Best: 0</div>
+    <button class="btn" id="share-btn">Challenge a Friend</button>
+    <div class="tap-hint" style="margin-top:18px;">TAP TO RETRY</div>
+  </div>
+
+  <div id="hud">
+    <div class="hud-score" id="hud-score">0</div>
+    <div class="hud-combo" id="hud-combo"></div>
+  </div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+// ── Constants ──────────────────────────────────────────────────────────────
+const W = 420, H = 750;
+const VALVE_X = 210, VALVE_Y = 375;
+const GEN_X = 30, GEN_Y = 375;
+const GATE_X = 390;
+const GATE_COUNT_BASE = 2;
+const LS_KEY = 'vf_best';
+
+// ── Elements ───────────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const overlayStart = document.getElementById('overlay-start');
+const overlayGO = document.getElementById('overlay-gameover');
+const goScore = document.getElementById('go-score');
+const goBest = document.getElementById('go-best');
+const hud = document.getElementById('hud');
+const hudScore = document.getElementById('hud-score');
+const hudCombo = document.getElementById('hud-combo');
+const shareBtn = document.getElementById('share-btn');
+const challengeBanner = document.getElementById('challenge-banner');
+
+// ── High-DPI canvas ────────────────────────────────────────────────────────
+let dpr = 1, cw = W, ch = H, scale = 1;
+function resizeCanvas() {
+  dpr = window.devicePixelRatio || 1;
+  const cont = canvas.parentElement;
+  const cw0 = cont.clientWidth, ch0 = cont.clientHeight;
+  canvas.width = cw0 * dpr;
+  canvas.height = ch0 * dpr;
+  cw = cw0; ch = ch0;
+  scale = Math.min(cw0 / W, ch0 / H);
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+// ── State ──────────────────────────────────────────────────────────────────
+let state = 'start'; // 'start' | 'playing' | 'gameover'
+let score = 0, combo = 0, best = 0;
+let valveAngle = 0; // current output angle index
+let numChannels = 2;
+let pulses = [];
+let particles = [];
+let safeGate = 0;
+let safeGateTimer = 0;
+let safeGatePeriod = 2800;
+let spawnTimer = 0;
+let spawnInterval = 1600;
+let pulseSpeed = 110;
+let difficulty = 0;
+let shakeFrames = 0, shakeAmt = 0;
+let time = 0;
+let jamActive = false;
+let jamTimer = 0;
+let lastTs = 0;
+let hueBase = 0;
+
+// Challenge score from URL
+let challengeScore = 0;
+(function(){
+  const p = new URLSearchParams(location.search);
+  const cs = parseInt(p.get('challengeScore') || '0', 10);
+  if (cs > 0) {
+    challengeScore = cs;
+    const cb = document.getElementById('challenge-banner');
+    cb.style.display = 'block';
+    cb.textContent = `Challenge: Beat ${cs}`;
+  }
+})();
+
+// Load best
+best = parseInt(localStorage.getItem(LS_KEY) || '0', 10);
+
+// ── Difficulty helpers ─────────────────────────────────────────────────────
+function getNumChannels(sc) {
+  if (sc < 5) return 2;
+  if (sc < 12) return 3;
+  return 4;
+}
+function getSpawnInterval(sc) {
+  return Math.max(600, 1600 - sc * 28);
+}
+function getPulseSpeed(sc) {
+  return Math.min(260, 110 + sc * 5);
+}
+function getSafeGatePeriod(sc) {
+  return Math.max(900, 2800 - sc * 45);
+}
+function getPDouble(sc) {
+  return Math.min(0.35, sc * 0.012);
+}
+function getPJam(sc) {
+  return Math.min(0.15, sc * 0.005);
+}
+
+// ── Gate Y positions ───────────────────────────────────────────────────────
+function gateY(i, total) {
+  // lerp between 150 and 600
+  if (total === 1) return 375;
+  return 150 + (600 - 150) * i / (total - 1);
+}
+
+// ── Valve channel angles (output directions in radians) ────────────────────
+// Channel 0 = right (toward gate), 1 = up, 2 = down, 3 = extra-right
+// We map channel index to gate index
+function channelToGate(ch, total) {
+  // channels correspond to gates in order
+  return ch % total;
+}
+
+// ── Spawn a pulse ──────────────────────────────────────────────────────────
+function spawnPulse(targetGateOverride) {
+  const tg = (targetGateOverride !== undefined)
+    ? targetGateOverride
+    : Math.floor(Math.random() * numChannels);
+  const hue = (hueBase + Math.random() * 60) % 360;
+  pulses.push({
+    x: GEN_X + 22,
+    y: GEN_Y,
+    targetGate: tg,
+    speed: pulseSpeed,
+    hue,
+    radius: 10,
+    trail: [],
+    resolved: false,
+  });
+}
+
+// ── Particle helpers ───────────────────────────────────────────────────────
+function spawnParticles(x, y, hue, count, type) {
+  for (let i = 0; i < count; i++) {
+    const angle = (Math.PI * 2 * i / count) + Math.random() * 0.4;
+    const spd = type === 'fail' ? (60 + Math.random() * 160) : (40 + Math.random() * 100);
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * spd,
+      vy: Math.sin(angle) * spd,
+      life: 1,
+      decay: type === 'fail' ? 0.018 + Math.random() * 0.022 : 0.022 + Math.random() * 0.025,
+      r: type === 'fail' ? 5 + Math.random() * 5 : 3 + Math.random() * 4,
+      hue: hue + (Math.random() - 0.5) * 40,
+    });
+  }
+}
+
+// ── Screen shake ───────────────────────────────────────────────────────────
+function triggerShake(frames, amount) {
+  shakeFrames = frames; shakeAmt = amount;
+}
+
+// ── Reset game ─────────────────────────────────────────────────────────────
+function resetGame() {
+  score = 0; combo = 0;
+  valveAngle = 0;
+  numChannels = GATE_COUNT_BASE;
+  pulses = []; particles = [];
+  safeGate = 0; safeGateTimer = 0;
+  safeGatePeriod = getSafeGatePeriod(0);
+  spawnTimer = 0;
+  spawnInterval = getSpawnInterval(0);
+  pulseSpeed = getPulseSpeed(0);
+  difficulty = 0;
+  shakeFrames = 0;
+  time = 0;
+  jamActive = false; jamTimer = 0;
+  hueBase = Math.random() * 360;
+  updateHUD();
+}
+
+// ── Update HUD ─────────────────────────────────────────────────────────────
+function updateHUD() {
+  hudScore.textContent = score;
+  hudCombo.textContent = combo >= 3 ? `x${combo} COMBO` : '';
+}
+
+// ── Input handler ──────────────────────────────────────────────────────────
+function handleInput() {
+  if (state === 'start') {
+    startGame();
+  } else if (state === 'playing') {
+    rotateValve();
+  } else if (state === 'gameover') {
+    startGame();
+  }
+}
+
+function startGame() {
+  resetGame();
+  overlayStart.classList.add('hidden');
+  overlayGO.classList.add('hidden');
+  hud.style.display = 'flex';
+  state = 'playing';
+  lastTs = performance.now();
+}
+
+function endGame() {
+  state = 'gameover';
+  hud.style.display = 'none';
+  if (score > best) {
+    best = score;
+    localStorage.setItem(LS_KEY, best);
+  }
+  goScore.textContent = score;
+  goBest.textContent = `Best: ${best}`;
+  overlayGO.classList.remove('hidden');
+  triggerShake(24, 14);
+}
+
+function rotateValve() {
+  if (jamActive) {
+    // tap clears jam, doesn't rotate
+    jamActive = false;
+    spawnParticles(VALVE_X, VALVE_Y, 40, 10, 'success');
+    return;
+  }
+  valveAngle = (valveAngle + 1) % numChannels;
+}
+
+// ── Share logic ────────────────────────────────────────────────────────────
+shareBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const url = `https://balinti.github.io/valve-flux/?challengeScore=${score}`;
+  const text = `I scored ${score} in Valve Flux! Can you beat me? ${url}`;
+  if (navigator.share) {
+    navigator.share({ title: 'Valve Flux Challenge', text, url }).catch(() => {});
+  } else {
+    navigator.clipboard.writeText(url).then(() => {
+      shareBtn.textContent = 'Link Copied!';
+      setTimeout(() => { shareBtn.textContent = 'Challenge a Friend'; }, 2000);
+    }).catch(() => {
+      shareBtn.textContent = 'Link Copied!';
+    });
+  }
+});
+
+// Pointer events
+document.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  // Ignore clicks on share button (it handles itself)
+  if (e.target === shareBtn) return;
+  handleInput();
+}, { passive: false });
+
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    if (e.target === shareBtn) return;
+    handleInput();
+  }
+});
+
+// prevent scroll
+document.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+
+// ── Game update ────────────────────────────────────────────────────────────
+function update(dt) {
+  if (state !== 'playing') return;
+  time += dt;
+  hueBase = (hueBase + 15 * dt) % 360;
+
+  // Update difficulty
+  numChannels = getNumChannels(score);
+  spawnInterval = getSpawnInterval(score);
+  pulseSpeed = getPulseSpeed(score);
+  safeGatePeriod = getSafeGatePeriod(score);
+
+  // Clamp valveAngle
+  if (valveAngle >= numChannels) valveAngle = numChannels - 1;
+
+  // Safe gate cycling
+  safeGateTimer += dt * 1000;
+  if (safeGateTimer >= safeGatePeriod) {
+    safeGateTimer = 0;
+    const old = safeGate;
+    let next = old;
+    if (numChannels > 1) {
+      while (next === old) next = Math.floor(Math.random() * numChannels);
+    }
+    safeGate = next;
+  }
+
+  // Jam timer
+  if (jamActive) {
+    jamTimer -= dt * 1000;
+    if (jamTimer <= 0) {
+      // Jam expired without clearing = game over
+      endGame();
+      return;
+    }
+  }
+
+  // Spawn pulses
+  if (!jamActive) {
+    spawnTimer -= dt * 1000;
+    if (spawnTimer <= 0) {
+      spawnInterval = getSpawnInterval(score);
+      spawnTimer = spawnInterval;
+      // Check for jam
+      if (Math.random() < getPJam(score) && !jamActive) {
+        jamActive = true;
+        jamTimer = 2200;
+        // visual jam indicator pulse at valve
+        spawnParticles(VALVE_X, VALVE_Y, 30, 12, 'fail');
+      } else {
+        // possibly double
+        spawnPulse();
+        if (Math.random() < getPDouble(score)) {
+          const tg2 = Math.floor(Math.random() * numChannels);
+          spawnPulse(tg2);
+        }
+      }
+    }
+  }
+
+  // Update pulses
+  for (let i = pulses.length - 1; i >= 0; i--) {
+    const p = pulses[i];
+    if (p.resolved) { pulses.splice(i, 1); continue; }
+    // trail
+    p.trail.push({ x: p.x, y: p.y });
+    if (p.trail.length > 12) p.trail.shift();
+
+    p.x += p.speed * dt;
+
+    // Check if pulse has reached valve x plane
+    if (p.x >= VALVE_X - 4) {
+      p.resolved = true;
+      resolvePulse(p);
+      pulses.splice(i, 1);
+    }
+  }
+
+  // Update particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vx *= 0.92;
+    p.vy *= 0.92;
+    p.life -= p.decay;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+function resolvePulse(pulse) {
+  // Determine which gate the valve is pointing at
+  const activeGate = valveAngle % numChannels;
+  // The pulse needs both: valve pointing to its targetGate AND that gate must be safeGate
+  const match = (activeGate === pulse.targetGate) && (pulse.targetGate === safeGate);
+  if (match) {
+    score++;
+    combo++;
+    if (score > best) best = score;
+    spawnParticles(GATE_X, gateY(pulse.targetGate, numChannels), pulse.hue, 18, 'success');
+    updateHUD();
+  } else {
+    combo = 0;
+    spawnParticles(VALVE_X, VALVE_Y, 0, 30, 'fail');
+    endGame();
+  }
+}
+
+// ── Draw ───────────────────────────────────────────────────────────────────
+function draw() {
+  ctx.save();
+  // Apply device pixel ratio and centering scale
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const offX = (cw - W * scale) / 2;
+  const offY = (ch - H * scale) / 2;
+  ctx.translate(offX, offY);
+  ctx.scale(scale, scale);
+
+  // Screen shake
+  let sx = 0, sy = 0;
+  if (shakeFrames > 0) {
+    shakeFrames--;
+    sx = (Math.random() - 0.5) * shakeAmt;
+    sy = (Math.random() - 0.5) * shakeAmt;
+    ctx.translate(sx, sy);
+  }
+
+  // Background
+  const grad = ctx.createLinearGradient(0, 0, W, H);
+  grad.addColorStop(0, '#05050f');
+  grad.addColorStop(1, '#0d0920');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  if (state === 'playing' || state === 'gameover') {
+    drawPipeline();
+    drawGates();
+    drawGenerator();
+    drawValve();
+    drawPulses();
+    drawParticles();
+    if (jamActive) drawJamWarning();
+  } else {
+    drawParticles();
+  }
+
+  ctx.restore();
+}
+
+function drawPipeline() {
+  // Main pipe from generator to valve
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+  ctx.lineWidth = 18;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(GEN_X + 22, GEN_Y);
+  ctx.lineTo(VALVE_X, VALVE_Y);
+  ctx.stroke();
+
+  // Output pipes from valve to each gate
+  for (let i = 0; i < numChannels; i++) {
+    const gy = gateY(i, numChannels);
+    const isActive = (valveAngle % numChannels === i);
+    ctx.strokeStyle = isActive ? `hsla(${hueBase},80%,55%,0.28)` : 'rgba(255,255,255,0.05)';
+    ctx.lineWidth = 14;
+    ctx.beginPath();
+    ctx.moveTo(VALVE_X, VALVE_Y);
+    ctx.lineTo(GATE_X - 22, gy);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawGenerator() {
+  ctx.save();
+  ctx.translate(GEN_X, GEN_Y);
+
+  // Glow
+  const gl = ctx.createRadialGradient(0, 0, 4, 0, 0, 32);
+  gl.addColorStop(0, `hsla(${hueBase},90%,70%,0.6)`);
+  gl.addColorStop(1, 'transparent');
+  ctx.fillStyle = gl;
+  ctx.beginPath();
+  ctx.arc(0, 0, 32, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Body
+  ctx.fillStyle = `hsl(${hueBase},60%,25%)`;
+  ctx.strokeStyle = `hsl(${hueBase},80%,55%)`;
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.roundRect(-16, -16, 32, 32, 6);
+  ctx.fill();
+  ctx.stroke();
+
+  // Icon — lightning bolt
+  ctx.fillStyle = `hsl(${hueBase},90%,75%)`;
+  ctx.beginPath();
+  ctx.moveTo(3, -10);
+  ctx.lineTo(-3, 1);
+  ctx.lineTo(1, 1);
+  ctx.lineTo(-3, 10);
+  ctx.lineTo(4, -1);
+  ctx.lineTo(0, -1);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawGates() {
+  for (let i = 0; i < numChannels; i++) {
+    const gy = gateY(i, numChannels);
+    const isSafe = (i === safeGate);
+    const isActive = (valveAngle % numChannels === i);
+    ctx.save();
+    ctx.translate(GATE_X, gy);
+
+    if (isSafe) {
+      // Pulsing glow
+      const pulse = 0.6 + 0.4 * Math.sin(time * 6);
+      const gl = ctx.createRadialGradient(0, 0, 4, 0, 0, 38);
+      gl.addColorStop(0, `hsla(160,100%,60%,${0.55 * pulse})`);
+      gl.addColorStop(1, 'transparent');
+      ctx.fillStyle = gl;
+      ctx.beginPath();
+      ctx.arc(0, 0, 38, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Gate body
+    ctx.fillStyle = isSafe ? 'hsl(160,70%,18%)' : 'hsl(220,30%,16%)';
+    ctx.strokeStyle = isSafe
+      ? `hsl(160,90%,55%)`
+      : (isActive ? `hsla(${hueBase},70%,55%,0.7)` : 'rgba(255,255,255,0.18)');
+    ctx.lineWidth = isSafe ? 3 : 1.5;
+    ctx.beginPath();
+    ctx.roundRect(-18, -18, 36, 36, 8);
+    ctx.fill();
+    ctx.stroke();
+
+    // Label
+    ctx.fillStyle = isSafe ? '#00f5d4' : 'rgba(255,255,255,0.4)';
+    ctx.font = `bold ${isSafe ? 14 : 11}px Arial`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(i + 1, 0, 0);
+
+    if (isSafe) {
+      ctx.font = '8px Arial';
+      ctx.fillStyle = '#00f5d4';
+      ctx.fillText('SAFE', 0, 26);
+    }
+
+    ctx.restore();
+  }
+}
+
+function drawValve() {
+  ctx.save();
+  ctx.translate(VALVE_X, VALVE_Y);
+
+  // Base glow
+  const gl = ctx.createRadialGradient(0, 0, 8, 0, 0, 48);
+  const jamPulse = jamActive ? (0.5 + 0.5 * Math.sin(time * 14)) : 0;
+  gl.addColorStop(0, jamActive
+    ? `hsla(20,100%,60%,${0.5 + 0.3 * jamPulse})`
+    : `hsla(${hueBase},80%,60%,0.35)`);
+  gl.addColorStop(1, 'transparent');
+  ctx.fillStyle = gl;
+  ctx.beginPath();
+  ctx.arc(0, 0, 48, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Outer ring
+  ctx.strokeStyle = jamActive
+    ? `hsl(20,100%,${55 + 15 * jamPulse}%)`
+    : `hsl(${hueBase},70%,55%)`;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(0, 0, 26, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Draw channel indicators
+  for (let i = 0; i < numChannels; i++) {
+    const isActive = (i === valveAngle % numChannels);
+    const gy = gateY(i, numChannels);
+    const angle = Math.atan2(gy - VALVE_Y, GATE_X - VALVE_X);
+    ctx.save();
+    ctx.rotate(angle);
+    ctx.strokeStyle = isActive
+      ? `hsl(${hueBase},90%,70%)`
+      : 'rgba(255,255,255,0.2)';
+    ctx.lineWidth = isActive ? 3 : 1.5;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(22, 0);
+    ctx.stroke();
+    if (isActive) {
+      ctx.fillStyle = `hsl(${hueBase},90%,70%)`;
+      ctx.beginPath();
+      ctx.arc(22, 0, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // Center
+  ctx.fillStyle = '#0a0a1a';
+  ctx.beginPath();
+  ctx.arc(0, 0, 9, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = jamActive ? 'hsl(20,100%,60%)' : `hsl(${hueBase},70%,55%)`;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function drawPulses() {
+  for (const p of pulses) {
+    // Trail
+    for (let t = 0; t < p.trail.length; t++) {
+      const alpha = (t / p.trail.length) * 0.5;
+      ctx.fillStyle = `hsla(${p.hue},90%,65%,${alpha})`;
+      const r = p.radius * (t / p.trail.length) * 0.7;
+      ctx.beginPath();
+      ctx.arc(p.trail[t].x, p.trail[t].y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Pulse glow
+    const gl = ctx.createRadialGradient(p.x, p.y, 2, p.x, p.y, p.radius * 2.5);
+    gl.addColorStop(0, `hsla(${p.hue},100%,75%,0.8)`);
+    gl.addColorStop(1, 'transparent');
+    ctx.fillStyle = gl;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.radius * 2.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Body
+    ctx.fillStyle = `hsl(${p.hue},90%,65%)`;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Target label
+    ctx.fillStyle = '#fff';
+    ctx.font = `bold ${p.radius}px Arial`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(p.targetGate + 1, p.x, p.y);
+  }
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = `hsl(${p.hue},90%,65%)`;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r * p.life, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawJamWarning() {
+  const progress = jamTimer / 2200;
+  const pulse = 0.5 + 0.5 * Math.sin(time * 18);
+
+  ctx.save();
+  ctx.translate(VALVE_X, VALVE_Y - 52);
+  ctx.fillStyle = `hsla(20,100%,60%,${0.85 + 0.15 * pulse})`;
+  ctx.font = `bold 13px Arial`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('JAM! TAP TO CLEAR', 0, 0);
+
+  // Progress bar
+  ctx.fillStyle = 'rgba(255,100,20,0.25)';
+  ctx.fillRect(-50, 10, 100, 6);
+  ctx.fillStyle = `hsl(${20 + 40 * (1 - progress)},100%,55%)`;
+  ctx.fillRect(-50, 10, 100 * progress, 6);
+  ctx.restore();
+}
+
+// ── Game loop ──────────────────────────────────────────────────────────────
+function loop(ts) {
+  const dt = Math.min((ts - lastTs) / 1000, 0.05);
+  lastTs = ts;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// Init
+overlayStart.classList.remove('hidden');
+overlayGO.classList.add('hidden');
+hud.style.display = 'none';
+lastTs = performance.now();
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

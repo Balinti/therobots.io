@@ -1,0 +1,950 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Lollipop Flip - Free HTML5 Game</title>
+  <meta name="description" content="Play Lollipop Flip - Jump between lollipops while the entire screen rotates after each gap.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#1a0a2e">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Lollipop Flip - Free HTML5 Game">
+  <meta property="og:description" content="Play Lollipop Flip - Jump between lollipops while the entire screen rotates after each gap.">
+  <meta property="og:url" content="https://balinti.github.io/lollipop-flip/">
+  <meta property="og:image" content="https://balinti.github.io/lollipop-flip/og-lollipop-flip.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Lollipop Flip - Free HTML5 Game">
+  <meta name="twitter:description" content="Play Lollipop Flip - Jump between lollipops while the entire screen rotates after each gap.">
+  <meta name="twitter:image" content="https://balinti.github.io/lollipop-flip/og-lollipop-flip.jpg">
+
+  <link rel="canonical" href="https://balinti.github.io/lollipop-flip/">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #0d0520;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      touch-action: none;
+    }
+    #game-container {
+      position: relative;
+      width: min(420px, 100vw);
+      height: min(750px, 100vh);
+      background: linear-gradient(180deg, #1a0a2e 0%, #0d0520 100%);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 0 60px rgba(255,100,255,0.15);
+    }
+    #game-canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    #ui-overlay {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      pointer-events: none;
+      padding: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+    #score-display {
+      color: #fff;
+      font-size: 28px;
+      font-weight: 800;
+      text-shadow: 0 0 12px rgba(255,150,255,0.7);
+      letter-spacing: 1px;
+    }
+    #combo-display {
+      color: #ffd700;
+      font-size: 16px;
+      font-weight: 700;
+      text-align: right;
+      opacity: 0;
+      transition: opacity 0.2s;
+      text-shadow: 0 0 8px rgba(255,215,0,0.8);
+    }
+    #combo-display.active { opacity: 1; }
+  </style>
+</head>
+<body>
+  <div id="game-container">
+    <canvas id="game-canvas"></canvas>
+    <div id="ui-overlay">
+      <div id="score-display">0</div>
+      <div id="combo-display">x2 COMBO</div>
+    </div>
+  </div>
+
+  <script>
+  (function() {
+    'use strict';
+
+    // ─── Constants ────────────────────────────────────────────────────────────
+    const CANVAS_W = 420;
+    const CANVAS_H = 750;
+    const JUMP_PERIOD = 0.72;       // seconds between hops
+    const PAD_INNER_R = 52;         // inner lane radius
+    const PAD_OUTER_R = 88;         // outer lane radius
+    const LANE_TOLERANCE = 20;      // radial tolerance for landing
+    const SAFE_ARC_BASE = 1.15;     // radians (safe zone half-arc)
+    const STICKY_ARC_BASE = 0.72;   // radians (burnt sugar half-arc)
+    const BASE_ROT_SPEED = 0.9;     // rad/s initial pad rotation
+    const MAX_ROT_SPEED = 3.2;
+    const PLAYER_BASE_Y = 540;      // player resting Y
+    const PAD_SPACING = 220;        // vertical between pads (scroll)
+    const PAD_COUNT = 5;            // pooled pads
+    const PARTICLE_POOL = 120;
+    const POPUP_POOL = 16;
+    const GRAVITY = 2200;
+    const JUMP_VY = -820;
+
+    // ─── State ─────────────────────────────────────────────────────────────
+    let STATE = 'start'; // start | playing | gameover
+    let score = 0;
+    let hiScore = parseInt(localStorage.getItem('lf_hi') || '0');
+    let combo = 0;
+    let comboMult = 1;
+    let hue = 0;
+    let time = 0;
+    let jumpTimer = 0;
+    let padIndex = 0;        // which pad the player is currently ON
+    let pendingLane = 'outer'; // 'inner' | 'outer' – what player will land on
+    let screenShake = { x: 0, y: 0, power: 0, decay: 0 };
+    let zoomPunch = 1;
+    let playerLane = 'outer'; // current lane the player stands on
+
+    // ─── Canvas setup ──────────────────────────────────────────────────────
+    const container = document.getElementById('game-container');
+    const canvas = document.getElementById('game-canvas');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('score-display');
+    const comboEl = document.getElementById('combo-display');
+
+    let DPR = 1;
+    function resizeCanvas() {
+      DPR = window.devicePixelRatio || 1;
+      const rect = container.getBoundingClientRect();
+      canvas.width = rect.width * DPR;
+      canvas.height = rect.height * DPR;
+      ctx.scale(DPR, DPR);
+    }
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    // ─── Particle pool ────────────────────────────────────────────────────
+    const particles = Array.from({ length: PARTICLE_POOL }, () => ({
+      active: false, x: 0, y: 0, vx: 0, vy: 0,
+      life: 0, maxLife: 0, r: 0, color: '', type: 'spark'
+    }));
+
+    function spawnParticle(x, y, vx, vy, life, r, color, type = 'spark') {
+      for (let p of particles) {
+        if (!p.active) {
+          p.active = true; p.x = x; p.y = y; p.vx = vx; p.vy = vy;
+          p.life = p.maxLife = life; p.r = r; p.color = color; p.type = type;
+          return;
+        }
+      }
+    }
+
+    function burstSparkles(x, y, count, colorH) {
+      for (let i = 0; i < count; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        const spd = 80 + Math.random() * 220;
+        const h = (colorH + Math.random() * 60 - 30 + 360) % 360;
+        spawnParticle(x, y, Math.cos(ang) * spd, Math.sin(ang) * spd - 60,
+          0.5 + Math.random() * 0.4, 3 + Math.random() * 4,
+          `hsl(${h},100%,70%)`, 'spark');
+      }
+    }
+
+    function burstSplat(x, y, count) {
+      for (let i = 0; i < count; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        const spd = 40 + Math.random() * 180;
+        const h = 330 + Math.random() * 40;
+        const s = 60 + Math.random() * 40;
+        spawnParticle(x, y, Math.cos(ang) * spd, Math.sin(ang) * spd,
+          0.6 + Math.random() * 0.5, 4 + Math.random() * 8,
+          `hsl(${h},${s}%,55%)`, 'splat');
+      }
+    }
+
+    // ─── Popup pool ────────────────────────────────────────────────────────
+    const popups = Array.from({ length: POPUP_POOL }, () => ({
+      active: false, x: 0, y: 0, text: '', life: 0, maxLife: 0
+    }));
+
+    function spawnPopup(x, y, text) {
+      for (let p of popups) {
+        if (!p.active) {
+          p.active = true; p.x = x; p.y = y; p.text = text;
+          p.life = p.maxLife = 0.9;
+          return;
+        }
+      }
+    }
+
+    // ─── Pad pool ──────────────────────────────────────────────────────────
+    const pads = [];
+    for (let i = 0; i < PAD_COUNT; i++) {
+      pads.push({
+        x: CANVAS_W / 2,
+        y: 0,
+        angle: 0,         // current rotation angle
+        speed: BASE_ROT_SPEED,
+        safeArc: SAFE_ARC_BASE,
+        stickyArc: STICKY_ARC_BASE,
+        stickyAngle: Math.PI, // offset for sticky zone within pad
+        hue: 0,
+        bounceScale: 1,
+        bounceVel: 0,
+        driftVX: 0,
+        driftX: 0,
+        doubleSlice: false,
+        index: i
+      });
+    }
+
+    function initPad(pad, idx, baseY) {
+      pad.x = CANVAS_W / 2 + (Math.random() - 0.5) * 20;
+      pad.y = baseY;
+      pad.index = idx;
+      pad.angle = Math.random() * Math.PI * 2;
+      pad.bounceScale = 1;
+      pad.bounceVel = 0;
+      const t = Math.min(idx / 100, 1);
+      pad.speed = BASE_ROT_SPEED + (MAX_ROT_SPEED - BASE_ROT_SPEED) * t;
+      // ease safe arc shrinkage
+      pad.safeArc = Math.max(0.45, SAFE_ARC_BASE - idx * 0.003);
+      pad.stickyArc = Math.min(1.1, STICKY_ARC_BASE + idx * 0.002);
+      pad.stickyAngle = Math.random() * Math.PI * 2;
+      pad.hue = (idx * 37) % 360;
+      pad.driftVX = idx >= 50 ? (Math.random() - 0.5) * 30 : 0;
+      pad.driftX = 0;
+      pad.doubleSlice = idx >= 50 && Math.random() < 0.3;
+    }
+
+    // ─── Player ────────────────────────────────────────────────────────────
+    const player = {
+      x: CANVAS_W / 2,
+      y: PLAYER_BASE_Y,
+      vy: 0,
+      scaleX: 1, scaleY: 1,
+      squashTimer: 0,
+      lane: 'outer',
+      jumping: false,
+      dead: false,
+      angle: 0,
+      color: `hsl(310,100%,70%)`
+    };
+
+    // ─── Scroll offset ─────────────────────────────────────────────────────
+    let scrollY = 0;         // world units scrolled upward
+    let cameraY = 0;         // smooth camera
+    let totalScrolled = 0;
+
+    // ─── Helpers ───────────────────────────────────────────────────────────
+    function angleDiff(a, b) {
+      let d = ((a - b) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+      if (d > Math.PI) d -= Math.PI * 2;
+      return Math.abs(d);
+    }
+
+    function getPadByIndex(idx) {
+      return pads[idx % PAD_COUNT];
+    }
+
+    function getCurrentPad() { return getPadByIndex(padIndex); }
+    function getNextPad() { return getPadByIndex(padIndex + 1); }
+
+    function getLaneR(lane) {
+      return lane === 'inner' ? PAD_INNER_R : PAD_OUTER_R;
+    }
+
+    function playerWorldY() {
+      return player.y + cameraY;
+    }
+
+    // ─── Init game ──────────────────────────────────────────────────────────
+    function initGame() {
+      score = 0;
+      combo = 0;
+      comboMult = 1;
+      time = 0;
+      jumpTimer = 0;
+      padIndex = 0;
+      pendingLane = 'outer';
+      playerLane = 'outer';
+      scrollY = 0;
+      cameraY = 0;
+      totalScrolled = 0;
+      screenShake.power = 0;
+      zoomPunch = 1;
+      hue = 0;
+
+      player.x = CANVAS_W / 2;
+      player.y = PLAYER_BASE_Y;
+      player.vy = 0;
+      player.scaleX = 1; player.scaleY = 1;
+      player.squashTimer = 0;
+      player.lane = 'outer';
+      player.jumping = false;
+      player.dead = false;
+      player.angle = 0;
+      player.color = `hsl(310,100%,70%)`;
+
+      for (let p of particles) p.active = false;
+      for (let p of popups) p.active = false;
+
+      // init pads
+      for (let i = 0; i < PAD_COUNT; i++) {
+        initPad(pads[i], i, PLAYER_BASE_Y - 80 + (i - 0) * PAD_SPACING);
+        pads[i].y = PLAYER_BASE_Y - 80 - i * PAD_SPACING;
+      }
+      // Put first pad right under player
+      pads[0].y = PLAYER_BASE_Y - 80;
+      pads[0].x = CANVAS_W / 2;
+
+      // pre-initialize further pads
+      for (let i = 1; i < PAD_COUNT; i++) {
+        initPad(pads[i], i, pads[0].y - i * PAD_SPACING);
+      }
+    }
+
+    // ─── Input ──────────────────────────────────────────────────────────────
+    function handleInput() {
+      if (STATE === 'start' || STATE === 'gameover') {
+        STATE = 'playing';
+        initGame();
+        return;
+      }
+      if (STATE === 'playing' && !player.dead) {
+        pendingLane = pendingLane === 'inner' ? 'outer' : 'inner';
+      }
+    }
+
+    canvas.addEventListener('pointerdown', e => { e.preventDefault(); handleInput(); });
+    document.addEventListener('keydown', e => {
+      if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); handleInput(); }
+    });
+
+    // ─── Landing evaluation ─────────────────────────────────────────────────
+    function evaluateLanding() {
+      const pad = getNextPad();
+      const laneR = getLaneR(pendingLane);
+
+      // compute landing angle relative to pad center
+      // player x relative to pad
+      const dx = player.x - pad.x;
+      const dy = (player.y + cameraY) - (pad.y);
+      const landAngle = Math.atan2(dy, dx);
+
+      // Normalize landing angle relative to pad rotation
+      const relAngle = ((landAngle - pad.angle) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+      const relAngleNorm = relAngle > Math.PI ? relAngle - Math.PI * 2 : relAngle;
+
+      // Check safe zone (symmetric, two opposite arcs)
+      const inSafe = angleDiff(relAngleNorm, 0) < pad.safeArc ||
+                     angleDiff(relAngleNorm, Math.PI) < pad.safeArc;
+
+      // Check sticky zone
+      const stickyRel = ((pad.stickyAngle) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+      const stickyRelNorm = stickyRel > Math.PI ? stickyRel - Math.PI * 2 : stickyRel;
+      const inSticky = angleDiff(relAngleNorm, stickyRelNorm) < pad.stickyArc;
+
+      // double slice: second sticky zone opposite
+      const inSticky2 = pad.doubleSlice && angleDiff(relAngleNorm, stickyRelNorm + Math.PI) < pad.stickyArc * 0.7;
+
+      // For this game, the safe zone logic is zone-based not radial (simpler feel)
+      const survived = inSafe && !inSticky && !inSticky2;
+
+      return survived;
+    }
+
+    // ─── Shake & effects ────────────────────────────────────────────────────
+    function addShake(power, decay) {
+      screenShake.power = Math.max(screenShake.power, power);
+      screenShake.decay = decay;
+    }
+
+    // ─── Update ─────────────────────────────────────────────────────────────
+    let lastTime = 0;
+
+    function update(ts) {
+      const dt = Math.min((ts - lastTime) / 1000, 0.05);
+      lastTime = ts;
+
+      if (STATE !== 'playing') return;
+
+      time += dt;
+      hue = (hue + 40 * dt) % 360;
+
+      // update screen shake
+      if (screenShake.power > 0) {
+        screenShake.x = (Math.random() - 0.5) * screenShake.power * 2;
+        screenShake.y = (Math.random() - 0.5) * screenShake.power * 2;
+        screenShake.power = Math.max(0, screenShake.power - screenShake.decay * dt);
+      } else {
+        screenShake.x = 0; screenShake.y = 0;
+      }
+
+      // zoom punch recovery
+      zoomPunch += (1 - zoomPunch) * 8 * dt;
+
+      // update pads rotation
+      for (let pad of pads) {
+        pad.angle += pad.speed * dt;
+        // drift
+        pad.driftX += pad.driftVX * dt;
+        pad.x = CANVAS_W / 2 + pad.driftX;
+        // bounce recovery
+        pad.bounceScale += pad.bounceVel * dt;
+        pad.bounceVel += (1 - pad.bounceScale) * 25 - pad.bounceVel * 8;
+        pad.bounceScale = Math.max(0.85, Math.min(1.2, pad.bounceScale));
+      }
+
+      // update particles
+      for (let p of particles) {
+        if (!p.active) continue;
+        p.life -= dt;
+        if (p.life <= 0) { p.active = false; continue; }
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.vy += GRAVITY * 0.25 * dt;
+        p.vx *= 0.97;
+      }
+
+      // update popups
+      for (let p of popups) {
+        if (!p.active) continue;
+        p.life -= dt;
+        if (p.life <= 0) { p.active = false; continue; }
+        p.y -= 40 * dt;
+      }
+
+      if (player.dead) return;
+
+      // jump timer
+      jumpTimer += dt;
+
+      // squash-stretch recovery
+      if (player.squashTimer > 0) {
+        player.squashTimer -= dt;
+        const t = player.squashTimer / 0.15;
+        player.scaleX = 1 + (1.35 - 1) * t;
+        player.scaleY = 1 + (0.6 - 1) * t;
+      } else {
+        player.scaleX += (1 - player.scaleX) * 12 * dt;
+        player.scaleY += (1 - player.scaleY) * 12 * dt;
+      }
+
+      // handle jump arc
+      if (player.jumping) {
+        player.vy += GRAVITY * dt;
+        player.y += player.vy * dt;
+
+        // check if reached next pad Y
+        const nextPad = getNextPad();
+        const nextPadScreenY = nextPad.y - cameraY;
+
+        if (player.y >= nextPadScreenY - 10 && player.vy > 0) {
+          // evaluate landing
+          const landed = evaluateLanding();
+          player.y = nextPadScreenY;
+          player.vy = 0;
+          player.jumping = false;
+          jumpTimer = 0;
+
+          if (landed) {
+            // success
+            playerLane = pendingLane;
+            player.lane = playerLane;
+            padIndex++;
+            score++;
+
+            // position player on pad rim
+            const pad = getCurrentPad();
+            const r = getLaneR(playerLane);
+            player.x = pad.x;
+            player.y = nextPadScreenY;
+
+            // check perfect (player near center of safe arc)
+            const dx = player.x - pad.x;
+            const dy = (player.y + cameraY) - pad.y;
+            const landAngle = Math.atan2(dy, dx);
+            const relAngle = ((landAngle - pad.angle) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+            const relAngleNorm = relAngle > Math.PI ? relAngle - Math.PI * 2 : relAngle;
+            const fromCenter = Math.min(angleDiff(relAngleNorm, 0), angleDiff(relAngleNorm, Math.PI));
+            const isPerfect = fromCenter < pad.safeArc * 0.4;
+
+            if (isPerfect) {
+              combo++;
+              comboMult = combo >= 10 ? 4 : combo >= 5 ? 3 : combo >= 2 ? 2 : 1;
+              score += comboMult;
+              burstSparkles(player.x, player.y, 18, hue);
+              addShake(3, 30);
+              spawnPopup(player.x, player.y - 30, `+${comboMult + 1} PERFECT!`);
+            } else {
+              combo = 0;
+              comboMult = 1;
+            }
+
+            // squash on landing
+            player.scaleX = 1.4; player.scaleY = 0.6;
+            player.squashTimer = 0.15;
+
+            // pad bounce
+            pad.bounceVel = -0.18;
+
+            // scroll camera up
+            scrollTowardNextPad();
+
+            // recycle pads
+            recyclePads();
+
+          } else {
+            // death
+            player.dead = true;
+            player.color = '#ff4466';
+            burstSplat(player.x, player.y, 28);
+            addShake(18, 60);
+            zoomPunch = 1.06;
+            setTimeout(() => { STATE = 'gameover'; }, 900);
+            if (score > hiScore) {
+              hiScore = score;
+              localStorage.setItem('lf_hi', hiScore);
+            }
+            combo = 0;
+            comboMult = 1;
+          }
+
+          scoreEl.textContent = score;
+          updateComboUI();
+        }
+      } else {
+        // auto-jump when timer hits
+        if (jumpTimer >= JUMP_PERIOD && !player.dead) {
+          launchJump();
+        }
+      }
+    }
+
+    function launchJump() {
+      player.jumping = true;
+      player.vy = JUMP_VY;
+      // stretch
+      player.scaleX = 0.7; player.scaleY = 1.5;
+    }
+
+    function scrollTowardNextPad() {
+      // camera follows player
+      const targetCamY = cameraY + PAD_SPACING;
+      cameraY = targetCamY;
+    }
+
+    function recyclePads() {
+      // find pads that are below screen and move them up
+      const screenBottom = cameraY + CANVAS_H + 100;
+      const highestPadIdx = padIndex + PAD_COUNT - 1;
+      for (let pad of pads) {
+        if (pad.y > cameraY + CANVAS_H + 50) {
+          const newIdx = highestPadIdx + 1;
+          // find true highest
+          let maxIdx = -Infinity;
+          let minY = Infinity;
+          for (let p of pads) { if (p.index > maxIdx) maxIdx = p.index; }
+          for (let p of pads) { if (p.y < minY) minY = p.y; }
+          pad.index = maxIdx + 1;
+          initPad(pad, pad.index, minY - PAD_SPACING);
+        }
+      }
+    }
+
+    function updateComboUI() {
+      if (combo >= 2) {
+        comboEl.textContent = `x${comboMult} COMBO (${combo})`;
+        comboEl.classList.add('active');
+      } else {
+        comboEl.classList.remove('active');
+      }
+    }
+
+    // ─── Draw ───────────────────────────────────────────────────────────────
+    function draw() {
+      const W = CANVAS_W, H = CANVAS_H;
+
+      ctx.save();
+      ctx.translate(screenShake.x, screenShake.y);
+      ctx.scale(zoomPunch, zoomPunch);
+      ctx.translate((1 - zoomPunch) * W / 2, (1 - zoomPunch) * H / 2);
+
+      // background
+      const bg = ctx.createLinearGradient(0, 0, 0, H);
+      bg.addColorStop(0, `hsl(${(hue + 240) % 360},40%,8%)`);
+      bg.addColorStop(1, `hsl(${(hue + 260) % 360},35%,5%)`);
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, W, H);
+
+      // draw pads
+      for (let pad of pads) {
+        drawPad(pad);
+      }
+
+      // draw player
+      if (!player.dead || (player.dead && Math.floor(time * 10) % 2 === 0)) {
+        drawPlayer();
+      }
+
+      // draw particles
+      for (let p of particles) {
+        if (!p.active) continue;
+        const alpha = p.life / p.maxLife;
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = p.color;
+        if (p.type === 'splat') {
+          ctx.beginPath();
+          ctx.ellipse(p.x, p.y, p.r * (1 + (1 - alpha)), p.r * alpha, 0, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.r * alpha, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+      }
+
+      // draw popups
+      ctx.textAlign = 'center';
+      for (let p of popups) {
+        if (!p.active) continue;
+        const alpha = p.life / p.maxLife;
+        ctx.globalAlpha = alpha;
+        ctx.font = `bold ${14 + (1 - alpha) * 6}px system-ui`;
+        ctx.fillStyle = '#ffd700';
+        ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+        ctx.lineWidth = 3;
+        ctx.strokeText(p.text, p.x, p.y - cameraY);
+        ctx.fillText(p.text, p.x, p.y - cameraY);
+        ctx.globalAlpha = 1;
+      }
+
+      // draw UI overlays based on state
+      if (STATE === 'start') drawStartScreen();
+      if (STATE === 'gameover') drawGameoverScreen();
+
+      ctx.restore();
+    }
+
+    function drawPad(pad) {
+      const screenY = pad.y - cameraY;
+      if (screenY < -150 || screenY > CANVAS_H + 150) return;
+
+      const cx = pad.x, cy = screenY;
+      const outerR = PAD_OUTER_R + 14;
+      const innerR = 18;
+      const bs = pad.bounceScale;
+
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.scale(1, bs);
+
+      // stick
+      ctx.strokeStyle = `hsl(${pad.hue},60%,45%)`;
+      ctx.lineWidth = 8;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(0, 10);
+      ctx.lineTo(0, 55);
+      ctx.stroke();
+
+      // stick gloss
+      ctx.strokeStyle = `hsl(${pad.hue},80%,75%)`;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(-1, 12);
+      ctx.lineTo(-1, 50);
+      ctx.stroke();
+
+      // outer ring disc base
+      ctx.beginPath();
+      ctx.arc(0, 0, outerR, 0, Math.PI * 2);
+      ctx.fillStyle = `hsl(${(pad.hue + 30) % 360},50%,20%)`;
+      ctx.fill();
+
+      // draw rotating peppermint swirl twist pad
+      drawTwistPad(ctx, pad, outerR, innerR);
+
+      // inner lane indicator
+      ctx.beginPath();
+      ctx.arc(0, 0, PAD_INNER_R, 0, Math.PI * 2);
+      ctx.strokeStyle = `hsla(${pad.hue},80%,80%,0.3)`;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // outer lane indicator
+      ctx.beginPath();
+      ctx.arc(0, 0, PAD_OUTER_R, 0, Math.PI * 2);
+      ctx.strokeStyle = `hsla(${pad.hue},80%,80%,0.2)`;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // center candy button
+      const cg = ctx.createRadialGradient(-5, -5, 2, 0, 0, innerR);
+      cg.addColorStop(0, `hsl(${pad.hue},100%,85%)`);
+      cg.addColorStop(1, `hsl(${pad.hue},80%,50%)`);
+      ctx.beginPath();
+      ctx.arc(0, 0, innerR, 0, Math.PI * 2);
+      ctx.fillStyle = cg;
+      ctx.fill();
+
+      ctx.restore();
+    }
+
+    function drawTwistPad(ctx, pad, outerR, innerR) {
+      const slices = 8;
+      const sliceAng = (Math.PI * 2) / slices;
+      const safeA = pad.safeArc;
+      const stickyA = pad.stickyArc;
+      const stickyOff = pad.stickyAngle;
+
+      for (let i = 0; i < slices; i++) {
+        const startA = pad.angle + i * sliceAng;
+        const endA = startA + sliceAng;
+        const midA = startA + sliceAng / 2;
+        const relMid = ((midA - pad.angle) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+        const relMidNorm = relMid > Math.PI ? relMid - Math.PI * 2 : relMid;
+
+        // check if sticky
+        const stickyRel = ((stickyOff) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+        const stickyRelNorm = stickyRel > Math.PI ? stickyRel - Math.PI * 2 : stickyRel;
+        const inSticky = angleDiff(relMidNorm, stickyRelNorm) < stickyA;
+        const inSticky2 = pad.doubleSlice && angleDiff(relMidNorm, stickyRelNorm + Math.PI) < stickyA * 0.7;
+
+        const inSafe = angleDiff(relMidNorm, 0) < safeA || angleDiff(relMidNorm, Math.PI) < safeA;
+
+        let sliceColor;
+        if (inSticky || inSticky2) {
+          // burnt sugar - dark amber
+          sliceColor = `hsl(30,90%,${30 + i % 2 * 10}%)`;
+        } else if (inSafe) {
+          // frosting - bright pastel
+          sliceColor = `hsl(${(pad.hue + i * 15) % 360},90%,${65 + i % 2 * 15}%)`;
+        } else {
+          // mid zone
+          sliceColor = `hsl(${(pad.hue + 180 + i * 10) % 360},60%,40%)`;
+        }
+
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.arc(0, 0, outerR, startA, endA);
+        ctx.closePath();
+        ctx.fillStyle = sliceColor;
+        ctx.fill();
+
+        // gloss sheen on safe zones
+        if (inSafe && !inSticky && !inSticky2) {
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.arc(0, 0, outerR * 0.6, startA, endA);
+          ctx.closePath();
+          ctx.fillStyle = `hsla(0,0%,100%,0.12)`;
+          ctx.fill();
+        }
+
+        // sticky: texture lines
+        if (inSticky || inSticky2) {
+          ctx.save();
+          ctx.clip();
+          ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+          ctx.lineWidth = 2;
+          for (let j = 0; j < 3; j++) {
+            const la = startA + j * sliceAng / 3;
+            ctx.beginPath();
+            ctx.moveTo(Math.cos(la) * 20, Math.sin(la) * 20);
+            ctx.lineTo(Math.cos(la) * outerR, Math.sin(la) * outerR);
+            ctx.stroke();
+          }
+          ctx.restore();
+        }
+      }
+
+      // outer ring border
+      ctx.beginPath();
+      ctx.arc(0, 0, outerR, 0, Math.PI * 2);
+      ctx.strokeStyle = `hsla(${pad.hue},60%,80%,0.5)`;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    function drawPlayer() {
+      const px = player.x, py = player.y;
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.scale(player.scaleX, player.scaleY);
+
+      // shadow
+      ctx.beginPath();
+      ctx.ellipse(0, 14, 10 * player.scaleX, 4, 0, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.fill();
+
+      // body
+      const bodyGrad = ctx.createRadialGradient(-4, -6, 2, 0, 0, 14);
+      bodyGrad.addColorStop(0, '#fff');
+      bodyGrad.addColorStop(0.3, player.color);
+      bodyGrad.addColorStop(1, `hsl(${(hue + 180) % 360},80%,40%)`);
+      ctx.beginPath();
+      ctx.arc(0, 0, 13, 0, Math.PI * 2);
+      ctx.fillStyle = bodyGrad;
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // eyes
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(-4, -3, 3.5, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(4, -3, 3.5, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#222';
+      ctx.beginPath(); ctx.arc(-3.5, -3, 2, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(4.5, -3, 2, 0, Math.PI * 2); ctx.fill();
+
+      // lane indicator dot
+      const laneColor = pendingLane === 'inner' ? '#00ffcc' : '#ff88ff';
+      ctx.beginPath();
+      ctx.arc(0, 5, 3, 0, Math.PI * 2);
+      ctx.fillStyle = laneColor;
+      ctx.fill();
+
+      ctx.restore();
+    }
+
+    function drawStartScreen() {
+      const W = CANVAS_W, H = CANVAS_H;
+      ctx.fillStyle = 'rgba(10,5,20,0.75)';
+      ctx.fillRect(0, 0, W, H);
+
+      // title
+      ctx.textAlign = 'center';
+      ctx.font = 'bold 42px system-ui';
+      ctx.fillStyle = '#fff';
+      const tg = ctx.createLinearGradient(0, 200, 0, 270);
+      tg.addColorStop(0, `hsl(${hue},100%,80%)`);
+      tg.addColorStop(1, `hsl(${(hue+60)%360},100%,65%)`);
+      ctx.fillStyle = tg;
+      ctx.shadowColor = `hsl(${hue},100%,60%)`;
+      ctx.shadowBlur = 20;
+      ctx.fillText('Lollipop', W / 2, H / 2 - 90);
+      ctx.fillText('Flip', W / 2, H / 2 - 40);
+      ctx.shadowBlur = 0;
+
+      // subtitle
+      ctx.font = '16px system-ui';
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      ctx.fillText('Tap to flip your lane!', W / 2, H / 2 + 10);
+      ctx.fillText('Land on the frosted zones', W / 2, H / 2 + 35);
+      ctx.fillText('Avoid the burnt sugar!', W / 2, H / 2 + 60);
+
+      // high score
+      if (hiScore > 0) {
+        ctx.font = 'bold 18px system-ui';
+        ctx.fillStyle = '#ffd700';
+        ctx.fillText(`Best: ${hiScore}`, W / 2, H / 2 + 100);
+      }
+
+      // tap prompt pulsing
+      const pulse = 0.7 + 0.3 * Math.sin(time * 4);
+      ctx.globalAlpha = pulse;
+      ctx.font = 'bold 20px system-ui';
+      ctx.fillStyle = '#fff';
+      ctx.fillText('Tap / Space to Play', W / 2, H / 2 + 150);
+      ctx.globalAlpha = 1;
+
+      // lane legend
+      ctx.font = '13px system-ui';
+      ctx.fillStyle = '#00ffcc';
+      ctx.fillText('● Inner Lane', W / 2 - 60, H / 2 + 190);
+      ctx.fillStyle = '#ff88ff';
+      ctx.fillText('● Outer Lane', W / 2 + 60, H / 2 + 190);
+    }
+
+    function drawGameoverScreen() {
+      const W = CANVAS_W, H = CANVAS_H;
+      ctx.fillStyle = 'rgba(10,5,20,0.8)';
+      ctx.fillRect(0, 0, W, H);
+
+      ctx.textAlign = 'center';
+      ctx.font = 'bold 44px system-ui';
+      ctx.fillStyle = '#ff4466';
+      ctx.shadowColor = '#ff0033';
+      ctx.shadowBlur = 20;
+      ctx.fillText('SPLAT!', W / 2, H / 2 - 80);
+      ctx.shadowBlur = 0;
+
+      ctx.font = 'bold 28px system-ui';
+      ctx.fillStyle = '#fff';
+      ctx.fillText(`Score: ${score}`, W / 2, H / 2 - 20);
+
+      ctx.font = 'bold 20px system-ui';
+      ctx.fillStyle = '#ffd700';
+      ctx.fillText(`Best: ${hiScore}`, W / 2, H / 2 + 20);
+
+      if (score >= hiScore && score > 0) {
+        const p = 0.5 + 0.5 * Math.sin(time * 6);
+        ctx.globalAlpha = p;
+        ctx.font = 'bold 18px system-ui';
+        ctx.fillStyle = '#ffd700';
+        ctx.fillText('NEW BEST!', W / 2, H / 2 + 55);
+        ctx.globalAlpha = 1;
+      }
+
+      const pulse = 0.7 + 0.3 * Math.sin(time * 4);
+      ctx.globalAlpha = pulse;
+      ctx.font = 'bold 20px system-ui';
+      ctx.fillStyle = '#fff';
+      ctx.fillText('Tap / Space to Retry', W / 2, H / 2 + 110);
+      ctx.globalAlpha = 1;
+    }
+
+    // ─── Main loop ──────────────────────────────────────────────────────────
+    function loop(ts) {
+      if (!lastTime) lastTime = ts;
+      update(ts);
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    // ─── Boot ───────────────────────────────────────────────────────────────
+    initGame();
+    // On start screen, we still want pads to render, so draw them
+    // put player on first pad
+    player.y = pads[0].y - cameraY;
+    player.x = pads[0].x;
+    STATE = 'start';
+
+    requestAnimationFrame(loop);
+
+  })();
+  </script>
+</body>
+</html>

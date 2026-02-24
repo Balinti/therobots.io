@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Color Grove - Free HTML5 Game</title>
+  <meta name="description" content="Play Color Grove - Dodge obstacles by switching colors as the screen rotates around a mystical forest grove.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a0a1a">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Color Grove - Free HTML5 Game">
+  <meta property="og:description" content="Play Color Grove - Dodge obstacles by switching colors as the screen rotates around a mystical forest grove.">
+  <meta property="og:url" content="https://balinti.github.io/color-grove/">
+  <meta property="og:image" content="https://balinti.github.io/color-grove/preview.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Color Grove - Free HTML5 Game">
+  <meta name="twitter:description" content="Play Color Grove - Dodge obstacles by switching colors as the screen rotates around a mystical forest grove.">
+  <meta name="twitter:image" content="https://balinti.github.io/color-grove/preview.png">
+  <link rel="canonical" href="https://balinti.github.io/color-grove/">
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "VideoGame",
+    "name": "Color Grove",
+    "description": "Dodge obstacles by snapping between lanes in a mystical neon forest grove.",
+    "url": "https://balinti.github.io/color-grove/",
+    "genre": "Arcade",
+    "gamePlatform": "Web Browser",
+    "applicationCategory": "Game",
+    "operatingSystem": "Any"
+  }
+  </script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #050510;
+      display: flex; flex-direction: column;
+      align-items: center;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      color: #ccc;
+      overflow-x: hidden;
+    }
+    #game-wrap {
+      width: 100%;
+      max-width: 420px;
+      height: 100vh;
+      max-height: 750px;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+    }
+    #seo-block {
+      max-width: 420px;
+      width: 100%;
+      padding: 16px 20px 32px;
+      font-size: 13px;
+      line-height: 1.6;
+      color: #666;
+      text-align: center;
+    }
+    #seo-block h2 { font-size: 15px; color: #888; margin-bottom: 8px; }
+    #seo-block a { color: #7af; text-decoration: none; }
+    #seo-block a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+<div id="game-wrap">
+  <canvas id="c"></canvas>
+</div>
+<div id="seo-block">
+  <h2>How to Play Color Grove</h2>
+  <p>Tap the screen or press <strong>Space / Enter</strong> to snap your seed orb to the next lane clockwise. Dodge the glowing gate obstacles scrolling toward the center. Every gate you pass scores a point. Survive as long as you can!</p>
+  <p style="margin-top:8px;">🔒 Privacy: This game stores only your best score in your browser's localStorage — no data is sent anywhere.</p>
+  <p style="margin-top:8px;"><a href="https://github.com/Balinti/color-grove" target="_blank" rel="noopener">View source on GitHub</a></p>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+const BEST_KEY = 'cgrove_best';
+const SHARE_BASE = 'https://balinti.github.io/color-grove/';
+const BASE_LANES = 3;
+const PLAYER_RADIUS_FRAC = 0.28; // fraction of arena radius
+const ARENA_RADIUS_FRAC = 0.42;  // fraction of min(w,h)/2
+const GATE_WIDTH = 18;
+const SPOKE_WIDTH = 3;
+const PLAYER_R = 12;
+
+// ─── State ───────────────────────────────────────────────────────────────────
+let state = 'start'; // 'start' | 'playing' | 'gameover'
+let score = 0;
+let best = parseInt(localStorage.getItem(BEST_KEY) || '0');
+let lane = 0;
+let numLanes = BASE_LANES;
+let gates = [];
+let particles = [];
+let fireflies = [];
+let hue = 0;
+let shake = { x: 0, y: 0, t: 0 };
+let lastTime = 0;
+let spawnTimer = 0;
+let beatTimer = 0;
+let BEAT = 0.7; // seconds per beat for moving bramble
+let challengeScore = 0;
+let shareBtn = { x: 0, y: 0, w: 0, h: 0 };
+let animOffset = 0;
+
+// ─── Canvas setup ────────────────────────────────────────────────────────────
+const wrap = document.getElementById('game-wrap');
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W, H, dpr, arenaCX, arenaCY, arenaR, playerR;
+
+function resize() {
+  const rect = wrap.getBoundingClientRect();
+  W = rect.width;
+  H = rect.height;
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  arenaCX = W / 2;
+  arenaCY = H / 2;
+  arenaR = Math.min(W, H) * ARENA_RADIUS_FRAC;
+  playerR = arenaR * PLAYER_RADIUS_FRAC;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ─── URL challenge score ──────────────────────────────────────────────────────
+(function() {
+  const p = new URLSearchParams(window.location.search);
+  const s = parseInt(p.get('score') || '0');
+  if (s > 0) challengeScore = s;
+})();
+
+// ─── Geometry helpers ────────────────────────────────────────────────────────
+function laneAngle(i, total) {
+  // Spokes equally spaced; lane 0 at top
+  return -Math.PI / 2 + (i / total) * Math.PI * 2;
+}
+function laneXY(i, total, r) {
+  const a = laneAngle(i, total);
+  return { x: arenaCX + Math.cos(a) * r, y: arenaCY + Math.sin(a) * r };
+}
+
+// ─── Difficulty ──────────────────────────────────────────────────────────────
+function difficulty(sc) {
+  const t = Math.min(sc / 100, 1);
+  return {
+    speed:    0.28 + t * 0.52,    // fraction of arenaR per second
+    interval: 1.8 - t * 0.95,     // seconds between spawns
+    thickness:GATE_WIDTH + t * 8,  // gate visual thickness
+    hasMover: sc >= 20
+  };
+}
+
+// ─── Gate spawning ───────────────────────────────────────────────────────────
+function spawnGate() {
+  const d = difficulty(score);
+  const n = numLanes;
+  // pick pattern
+  const patterns = ['single','single','single','wall','gap','gap'];
+  if (d.hasMover) patterns.push('mover');
+  const pat = patterns[Math.floor(Math.random() * patterns.length)];
+  let blocked = [];
+  if (pat === 'single') {
+    // one blocked lane, rest safe
+    const b = Math.floor(Math.random() * n);
+    blocked = [b];
+  } else if (pat === 'wall') {
+    // two adjacent blocked (only valid if n >= 3)
+    const b = Math.floor(Math.random() * n);
+    blocked = [b, (b + 1) % n];
+    if (n < 3) blocked = [b];
+  } else if (pat === 'gap') {
+    // only one safe lane
+    const safe = Math.floor(Math.random() * n);
+    blocked = [];
+    for (let i = 0; i < n; i++) if (i !== safe) blocked.push(i);
+  } else if (pat === 'mover') {
+    blocked = [Math.floor(Math.random() * n)];
+  }
+  // safety: ensure current player lane is safe at spawn
+  // remove player lane from blocked (bias toward fairness)
+  if (blocked.includes(lane) && blocked.length >= n - 1) {
+    // keep at least one safe
+    const idx = blocked.indexOf(lane);
+    blocked.splice(idx, 1);
+  }
+
+  gates.push({
+    dist: arenaR * 1.08,   // starts outside arena
+    speed: d.speed,
+    blocked,
+    thickness: d.thickness,
+    pattern: pat,
+    beatPhase: Math.random() * Math.PI * 2,
+    passed: false,
+    hue: (hue + Math.random() * 60 - 30 + 360) % 360
+  });
+}
+
+// ─── Particles ───────────────────────────────────────────────────────────────
+function spawnSnapBurst(laneIdx) {
+  const p = laneXY(laneIdx, numLanes, playerR);
+  for (let i = 0; i < 14; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const sp = 60 + Math.random() * 100;
+    particles.push({
+      x: p.x, y: p.y,
+      vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+      life: 1, decay: 1.8 + Math.random(),
+      r: 3 + Math.random() * 3,
+      hue: hue, alpha: 1, type: 'spore'
+    });
+  }
+}
+function spawnPassPulse(g) {
+  // ring pulse at player radius
+  particles.push({
+    x: arenaCX, y: arenaCY,
+    ring: playerR, grow: 80,
+    life: 1, decay: 2.5,
+    hue: g.hue, type: 'ring'
+  });
+}
+function spawnDeathCloud() {
+  const p2 = laneXY(lane, numLanes, playerR);
+  for (let i = 0; i < 40; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const sp = 40 + Math.random() * 200;
+    particles.push({
+      x: p2.x, y: p2.y,
+      vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+      life: 1, decay: 0.8 + Math.random() * 0.6,
+      r: 4 + Math.random() * 6,
+      hue: hue, alpha: 1, type: 'shard'
+    });
+  }
+}
+
+// ─── Fireflies ────────────────────────────────────────────────────────────────
+function initFireflies() {
+  fireflies = [];
+  for (let i = 0; i < 28; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const d = arenaR * (0.55 + Math.random() * 0.55);
+    fireflies.push({
+      x: arenaCX + Math.cos(a) * d,
+      y: arenaCY + Math.sin(a) * d,
+      vx: (Math.random() - 0.5) * 14,
+      vy: (Math.random() - 0.5) * 14,
+      r: 1.5 + Math.random() * 2,
+      hue: Math.random() * 360,
+      phase: Math.random() * Math.PI * 2,
+      speed: 0.5 + Math.random() * 1.5
+    });
+  }
+}
+initFireflies();
+
+// ─── Shake ───────────────────────────────────────────────────────────────────
+function triggerShake(intensity, duration) {
+  shake.t = duration;
+  shake.intensity = intensity;
+}
+
+// ─── Reset ───────────────────────────────────────────────────────────────────
+function reset() {
+  score = 0;
+  lane = 0;
+  numLanes = BASE_LANES;
+  gates = [];
+  particles = [];
+  spawnTimer = 0;
+  beatTimer = 0;
+  hue = 120;
+  spawnGate();
+}
+
+// ─── Input ───────────────────────────────────────────────────────────────────
+function handleInput(px, py) {
+  if (state === 'start') {
+    state = 'playing';
+    reset();
+    return;
+  }
+  if (state === 'gameover') {
+    // check share button
+    if (px !== null && px >= shareBtn.x && px <= shareBtn.x + shareBtn.w &&
+        py >= shareBtn.y && py <= shareBtn.y + shareBtn.h) {
+      doShare();
+      return;
+    }
+    state = 'playing';
+    reset();
+    return;
+  }
+  if (state === 'playing') {
+    // snap clockwise
+    lane = (lane + 1) % numLanes;
+    spawnSnapBurst(lane);
+    triggerShake(1.5, 0.08);
+    hue = (hue + 30) % 360;
+  }
+}
+
+canvas.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const px = (e.clientX - rect.left);
+  const py = (e.clientY - rect.top);
+  handleInput(px, py);
+});
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    handleInput(null, null);
+  }
+});
+
+// ─── Share ────────────────────────────────────────────────────────────────────
+function doShare() {
+  const url = SHARE_BASE + '?score=' + score;
+  const text = 'I scored ' + score + ' in Color Grove! Can you beat me?';
+  if (navigator.share) {
+    navigator.share({ title: 'Color Grove', text, url }).catch(() => {});
+  } else {
+    navigator.clipboard ? navigator.clipboard.writeText(url) : prompt('Copy link:', url);
+  }
+}
+
+// ─── Update ───────────────────────────────────────────────────────────────────
+function update(dt) {
+  if (state !== 'playing') return;
+  const d = difficulty(score);
+  animOffset += dt;
+  hue = (hue + dt * 15) % 360;
+  beatTimer += dt;
+
+  // unlock 4 lanes
+  if (score >= 50 && numLanes < 4) {
+    numLanes = 4;
+    lane = lane % numLanes;
+  }
+
+  // spawn gates
+  spawnTimer -= dt;
+  if (spawnTimer <= 0) {
+    spawnTimer = d.interval + (Math.random() * 0.3 - 0.15);
+    spawnGate();
+  }
+
+  // update gates
+  for (let i = gates.length - 1; i >= 0; i--) {
+    const g = gates[i];
+    const speedPx = g.speed * arenaR;
+    g.dist -= speedPx * dt;
+
+    // moving bramble
+    if (g.pattern === 'mover') {
+      const beat = Math.floor(beatTimer / BEAT);
+      const newBlocked = [beat % numLanes];
+      g.blocked = newBlocked;
+    }
+
+    // check pass
+    if (!g.passed && g.dist < playerR) {
+      g.passed = true;
+      score++;
+      if (score > best) { best = score; localStorage.setItem(BEST_KEY, best); }
+      spawnPassPulse(g);
+    }
+
+    // collision: gate hits player radius band
+    if (!g.passed && g.dist <= playerR + d.thickness / 2 && g.dist >= playerR - d.thickness / 2) {
+      if (g.blocked.includes(lane)) {
+        // HIT
+        spawnDeathCloud();
+        triggerShake(12, 0.45);
+        state = 'gameover';
+        return;
+      }
+    }
+
+    // remove if past center
+    if (g.dist < 0) gates.splice(i, 1);
+  }
+
+  // update particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.life -= p.decay * dt;
+    if (p.life <= 0) { particles.splice(i, 1); continue; }
+    if (p.type === 'spore' || p.type === 'shard') {
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vx *= 1 - dt * 3;
+      p.vy *= 1 - dt * 3;
+      p.alpha = p.life;
+    } else if (p.type === 'ring') {
+      p.ring += p.grow * dt;
+      p.alpha = p.life;
+    }
+  }
+
+  // update fireflies
+  for (const f of fireflies) {
+    f.phase += f.speed * dt;
+    f.x += f.vx * dt;
+    f.y += f.vy * dt;
+    // wrap around arena area
+    const dx = f.x - arenaCX, dy = f.y - arenaCY;
+    if (Math.sqrt(dx*dx+dy*dy) > arenaR * 1.1) {
+      const a = Math.atan2(dy, dx) + Math.PI;
+      f.x = arenaCX + Math.cos(a) * arenaR * 0.95;
+      f.y = arenaCY + Math.sin(a) * arenaR * 0.95;
+    }
+  }
+
+  // shake decay
+  if (shake.t > 0) shake.t -= dt;
+}
+
+// ─── Draw helpers ─────────────────────────────────────────────────────────────
+function drawBackground() {
+  // Deep space gradient
+  const grad = ctx.createRadialGradient(arenaCX, arenaCY, 0, arenaCX, arenaCY, arenaR * 1.6);
+  grad.addColorStop(0, `hsl(${hue+200},40%,8%)`);
+  grad.addColorStop(1, '#020208');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Fireflies
+  for (const f of fireflies) {
+    const a = 0.3 + 0.25 * Math.sin(f.phase);
+    ctx.save();
+    ctx.globalAlpha = a;
+    const fg = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, f.r * 3);
+    fg.addColorStop(0, `hsl(${f.hue},100%,80%)`);
+    fg.addColorStop(1, 'transparent');
+    ctx.fillStyle = fg;
+    ctx.beginPath();
+    ctx.arc(f.x, f.y, f.r * 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawArena() {
+  // Arena circle border
+  ctx.save();
+  ctx.strokeStyle = `hsl(${hue},60%,35%)`;
+  ctx.lineWidth = 2;
+  ctx.globalAlpha = 0.5;
+  ctx.beginPath();
+  ctx.arc(arenaCX, arenaCY, arenaR, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+
+  // Spokes
+  for (let i = 0; i < numLanes; i++) {
+    const a = laneAngle(i, numLanes);
+    const spokeHue = (hue + i * (360 / numLanes)) % 360;
+    ctx.save();
+    ctx.strokeStyle = `hsl(${spokeHue},70%,40%)`;
+    ctx.lineWidth = SPOKE_WIDTH;
+    ctx.globalAlpha = 0.35;
+    ctx.beginPath();
+    ctx.moveTo(arenaCX, arenaCY);
+    ctx.lineTo(arenaCX + Math.cos(a) * arenaR, arenaCY + Math.sin(a) * arenaR);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Player radius ring (subtle)
+  ctx.save();
+  ctx.strokeStyle = `hsl(${hue},50%,50%)`;
+  ctx.lineWidth = 1.5;
+  ctx.globalAlpha = 0.2;
+  ctx.setLineDash([4, 8]);
+  ctx.beginPath();
+  ctx.arc(arenaCX, arenaCY, playerR, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+function drawGates() {
+  for (const g of gates) {
+    const d = difficulty(score);
+    const thickness = g.thickness;
+    for (const bl of g.blocked) {
+      const a = laneAngle(bl, numLanes);
+      const innerR = g.dist - thickness / 2;
+      const outerR = g.dist + thickness / 2;
+      // Draw arc segment centered on spoke
+      const spanHalf = (Math.PI * 2 / numLanes) * 0.42;
+      const aStart = a - spanHalf;
+      const aEnd = a + spanHalf;
+
+      // Glow
+      ctx.save();
+      ctx.globalAlpha = 0.22;
+      ctx.fillStyle = `hsl(${g.hue},100%,60%)`;
+      ctx.beginPath();
+      ctx.arc(arenaCX, arenaCY, outerR + 8, aStart, aEnd);
+      ctx.arc(arenaCX, arenaCY, Math.max(0, innerR - 8), aEnd, aStart, true);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+
+      // Main gate
+      ctx.save();
+      ctx.strokeStyle = `hsl(${g.hue},100%,65%)`;
+      ctx.lineWidth = thickness;
+      ctx.lineCap = 'round';
+      ctx.globalAlpha = 0.95;
+      ctx.beginPath();
+      ctx.arc(arenaCX, arenaCY, g.dist, aStart, aEnd);
+      ctx.stroke();
+
+      // Bright edge
+      ctx.strokeStyle = `hsl(${g.hue},100%,90%)`;
+      ctx.lineWidth = 2;
+      ctx.globalAlpha = 0.8;
+      ctx.beginPath();
+      ctx.arc(arenaCX, arenaCY, g.dist, aStart, aEnd);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+}
+
+function drawPlayer() {
+  const pos = laneXY(lane, numLanes, playerR);
+  const ph = (hue + lane * 90) % 360;
+
+  // Glow
+  ctx.save();
+  const pg = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, PLAYER_R * 2.5);
+  pg.addColorStop(0, `hsla(${ph},100%,70%,0.6)`);
+  pg.addColorStop(1, 'transparent');
+  ctx.fillStyle = pg;
+  ctx.beginPath();
+  ctx.arc(pos.x, pos.y, PLAYER_R * 2.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // Orb
+  const og = ctx.createRadialGradient(pos.x - 3, pos.y - 3, 1, pos.x, pos.y, PLAYER_R);
+  og.addColorStop(0, `hsl(${ph},100%,90%)`);
+  og.addColorStop(0.5, `hsl(${ph},100%,65%)`);
+  og.addColorStop(1, `hsl(${ph},80%,35%)`);
+  ctx.save();
+  ctx.shadowColor = `hsl(${ph},100%,70%)`;
+  ctx.shadowBlur = 18;
+  ctx.fillStyle = og;
+  ctx.beginPath();
+  ctx.arc(pos.x, pos.y, PLAYER_R, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Outline
+  ctx.strokeStyle = `hsl(${ph},100%,90%)`;
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, p.alpha);
+    if (p.type === 'spore') {
+      ctx.fillStyle = `hsl(${p.hue},100%,70%)`;
+      ctx.shadowColor = `hsl(${p.hue},100%,70%)`;
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r * p.life, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (p.type === 'shard') {
+      ctx.strokeStyle = `hsl(${p.hue},100%,75%)`;
+      ctx.lineWidth = 2;
+      ctx.shadowColor = `hsl(${p.hue},100%,75%)`;
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(p.x - p.vx * 0.05, p.y - p.vy * 0.05);
+      ctx.stroke();
+    } else if (p.type === 'ring') {
+      ctx.strokeStyle = `hsl(${p.hue},100%,70%)`;
+      ctx.lineWidth = 3 * p.life;
+      ctx.shadowColor = `hsl(${p.hue},100%,70%)`;
+      ctx.shadowBlur = 12;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.ring, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
+function drawScore() {
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 28px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = `hsl(${hue},80%,75%)`;
+  ctx.shadowColor = `hsl(${hue},100%,60%)`;
+  ctx.shadowBlur = 12;
+  ctx.fillText(score, arenaCX, 52);
+  ctx.font = '13px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = '#666';
+  ctx.shadowBlur = 0;
+  ctx.fillText('BEST ' + best, arenaCX, 70);
+  ctx.restore();
+}
+
+function drawStartScreen() {
+  // Title
+  ctx.save();
+  ctx.textAlign = 'center';
+  // Big title
+  const titleY = arenaCY - arenaR * 0.55;
+  ctx.font = 'bold 44px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = `hsl(${hue},90%,75%)`;
+  ctx.shadowColor = `hsl(${hue},100%,65%)`;
+  ctx.shadowBlur = 24;
+  ctx.fillText('Color Grove', arenaCX, titleY);
+
+  ctx.font = '16px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = `hsl(${(hue+120)%360},80%,70%)`;
+  ctx.shadowBlur = 8;
+  ctx.fillText('Root Snap', arenaCX, titleY + 28);
+
+  // Challenge
+  if (challengeScore > 0) {
+    ctx.font = 'bold 15px "Segoe UI", system-ui, sans-serif';
+    ctx.fillStyle = '#ffa050';
+    ctx.shadowColor = '#ff8020';
+    ctx.shadowBlur = 14;
+    ctx.fillText('Challenge: Beat ' + challengeScore + '!', arenaCX, arenaCY - arenaR * 0.2);
+  }
+
+  // Tap to start
+  const pulse = 0.85 + 0.15 * Math.sin(animOffset * 3);
+  ctx.globalAlpha = pulse;
+  ctx.font = 'bold 18px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = '#fff';
+  ctx.shadowColor = `hsl(${hue},100%,70%)`;
+  ctx.shadowBlur = 16;
+  ctx.fillText('Tap to Start', arenaCX, arenaCY + arenaR * 0.55);
+
+  ctx.globalAlpha = 0.5;
+  ctx.font = '13px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = '#aaa';
+  ctx.shadowBlur = 0;
+  ctx.fillText('or press Space / Enter', arenaCX, arenaCY + arenaR * 0.55 + 24);
+
+  // Best score
+  if (best > 0) {
+    ctx.globalAlpha = 0.7;
+    ctx.font = '14px "Segoe UI", system-ui, sans-serif';
+    ctx.fillStyle = `hsl(${hue},70%,65%)`;
+    ctx.fillText('Best: ' + best, arenaCX, arenaCY + arenaR * 0.55 + 52);
+  }
+  ctx.restore();
+}
+
+function drawGameoverScreen() {
+  ctx.save();
+  ctx.textAlign = 'center';
+
+  // Overlay
+  ctx.globalAlpha = 0.45;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  ctx.globalAlpha = 1;
+
+  const cy = arenaCY - arenaR * 0.15;
+
+  ctx.font = 'bold 36px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = '#ff4466';
+  ctx.shadowColor = '#ff2244';
+  ctx.shadowBlur = 20;
+  ctx.fillText('GAME OVER', arenaCX, cy - 30);
+
+  ctx.font = 'bold 52px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = `hsl(${hue},90%,75%)`;
+  ctx.shadowColor = `hsl(${hue},100%,65%)`;
+  ctx.shadowBlur = 18;
+  ctx.fillText(score, arenaCX, cy + 30);
+
+  ctx.font = '16px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = '#aaa';
+  ctx.shadowBlur = 0;
+  ctx.fillText('BEST  ' + best, arenaCX, cy + 60);
+
+  // Share button
+  const btnW = 160, btnH = 42;
+  const btnX = arenaCX - btnW / 2;
+  const btnY = cy + 80;
+  shareBtn = { x: btnX, y: btnY, w: btnW, h: btnH };
+
+  ctx.roundRect ? (()=>{
+    ctx.strokeStyle = `hsl(${hue},80%,55%)`;
+    ctx.lineWidth = 2;
+    ctx.fillStyle = `hsla(${hue},60%,20%,0.85)`;
+    ctx.shadowColor = `hsl(${hue},100%,55%)`;
+    ctx.shadowBlur = 12;
+    ctx.beginPath();
+    ctx.roundRect(btnX, btnY, btnW, btnH, 8);
+    ctx.fill();
+    ctx.stroke();
+  })() : (()=>{
+    ctx.strokeStyle = `hsl(${hue},80%,55%)`;
+    ctx.lineWidth = 2;
+    ctx.fillStyle = `hsla(${hue},60%,20%,0.85)`;
+    ctx.fillRect(btnX, btnY, btnW, btnH);
+    ctx.strokeRect(btnX, btnY, btnW, btnH);
+  })();
+
+  ctx.font = 'bold 15px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = '#fff';
+  ctx.shadowBlur = 0;
+  ctx.fillText('Share Score', arenaCX, btnY + 26);
+
+  // Tap to retry
+  const pulse = 0.8 + 0.2 * Math.sin(animOffset * 2.5);
+  ctx.globalAlpha = pulse;
+  ctx.font = 'bold 17px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = '#fff';
+  ctx.shadowColor = '#fff';
+  ctx.shadowBlur = 10;
+  ctx.fillText('Tap to Retry', arenaCX, btnY + btnH + 36);
+  ctx.restore();
+}
+
+// ─── Render ───────────────────────────────────────────────────────────────────
+function render() {
+  ctx.save();
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  // Shake offset
+  let sx = 0, sy = 0;
+  if (shake.t > 0) {
+    const mag = shake.intensity * (shake.t / 0.45);
+    sx = (Math.random() - 0.5) * mag * 2;
+    sy = (Math.random() - 0.5) * mag * 2;
+  }
+  ctx.translate(sx, sy);
+
+  drawBackground();
+
+  if (state === 'start') {
+    drawArena();
+    // Animated idle player
+    ctx.save();
+    const idlePos = laneXY(Math.floor(animOffset * 0.8) % BASE_LANES, BASE_LANES, playerR);
+    const ph = (hue) % 360;
+    const og = ctx.createRadialGradient(idlePos.x-3, idlePos.y-3, 1, idlePos.x, idlePos.y, PLAYER_R);
+    og.addColorStop(0, `hsl(${ph},100%,90%)`);
+    og.addColorStop(1, `hsl(${ph},80%,35%)`);
+    ctx.fillStyle = og;
+    ctx.shadowColor = `hsl(${ph},100%,70%)`;
+    ctx.shadowBlur = 18;
+    ctx.beginPath();
+    ctx.arc(idlePos.x, idlePos.y, PLAYER_R, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    drawParticles();
+    drawStartScreen();
+  } else if (state === 'playing') {
+    drawArena();
+    drawGates();
+    drawPlayer();
+    drawParticles();
+    drawScore();
+  } else if (state === 'gameover') {
+    drawArena();
+    drawGates();
+    drawParticles();
+    drawGameoverScreen();
+  }
+
+  ctx.restore();
+}
+
+// ─── RAF loop ─────────────────────────────────────────────────────────────────
+function loop(ts) {
+  requestAnimationFrame(loop);
+  const dt = Math.min((ts - lastTime) / 1000, 0.033);
+  lastTime = ts;
+  animOffset += dt;
+  update(dt);
+  render();
+}
+requestAnimationFrame(ts => { lastTime = ts; requestAnimationFrame(loop); });
+
+})();
+</script>
+
+</body>
+</html>

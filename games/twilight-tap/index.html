@@ -1,0 +1,1265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Twilight Tap - Free HTML5 Game</title>
+<meta name="description" content="Play Twilight Tap - Tap to bounce a ball off a paddle that pulsates in size and shatters sunset bricks.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#1a0a2e">
+
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="Twilight Tap - Free HTML5 Game">
+<meta property="og:description" content="Play Twilight Tap - Tap to bounce a ball off a paddle that pulsates in size and shatters sunset bricks.">
+<meta property="og:url" content="https://balinti.github.io/twilight-tap/">
+<meta property="og:image" content="https://balinti.github.io/twilight-tap/og.png">
+
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Twilight Tap - Free HTML5 Game">
+<meta name="twitter:description" content="Play Twilight Tap - Tap to bounce a ball off a paddle that pulsates in size and shatters sunset bricks.">
+<meta name="twitter:image" content="https://balinti.github.io/twilight-tap/og.png">
+
+<!-- AdSense -->
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 100%; height: 100%;
+    background: #0d0618;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+    touch-action: none;
+    overscroll-behavior: none;
+    font-family: 'Segoe UI', sans-serif;
+  }
+  #gameContainer {
+    position: relative;
+    width: 100%;
+    max-width: 420px;
+    height: 100vh;
+    max-height: 750px;
+    overflow: hidden;
+  }
+  #gameCanvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    cursor: pointer;
+  }
+  #muteBtn {
+    position: absolute;
+    top: 8px; right: 8px;
+    width: 32px; height: 32px;
+    border: none;
+    background: rgba(255,255,255,0.12);
+    border-radius: 50%;
+    color: #fff;
+    font-size: 14px;
+    cursor: pointer;
+    z-index: 10;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.2s;
+  }
+  #muteBtn:hover { background: rgba(255,255,255,0.22); }
+  #shareBtn {
+    position: absolute;
+    bottom: 16px; left: 50%;
+    transform: translateX(-50%);
+    padding: 10px 24px;
+    background: rgba(255,255,255,0.13);
+    border: 1.5px solid rgba(255,255,255,0.25);
+    border-radius: 20px;
+    color: #fff;
+    font-size: 13px;
+    cursor: pointer;
+    z-index: 10;
+    display: none;
+    white-space: nowrap;
+    transition: background 0.2s;
+  }
+  #shareBtn:hover { background: rgba(255,255,255,0.22); }
+  #copyMsg {
+    position: absolute;
+    bottom: 54px; left: 50%;
+    transform: translateX(-50%);
+    padding: 6px 14px;
+    background: rgba(0,0,0,0.7);
+    border-radius: 12px;
+    color: #8fff8f;
+    font-size: 12px;
+    pointer-events: none;
+    z-index: 20;
+    display: none;
+    white-space: nowrap;
+  }
+  /* SEO accessible text */
+  #seoText {
+    position: absolute;
+    width: 1px; height: 1px;
+    overflow: hidden;
+    clip: rect(0,0,0,0);
+    white-space: nowrap;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<div id="gameContainer">
+  <canvas id="gameCanvas"></canvas>
+  <button id="muteBtn" aria-label="Toggle mute">🔊</button>
+  <button id="shareBtn">Challenge a Friend 🔗</button>
+  <div id="copyMsg">Link copied!</div>
+  <div id="seoText" aria-hidden="false">
+    <h1>Twilight Tap: Prism Flip</h1>
+    <p>A free HTML5 hyper-casual game. Tap to flip your prism and bounce a ball into sunset glass panels. Collect stars, trigger Twilight Surge, and chase your high score!</p>
+    <p>Play instantly in your browser on desktop or mobile. No download required.</p>
+  </div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+// ── CONSTANTS ──────────────────────────────────────────────────────────────
+const W = 420, H = 750;
+const HS_KEY = 'twilightTapHighScore';
+const PRISM_Y = H - 80;
+const PRISM_W = 80;
+const PRISM_H = 18;
+const BALL_R = 10;
+const PANEL_COLS = 6;
+const PANEL_ROWS = 5;
+const PANEL_W = 58;
+const PANEL_H = 22;
+const PANEL_GAP = 5;
+const PANEL_OFFSET_X = (W - (PANEL_COLS * (PANEL_W + PANEL_GAP) - PANEL_GAP)) / 2;
+const PANEL_OFFSET_Y = 60;
+
+// ── CANVAS SETUP ────────────────────────────────────────────────────────────
+const container = document.getElementById('gameContainer');
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+let DPR = window.devicePixelRatio || 1;
+
+function resizeCanvas() {
+  const rect = container.getBoundingClientRect();
+  DPR = window.devicePixelRatio || 1;
+  canvas.width = rect.width * DPR;
+  canvas.height = rect.height * DPR;
+  canvas.style.width = rect.width + 'px';
+  canvas.style.height = rect.height + 'px';
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+// Scale context to logical coords
+function applyTransform() {
+  const rect = container.getBoundingClientRect();
+  const scaleX = rect.width / W;
+  const scaleY = rect.height / H;
+  const scale = Math.min(scaleX, scaleY);
+  const offX = (rect.width - W * scale) / 2;
+  const offY = (rect.height - H * scale) / 2;
+  ctx.setTransform(DPR * scale, 0, 0, DPR * scale, DPR * offX, DPR * offY);
+  return { scale, offX, offY };
+}
+
+// ── STATE ────────────────────────────────────────────────────────────────────
+let state = 'start'; // 'start' | 'playing' | 'gameover'
+let score, best, combo, comboTimer;
+let ball, prismLeft, panels, particles, stars, embers;
+let twilightMeter, inSurge, surgeTimer;
+let shakeAmt, shakeDur, shakeTimer;
+let hue, time, hits, diffLevel;
+let muted = false;
+let gameOverShowShare = false;
+
+function loadBest() { return parseInt(localStorage.getItem(HS_KEY) || '0', 10); }
+function saveBest(v) { localStorage.setItem(HS_KEY, v); }
+
+// ── PARTICLE SYSTEM ─────────────────────────────────────────────────────────
+function spawnShards(x, y, color, count) {
+  for (let i = 0; i < count; i++) {
+    const angle = (Math.PI * 2 * i / count) + Math.random() * 0.5;
+    const speed = 1.5 + Math.random() * 3;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 2,
+      life: 1, decay: 0.025 + Math.random() * 0.02,
+      size: 3 + Math.random() * 4,
+      color, type: 'shard',
+      rot: Math.random() * Math.PI,
+      rotV: (Math.random() - 0.5) * 0.3
+    });
+  }
+}
+
+function spawnSparks(x, y, color, count) {
+  for (let i = 0; i < count; i++) {
+    const angle = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI;
+    const speed = 2 + Math.random() * 4;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 1, decay: 0.04 + Math.random() * 0.03,
+      size: 2 + Math.random() * 2,
+      color, type: 'spark'
+    });
+  }
+}
+
+function spawnTrail(x, y, color) {
+  particles.push({
+    x, y,
+    vx: (Math.random() - 0.5) * 0.5,
+    vy: (Math.random() - 0.5) * 0.5,
+    life: 0.7, decay: 0.06,
+    size: 5 + Math.random() * 4,
+    color, type: 'trail'
+  });
+}
+
+function updateParticles() {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx; p.y += p.vy;
+    p.vy += 0.12;
+    p.vx *= 0.96;
+    p.life -= p.decay;
+    if (p.rot !== undefined) p.rot += p.rotV;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    ctx.globalAlpha = Math.max(0, p.life);
+    if (p.type === 'shard') {
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6);
+      ctx.restore();
+    } else if (p.type === 'spark') {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size / 2, 0, Math.PI * 2);
+      ctx.fillStyle = p.color;
+      ctx.fill();
+    } else if (p.type === 'trail') {
+      const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size);
+      grad.addColorStop(0, p.color);
+      grad.addColorStop(1, 'transparent');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+}
+
+// ── PANELS ────────────────────────────────────────────────────────────────────
+function makePanelGrid(level) {
+  const grid = [];
+  for (let row = 0; row < PANEL_ROWS; row++) {
+    for (let col = 0; col < PANEL_COLS; col++) {
+      const x = PANEL_OFFSET_X + col * (PANEL_W + PANEL_GAP);
+      const y = PANEL_OFFSET_Y + row * (PANEL_H + PANEL_GAP);
+      // Deterministic: some panels become cracked based on level+position
+      const cracked = level >= 2 && ((row + col + level) % 5 === 0);
+      // Hazard panels appear at level 3+
+      const hazard = level >= 3 && ((row * PANEL_COLS + col + level * 3) % 7 === 0);
+      grid.push({
+        x, y, w: PANEL_W, h: PANEL_H,
+        hp: cracked ? 2 : 1,
+        maxHp: cracked ? 2 : 1,
+        hazard: hazard && !cracked,
+        alive: true,
+        hue: (hue + row * 15 + col * 8) % 360,
+        shakeX: 0, shakeY: 0
+      });
+    }
+  }
+  return grid;
+}
+
+function refillPanels() {
+  // Slide existing rows down and add a new row at top
+  // Or just rebuild if all gone
+  const alive = panels.filter(p => p.alive);
+  if (alive.length === 0) {
+    diffLevel++;
+    panels = makePanelGrid(diffLevel);
+    return;
+  }
+  // Push all rows down by one row height
+  for (const p of panels) {
+    p.y += PANEL_H + PANEL_GAP;
+  }
+  // Add new row at top
+  for (let col = 0; col < PANEL_COLS; col++) {
+    const x = PANEL_OFFSET_X + col * (PANEL_W + PANEL_GAP);
+    const y = PANEL_OFFSET_Y;
+    const cracked = diffLevel >= 2 && ((col + diffLevel + Math.floor(hits / 10)) % 5 === 0);
+    const hazard = diffLevel >= 3 && ((col + diffLevel * 3 + Math.floor(hits / 15)) % 7 === 0);
+    panels.push({
+      x, y, w: PANEL_W, h: PANEL_H,
+      hp: cracked ? 2 : 1, maxHp: cracked ? 2 : 1,
+      hazard: hazard && !cracked, alive: true,
+      hue: (hue + col * 8) % 360,
+      shakeX: 0, shakeY: 0
+    });
+  }
+  // Remove panels that have fallen too far
+  panels = panels.filter(p => p.y < PRISM_Y - 20);
+}
+
+// ── STARS & EMBERS ─────────────────────────────────────────────────────────
+function spawnStar(x, y) {
+  stars.push({
+    x, y,
+    vx: (Math.random() - 0.5) * 0.8,
+    vy: 0.8 + Math.random() * 0.5,
+    wobble: Math.random() * Math.PI * 2,
+    wobbleSpeed: 0.04 + Math.random() * 0.02,
+    r: 8, life: 1, alive: true
+  });
+}
+
+function spawnEmber(x, y) {
+  embers.push({
+    x, y,
+    vx: (Math.random() - 0.5) * 1.5,
+    vy: 2.5 + Math.random() * 1.5,
+    r: 7, alive: true,
+    hue: 20 + Math.random() * 30
+  });
+}
+
+function updateStars() {
+  for (const s of stars) {
+    if (!s.alive) continue;
+    s.wobble += s.wobbleSpeed;
+    s.x += s.vx + Math.sin(s.wobble) * 0.4;
+    s.y += s.vy;
+    if (s.y > H + 20) s.alive = false;
+  }
+  stars = stars.filter(s => s.alive);
+}
+
+function updateEmbers() {
+  for (const e of embers) {
+    if (!e.alive) continue;
+    e.x += e.vx;
+    e.y += e.vy;
+    if (e.y > H + 20) e.alive = false;
+  }
+  embers = embers.filter(e => e.alive);
+}
+
+function drawStar(s) {
+  const r = s.r;
+  ctx.save();
+  ctx.translate(s.x, s.y);
+  ctx.fillStyle = `hsl(50, 100%, 70%)`;
+  ctx.shadowColor = '#ffe566';
+  ctx.shadowBlur = 10;
+  ctx.beginPath();
+  for (let i = 0; i < 5; i++) {
+    const a = (i * 4 * Math.PI / 5) - Math.PI / 2;
+    const ai = a + (2 * Math.PI / 5) / 2;
+    if (i === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+    else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+    ctx.lineTo(Math.cos(ai) * r * 0.45, Math.sin(ai) * r * 0.45);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.restore();
+}
+
+function drawEmber(e) {
+  ctx.save();
+  ctx.translate(e.x, e.y);
+  const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, e.r);
+  grad.addColorStop(0, `hsl(${e.hue}, 100%, 80%)`);
+  grad.addColorStop(1, `hsl(${e.hue + 20}, 100%, 40%)`);
+  ctx.fillStyle = grad;
+  ctx.shadowColor = `hsl(${e.hue}, 100%, 60%)`;
+  ctx.shadowBlur = 12;
+  ctx.beginPath();
+  ctx.arc(0, 0, e.r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.restore();
+}
+
+// ── SCREEN SHAKE ─────────────────────────────────────────────────────────────
+function triggerShake(amt, dur) {
+  shakeAmt = Math.max(shakeAmt, amt);
+  shakeDur = dur;
+  shakeTimer = 0;
+}
+
+function getShakeOffset() {
+  if (shakeTimer >= shakeDur) return { sx: 0, sy: 0 };
+  const t = shakeTimer / shakeDur;
+  const decay = (1 - t) * shakeAmt;
+  return {
+    sx: (Math.random() - 0.5) * 2 * decay,
+    sy: (Math.random() - 0.5) * 2 * decay
+  };
+}
+
+// ── INIT GAME ────────────────────────────────────────────────────────────────
+function initGame() {
+  score = 0;
+  best = loadBest();
+  combo = 0;
+  comboTimer = 0;
+  hue = 200;
+  time = 0;
+  hits = 0;
+  diffLevel = 1;
+  twilightMeter = 0;
+  inSurge = false;
+  surgeTimer = 0;
+  shakeAmt = 0; shakeDur = 1; shakeTimer = 0;
+  prismLeft = true; // true = tilted left (ball goes right), false = tilted right
+
+  ball = {
+    x: W / 2, y: H / 2 - 50,
+    vx: 1.5, vy: 3,
+    r: BALL_R,
+    trail: []
+  };
+
+  particles = [];
+  stars = [];
+  embers = [];
+  panels = makePanelGrid(diffLevel);
+  gameOverShowShare = false;
+  document.getElementById('shareBtn').style.display = 'none';
+}
+
+// ── PRISM GEOMETRY ─────────────────────────────────────────────────────────
+function getPrismPoints() {
+  // Prism: isoceles triangle at bottom center
+  // Tilted: left means left side is lower (tilts to left), right means right side lower
+  const cx = W / 2;
+  const cy = PRISM_Y;
+  const hw = PRISM_W / 2;
+  const tilt = prismLeft ? 1 : -1; // 1=left tilt, -1=right tilt
+  const tiltAmt = 12;
+
+  return {
+    left:  { x: cx - hw, y: cy + tilt * tiltAmt },
+    right: { x: cx + hw, y: cy - tilt * tiltAmt },
+    tip:   { x: cx, y: cy - PRISM_H * 1.2 }
+  };
+}
+
+// Normal of the top surface of prism
+function getPrismNormal() {
+  const { left, right } = getPrismPoints();
+  const dx = right.x - left.x;
+  const dy = right.y - left.y;
+  // Perpendicular, pointing upward
+  const len = Math.sqrt(dx * dx + dy * dy);
+  return { nx: -dy / len, ny: dx / len }; // If ny > 0, flip sign
+}
+
+function reflectVelocity(vx, vy, nx, ny) {
+  const dot = vx * nx + vy * ny;
+  return {
+    vx: vx - 2 * dot * nx,
+    vy: vy - 2 * dot * ny
+  };
+}
+
+// ── COLLISION: ball vs prism ─────────────────────────────────────────────────
+function checkPrismCollision() {
+  const { left, right } = getPrismPoints();
+  // Closest point on segment to ball center
+  const bx = ball.x, by = ball.y;
+  const ax = left.x, ay = left.y;
+  const dx = right.x - ax, dy = right.y - ay;
+  const lenSq = dx * dx + dy * dy;
+  let t = ((bx - ax) * dx + (by - ay) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  const cx = ax + t * dx;
+  const cy = ay + t * dy;
+  const dist = Math.sqrt((bx - cx) * (bx - cx) + (by - cy) * (by - cy));
+
+  if (dist < ball.r + 2 && ball.vy > 0) {
+    // Reflect
+    let { nx, ny } = getPrismNormal();
+    // Ensure normal points up
+    if (ny > 0) { nx = -nx; ny = -ny; }
+    const reflected = reflectVelocity(ball.vx, ball.vy, nx, ny);
+    ball.vx = reflected.vx;
+    ball.vy = reflected.vy;
+    // Add tilt-based aim impulse
+    const aimFactor = prismLeft ? 0.6 : -0.6;
+    ball.vx += aimFactor;
+    // Clamp speed
+    const speed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
+    const maxSpeed = getMaxBallSpeed();
+    if (speed > maxSpeed) {
+      ball.vx = (ball.vx / speed) * maxSpeed;
+      ball.vy = (ball.vy / speed) * maxSpeed;
+    }
+    // Min upward velocity
+    if (ball.vy > -3) ball.vy = -3;
+    // Push out of prism
+    ball.y = cy - ball.r - 3;
+
+    spawnSparks(ball.x, ball.y, `hsl(${hue}, 100%, 75%)`, 6);
+    triggerShake(2, 8);
+    hits++;
+    combo++;
+    comboTimer = 120;
+    return true;
+  }
+  return false;
+}
+
+function getMaxBallSpeed() {
+  return 6 + Math.min(diffLevel * 0.5, 3);
+}
+
+function getBallSpeed() {
+  return 4.5 + Math.min(time * 0.0005, 2) + Math.min(diffLevel * 0.3, 2);
+}
+
+// ── COLLISION: ball vs panels ─────────────────────────────────────────────────
+function checkPanelCollisions() {
+  for (const p of panels) {
+    if (!p.alive) continue;
+    // AABB + circle
+    const nearX = Math.max(p.x, Math.min(ball.x, p.x + p.w));
+    const nearY = Math.max(p.y, Math.min(ball.y, p.y + p.h));
+    const dx = ball.x - nearX;
+    const dy = ball.y - nearY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < ball.r) {
+      if (inSurge) {
+        // Pierce: damage but don't reflect
+        damagePanel(p, ball.x, ball.y);
+      } else {
+        // Reflect
+        const overlapX = Math.abs(dx) - (p.w / 2 + ball.r);
+        const overlapY = Math.abs(dy) - (p.h / 2 + ball.r);
+        // Determine collision side
+        if (Math.abs(ball.x - (p.x + p.w / 2)) > Math.abs(ball.y - (p.y + p.h / 2))) {
+          ball.vx = -ball.vx;
+          ball.x += ball.vx > 0 ? 2 : -2;
+        } else {
+          ball.vy = -ball.vy;
+          ball.y += ball.vy > 0 ? 2 : -2;
+        }
+        damagePanel(p, ball.x, ball.y);
+      }
+    }
+  }
+}
+
+function damagePanel(p, bx, by) {
+  p.hp--;
+  p.shakeX = 3; p.shakeY = 2;
+  spawnShards(bx, by, `hsl(${p.hue}, 80%, 65%)`, 6);
+  spawnSparks(bx, by, `hsl(${p.hue + 40}, 100%, 75%)`, 4);
+  triggerShake(1.5, 6);
+
+  if (p.hp <= 0) {
+    p.alive = false;
+    const pts = (inSurge ? 30 : 10) * Math.max(1, combo);
+    score += pts;
+    hits++;
+
+    // Star spawn: deterministic chance based on hits
+    if ((hits + Math.floor(hits / 8)) % 4 === 0) {
+      spawnStar(bx, by);
+    }
+    // Hazard ember
+    if (p.hazard) {
+      spawnEmber(bx, by);
+      spawnShards(bx, by, `hsl(20, 100%, 60%)`, 8);
+    }
+
+    // Surge bonus
+    if (inSurge) {
+      score += 20;
+    }
+
+    comboTimer = 120;
+    combo++;
+  }
+}
+
+// ── STAR/EMBER CATCH ──────────────────────────────────────────────────────────
+function checkStarCatch() {
+  const { left, right } = getPrismPoints();
+  for (const s of stars) {
+    if (!s.alive) continue;
+    // Simple: if star is within prism bounding box Y and in X range
+    const py = (left.y + right.y) / 2;
+    if (s.y > py - 20 && s.y < py + 20 && s.x > left.x && s.x < right.x) {
+      s.alive = false;
+      score += 15 * Math.max(1, combo);
+      twilightMeter = Math.min(1, twilightMeter + 0.2);
+      spawnSparks(s.x, s.y, '#ffe566', 10);
+      comboTimer = 120;
+    }
+  }
+}
+
+function checkEmberCatch() {
+  const { left, right } = getPrismPoints();
+  for (const e of embers) {
+    if (!e.alive) continue;
+    const py = (left.y + right.y) / 2;
+    if (e.y > py - 20 && e.y < py + 20 && e.x > left.x && e.x < right.x) {
+      e.alive = false;
+      twilightMeter = Math.max(0, twilightMeter - 0.25);
+      combo = Math.max(0, combo - 2);
+      spawnShards(e.x, e.y, `hsl(${e.hue}, 100%, 60%)`, 8);
+      triggerShake(3, 10);
+    }
+  }
+}
+
+// ── TWILIGHT SURGE ────────────────────────────────────────────────────────────
+function checkSurge() {
+  if (!inSurge && twilightMeter >= 1) {
+    inSurge = true;
+    surgeTimer = 300; // ~5 seconds at 60fps
+    twilightMeter = 0;
+    score += 50;
+    triggerShake(5, 20);
+    spawnShards(ball.x, ball.y, '#b0f0ff', 16);
+  }
+}
+
+function updateSurge() {
+  if (inSurge) {
+    surgeTimer--;
+    if (surgeTimer <= 0) {
+      inSurge = false;
+    }
+    // Comet trail
+    spawnTrail(ball.x, ball.y, `hsl(${(hue + 160) % 360}, 100%, 80%)`);
+  }
+}
+
+// ── DIFFICULTY RAMP ───────────────────────────────────────────────────────────
+function updateDifficulty() {
+  // Increase diff level every 20 hits
+  const newLevel = 1 + Math.floor(hits / 20);
+  if (newLevel > diffLevel) {
+    diffLevel = newLevel;
+    refillPanels();
+  }
+  // Periodically refill low panels
+  const alivePanels = panels.filter(p => p.alive).length;
+  if (alivePanels < PANEL_COLS) {
+    refillPanels();
+  }
+}
+
+// ── DRAWING ───────────────────────────────────────────────────────────────────
+function drawBackground() {
+  // Gradient background cycling with hue
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, `hsl(${hue}, 60%, 8%)`);
+  grad.addColorStop(0.5, `hsl(${(hue + 30) % 360}, 55%, 12%)`);
+  grad.addColorStop(1, `hsl(${(hue + 60) % 360}, 50%, 6%)`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Subtle star field
+  ctx.fillStyle = 'rgba(255,255,255,0.3)';
+  for (let i = 0; i < 40; i++) {
+    // Deterministic pseudo-stars
+    const sx = ((i * 137.5 + 17) % W);
+    const sy = ((i * 83.7 + 31) % (H * 0.7));
+    const sr = 0.5 + (i % 3) * 0.4;
+    ctx.beginPath();
+    ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Vignette
+  const vig = ctx.createRadialGradient(W/2, H/2, H*0.25, W/2, H/2, H*0.75);
+  vig.addColorStop(0, 'rgba(0,0,0,0)');
+  vig.addColorStop(1, 'rgba(0,0,0,0.55)');
+  ctx.fillStyle = vig;
+  ctx.fillRect(0, 0, W, H);
+}
+
+function drawPanels() {
+  for (const p of panels) {
+    if (!p.alive) continue;
+    const sx = p.shakeX * (Math.random() - 0.5) * 2;
+    const sy = p.shakeY * (Math.random() - 0.5) * 2;
+    p.shakeX *= 0.8; p.shakeY *= 0.8;
+
+    ctx.save();
+    ctx.translate(p.x + sx, p.y + sy);
+
+    const alpha = p.hp < p.maxHp ? 0.7 : 1;
+    const sat = p.hazard ? 100 : 75;
+    const lum = p.hazard ? 55 : 65;
+
+    // Panel fill
+    const panelGrad = ctx.createLinearGradient(0, 0, 0, p.h);
+    panelGrad.addColorStop(0, `hsla(${p.hue}, ${sat}%, ${lum + 10}%, ${alpha})`);
+    panelGrad.addColorStop(1, `hsla(${p.hue}, ${sat}%, ${lum - 10}%, ${alpha})`);
+    ctx.fillStyle = panelGrad;
+    ctx.beginPath();
+    roundRect(ctx, 0, 0, p.w, p.h, 4);
+    ctx.fill();
+
+    // Cracked overlay
+    if (p.hp < p.maxHp) {
+      ctx.strokeStyle = `hsla(${p.hue}, 60%, 90%, 0.8)`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(p.w * 0.3, 0);
+      ctx.lineTo(p.w * 0.5, p.h * 0.5);
+      ctx.lineTo(p.w * 0.7, p.h);
+      ctx.moveTo(p.w * 0.5, 0);
+      ctx.lineTo(p.w * 0.35, p.h);
+      ctx.stroke();
+    }
+
+    // Hazard glow
+    if (p.hazard) {
+      ctx.shadowColor = `hsl(${p.hue}, 100%, 65%)`;
+      ctx.shadowBlur = 10;
+      ctx.strokeStyle = `hsla(${p.hue}, 100%, 75%, 0.9)`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      roundRect(ctx, 0, 0, p.w, p.h, 4);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    } else {
+      // Shine highlight
+      ctx.fillStyle = `hsla(${p.hue}, 80%, 90%, 0.18)`;
+      ctx.beginPath();
+      roundRect(ctx, 2, 2, p.w - 4, p.h * 0.4, 3);
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+function drawPrism() {
+  const { left, right, tip } = getPrismPoints();
+
+  ctx.save();
+  // Outer glow
+  ctx.shadowColor = inSurge ? '#00ffff' : `hsl(${hue}, 100%, 70%)`;
+  ctx.shadowBlur = inSurge ? 20 : 12;
+
+  // Crystal body gradient
+  const grad = ctx.createLinearGradient(left.x, left.y, right.x, right.y);
+  if (inSurge) {
+    grad.addColorStop(0, 'rgba(0,230,255,0.9)');
+    grad.addColorStop(0.5, 'rgba(180,255,255,0.95)');
+    grad.addColorStop(1, 'rgba(0,200,255,0.9)');
+  } else {
+    grad.addColorStop(0, `hsla(${hue}, 80%, 70%, 0.9)`);
+    grad.addColorStop(0.5, `hsla(${(hue + 30) % 360}, 90%, 85%, 0.95)`);
+    grad.addColorStop(1, `hsla(${(hue + 60) % 360}, 80%, 70%, 0.9)`);
+  }
+
+  ctx.beginPath();
+  ctx.moveTo(left.x, left.y);
+  ctx.lineTo(right.x, right.y);
+  ctx.lineTo(tip.x, tip.y);
+  ctx.closePath();
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Edge highlight
+  ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Refraction line
+  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo((left.x + tip.x) / 2, (left.y + tip.y) / 2);
+  ctx.lineTo((right.x + tip.x) / 2, (right.y + tip.y) / 2);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function drawBall() {
+  ctx.save();
+  const ballHue = inSurge ? (hue + 160) % 360 : hue;
+
+  if (inSurge) {
+    // Comet effect
+    ctx.shadowColor = `hsl(${ballHue}, 100%, 75%)`;
+    ctx.shadowBlur = 24;
+  }
+
+  const grad = ctx.createRadialGradient(
+    ball.x - ball.r * 0.3, ball.y - ball.r * 0.3, 1,
+    ball.x, ball.y, ball.r
+  );
+  grad.addColorStop(0, `hsl(${ballHue}, 60%, 95%)`);
+  grad.addColorStop(0.5, `hsl(${ballHue}, 90%, 70%)`);
+  grad.addColorStop(1, `hsl(${(ballHue + 40) % 360}, 80%, 45%)`);
+
+  ctx.beginPath();
+  ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  ctx.shadowBlur = 0;
+  ctx.restore();
+}
+
+function drawUI() {
+  // Score
+  ctx.save();
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.font = 'bold 28px "Segoe UI", sans-serif';
+  ctx.shadowColor = 'rgba(0,0,0,0.5)';
+  ctx.shadowBlur = 4;
+  ctx.fillText(score, 12, 12);
+
+  // Best
+  ctx.font = '13px "Segoe UI", sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.fillText('BEST ' + best, 12, 46);
+  ctx.shadowBlur = 0;
+
+  // Combo
+  if (combo >= 2) {
+    ctx.textAlign = 'right';
+    ctx.font = 'bold 18px "Segoe UI", sans-serif';
+    ctx.fillStyle = `hsl(${50 + combo * 5}, 100%, 70%)`;
+    ctx.shadowColor = `hsl(${50 + combo * 5}, 100%, 50%)`;
+    ctx.shadowBlur = 8;
+    ctx.fillText(`×${combo} COMBO`, W - 12, 12);
+    ctx.shadowBlur = 0;
+  }
+
+  // Twilight meter
+  drawMeter();
+
+  // Surge active indicator
+  if (inSurge) {
+    const pulse = 0.7 + 0.3 * Math.sin(time * 0.15);
+    ctx.globalAlpha = pulse;
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 16px "Segoe UI", sans-serif';
+    ctx.fillStyle = '#00ffff';
+    ctx.shadowColor = '#00ffff';
+    ctx.shadowBlur = 12;
+    ctx.fillText('✦ TWILIGHT SURGE ✦', W / 2, H - 130);
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
+  }
+
+  ctx.restore();
+}
+
+function drawMeter() {
+  const mw = 120, mh = 10;
+  const mx = W / 2 - mw / 2;
+  const my = H - 55;
+
+  ctx.save();
+  // Background track
+  ctx.fillStyle = 'rgba(255,255,255,0.12)';
+  ctx.beginPath();
+  roundRect(ctx, mx, my, mw, mh, 5);
+  ctx.fill();
+
+  // Fill
+  const fillW = mw * twilightMeter;
+  if (fillW > 2) {
+    const mGrad = ctx.createLinearGradient(mx, 0, mx + mw, 0);
+    mGrad.addColorStop(0, `hsl(${hue}, 100%, 65%)`);
+    mGrad.addColorStop(1, `hsl(${(hue + 120) % 360}, 100%, 75%)`);
+    ctx.fillStyle = mGrad;
+    ctx.beginPath();
+    roundRect(ctx, mx, my, fillW, mh, 5);
+    ctx.fill();
+  }
+
+  // Label
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'bottom';
+  ctx.font = '10px "Segoe UI", sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.fillText('TWILIGHT METER', W / 2, my - 2);
+  ctx.restore();
+}
+
+// ── SCREENS ───────────────────────────────────────────────────────────────────
+function drawStartScreen() {
+  drawBackground();
+
+  // Title glow
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  // Glow bg
+  const titleGrad = ctx.createRadialGradient(W/2, H*0.38, 10, W/2, H*0.38, 120);
+  titleGrad.addColorStop(0, `hsla(${hue}, 80%, 50%, 0.2)`);
+  titleGrad.addColorStop(1, 'transparent');
+  ctx.fillStyle = titleGrad;
+  ctx.fillRect(0, H * 0.2, W, H * 0.4);
+
+  ctx.shadowColor = `hsl(${hue}, 100%, 70%)`;
+  ctx.shadowBlur = 20;
+  ctx.font = 'bold 52px "Segoe UI", sans-serif';
+  ctx.fillStyle = '#fff';
+  ctx.fillText('Twilight Tap', W / 2, H * 0.35);
+
+  ctx.shadowBlur = 8;
+  ctx.font = '18px "Segoe UI", sans-serif';
+  ctx.fillStyle = `hsl(${(hue + 60) % 360}, 90%, 75%)`;
+  ctx.fillText('Prism Flip', W / 2, H * 0.35 + 50);
+
+  // Subtitle
+  ctx.shadowBlur = 0;
+  ctx.font = '14px "Segoe UI", sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.65)';
+  ctx.fillText('Flip the prism • Shatter the sky', W / 2, H * 0.35 + 90);
+
+  // Tap to Start
+  const pulse = 0.6 + 0.4 * Math.sin(time * 0.06);
+  ctx.globalAlpha = pulse;
+  ctx.font = 'bold 20px "Segoe UI", sans-serif';
+  ctx.fillStyle = '#fff';
+  ctx.shadowColor = `hsl(${hue}, 100%, 80%)`;
+  ctx.shadowBlur = 10;
+  ctx.fillText('Tap to Start', W / 2, H * 0.68);
+  ctx.globalAlpha = 1;
+  ctx.shadowBlur = 0;
+
+  // Best score display
+  if (best > 0) {
+    ctx.font = '14px "Segoe UI", sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.fillText('Best: ' + best, W / 2, H * 0.68 + 36);
+  }
+
+  // Draw a decorative prism
+  ctx.restore();
+  drawDecoPrism(W / 2, H * 0.52);
+}
+
+function drawDecoPrism(cx, cy) {
+  ctx.save();
+  const hw = 50, ht = 30;
+  ctx.shadowColor = `hsl(${hue}, 100%, 70%)`;
+  ctx.shadowBlur = 16;
+  const grad = ctx.createLinearGradient(cx - hw, 0, cx + hw, 0);
+  grad.addColorStop(0, `hsla(${hue}, 80%, 70%, 0.9)`);
+  grad.addColorStop(0.5, `hsla(${(hue + 60) % 360}, 90%, 85%, 0.95)`);
+  grad.addColorStop(1, `hsla(${(hue + 120) % 360}, 80%, 70%, 0.9)`);
+  ctx.beginPath();
+  ctx.moveTo(cx - hw, cy);
+  ctx.lineTo(cx + hw, cy);
+  ctx.lineTo(cx, cy - ht);
+  ctx.closePath();
+  ctx.fillStyle = grad;
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.restore();
+}
+
+function drawGameOverScreen() {
+  // Semi-transparent overlay
+  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  // Title
+  ctx.shadowColor = `hsl(${hue}, 100%, 70%)`;
+  ctx.shadowBlur = 16;
+  ctx.font = 'bold 38px "Segoe UI", sans-serif';
+  ctx.fillStyle = '#fff';
+  ctx.fillText('GAME OVER', W / 2, H * 0.35);
+
+  ctx.shadowBlur = 0;
+  ctx.font = 'bold 52px "Segoe UI", sans-serif';
+  ctx.fillStyle = `hsl(${hue}, 100%, 75%)`;
+  ctx.fillText(score, W / 2, H * 0.47);
+
+  ctx.font = '16px "Segoe UI", sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.65)';
+  ctx.fillText('SCORE', W / 2, H * 0.47 + 38);
+
+  // Best
+  const isNewBest = score >= best && score > 0;
+  if (isNewBest) {
+    ctx.font = 'bold 18px "Segoe UI", sans-serif';
+    ctx.fillStyle = '#ffe566';
+    ctx.shadowColor = '#ffe566';
+    ctx.shadowBlur = 10;
+    ctx.fillText('★ New Best! ★', W / 2, H * 0.57);
+    ctx.shadowBlur = 0;
+  } else if (best > 0) {
+    ctx.font = '15px "Segoe UI", sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.fillText('Best: ' + best, W / 2, H * 0.57);
+  }
+
+  // Tap to retry
+  const pulse = 0.6 + 0.4 * Math.sin(time * 0.06);
+  ctx.globalAlpha = pulse;
+  ctx.font = 'bold 20px "Segoe UI", sans-serif';
+  ctx.fillStyle = '#fff';
+  ctx.shadowColor = `hsl(${hue}, 100%, 80%)`;
+  ctx.shadowBlur = 10;
+  ctx.fillText('Tap to Retry', W / 2, H * 0.70);
+  ctx.globalAlpha = 1;
+  ctx.shadowBlur = 0;
+
+  ctx.restore();
+}
+
+// ── GAME LOOP ────────────────────────────────────────────────────────────────
+let lastTime = 0;
+function loop(ts) {
+  requestAnimationFrame(loop);
+
+  const dt = Math.min(ts - lastTime, 50);
+  lastTime = ts;
+
+  time++;
+  hue = (hue + 0.3) % 360;
+
+  // Screen shake
+  shakeTimer++;
+  const { sx, sy } = getShakeOffset();
+
+  ctx.save();
+  applyTransform();
+  ctx.translate(sx, sy);
+
+  if (state === 'start') {
+    drawStartScreen();
+  } else if (state === 'playing') {
+    updateGame();
+    drawGame();
+  } else if (state === 'gameover') {
+    drawBackground();
+    drawPanels();
+    drawParticles();
+    drawGameOverScreen();
+  }
+
+  ctx.restore();
+}
+
+function updateGame() {
+  // Ball physics
+  const speed = getBallSpeed();
+  const currentSpeed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
+  if (currentSpeed < speed * 0.8) {
+    const factor = speed / currentSpeed;
+    ball.vx *= factor * 0.98;
+    ball.vy *= factor * 0.98;
+  }
+
+  ball.x += ball.vx;
+  ball.y += ball.vy;
+
+  // Wall bounces
+  if (ball.x - ball.r < 0) { ball.x = ball.r; ball.vx = Math.abs(ball.vx); }
+  if (ball.x + ball.r > W) { ball.x = W - ball.r; ball.vx = -Math.abs(ball.vx); }
+  if (ball.y - ball.r < 0) { ball.y = ball.r; ball.vy = Math.abs(ball.vy); }
+
+  // Check panel collisions
+  checkPanelCollisions();
+
+  // Prism collision
+  checkPrismCollision();
+
+  // Check star/ember catch
+  checkStarCatch();
+  checkEmberCatch();
+
+  // Surge logic
+  checkSurge();
+  updateSurge();
+
+  // Update particles, stars, embers
+  updateParticles();
+  updateStars();
+  updateEmbers();
+
+  // Combo decay
+  if (comboTimer > 0) {
+    comboTimer--;
+  } else {
+    if (combo > 0) combo = 0;
+  }
+
+  // Difficulty ramp
+  updateDifficulty();
+
+  // Fall detection
+  if (ball.y - ball.r > H) {
+    endGame();
+  }
+}
+
+function drawGame() {
+  drawBackground();
+  drawPanels();
+  for (const s of stars) if (s.alive) drawStar(s);
+  for (const e of embers) if (e.alive) drawEmber(e);
+  drawParticles();
+  drawPrism();
+  drawBall();
+  drawUI();
+}
+
+// ── GAME START / END ──────────────────────────────────────────────────────────
+function startGame() {
+  initGame();
+  state = 'playing';
+}
+
+function endGame() {
+  state = 'gameover';
+  if (score > best) {
+    best = score;
+    saveBest(best);
+  }
+  triggerShake(12, 40);
+  spawnShards(ball.x, ball.y, '#fff', 20);
+  document.getElementById('shareBtn').style.display = 'block';
+}
+
+// ── INPUT ─────────────────────────────────────────────────────────────────────
+canvas.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  if (state === 'start') {
+    startGame();
+  } else if (state === 'playing') {
+    prismLeft = !prismLeft;
+    triggerShake(1, 5);
+  } else if (state === 'gameover') {
+    document.getElementById('shareBtn').style.display = 'none';
+    startGame();
+  }
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    if (state === 'start') {
+      startGame();
+    } else if (state === 'playing') {
+      prismLeft = !prismLeft;
+    } else if (state === 'gameover') {
+      document.getElementById('shareBtn').style.display = 'none';
+      startGame();
+    }
+  }
+});
+
+// ── MUTE TOGGLE ───────────────────────────────────────────────────────────────
+document.getElementById('muteBtn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  muted = !muted;
+  document.getElementById('muteBtn').textContent = muted ? '🔇' : '🔊';
+});
+
+// ── SHARE ─────────────────────────────────────────────────────────────────────
+document.getElementById('shareBtn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  const url = 'https://balinti.github.io/twilight-tap/';
+  const text = `I scored ${score} in Twilight Tap! Can you beat me? 🌅`;
+
+  if (navigator.share) {
+    navigator.share({ title: 'Twilight Tap', text, url }).catch(() => {});
+  } else {
+    // Fallback: copy to clipboard
+    const full = text + ' ' + url;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(full).then(() => showCopyMsg()).catch(() => fallbackCopy(full));
+    } else {
+      fallbackCopy(full);
+    }
+  }
+});
+
+function fallbackCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.top = '-9999px';
+  document.body.appendChild(ta);
+  ta.focus(); ta.select();
+  try { document.execCommand('copy'); showCopyMsg(); } catch(e) {}
+  document.body.removeChild(ta);
+}
+
+function showCopyMsg() {
+  const msg = document.getElementById('copyMsg');
+  msg.style.display = 'block';
+  setTimeout(() => { msg.style.display = 'none'; }, 2000);
+}
+
+// ── BOOTSTRAP ─────────────────────────────────────────────────────────────────
+hue = 200; time = 0;
+best = loadBest();
+state = 'start';
+// Init empty arrays so drawStartScreen works without errors
+particles = []; stars = []; embers = []; panels = [];
+prismLeft = true;
+shakeAmt = 0; shakeDur = 1; shakeTimer = 0;
+combo = 0; comboTimer = 0;
+score = 0; hits = 0; diffLevel = 1;
+twilightMeter = 0; inSurge = false; surgeTimer = 0;
+
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

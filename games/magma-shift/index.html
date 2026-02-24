@@ -1,0 +1,1216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Magma Shift: Heat Anchor – Hyper-Casual Lava Platform Game</title>
+  <meta name="description" content="Magma Shift: Heat Anchor – tap to anchor the heat cycle and survive lava platforms. ICE, TAR, and METAL react differently to COOL, WARM, and HOT. How far can you go?">
+  <meta name="theme-color" content="#1a0a00">
+  <meta property="og:title" content="Magma Shift: Heat Anchor">
+  <meta property="og:description" content="Tap to anchor the heat cycle and survive lava platforms. ICE, TAR, and METAL react to heat differently. How far can you go?">
+  <meta property="og:url" content="https://balinti.github.io/magma-shift/">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="https://balinti.github.io/magma-shift/og-preview.png">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #0d0500;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      color: #e8d5b0;
+      overflow-x: hidden;
+    }
+    #wrap {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      height: 100vh;
+      max-height: 750px;
+      flex-shrink: 0;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: manipulation;
+      cursor: pointer;
+    }
+    #seo {
+      max-width: 420px;
+      width: 100%;
+      padding: 16px 18px 32px;
+      font-size: 13px;
+      line-height: 1.6;
+      color: #9a7a5a;
+    }
+    #seo h2 { font-size: 15px; color: #c8955a; margin: 12px 0 4px; }
+    #seo p { margin-bottom: 8px; }
+    #seo ul { padding-left: 18px; margin-bottom: 8px; }
+    #seo li { margin-bottom: 3px; }
+  </style>
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5918874699626361" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+</div>
+
+<section id="seo" aria-label="Game description and instructions">
+  <h2>Magma Shift: Heat Anchor</h2>
+  <p>A hyper-casual endless runner over a lava bridge. Platforms cycle through three heat states — <strong>COOL, WARM, HOT</strong> — and each material reacts differently. Tap or press Space to lock (anchor) the current heat and land safely!</p>
+  <h2>Controls</h2>
+  <ul>
+    <li><strong>Tap / Space / Enter</strong> — Anchor the heat cycle for 0.9 s</li>
+    <li><strong>R</strong> — Instant retry after game over</li>
+  </ul>
+  <h2>Platform Materials</h2>
+  <ul>
+    <li><strong>ICE ❄</strong> — Safe only when COOL. Other states cause sideways drift.</li>
+    <li><strong>TAR ●</strong> — Safe only when WARM. COOL slows you; HOT melts then collapses.</li>
+    <li><strong>METAL ⚡</strong> — Safe only when HOT. Other states spring-launch you forward.</li>
+  </ul>
+  <h2>Scoring</h2>
+  <p>Build combos by landing on matching heat states. Risk lane platforms (narrower, offset) give score multipliers. The farther you go, the faster and harder it gets.</p>
+  <h2>FAQ</h2>
+  <ul>
+    <li><strong>Why did I fall?</strong> You were on a mismatched material. Check the HUD heat indicator before landing.</li>
+    <li><strong>What is the forgiveness window?</strong> While airborne, the material effect is delayed slightly so fast taps are fair.</li>
+    <li><strong>Does it save my score?</strong> Yes – your best score is saved locally in your browser.</li>
+  </ul>
+</section>
+
+<script>
+'use strict';
+// ─── Canvas & DPR ────────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const wrap = document.getElementById('wrap');
+const dpr = Math.min(2, window.devicePixelRatio || 1);
+let W = 0, H = 0;
+
+function resizeCanvas() {
+  const rect = wrap.getBoundingClientRect();
+  W = rect.width;
+  H = rect.height;
+  canvas.width = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+resizeCanvas();
+window.addEventListener('resize', () => { resizeCanvas(); });
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+const STATES = { START: 'start', PLAYING: 'playing', GAMEOVER: 'gameover' };
+const HEAT = { COOL: 0, WARM: 1, HOT: 2 };
+const HEAT_NAME = ['COOL', 'WARM', 'HOT'];
+const HEAT_HUE = [195, 35, 10];   // blue, orange, red
+const MAT = { ICE: 0, TAR: 1, METAL: 2 };
+const MAT_NAME = ['ICE', 'TAR', 'METAL'];
+const MAT_SAFE_HEAT = [HEAT.COOL, HEAT.WARM, HEAT.HOT];
+
+const BRIDGE_W = 0.62;   // fraction of W for bridge half-width (each side)
+const BRIDGE_LEFT_F = (1 - BRIDGE_W) / 2;
+const BRIDGE_RIGHT_F = 1 - BRIDGE_LEFT_F;
+const PLATFORM_H = 18;
+const PLAYER_W = 26;
+const PLAYER_H = 32;
+const BASE_SPEED = 180;  // px/s world scroll
+const ANCHOR_DURATION = 0.90;
+const TAR_MELT_TIME = 0.45;
+const GRAVITY = 1400;
+const JUMP_V = -520;
+const HS_KEY = 'magmaShiftHighScore';
+
+// ─── State ────────────────────────────────────────────────────────────────────
+let state = STATES.START;
+let score = 0, best = parseInt(localStorage.getItem(HS_KEY) || '0');
+let combo = 0, bestCombo = 0, multiplier = 1;
+let cameraY = 0;  // world-space Y of top of screen
+let worldDist = 0;
+let speed = BASE_SPEED;
+let shakeX = 0, shakeY = 0, shakeDur = 0, shakeMag = 0;
+let particles = [];
+let platforms = [];
+let player = {};
+let heatTime = 0;      // total elapsed time for heat beat
+let beatPeriod = 3.0;  // seconds per full COOL→WARM→HOT→COOL cycle
+let anchorActive = false;
+let anchorTimer = 0;
+let anchorHeat = HEAT.COOL;
+let curHeat = HEAT.COOL;
+let deathReason = '';
+
+// ─── Heat Beat ────────────────────────────────────────────────────────────────
+function getHeat(t) {
+  const phase = (t % beatPeriod) / beatPeriod; // 0..1
+  if (phase < 0.33) return HEAT.COOL;
+  if (phase < 0.66) return HEAT.WARM;
+  return HEAT.HOT;
+}
+
+function getHeatPhase(t) {
+  return (t % beatPeriod) / beatPeriod; // 0..1
+}
+
+function getHeatPulse(t) {
+  // returns 0..1 pulse within current segment
+  const phase = (t % beatPeriod) / beatPeriod;
+  const seg = phase * 3 % 1; // 0..1 within segment
+  return seg;
+}
+
+// ─── Platform Generation ──────────────────────────────────────────────────────
+let nextPlatformY = 0;
+let spawnSeed = 0;
+
+function seededRand(n) {
+  spawnSeed = (spawnSeed * 1664525 + 1013904223) & 0xffffffff;
+  return ((spawnSeed >>> 0) / 0xffffffff) * n;
+}
+
+function spawnPlatform(worldY) {
+  const bLeft = W * BRIDGE_LEFT_F;
+  const bRight = W * BRIDGE_RIGHT_F;
+  const bWidth = bRight - bLeft;
+
+  const isRisk = worldDist > 500 && seededRand(1) < riskChance();
+  let pw, px;
+  if (isRisk) {
+    pw = bWidth * (0.45 + seededRand(0.2));
+    const maxOff = bWidth - pw;
+    px = bLeft + seededRand(maxOff);
+  } else {
+    pw = bWidth * (0.7 + seededRand(0.28));
+    px = bLeft + (bWidth - pw) * 0.5 + (seededRand(1) - 0.5) * (bWidth - pw) * 0.3;
+    px = Math.max(bLeft, Math.min(bRight - pw, px));
+  }
+
+  const mat = Math.floor(seededRand(3));
+  const gapY = 90 + Math.max(0, (worldDist / 1000) * 30) + seededRand(20);
+
+  return {
+    x: px, y: worldY, w: pw, h: PLATFORM_H,
+    mat, isRisk,
+    tarMeltTimer: 0, tarMelted: false, tarCollapsed: false,
+    collapseTimer: 0,
+    touched: false,
+    gapToNext: gapY
+  };
+}
+
+function riskChance() {
+  return Math.min(0.35, 0.05 + worldDist / 20000);
+}
+
+function initPlatforms() {
+  platforms = [];
+  nextPlatformY = 0;
+  spawnSeed = Date.now() & 0xffff;
+
+  // Starting platform right under player
+  const bLeft = W * BRIDGE_LEFT_F;
+  const bRight = W * BRIDGE_RIGHT_F;
+  const bWidth = bRight - bLeft;
+  const startPlat = {
+    x: bLeft, y: H * 0.28 + 60, w: bWidth, h: PLATFORM_H,
+    mat: MAT.ICE, isRisk: false,
+    tarMeltTimer: 0, tarMelted: false, tarCollapsed: false,
+    collapseTimer: 0, touched: false, gapToNext: 120
+  };
+  platforms.push(startPlat);
+  nextPlatformY = startPlat.y + startPlat.gapToNext;
+
+  // Pre-spawn several platforms
+  for (let i = 0; i < 12; i++) {
+    const p = spawnPlatform(nextPlatformY);
+    platforms.push(p);
+    nextPlatformY += p.gapToNext;
+  }
+}
+
+// ─── Player ───────────────────────────────────────────────────────────────────
+function initPlayer() {
+  const startPlat = platforms[0];
+  player = {
+    x: W * 0.5,
+    y: startPlat.y - PLAYER_H,
+    vx: 0,
+    vy: 0,
+    onGround: false,
+    groundPlat: null,
+    airTime: 0,
+    trail: []
+  };
+}
+
+// ─── Reset ────────────────────────────────────────────────────────────────────
+function resetGame() {
+  score = 0;
+  combo = 0;
+  bestCombo = 0;
+  multiplier = 1;
+  worldDist = 0;
+  speed = BASE_SPEED;
+  heatTime = 0;
+  beatPeriod = 3.0;
+  anchorActive = false;
+  anchorTimer = 0;
+  curHeat = HEAT.COOL;
+  particles = [];
+  shakeX = 0; shakeY = 0; shakeDur = 0; shakeMag = 0;
+  deathReason = '';
+  initPlatforms();
+  initPlayer();
+  cameraY = player.y - H * 0.72;
+}
+
+// ─── Input ────────────────────────────────────────────────────────────────────
+let inputThisFrame = false;
+
+canvas.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  inputThisFrame = true;
+}, { passive: false });
+
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    inputThisFrame = true;
+  }
+  if (e.code === 'KeyR' && state === STATES.GAMEOVER) {
+    resetGame();
+    state = STATES.PLAYING;
+  }
+});
+
+// ─── Anchor ───────────────────────────────────────────────────────────────────
+function activateAnchor() {
+  anchorActive = true;
+  anchorTimer = ANCHOR_DURATION;
+  anchorHeat = curHeat;
+}
+
+// ─── Particles ───────────────────────────────────────────────────────────────
+function spawnEmbers(x, y, count, hue) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 40 + Math.random() * 120;
+    particles.push({
+      type: 'ember', x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 80,
+      life: 0.6 + Math.random() * 0.5,
+      maxLife: 0.6 + Math.random() * 0.5,
+      size: 2 + Math.random() * 3,
+      hue: hue + (Math.random() - 0.5) * 20
+    });
+  }
+}
+
+function spawnSparks(x, y, count) {
+  for (let i = 0; i < count; i++) {
+    const angle = -Math.PI * 0.5 + (Math.random() - 0.5) * Math.PI;
+    const spd = 80 + Math.random() * 160;
+    particles.push({
+      type: 'spark', x, y,
+      vx: Math.cos(angle) * spd,
+      vy: Math.sin(angle) * spd,
+      life: 0.3 + Math.random() * 0.25,
+      maxLife: 0.3 + Math.random() * 0.25,
+      size: 1 + Math.random() * 2,
+      hue: 45 + Math.random() * 30
+    });
+  }
+}
+
+function spawnIceDust(x, y, count) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const spd = 20 + Math.random() * 60;
+    particles.push({
+      type: 'icedust', x, y,
+      vx: Math.cos(angle) * spd,
+      vy: Math.sin(angle) * spd - 30,
+      life: 0.4 + Math.random() * 0.3,
+      maxLife: 0.4 + Math.random() * 0.3,
+      size: 2 + Math.random() * 3,
+      hue: 195
+    });
+  }
+}
+
+function spawnTarDrips(x, y, count) {
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      type: 'tardrip', x: x + (Math.random() - 0.5) * 30, y,
+      vx: (Math.random() - 0.5) * 20,
+      vy: 40 + Math.random() * 80,
+      life: 0.5 + Math.random() * 0.3,
+      maxLife: 0.5 + Math.random() * 0.3,
+      size: 3 + Math.random() * 4,
+      hue: 35
+    });
+  }
+}
+
+function spawnTrail(x, y) {
+  particles.push({
+    type: 'trail', x, y,
+    vx: (Math.random() - 0.5) * 15,
+    vy: Math.random() * 20,
+    life: 0.2 + Math.random() * 0.15,
+    maxLife: 0.2 + Math.random() * 0.15,
+    size: 4 + Math.random() * 4,
+    hue: HEAT_HUE[curHeat]
+  });
+}
+
+// ─── Screen Shake ─────────────────────────────────────────────────────────────
+function triggerShake(mag, dur) {
+  if (mag > shakeMag) {
+    shakeMag = mag;
+    shakeDur = dur;
+  }
+}
+
+function updateShake(dt) {
+  if (shakeDur > 0) {
+    shakeDur -= dt;
+    const intensity = Math.max(0, shakeDur) * shakeMag;
+    shakeX = (Math.random() - 0.5) * intensity * 2;
+    shakeY = (Math.random() - 0.5) * intensity * 2;
+  } else {
+    shakeX = 0; shakeY = 0; shakeMag = 0;
+  }
+}
+
+// ─── Collision ────────────────────────────────────────────────────────────────
+function playerRect() {
+  return { x: player.x - PLAYER_W / 2, y: player.y, w: PLAYER_W, h: PLAYER_H };
+}
+
+function rectsOverlap(a, b) {
+  return a.x < b.x + b.w && a.x + a.w > b.x &&
+         a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+// ─── Update ───────────────────────────────────────────────────────────────────
+let lastTime = 0;
+let frameCount = 0;
+
+function update(ts) {
+  const rawDt = (ts - lastTime) / 1000;
+  lastTime = ts;
+  const dt = Math.min(rawDt, 0.05); // clamp
+
+  if (state === STATES.START) {
+    heatTime += dt;
+    curHeat = getHeat(heatTime);
+    updateParticles(dt);
+    updateShake(dt);
+    if (inputThisFrame) {
+      resetGame();
+      state = STATES.PLAYING;
+      activateAnchor();
+    }
+    inputThisFrame = false;
+    render();
+    requestAnimationFrame(update);
+    return;
+  }
+
+  if (state === STATES.GAMEOVER) {
+    updateParticles(dt);
+    updateShake(dt);
+    inputThisFrame = false;
+    render();
+    requestAnimationFrame(update);
+    return;
+  }
+
+  // ── PLAYING ──
+  heatTime += dt;
+  beatPeriod = Math.max(1.5, 3.0 - worldDist / 8000);
+  curHeat = anchorActive ? anchorHeat : getHeat(heatTime);
+
+  // Anchor
+  if (anchorActive) {
+    anchorTimer -= dt;
+    if (anchorTimer <= 0) anchorActive = false;
+  }
+
+  if (inputThisFrame) {
+    activateAnchor();
+  }
+  inputThisFrame = false;
+
+  // Speed increase
+  speed = BASE_SPEED + worldDist / 8;
+
+  // Player trail
+  frameCount++;
+  if (frameCount % 3 === 0) spawnTrail(player.x, player.y + PLAYER_H * 0.5);
+
+  // ── Physics ──
+  if (!player.onGround) {
+    player.vy += GRAVITY * dt;
+    player.airTime += dt;
+  } else {
+    player.airTime = 0;
+  }
+  player.y += player.vy * dt;
+  player.x += player.vx * dt;
+
+  // Dampen vx
+  if (player.onGround) {
+    player.vx *= Math.max(0, 1 - dt * 6);
+  } else {
+    player.vx *= Math.max(0, 1 - dt * 1.5);
+  }
+
+  player.onGround = false;
+  player.groundPlat = null;
+
+  // Spawn platforms ahead
+  while (nextPlatformY < cameraY + H + 300) {
+    const p = spawnPlatform(nextPlatformY);
+    platforms.push(p);
+    nextPlatformY += p.gapToNext;
+  }
+
+  // Cull platforms far above camera
+  platforms = platforms.filter(p => p.y < cameraY + H + 400);
+
+  // ── Platform Logic ──
+  const pr = playerRect();
+  for (let i = 0; i < platforms.length; i++) {
+    const p = platforms[i];
+    if (p.tarCollapsed) continue;
+
+    // Tar melt update
+    if (p.mat === MAT.TAR && p.touched && curHeat === HEAT.HOT && !p.tarMelted) {
+      p.tarMeltTimer += dt;
+      if (p.tarMeltTimer > TAR_MELT_TIME) {
+        p.tarMelted = true;
+        p.collapseTimer = 0.3;
+        spawnTarDrips(p.x + p.w * 0.5, p.y, 8);
+        triggerShake(5, 0.3);
+        if (player.groundPlat === p) {
+          player.vy = JUMP_V * 0.4;
+          player.onGround = false;
+          deathReason = 'TAR MELTED under you! Land on TAR only when WARM.';
+          triggerShake(12, 0.5);
+        }
+      }
+    }
+    if (p.tarMelted) {
+      p.collapseTimer -= dt;
+      if (p.collapseTimer <= 0) p.tarCollapsed = true;
+      continue;
+    }
+
+    // Broad-phase: skip if far from camera or player
+    if (p.y > cameraY + H + 50) continue;
+    if (p.y < cameraY - 100) continue;
+
+    const platRect = { x: p.x, y: p.y, w: p.w, h: p.h };
+
+    // Collision: only landing from above
+    if (player.vy >= 0 && pr.x < platRect.x + platRect.w && pr.x + pr.w > platRect.x) {
+      const playerBottom = player.y + PLAYER_H;
+      const prevBottom = playerBottom - player.vy * dt;
+      if (prevBottom <= platRect.y + 2 && playerBottom >= platRect.y) {
+        // Landing
+        player.y = platRect.y - PLAYER_H;
+        player.vy = 0;
+        player.onGround = true;
+        player.groundPlat = p;
+
+        if (!p.touched) {
+          p.touched = true;
+          // Landing effects
+          handleLanding(p);
+        }
+      }
+    }
+  }
+
+  // ── Bridge bounds kill ──
+  const bLeft = W * BRIDGE_LEFT_F;
+  const bRight = W * BRIDGE_RIGHT_F;
+
+  // Near-miss shake
+  const distLeft = player.x - PLAYER_W / 2 - bLeft;
+  const distRight = bRight - (player.x + PLAYER_W / 2);
+  if (distLeft < 6 || distRight < 6) {
+    triggerShake(3, 0.1);
+  }
+
+  if (player.x - PLAYER_W / 2 < bLeft || player.x + PLAYER_W / 2 > bRight) {
+    killPlayer('You fell off the bridge edge!');
+    return;
+  }
+
+  // Fall into lava
+  if (player.y > cameraY + H + 150) {
+    killPlayer('You fell into the lava!');
+    return;
+  }
+
+  // ── Camera ──
+  const targetCamY = player.y - H * 0.72;
+  cameraY += (targetCamY - cameraY) * Math.min(1, dt * 8);
+
+  // World distance (camera moving down = player going further)
+  worldDist += speed * dt;
+  score = Math.floor(worldDist / 10) * multiplier;
+  if (score > best) {
+    best = score;
+    localStorage.setItem(HS_KEY, best.toString());
+  }
+  if (combo > bestCombo) bestCombo = combo;
+
+  // Heat micro-shake on state change
+  updateShake(dt);
+  updateParticles(dt);
+
+  render();
+  requestAnimationFrame(update);
+}
+
+function handleLanding(p) {
+  const heat = anchorActive ? anchorHeat : curHeat;
+  const safeHeat = MAT_SAFE_HEAT[p.mat];
+
+  spawnSparks(player.x, player.y + PLAYER_H, 6);
+
+  if (heat === safeHeat) {
+    // Safe landing
+    combo++;
+    multiplier = Math.min(8, 1 + Math.floor(combo / 3));
+    spawnEmbers(player.x, player.y + PLAYER_H, 8, HEAT_HUE[heat]);
+    if (p.isRisk) {
+      multiplier = Math.min(8, multiplier + 1);
+      triggerShake(2, 0.15);
+    }
+  } else {
+    // Unsafe landing
+    combo = 0;
+    multiplier = 1;
+    applyMaterialPenalty(p, heat);
+  }
+}
+
+function applyMaterialPenalty(p, heat) {
+  if (p.mat === MAT.ICE) {
+    // Slick drift outward
+    const dir = player.x < W * 0.5 ? -1 : 1;
+    player.vx = dir * 180;
+    spawnIceDust(player.x, player.y + PLAYER_H, 10);
+    triggerShake(4, 0.2);
+    deathReason = 'ICE only safe when COOL!';
+  } else if (p.mat === MAT.TAR) {
+    if (heat === HEAT.COOL) {
+      // Sticky slow
+      player.vx = 0;
+      triggerShake(2, 0.15);
+    } else if (heat === HEAT.HOT) {
+      // Will melt – handled in platform loop
+    }
+    deathReason = 'TAR only safe when WARM!';
+  } else if (p.mat === MAT.METAL) {
+    // Spring launch forward
+    player.vy = JUMP_V * 0.7;
+    player.vx = (Math.random() - 0.5) * 200;
+    spawnSparks(player.x, player.y + PLAYER_H, 12);
+    triggerShake(8, 0.4);
+    deathReason = 'METAL only safe when HOT!';
+    player.onGround = false;
+  }
+}
+
+function killPlayer(reason) {
+  if (!deathReason) deathReason = reason;
+  if (score > best) {
+    best = score;
+    localStorage.setItem(HS_KEY, best.toString());
+  }
+  if (combo > bestCombo) bestCombo = combo;
+  triggerShake(18, 0.8);
+  spawnEmbers(player.x, player.y + PLAYER_H * 0.5, 25, HEAT_HUE[curHeat]);
+  state = STATES.GAMEOVER;
+}
+
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.life -= dt;
+    if (p.life <= 0) { particles.splice(i, 1); continue; }
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    if (p.type === 'ember' || p.type === 'spark') {
+      p.vy += 200 * dt; // gravity
+    }
+  }
+}
+
+// ─── Drawing Helpers ──────────────────────────────────────────────────────────
+function drawRoundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h);
+  ctx.arcTo(x, y + h, x, y + h - r, r);
+  ctx.lineTo(x, y + r);
+  ctx.arcTo(x, y, x + r, y, r);
+  ctx.closePath();
+}
+
+function drawSnowflake(cx, cy, size) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  for (let i = 0; i < 6; i++) {
+    ctx.rotate(Math.PI / 3);
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(0, size);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, size * 0.5);
+    ctx.lineTo(size * 0.25, size * 0.35);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, size * 0.5);
+    ctx.lineTo(-size * 0.25, size * 0.35);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawBolt(cx, cy, size) {
+  ctx.beginPath();
+  ctx.moveTo(cx + size * 0.3, cy - size);
+  ctx.lineTo(cx - size * 0.1, cy - size * 0.1);
+  ctx.lineTo(cx + size * 0.2, cy - size * 0.1);
+  ctx.lineTo(cx - size * 0.3, cy + size);
+  ctx.lineTo(cx + size * 0.1, cy + size * 0.1);
+  ctx.lineTo(cx - size * 0.2, cy + size * 0.1);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawTarDrop(cx, cy, size) {
+  ctx.beginPath();
+  ctx.arc(cx, cy + size * 0.2, size * 0.5, 0, Math.PI * 2);
+  ctx.moveTo(cx - size * 0.3, cy + size * 0.1);
+  ctx.quadraticCurveTo(cx, cy - size * 0.8, cx + size * 0.3, cy + size * 0.1);
+  ctx.fill();
+}
+
+function drawPlatformPattern(p, sx, sy) {
+  ctx.save();
+  ctx.beginPath();
+  drawRoundRect(sx, sy, p.w, p.h, 4);
+  ctx.clip();
+
+  if (p.mat === MAT.ICE) {
+    // Hatch pattern
+    ctx.strokeStyle = 'rgba(180,240,255,0.25)';
+    ctx.lineWidth = 1;
+    for (let xx = -p.h; xx < p.w + p.h; xx += 8) {
+      ctx.beginPath();
+      ctx.moveTo(sx + xx, sy);
+      ctx.lineTo(sx + xx + p.h, sy + p.h);
+      ctx.stroke();
+    }
+  } else if (p.mat === MAT.TAR) {
+    // Dots
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    for (let xx = 6; xx < p.w; xx += 12) {
+      for (let yy = 4; yy < p.h; yy += 8) {
+        ctx.beginPath();
+        ctx.arc(sx + xx, sy + yy, 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  } else {
+    // Metal chevrons
+    ctx.strokeStyle = 'rgba(255,220,100,0.25)';
+    ctx.lineWidth = 1.5;
+    for (let xx = -p.h; xx < p.w + p.h; xx += 16) {
+      ctx.beginPath();
+      ctx.moveTo(sx + xx, sy + p.h);
+      ctx.lineTo(sx + xx + p.h * 0.5, sy);
+      ctx.lineTo(sx + xx + p.h, sy + p.h);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+function drawPlatform(p) {
+  const sy = p.y - cameraY;
+  if (sy > H + 60 || sy < -80) return;
+  const sx = p.x;
+
+  // Heat-matched glow
+  const safeHeat = MAT_SAFE_HEAT[p.mat];
+  const hue = HEAT_HUE[safeHeat];
+
+  let alpha = 1;
+  let scaleY = 1;
+  if (p.tarMelted) {
+    scaleY = Math.max(0.1, p.collapseTimer / 0.3);
+    alpha = scaleY;
+  }
+
+  ctx.save();
+  if (p.tarMelted) {
+    ctx.translate(sx + p.w / 2, sy + p.h);
+    ctx.scale(1, scaleY);
+    ctx.translate(-(sx + p.w / 2), -(sy + p.h));
+  }
+  ctx.globalAlpha = alpha;
+
+  // Shadow glow
+  if (p.isRisk) {
+    ctx.shadowColor = `hsl(${hue},100%,60%)`;
+    ctx.shadowBlur = 10;
+  }
+
+  // Base fill
+  let fillColor;
+  if (p.mat === MAT.ICE) {
+    fillColor = `hsl(200,70%,${p.touched && curHeat !== HEAT.COOL ? 40 : 75}%)`;
+  } else if (p.mat === MAT.TAR) {
+    fillColor = `hsl(30,40%,${p.touched && curHeat === HEAT.HOT ? 20 : 28}%)`;
+  } else {
+    fillColor = `hsl(45,60%,${p.touched && curHeat !== HEAT.HOT ? 35 : 55}%)`;
+  }
+  ctx.fillStyle = fillColor;
+  ctx.shadowBlur = 0;
+  drawRoundRect(sx, sy, p.w, p.h, 4);
+  ctx.fill();
+
+  drawPlatformPattern(p, sx, sy);
+
+  // Outline
+  ctx.strokeStyle = `hsl(${hue},90%,70%)`;
+  ctx.lineWidth = p.isRisk ? 2.5 : 1.5;
+  drawRoundRect(sx, sy, p.w, p.h, 4);
+  ctx.stroke();
+
+  ctx.shadowBlur = 0;
+  ctx.restore();
+
+  // Icon
+  drawMatIcon(p, sx, sy, alpha);
+
+  // Risk label
+  if (p.isRisk) {
+    ctx.save();
+    ctx.globalAlpha = 0.85;
+    ctx.font = 'bold 9px monospace';
+    ctx.fillStyle = `hsl(${hue},100%,80%)`;
+    ctx.textAlign = 'center';
+    ctx.fillText('2×', sx + p.w - 10, sy + 12);
+    ctx.restore();
+  }
+
+  // Tar melt warning
+  if (p.mat === MAT.TAR && p.touched && curHeat === HEAT.HOT && !p.tarMelted) {
+    const progress = p.tarMeltTimer / TAR_MELT_TIME;
+    ctx.save();
+    ctx.fillStyle = `rgba(255,80,0,${0.4 + progress * 0.5})`;
+    drawRoundRect(sx, sy, p.w * progress, p.h, 4);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawMatIcon(p, sx, sy, alpha) {
+  const cx = sx + p.w * 0.5;
+  const cy = sy + p.h * 0.5;
+  ctx.save();
+  ctx.globalAlpha = (alpha || 1) * 0.9;
+  const safeHeat = MAT_SAFE_HEAT[p.mat];
+  const hue = HEAT_HUE[safeHeat];
+
+  if (p.mat === MAT.ICE) {
+    ctx.strokeStyle = `hsl(${hue},90%,88%)`;
+    ctx.lineWidth = 1.5;
+    drawSnowflake(cx, cy, 6);
+  } else if (p.mat === MAT.TAR) {
+    ctx.fillStyle = `hsl(${hue},60%,70%)`;
+    drawTarDrop(cx, cy, 7);
+  } else {
+    ctx.fillStyle = `hsl(${hue},100%,75%)`;
+    drawBolt(cx, cy, 5);
+  }
+  ctx.restore();
+}
+
+function drawPlayer() {
+  const px = player.x;
+  const py = player.y - cameraY;
+  const hue = HEAT_HUE[curHeat];
+
+  ctx.save();
+  // Body glow
+  ctx.shadowColor = `hsl(${hue},100%,60%)`;
+  ctx.shadowBlur = anchorActive ? 18 : 8;
+
+  // Body
+  ctx.fillStyle = `hsl(${hue},80%,60%)`;
+  drawRoundRect(px - PLAYER_W / 2, py, PLAYER_W, PLAYER_H, 6);
+  ctx.fill();
+
+  // Face highlight
+  ctx.fillStyle = `hsl(${hue},90%,80%)`;
+  ctx.fillRect(px - PLAYER_W / 2 + 4, py + 4, PLAYER_W - 8, 8);
+
+  // Eyes
+  ctx.fillStyle = '#111';
+  ctx.fillRect(px - 7, py + 6, 4, 4);
+  ctx.fillRect(px + 3, py + 6, 4, 4);
+
+  // Outline
+  ctx.strokeStyle = `hsl(${hue},100%,85%)`;
+  ctx.lineWidth = 2;
+  drawRoundRect(px - PLAYER_W / 2, py, PLAYER_W, PLAYER_H, 6);
+  ctx.stroke();
+
+  ctx.restore();
+
+  // Anchor ring
+  if (anchorActive) {
+    const progress = anchorTimer / ANCHOR_DURATION;
+    const radius = 22 + (1 - progress) * 10;
+    ctx.save();
+    ctx.strokeStyle = `hsl(${hue},100%,75%)`;
+    ctx.lineWidth = 2.5;
+    ctx.globalAlpha = progress;
+    ctx.beginPath();
+    ctx.arc(px, py + PLAYER_H * 0.5, radius, -Math.PI * 0.5, -Math.PI * 0.5 + Math.PI * 2 * progress);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    const alpha = p.life / p.maxLife;
+    ctx.save();
+    ctx.globalAlpha = alpha * 0.85;
+
+    const sy = p.y - cameraY;
+    if (sy < -50 || sy > H + 50) { ctx.restore(); continue; }
+
+    if (p.type === 'ember') {
+      ctx.fillStyle = `hsl(${p.hue},100%,${50 + alpha * 30}%)`;
+      ctx.shadowColor = ctx.fillStyle;
+      ctx.shadowBlur = 6;
+      ctx.beginPath();
+      ctx.arc(p.x, sy, p.size * alpha, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (p.type === 'spark') {
+      ctx.strokeStyle = `hsl(${p.hue},100%,80%)`;
+      ctx.lineWidth = p.size;
+      ctx.beginPath();
+      ctx.moveTo(p.x, sy);
+      ctx.lineTo(p.x + p.vx * 0.04, sy + p.vy * 0.04);
+      ctx.stroke();
+    } else if (p.type === 'icedust') {
+      ctx.fillStyle = `hsl(195,80%,${70 + alpha * 20}%)`;
+      ctx.beginPath();
+      ctx.arc(p.x, sy, p.size * alpha, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (p.type === 'tardrip') {
+      ctx.fillStyle = `hsl(30,40%,25%)`;
+      ctx.beginPath();
+      ctx.ellipse(p.x, sy, p.size * 0.5, p.size * alpha, 0, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (p.type === 'trail') {
+      ctx.fillStyle = `hsl(${p.hue},80%,60%)`;
+      ctx.beginPath();
+      ctx.arc(p.x, sy, p.size * alpha * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
+function drawLava() {
+  // Subdued lava background
+  const hue = 10 + Math.sin(heatTime * 0.5) * 5;
+  const t = heatTime * 0.3;
+  const grad = ctx.createLinearGradient(0, H * 0.6, 0, H);
+  grad.addColorStop(0, `hsla(${hue},70%,12%,0)`);
+  grad.addColorStop(0.5, `hsla(${hue},80%,15%,0.6)`);
+  grad.addColorStop(1, `hsla(${hue},90%,18%,0.9)`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, H * 0.5, W, H * 0.5);
+
+  // Lava surface ripple
+  ctx.strokeStyle = `hsla(${hue + 15},100%,35%,0.4)`;
+  ctx.lineWidth = 2;
+  for (let i = 0; i < 3; i++) {
+    const yOff = H * 0.82 + i * 18 + Math.sin(t + i * 1.5) * 6;
+    ctx.beginPath();
+    for (let x = 0; x <= W; x += 20) {
+      const y = yOff + Math.sin((x / W) * Math.PI * 4 + t + i) * 5;
+      if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+
+  // Floating embers from lava
+  if (Math.random() < 0.08) {
+    spawnEmbers(Math.random() * W, H * 0.9, 1, 10 + Math.random() * 20);
+  }
+}
+
+function drawBridge() {
+  const bLeft = W * BRIDGE_LEFT_F;
+  const bRight = W * BRIDGE_RIGHT_F;
+
+  // Bridge rails
+  ctx.save();
+  ctx.strokeStyle = 'rgba(180,100,40,0.5)';
+  ctx.lineWidth = 3;
+  ctx.setLineDash([12, 8]);
+  ctx.beginPath();
+  ctx.moveTo(bLeft, 0);
+  ctx.lineTo(bLeft, H);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(bRight, 0);
+  ctx.lineTo(bRight, H);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+function drawHUD() {
+  const hue = HEAT_HUE[curHeat];
+  const pulse = getHeatPulse(heatTime);
+  const heatAlpha = 0.7 + pulse * 0.3;
+
+  // Heat indicator
+  ctx.save();
+  ctx.globalAlpha = heatAlpha;
+  const heatW = 110, heatH = 28;
+  const hx = W * 0.5 - heatW * 0.5, hy = 10;
+  ctx.fillStyle = `hsl(${hue},70%,18%)`;
+  drawRoundRect(hx, hy, heatW, heatH, 6);
+  ctx.fill();
+  ctx.strokeStyle = `hsl(${hue},90%,55%)`;
+  ctx.lineWidth = anchorActive ? 2.5 : 1.5;
+  drawRoundRect(hx, hy, heatW, heatH, 6);
+  ctx.stroke();
+
+  // Heat phase bar
+  const phase = getHeatPhase(heatTime);
+  const segW = heatW / 3;
+  for (let i = 0; i < 3; i++) {
+    const active = getHeat(heatTime) === i;
+    ctx.globalAlpha = active ? heatAlpha : heatAlpha * 0.4;
+    ctx.fillStyle = `hsl(${HEAT_HUE[i]},80%,50%)`;
+    drawRoundRect(hx + i * segW + 2, hy + 2, segW - 4, heatH - 4, 3);
+    ctx.fill();
+    ctx.globalAlpha = heatAlpha;
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 9px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(HEAT_NAME[i], hx + i * segW + segW * 0.5, hy + heatH * 0.65);
+  }
+
+  // Anchor lock indicator
+  if (anchorActive) {
+    ctx.globalAlpha = 0.95;
+    ctx.fillStyle = `hsl(${hue},100%,75%)`;
+    ctx.font = 'bold 10px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(`LOCKED ${anchorTimer.toFixed(1)}s`, W * 0.5, hy + heatH + 14);
+  }
+  ctx.restore();
+
+  // Score
+  ctx.save();
+  ctx.fillStyle = '#f5d990';
+  ctx.font = 'bold 20px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText(score.toString(), 12, 36);
+  ctx.fillStyle = '#a08060';
+  ctx.font = '11px monospace';
+  ctx.fillText('BEST ' + best, 12, 52);
+  ctx.restore();
+
+  // Combo
+  if (combo > 1) {
+    ctx.save();
+    const cAlpha = Math.min(1, combo / 5);
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = `hsl(${40 + combo * 8},100%,70%)`;
+    ctx.font = `bold ${Math.min(22, 13 + combo)}px monospace`;
+    ctx.textAlign = 'right';
+    ctx.fillText(`×${multiplier} COMBO ${combo}`, W - 12, 36);
+    ctx.restore();
+  }
+}
+
+function drawStartScreen() {
+  // Background
+  ctx.fillStyle = '#0d0500';
+  ctx.fillRect(0, 0, W, H);
+  drawLava();
+  drawParticles();
+
+  const hue = HEAT_HUE[curHeat];
+  const pulse = getHeatPulse(heatTime);
+
+  // Title
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.shadowColor = `hsl(${hue},100%,60%)`;
+  ctx.shadowBlur = 20 + pulse * 10;
+  ctx.fillStyle = `hsl(${hue},90%,70%)`;
+  ctx.font = 'bold 36px monospace';
+  ctx.fillText('MAGMA', W * 0.5, H * 0.32);
+  ctx.fillText('SHIFT', W * 0.5, H * 0.32 + 44);
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = `hsl(${hue},70%,50%)`;
+  ctx.font = '13px monospace';
+  ctx.fillText('HEAT ANCHOR', W * 0.5, H * 0.32 + 68);
+
+  // Heat hint
+  ctx.fillStyle = '#c8955a';
+  ctx.font = '12px monospace';
+  ctx.fillText('Tap to lock the heat. Match platform.', W * 0.5, H * 0.52);
+  ctx.fillText('ICE=COOL  TAR=WARM  METAL=HOT', W * 0.5, H * 0.52 + 20);
+
+  // Tap to start
+  const blink = Math.sin(heatTime * 4) > 0;
+  if (blink) {
+    ctx.fillStyle = '#ffe090';
+    ctx.font = 'bold 16px monospace';
+    ctx.fillText('TAP TO START', W * 0.5, H * 0.68);
+  }
+  ctx.restore();
+}
+
+function drawGameoverScreen() {
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ff5530';
+  ctx.font = 'bold 28px monospace';
+  ctx.fillText('GAME OVER', W * 0.5, H * 0.3);
+
+  ctx.fillStyle = '#f5d990';
+  ctx.font = 'bold 20px monospace';
+  ctx.fillText('Score: ' + score, W * 0.5, H * 0.4);
+  ctx.fillStyle = '#a08060';
+  ctx.font = '14px monospace';
+  ctx.fillText('Best: ' + best, W * 0.5, H * 0.4 + 24);
+  ctx.fillText('Best Combo: ' + bestCombo, W * 0.5, H * 0.4 + 44);
+
+  // Tip of death
+  if (deathReason) {
+    ctx.fillStyle = 'rgba(255,120,50,0.95)';
+    ctx.font = 'bold 11px monospace';
+    // Word wrap
+    const words = deathReason.split(' ');
+    let line = '';
+    let lineY = H * 0.57;
+    ctx.fillStyle = '#ffaa60';
+    ctx.font = '11px monospace';
+    for (const w of words) {
+      const test = line + w + ' ';
+      if (ctx.measureText(test).width > W - 40 && line) {
+        ctx.fillText(line.trim(), W * 0.5, lineY);
+        line = w + ' ';
+        lineY += 16;
+      } else { line = test; }
+    }
+    if (line) ctx.fillText(line.trim(), W * 0.5, lineY);
+  }
+
+  ctx.fillStyle = '#ffe090';
+  ctx.font = 'bold 14px monospace';
+  ctx.fillText('TAP or [R] to Retry', W * 0.5, H * 0.75);
+
+  ctx.restore();
+
+  // Tap to retry
+  if (inputThisFrame) {
+    resetGame();
+    state = STATES.PLAYING;
+  }
+}
+
+// ─── Main Render ──────────────────────────────────────────────────────────────
+function render() {
+  ctx.save();
+  ctx.translate(Math.round(shakeX), Math.round(shakeY));
+
+  // Background
+  const bgHue = HEAT_HUE[curHeat];
+  ctx.fillStyle = `hsl(${bgHue},30%,5%)`;
+  ctx.fillRect(0, 0, W, H);
+
+  if (state === STATES.START) {
+    drawStartScreen();
+    ctx.restore();
+    return;
+  }
+
+  drawLava();
+  drawBridge();
+
+  // Platforms
+  for (const p of platforms) drawPlatform(p);
+
+  // Particles
+  drawParticles();
+
+  // Player
+  drawPlayer();
+
+  // HUD
+  drawHUD();
+
+  if (state === STATES.GAMEOVER) {
+    drawGameoverScreen();
+  }
+
+  ctx.restore();
+}
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+resetGame();
+state = STATES.START;
+lastTime = performance.now();
+
+canvas.addEventListener('pointerdown', (e) => {
+  if (state === STATES.GAMEOVER) {
+    resetGame();
+    state = STATES.PLAYING;
+  }
+}, { passive: true });
+
+requestAnimationFrame(update);
+</script>
+</body>
+</html>

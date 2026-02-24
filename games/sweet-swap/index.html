@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Sweet Swap - Free HTML5 Game</title>
+  <meta name="description" content="Play Sweet Swap - Swipe to swap candies matching colors as the palette changes dynamically.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#1a0030">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Sweet Swap - Free HTML5 Game">
+  <meta property="og:description" content="Play Sweet Swap - Swipe to swap candies matching colors as the palette changes dynamically.">
+  <meta property="og:url" content="https://balinti.github.io/sweet-swap/">
+  <meta property="og:image" content="https://balinti.github.io/sweet-swap/preview.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Sweet Swap - Free HTML5 Game">
+  <meta name="twitter:description" content="Play Sweet Swap - Tap candies to match 3+ in a row or column. Beat the sugar rush!">
+  <meta name="twitter:image" content="https://balinti.github.io/sweet-swap/preview.png">
+  <link rel="canonical" href="https://balinti.github.io/sweet-swap/">
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #0a0015;
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      overflow: hidden;
+      touch-action: none;
+    }
+    #wrap {
+      width: 100%;
+      max-width: 420px;
+      height: 100svh;
+      max-height: 750px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+    #gameCanvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="gameCanvas"></canvas>
+</div>
+<script>
+(function(){
+'use strict';
+
+// ── Constants ──────────────────────────────────────────────────────────────
+const COLS = 5, ROWS = 5;
+const CANDY_TYPES = 6; // number of candy flavors
+const LS_KEY = 'sweetSwapBest';
+
+// Candy shape types (drawn differently)
+const SHAPES = ['circle','diamond','square','star','heart','hexagon'];
+
+// Base hues for candy types (fixed for readability)
+const CANDY_HUES = [0, 45, 120, 200, 270, 330]; // red, orange, green, blue, purple, pink
+
+// ── State ──────────────────────────────────────────────────────────────────
+let state = 'start'; // 'start' | 'playing' | 'gameover'
+let board = [];      // grid of candy objects
+let particles = [];
+let score = 0;
+let best = parseInt(localStorage.getItem(LS_KEY)) || 0;
+let sugarMeter = 0;  // 0..1
+let sugarRate = 0.0012; // per frame (60fps base)
+let combo = 0;
+let comboTimer = 0;
+let resolving = false;
+let diffTime = 0;    // seconds elapsed
+let bgHue = 280;
+let shakeAmt = 0;
+let shakeX = 0, shakeY = 0;
+let flashAlpha = 0;
+let tapAnimCells = {}; // key: r+','+c => {scale, t}
+let popQueue = [];   // cells to animate pop
+let fallingCells = [];
+let gravity = 0;    // animation progress 0..1
+
+// ── Canvas setup ───────────────────────────────────────────────────────────
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const wrap = document.getElementById('wrap');
+
+let W, H, DPR, cellSize, boardX, boardY, boardW, boardH;
+
+function resize(){
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = wrap.clientWidth;
+  H = wrap.clientHeight;
+  canvas.width  = W * DPR;
+  canvas.height = H * DPR;
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.scale(DPR, DPR);
+
+  // Board layout
+  const pad = 12;
+  const uiTop = 90;
+  const uiBottom = 70;
+  const availW = W - pad*2;
+  const availH = H - uiTop - uiBottom - pad*2;
+  cellSize = Math.floor(Math.min(availW / COLS, availH / ROWS));
+  boardW = cellSize * COLS;
+  boardH = cellSize * ROWS;
+  boardX = Math.floor((W - boardW) / 2);
+  boardY = uiTop + Math.floor((H - uiTop - uiBottom - boardH) / 2);
+}
+
+window.addEventListener('resize', ()=>{ resize(); });
+resize();
+
+// ── Candy factory ─────────────────────────────────────────────────────────
+function makeCandy(type){
+  if(type === undefined) type = Math.floor(Math.random() * CANDY_TYPES);
+  return { type, stale: false, hard: false, popAnim: 0, tapScale: 1 };
+}
+
+// ── Board init ────────────────────────────────────────────────────────────
+function initBoard(){
+  board = [];
+  for(let r=0;r<ROWS;r++){
+    board[r]=[];
+    for(let c=0;c<COLS;c++){
+      board[r][c]=makeCandy();
+    }
+  }
+  // Remove starting matches
+  for(let pass=0;pass<10;pass++){
+    let changed=false;
+    for(let r=0;r<ROWS;r++){
+      for(let c=0;c<COLS;c++){
+        let t=board[r][c].type;
+        let bad=false;
+        if(c>=2 && board[r][c-1].type===t && board[r][c-2].type===t) bad=true;
+        if(r>=2 && board[r-1][c].type===t && board[r-2][c].type===t) bad=true;
+        if(bad){
+          let tries=0, nt;
+          do{ nt=Math.floor(Math.random()*CANDY_TYPES); tries++; }while(nt===t&&tries<20);
+          board[r][c].type=nt;
+          changed=true;
+        }
+      }
+    }
+    if(!changed) break;
+  }
+  // Near-match bias: create some pairs so board feels one-tap away
+  for(let i=0;i<4;i++){
+    let r=Math.floor(Math.random()*ROWS);
+    let c=Math.floor(Math.random()*COLS);
+    let t=board[r][c].type;
+    if(c+1<COLS) board[r][c+1].type=t;
+  }
+  // re-clear any accidental matches that resulted
+  for(let pass=0;pass<5;pass++){
+    for(let r=0;r<ROWS;r++){
+      for(let c=0;c<COLS;c++){
+        let t=board[r][c].type;
+        if(c>=2 && board[r][c-1].type===t && board[r][c-2].type===t){
+          board[r][c].type=(t+1)%CANDY_TYPES;
+        }
+        if(r>=2 && board[r-1][c].type===t && board[r-2][c].type===t){
+          board[r][c].type=(t+1)%CANDY_TYPES;
+        }
+      }
+    }
+  }
+}
+
+// ── Match detection ───────────────────────────────────────────────────────
+function findMatches(){
+  let matched = new Set();
+  // Horizontal
+  for(let r=0;r<ROWS;r++){
+    for(let c=0;c<COLS-2;c++){
+      let t=board[r][c].type;
+      if(t<0) continue;
+      if(board[r][c+1].type===t && board[r][c+2].type===t){
+        let end=c+2;
+        while(end+1<COLS && board[r][end+1].type===t) end++;
+        for(let x=c;x<=end;x++) matched.add(r+','+x);
+        c=end;
+      }
+    }
+  }
+  // Vertical
+  for(let c=0;c<COLS;c++){
+    for(let r=0;r<ROWS-2;r++){
+      let t=board[r][c].type;
+      if(t<0) continue;
+      if(board[r+1][c].type===t && board[r+2][c].type===t){
+        let end=r+2;
+        while(end+1<ROWS && board[end+1][c].type===t) end++;
+        for(let x=r;x<=end;x++) matched.add(x+','+c);
+        r=end;
+      }
+    }
+  }
+  return matched;
+}
+
+// ── Pop matched cells ─────────────────────────────────────────────────────
+function popMatches(matched){
+  let cnt = matched.size;
+  if(cnt===0) return false;
+
+  combo++;
+  comboTimer = 90; // frames
+  let mult = Math.min(combo, 8);
+  let pts = cnt * 10 * mult;
+  score += pts;
+  if(score>best){ best=score; localStorage.setItem(LS_KEY, best); }
+
+  // Sugar drain
+  let drain = 0.04 * cnt + (cnt>=4 ? 0.06 : 0) + (combo>=3 ? 0.05*combo : 0);
+  sugarMeter = Math.max(0, sugarMeter - drain);
+
+  // Particles + flash
+  if(cnt>=4) { flashAlpha=0.45; shakeAmt += 3; }
+  if(cnt>=6) { shakeAmt += 5; }
+
+  matched.forEach(key=>{
+    let [r,c]=key.split(',').map(Number);
+    let candy=board[r][c];
+    if(!candy || candy.type<0) return;
+    spawnParticles(boardX+c*cellSize+cellSize/2, boardY+r*cellSize+cellSize/2, candy.type, cnt>=4?16:8);
+    board[r][c] = { type:-1, stale:false, hard:false }; // null marker
+  });
+
+  return true;
+}
+
+// ── Gravity / refill ──────────────────────────────────────────────────────
+function applyGravity(){
+  let moved=false;
+  for(let c=0;c<COLS;c++){
+    // collect non-null from bottom
+    let col=[];
+    for(let r=ROWS-1;r>=0;r--){
+      if(board[r][c].type>=0) col.push(board[r][c]);
+    }
+    let missing = ROWS - col.length;
+    if(missing>0){
+      moved=true;
+      // Fill with new candies biased toward near-matches
+      for(let i=0;i<missing;i++){
+        col.push(makeCandy(biasedType(c)));
+      }
+    }
+    // Place back bottom to top
+    for(let r=ROWS-1;r>=0;r--){
+      board[r][c] = col[ROWS-1-r] || makeCandy();
+    }
+  }
+  return moved;
+}
+
+function biasedType(col){
+  // 40% chance to match a neighbor for near-match feeling
+  if(Math.random()<0.4){
+    let r=Math.floor(Math.random()*ROWS);
+    if(board[r][col] && board[r][col].type>=0) return board[r][col].type;
+  }
+  return Math.floor(Math.random()*CANDY_TYPES);
+}
+
+// ── Resolve pipeline (async with animation frames) ────────────────────────
+let resolveStep = 0; // 0=idle, 1=checking, 2=popping, 3=falling, 4=refilling
+let resolveTimer = 0;
+let pendingMatched = null;
+
+function startResolve(){
+  if(resolving) return;
+  resolving=true;
+  resolveStep=1;
+  resolveTimer=0;
+}
+
+function tickResolve(dt){
+  if(!resolving) return;
+  resolveTimer+=dt;
+
+  if(resolveStep===1){
+    // find matches
+    pendingMatched = findMatches();
+    if(pendingMatched.size>0){
+      popMatches(pendingMatched);
+      resolveStep=2;
+      resolveTimer=0;
+    } else {
+      // stable
+      resolving=false;
+      combo=0;
+    }
+  } else if(resolveStep===2){
+    // wait for pop anim (~200ms)
+    if(resolveTimer>200){
+      let moved=applyGravity();
+      resolveStep=3;
+      resolveTimer=0;
+    }
+  } else if(resolveStep===3){
+    // wait for fall anim (~180ms)
+    if(resolveTimer>180){
+      resolveStep=1; // check again for cascades
+      resolveTimer=0;
+    }
+  }
+}
+
+// ── Difficulty ────────────────────────────────────────────────────────────
+function applyDifficulty(){
+  // Sugar rate increases over time
+  sugarRate = 0.0008 + diffTime * 0.000015;
+  sugarRate = Math.min(sugarRate, 0.004);
+
+  // Stale candies (mid: 30s+)
+  if(diffTime>30 && Math.random()<0.0005){
+    let r=Math.floor(Math.random()*ROWS), c=Math.floor(Math.random()*COLS);
+    if(board[r][c] && !board[r][c].stale && !board[r][c].hard && board[r][c].type>=0)
+      board[r][c].stale=true;
+  }
+
+  // Hard candy blockers (late: 60s+)
+  if(diffTime>60 && Math.random()<0.0003){
+    let r=Math.floor(Math.random()*ROWS), c=Math.floor(Math.random()*COLS);
+    if(board[r][c] && !board[r][c].hard && board[r][c].type>=0){
+      board[r][c].hard=true;
+      board[r][c].stale=false;
+    }
+  }
+}
+
+// ── Tap handler ───────────────────────────────────────────────────────────
+function onTap(px, py){
+  if(state==='start'){ startGame(); return; }
+  if(state==='gameover'){ startGame(); return; }
+  if(resolving) return;
+
+  let c = Math.floor((px - boardX) / cellSize);
+  let r = Math.floor((py - boardY) / cellSize);
+  if(r<0||r>=ROWS||c<0||c>=COLS) return;
+
+  let candy = board[r][c];
+  if(!candy || candy.type<0) return;
+
+  // Tap animation
+  candy.tapScale = 0.75;
+
+  if(candy.hard){
+    // Hard candy: only clears if in a match (handled in resolve)
+    return; // can't cycle, just trigger resolve check
+  }
+  if(candy.stale){
+    // First tap removes stale
+    candy.stale=false;
+    return;
+  }
+
+  // Cycle flavor
+  candy.type = (candy.type + 1) % CANDY_TYPES;
+
+  startResolve();
+}
+
+// ── Game start / over ─────────────────────────────────────────────────────
+function startGame(){
+  score=0;
+  sugarMeter=0;
+  sugarRate=0.0008;
+  combo=0;
+  comboTimer=0;
+  diffTime=0;
+  resolving=false;
+  resolveStep=0;
+  particles=[];
+  shakeAmt=0;
+  flashAlpha=0;
+  bgHue=280;
+  initBoard();
+  state='playing';
+}
+
+function gameOver(){
+  state='gameover';
+  shakeAmt=15;
+  if(score>best){ best=score; localStorage.setItem(LS_KEY,best); }
+  // Big explosion of particles
+  for(let r=0;r<ROWS;r++){
+    for(let c=0;c<COLS;c++){
+      if(board[r][c] && board[r][c].type>=0){
+        spawnParticles(boardX+c*cellSize+cellSize/2, boardY+r*cellSize+cellSize/2, board[r][c].type, 4);
+      }
+    }
+  }
+}
+
+// ── Particles ─────────────────────────────────────────────────────────────
+function spawnParticles(x, y, type, count){
+  let hue = CANDY_HUES[type % CANDY_HUES.length];
+  for(let i=0;i<count;i++){
+    let angle = Math.random()*Math.PI*2;
+    let speed = 1.5 + Math.random()*3.5;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle)*speed,
+      vy: Math.sin(angle)*speed - 1,
+      r: 2+Math.random()*4,
+      hue,
+      life: 1,
+      decay: 0.018+Math.random()*0.02
+    });
+  }
+}
+
+function updateParticles(){
+  for(let i=particles.length-1;i>=0;i--){
+    let p=particles[i];
+    p.x+=p.vx; p.y+=p.vy;
+    p.vy+=0.15;
+    p.life-=p.decay;
+    if(p.life<=0) particles.splice(i,1);
+  }
+}
+
+function drawParticles(){
+  for(let p of particles){
+    ctx.globalAlpha=p.life;
+    ctx.fillStyle=`hsl(${p.hue},100%,65%)`;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r*p.life, 0, Math.PI*2);
+    ctx.fill();
+  }
+  ctx.globalAlpha=1;
+}
+
+// ── Drawing helpers ────────────────────────────────────────────────────────
+function drawRoundRect(x, y, w, h, r){
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.lineTo(x+w-r, y);
+  ctx.quadraticCurveTo(x+w, y, x+w, y+r);
+  ctx.lineTo(x+w, y+h-r);
+  ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+  ctx.lineTo(x+r, y+h);
+  ctx.quadraticCurveTo(x, y+h, x, y+h-r);
+  ctx.lineTo(x, y+r);
+  ctx.quadraticCurveTo(x, y, x+r, y);
+  ctx.closePath();
+}
+
+function drawStar(cx, cy, r, points, inner){
+  let step=Math.PI/points;
+  ctx.beginPath();
+  for(let i=0;i<points*2;i++){
+    let rad = i%2===0 ? r : inner;
+    let angle = i*step - Math.PI/2;
+    let x=cx+Math.cos(angle)*rad, y=cy+Math.sin(angle)*rad;
+    i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  }
+  ctx.closePath();
+}
+
+function drawHeart(cx, cy, size){
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(size/20, size/20);
+  ctx.beginPath();
+  ctx.moveTo(0, 6);
+  ctx.bezierCurveTo(-2, 2, -10, 2, -10, -4);
+  ctx.bezierCurveTo(-10, -10, -2, -10, 0, -4);
+  ctx.bezierCurveTo(2, -10, 10, -10, 10, -4);
+  ctx.bezierCurveTo(10, 2, 2, 2, 0, 6);
+  ctx.closePath();
+  ctx.restore();
+}
+
+function drawHexagon(cx, cy, r){
+  ctx.beginPath();
+  for(let i=0;i<6;i++){
+    let angle=i*Math.PI/3 - Math.PI/6;
+    let x=cx+Math.cos(angle)*r, y=cy+Math.sin(angle)*r;
+    i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  }
+  ctx.closePath();
+}
+
+function drawCandy(candy, cx, cy, size, alpha){
+  if(!candy || candy.type<0) return;
+  let hue = CANDY_HUES[candy.type % CANDY_HUES.length];
+  let shape = SHAPES[candy.type % SHAPES.length];
+  let sat = candy.stale ? 30 : 85;
+  let light = candy.stale ? 40 : 58;
+  let sc = candy.tapScale !== undefined ? candy.tapScale : 1;
+
+  ctx.save();
+  ctx.globalAlpha = alpha !== undefined ? alpha : 1;
+  ctx.translate(cx, cy);
+  ctx.scale(sc, sc);
+
+  let s = size * 0.4;
+
+  if(shape==='circle'){
+    ctx.beginPath(); ctx.arc(0,0,s,0,Math.PI*2);
+  } else if(shape==='diamond'){
+    ctx.beginPath();
+    ctx.moveTo(0,-s); ctx.lineTo(s,0); ctx.lineTo(0,s); ctx.lineTo(-s,0);
+    ctx.closePath();
+  } else if(shape==='square'){
+    drawRoundRect.call(ctx,-s,-s,s*2,s*2,s*0.25);
+    ctx.beginPath(); drawRoundRect(-s,-s,s*2,s*2,s*0.25);
+  } else if(shape==='star'){
+    drawStar(0,0,s,5,s*0.42);
+  } else if(shape==='heart'){
+    drawHeart(0,0,s*2.2);
+  } else if(shape==='hexagon'){
+    drawHexagon(0,0,s);
+  }
+
+  // Fill gradient
+  let grd = ctx.createRadialGradient(-s*0.3,-s*0.3,0,0,0,s*1.1);
+  grd.addColorStop(0, `hsl(${hue},${sat+10}%,${light+20}%)`);
+  grd.addColorStop(1, `hsl(${hue},${sat}%,${light-15}%)`);
+  ctx.fillStyle = grd;
+  ctx.fill();
+
+  // Outline
+  ctx.lineWidth = Math.max(2, size*0.06);
+  ctx.strokeStyle = candy.hard ? '#fff' : `hsl(${hue},${sat}%,${light-30}%)`;
+  if(shape!=='square') ctx.stroke(); else { ctx.beginPath(); drawRoundRect(-s,-s,s*2,s*2,s*0.25); ctx.stroke(); }
+
+  // Hard candy pattern
+  if(candy.hard){
+    ctx.lineWidth=1.5;
+    ctx.strokeStyle='rgba(255,255,255,0.5)';
+    ctx.beginPath(); ctx.moveTo(-s*0.5,-s*0.5); ctx.lineTo(s*0.5,s*0.5); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(s*0.5,-s*0.5); ctx.lineTo(-s*0.5,s*0.5); ctx.stroke();
+  }
+
+  // Stale indicator
+  if(candy.stale){
+    ctx.lineWidth=2;
+    ctx.strokeStyle='rgba(255,200,100,0.8)';
+    ctx.setLineDash([3,3]);
+    if(shape==='circle'){ ctx.beginPath(); ctx.arc(0,0,s+3,0,Math.PI*2); ctx.stroke(); }
+    ctx.setLineDash([]);
+  }
+
+  // Shine
+  ctx.fillStyle='rgba(255,255,255,0.22)';
+  ctx.beginPath(); ctx.ellipse(-s*0.2,-s*0.25,s*0.3,s*0.18,-Math.PI/4,0,Math.PI*2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+// ── Main draw ─────────────────────────────────────────────────────────────
+function draw(t){
+  ctx.clearRect(0,0,W,H);
+
+  // Background gradient (hue shifts)
+  let bg = ctx.createLinearGradient(0,0,W,H);
+  bg.addColorStop(0, `hsl(${bgHue},60%,8%)`);
+  bg.addColorStop(1, `hsl(${(bgHue+60)%360},50%,12%)`);
+  ctx.fillStyle=bg;
+  ctx.fillRect(0,0,W,H);
+
+  // Screen shake
+  if(shakeAmt>0.1){
+    shakeX=(Math.random()-0.5)*shakeAmt*2;
+    shakeY=(Math.random()-0.5)*shakeAmt*2;
+    shakeAmt*=0.82;
+  } else { shakeX=0; shakeY=0; shakeAmt=0; }
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
+
+  if(state==='start'){
+    drawStartScreen();
+  } else if(state==='playing'){
+    drawHUD();
+    drawBoard();
+    drawParticles();
+    // Combo flash
+    if(flashAlpha>0){
+      flashAlpha*=0.88;
+      ctx.globalAlpha=flashAlpha;
+      let rad=ctx.createRadialGradient(W/2,boardY+boardH/2,10,W/2,boardY+boardH/2,boardW*0.8);
+      rad.addColorStop(0,'rgba(255,255,200,0.6)');
+      rad.addColorStop(1,'rgba(255,200,100,0)');
+      ctx.fillStyle=rad;
+      ctx.fillRect(boardX-20,boardY-20,boardW+40,boardH+40);
+      ctx.globalAlpha=1;
+    }
+  } else if(state==='gameover'){
+    drawBoard();
+    drawParticles();
+    drawGameOver();
+  }
+
+  ctx.restore();
+}
+
+function drawStartScreen(){
+  // Title
+  ctx.textAlign='center';
+  ctx.textBaseline='middle';
+
+  // Glow
+  ctx.shadowColor=`hsl(${bgHue},100%,70%)`;
+  ctx.shadowBlur=30;
+  ctx.fillStyle=`hsl(${bgHue},90%,75%)`;
+  ctx.font=`bold ${Math.floor(W*0.13)}px 'Segoe UI', Arial`;
+  ctx.fillText('Sweet', W/2, H*0.35);
+  ctx.fillStyle=`hsl(${(bgHue+60)%360},90%,72%)`;
+  ctx.fillText('Swap', W/2, H*0.35+Math.floor(W*0.14));
+  ctx.shadowBlur=0;
+
+  // Subtitle
+  ctx.fillStyle='rgba(255,255,255,0.6)';
+  ctx.font=`${Math.floor(W*0.042)}px 'Segoe UI', Arial`;
+  ctx.fillText('Tap candies · Match 3 · Beat the sugar rush!', W/2, H*0.58);
+
+  // Sample candies decoration
+  let sx=W/2, sy=H*0.72;
+  for(let i=0;i<CANDY_TYPES;i++){
+    let angle=(i/CANDY_TYPES)*Math.PI*2 - Math.PI/2;
+    let r=W*0.16;
+    drawCandy({type:i,stale:false,hard:false,tapScale:1}, sx+Math.cos(angle)*r, sy+Math.sin(angle)*r*0.6, cellSize||50);
+  }
+
+  // Tap to start
+  let pulse=0.65+0.35*Math.sin(Date.now()/400);
+  ctx.globalAlpha=pulse;
+  ctx.fillStyle='#fff';
+  ctx.font=`bold ${Math.floor(W*0.055)}px 'Segoe UI', Arial`;
+  ctx.fillText('Tap to Start', W/2, H*0.88);
+  ctx.globalAlpha=1;
+
+  // Best score
+  if(best>0){
+    ctx.fillStyle='rgba(255,255,180,0.7)';
+    ctx.font=`${Math.floor(W*0.038)}px 'Segoe UI', Arial`;
+    ctx.fillText(`Best: ${best}`, W/2, H*0.93);
+  }
+}
+
+function drawHUD(){
+  // Score
+  ctx.textAlign='center';
+  ctx.textBaseline='middle';
+  ctx.fillStyle='rgba(255,255,255,0.9)';
+  ctx.font=`bold ${Math.floor(W*0.07)}px 'Segoe UI', Arial`;
+  ctx.fillText(score, W/2, 28);
+
+  ctx.fillStyle='rgba(255,255,255,0.45)';
+  ctx.font=`${Math.floor(W*0.035)}px 'Segoe UI', Arial`;
+  ctx.fillText(`Best: ${best}`, W/2, 52);
+
+  // Combo
+  if(combo>1){
+    ctx.fillStyle=`hsl(50,100%,70%)`;
+    ctx.font=`bold ${Math.floor(W*0.05)}px 'Segoe UI', Arial`;
+    ctx.fillText(`x${combo} COMBO!`, W/2, 70);
+  }
+
+  // Sugar meter
+  let meterW = boardW;
+  let meterH = 18;
+  let meterX = boardX;
+  let meterY = boardY + boardH + 12;
+
+  // Background
+  ctx.fillStyle='rgba(0,0,0,0.4)';
+  drawRoundRect(meterX, meterY, meterW, meterH, 6);
+  ctx.fill();
+
+  // Fill
+  let fillW = Math.max(0, Math.min(meterW, meterW * sugarMeter));
+  let mHue = sugarMeter < 0.5 ? 120 : sugarMeter < 0.75 ? 60 : 0;
+  // Wobble near full
+  if(sugarMeter>0.8){
+    let wobble=(Math.sin(Date.now()/80)*0.5+0.5)*3;
+    meterY += (Math.random()-0.5)*wobble;
+  }
+  let grad = ctx.createLinearGradient(meterX,0,meterX+fillW,0);
+  grad.addColorStop(0, `hsl(${mHue},90%,55%)`);
+  grad.addColorStop(1, `hsl(${mHue},100%,65%)`);
+  ctx.fillStyle=grad;
+  ctx.save();
+  ctx.beginPath();
+  drawRoundRect(meterX, meterY, meterW, meterH, 6);
+  ctx.clip();
+  ctx.fillRect(meterX, meterY, fillW, meterH);
+  ctx.restore();
+
+  // Border
+  ctx.strokeStyle='rgba(255,255,255,0.3)';
+  ctx.lineWidth=1.5;
+  drawRoundRect(meterX, meterY, meterW, meterH, 6);
+  ctx.stroke();
+
+  // Label
+  ctx.fillStyle='rgba(255,255,255,0.6)';
+  ctx.font=`${Math.floor(W*0.03)}px 'Segoe UI', Arial`;
+  ctx.textAlign='center';
+  ctx.fillText('SUGAR', W/2, meterY+meterH+12);
+
+  // Difficulty indicator
+  let lvl = diffTime<30 ? 1 : diffTime<60 ? 2 : diffTime<90 ? 3 : 4;
+  ctx.fillStyle='rgba(255,255,255,0.35)';
+  ctx.textAlign='right';
+  ctx.fillText('Lv'+lvl, boardX+boardW, meterY+meterH+12);
+  ctx.textAlign='left';
+  ctx.fillText(`${Math.floor(diffTime)}s`, boardX, meterY+meterH+12);
+}
+
+function drawBoard(){
+  // Board background
+  ctx.fillStyle='rgba(0,0,0,0.3)';
+  drawRoundRect(boardX-6, boardY-6, boardW+12, boardH+12, 10);
+  ctx.fill();
+
+  for(let r=0;r<ROWS;r++){
+    for(let c=0;c<COLS;c++){
+      let candy=board[r][c];
+      if(!candy || candy.type<0) continue;
+      let cx=boardX+c*cellSize+cellSize/2;
+      let cy=boardY+r*cellSize+cellSize/2;
+
+      // Animate tapScale back to 1
+      if(candy.tapScale !== undefined && candy.tapScale < 1){
+        candy.tapScale = Math.min(1, candy.tapScale + 0.07);
+      }
+
+      drawCandy(candy, cx, cy, cellSize);
+    }
+  }
+}
+
+function drawGameOver(){
+  // Dim overlay
+  ctx.fillStyle='rgba(0,0,0,0.72)';
+  ctx.fillRect(0,0,W,H);
+
+  ctx.textAlign='center';
+  ctx.textBaseline='middle';
+
+  ctx.shadowColor='#ff4444';
+  ctx.shadowBlur=25;
+  ctx.fillStyle='#ff6666';
+  ctx.font=`bold ${Math.floor(W*0.11)}px 'Segoe UI', Arial`;
+  ctx.fillText('GAME', W/2, H*0.32);
+  ctx.fillText('OVER', W/2, H*0.32+Math.floor(W*0.12));
+  ctx.shadowBlur=0;
+
+  ctx.fillStyle='rgba(255,255,255,0.9)';
+  ctx.font=`bold ${Math.floor(W*0.09)}px 'Segoe UI', Arial`;
+  ctx.fillText(score, W/2, H*0.55);
+  ctx.fillStyle='rgba(255,255,180,0.8)';
+  ctx.font=`${Math.floor(W*0.042)}px 'Segoe UI', Arial`;
+  ctx.fillText(`Best: ${best}`, W/2, H*0.62);
+
+  if(score>=best && score>0){
+    ctx.fillStyle=`hsl(50,100%,70%)`;
+    ctx.font=`bold ${Math.floor(W*0.048)}px 'Segoe UI', Arial`;
+    ctx.fillText('NEW BEST!', W/2, H*0.68);
+  }
+
+  let pulse=0.65+0.35*Math.sin(Date.now()/400);
+  ctx.globalAlpha=pulse;
+  ctx.fillStyle='#fff';
+  ctx.font=`bold ${Math.floor(W*0.055)}px 'Segoe UI', Arial`;
+  ctx.fillText('Tap to Retry', W/2, H*0.82);
+  ctx.globalAlpha=1;
+}
+
+// ── Game loop ─────────────────────────────────────────────────────────────
+let lastTime=0;
+function loop(ts){
+  let dt = Math.min(ts - lastTime, 50); // clamp dt to 50ms
+  lastTime = ts;
+
+  if(state==='playing'){
+    diffTime += dt/1000;
+    bgHue = (bgHue + 0.03) % 360;
+
+    // Sugar rise
+    sugarMeter += sugarRate;
+    if(sugarMeter >= 1){ sugarMeter=1; gameOver(); }
+
+    // Combo decay
+    if(comboTimer>0){ comboTimer-=1; if(comboTimer<=0) combo=0; }
+
+    // Difficulty
+    applyDifficulty();
+
+    // Resolve pipeline
+    tickResolve(dt);
+  }
+
+  updateParticles();
+  draw(ts);
+  requestAnimationFrame(loop);
+}
+
+// ── Input ─────────────────────────────────────────────────────────────────
+canvas.addEventListener('pointerdown', e=>{
+  e.preventDefault();
+  let rect=canvas.getBoundingClientRect();
+  let scaleX=W/rect.width, scaleY=H/rect.height;
+  let px=(e.clientX-rect.left)*scaleX;
+  let py=(e.clientY-rect.top)*scaleY;
+  onTap(px-shakeX, py-shakeY);
+},{passive:false});
+
+window.addEventListener('keydown', e=>{
+  if(e.code==='Space'||e.code==='Enter'){
+    e.preventDefault();
+    if(state==='start'){ startGame(); }
+    else if(state==='gameover'){ startGame(); }
+    // No keyboard tap in playing (board interaction needs position)
+  }
+});
+
+// ── Boot ──────────────────────────────────────────────────────────────────
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

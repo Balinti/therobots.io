@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Glow Escape - Free HTML5 Game</title>
+  <meta name="description" content="Play Glow Escape - Tap to jump and avoid neon obstacles, building combo multipliers as you go.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a0a1a">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Glow Escape - Free HTML5 Game">
+  <meta property="og:description" content="Play Glow Escape - Tap to jump and avoid neon obstacles, building combo multipliers as you go.">
+  <meta property="og:url" content="https://balinti.github.io/glow-escape/">
+  <meta property="og:image" content="https://balinti.github.io/glow-escape/og.png">
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #050510;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: flex-start;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      overflow: hidden;
+      touch-action: none;
+    }
+    #game-wrap {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      height: 100vh;
+      max-height: 750px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: pointer;
+    }
+    #about {
+      width: 100%;
+      max-width: 420px;
+      padding: 10px 16px 6px;
+      color: #556;
+      font-size: 11px;
+      line-height: 1.5;
+      text-align: center;
+      flex-shrink: 0;
+      position: absolute;
+      bottom: 0;
+      pointer-events: none;
+    }
+    #about strong { color: #778; }
+  </style>
+</head>
+<body>
+<div id="game-wrap">
+  <canvas id="c"></canvas>
+</div>
+<p id="about">
+  <strong>Glow Escape: Phase Gates</strong> — Toggle your phase (SOLID/GHOST) to pass through matching neon gate arcs.
+  Build combos, earn Close Call bonuses, fill the Glow Meter for score multipliers. Free HTML5 game, no download needed.
+</p>
+
+<script>
+(function() {
+'use strict';
+
+// ── Canvas setup ────────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const wrap = document.getElementById('game-wrap');
+
+let W, H, DPR;
+function resize() {
+  const r = wrap.getBoundingClientRect();
+  W = r.width; H = r.height;
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = W * DPR;
+  canvas.height = H * DPR;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ── Constants ───────────────────────────────────────────────────────────────
+const PLAYER_Y_FRAC   = 0.78;  // player sits at 78% down
+const PLAYER_R        = 14;
+const GATE_RING_W     = 22;    // ring thickness in px
+const GATE_SPEED_BASE = 140;   // px/s
+const GATE_SPAWN_DIST = -120;  // spawn above screen
+const GATE_DELETE_Y   = 900;
+const ARC_HALF        = Math.PI * 0.38;  // safe arc half-angle (~68°)
+const CLOSE_CALL_RING = 10;    // extra px band for close-call
+const GLOW_DECAY      = 0.04;  // per second fraction
+const CHECKPOINT_INT  = 10;
+const LS_KEY          = 'glowEscape_best';
+
+// Colors
+const COL_SOLID = '#00ffee';   // cyan
+const COL_GHOST = '#ff44cc';   // magenta
+const COL_BG    = '#05050f';
+const COL_TRAIL = 'rgba(255,255,255,0.08)';
+
+// ── State ────────────────────────────────────────────────────────────────────
+let state = 'start';
+let score, best, hue;
+let player, gates, particles;
+let glowMeter, glowFlash;
+let speedMult, timeSinceGate, gateInterval;
+let shake, shakeTimer;
+let freezeTimer;
+let checkpointMsg, checkpointAlpha;
+let lastTime, rafId;
+let lastPhase; // for close-call tracking
+
+function loadBest() {
+  try { return parseInt(localStorage.getItem(LS_KEY)) || 0; } catch(e) { return 0; }
+}
+function saveBest(v) {
+  try { localStorage.setItem(LS_KEY, v); } catch(e) {}
+}
+
+// ── Angle helpers ────────────────────────────────────────────────────────────
+function normalizeAngle(a) {
+  while (a >  Math.PI) a -= 2 * Math.PI;
+  while (a < -Math.PI) a += 2 * Math.PI;
+  return a;
+}
+function angleDiff(a, b) {
+  return Math.abs(normalizeAngle(a - b));
+}
+
+// ── Player ───────────────────────────────────────────────────────────────────
+function makePlayer() {
+  return {
+    x: W / 2, y: H * PLAYER_Y_FRAC,
+    r: PLAYER_R,
+    phase: 'solid',      // 'solid' | 'ghost'
+    pulsT: 0,            // pulse timer for visual
+    trailPoints: [],
+  };
+}
+
+function togglePhase() {
+  player.phase = player.phase === 'solid' ? 'ghost' : 'solid';
+  player.pulsT = 1;
+  // emit toggle particles
+  emitBurst(player.x, player.y, 6, phaseColor(player.phase), 2, 50);
+}
+
+function phaseColor(ph) {
+  return ph === 'solid' ? COL_SOLID : COL_GHOST;
+}
+
+// ── Gate factory ─────────────────────────────────────────────────────────────
+function makeGate(y, type) {
+  // Each gate has two safe arcs: one for solid (cyan), one for ghost (magenta)
+  // Solid arc at angle `solidAngle`, Ghost arc at solidAngle + PI (opposite)
+  const solidAngle = Math.random() * 2 * Math.PI;
+  const ghostAngle = normalizeAngle(solidAngle + Math.PI);
+  const radius = Math.min(W, H) * 0.28;
+  const rotSpeed = (0.5 + Math.random() * 0.7) * (Math.random() < 0.5 ? 1 : -1);
+  return {
+    x: W / 2, y,
+    radius,
+    solidAngle,
+    ghostAngle,
+    rotSpeed,          // rad/s
+    type: type || 'normal',  // 'normal' | 'double' | 'flicker'
+    passed: false,
+    flickerTimer: 0,
+    flickerVisible: true,
+    // For double gates: a second offset ring
+    radius2: type === 'double' ? radius * 0.55 : null,
+    solidAngle2: type === 'double' ? Math.random() * 2 * Math.PI : null,
+    ghostAngle2: type === 'double' ? normalizeAngle((Math.random() * 2 * Math.PI) + Math.PI) : null,
+    // visual
+    hue: Math.random() * 360,
+    alpha: 1,
+  };
+}
+
+// ── Particle ─────────────────────────────────────────────────────────────────
+function emitBurst(x, y, n, color, minR, maxSpeed) {
+  for (let i = 0; i < n; i++) {
+    const ang = Math.random() * 2 * Math.PI;
+    const sp  = minR + Math.random() * maxSpeed;
+    particles.push({
+      x, y,
+      vx: Math.cos(ang) * sp,
+      vy: Math.sin(ang) * sp,
+      r: 2 + Math.random() * 3,
+      life: 1, decay: 0.04 + Math.random() * 0.04,
+      color,
+    });
+  }
+}
+
+function emitRingBurst(x, y, n, color) {
+  for (let i = 0; i < n; i++) {
+    const ang = (i / n) * 2 * Math.PI;
+    const sp  = 60 + Math.random() * 80;
+    particles.push({
+      x: x + Math.cos(ang) * 20,
+      y: y + Math.sin(ang) * 20,
+      vx: Math.cos(ang) * sp,
+      vy: Math.sin(ang) * sp,
+      r: 2 + Math.random() * 4,
+      life: 1, decay: 0.025 + Math.random() * 0.02,
+      color,
+    });
+  }
+}
+
+// ── Init / Reset ──────────────────────────────────────────────────────────────
+function initGame() {
+  score        = 0;
+  best         = loadBest();
+  hue          = 180;
+  player       = makePlayer();
+  gates        = [];
+  particles    = [];
+  glowMeter    = 0;
+  glowFlash    = 0;
+  speedMult    = 1;
+  timeSinceGate= 9999;
+  gateInterval = 2.0;
+  shake        = {x:0, y:0};
+  shakeTimer   = 0;
+  freezeTimer  = 0;
+  checkpointMsg   = '';
+  checkpointAlpha = 0;
+  lastPhase    = player.phase;
+}
+
+// ── Screen shake ──────────────────────────────────────────────────────────────
+function doShake(amt, dur) {
+  shakeTimer = dur;
+  shake._amt = amt;
+}
+
+// ── Collision detection ───────────────────────────────────────────────────────
+// Returns 'pass' | 'fail' | 'none' (not in gate band yet)
+function checkGateCollision(gate, px, py, phase) {
+  const dx = px - gate.x;
+  const dy = py - gate.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  const inner = gate.radius - GATE_RING_W / 2;
+  const outer = gate.radius + GATE_RING_W / 2;
+
+  // Close-call extended band
+  const innerCC = inner - CLOSE_CALL_RING;
+  const outerCC = outer + CLOSE_CALL_RING;
+
+  if (dist < innerCC || dist > outerCC) return 'none';
+
+  const inRing = dist >= inner && dist <= outer;
+
+  // Angle of player relative to gate center
+  const playerAng = Math.atan2(dy, dx);
+
+  // Check which safe arc we're in
+  const solidOk = angleDiff(playerAng, gate.solidAngle) <= ARC_HALF;
+  const ghostOk = angleDiff(playerAng, gate.ghostAngle) <= ARC_HALF;
+
+  if (inRing) {
+    // Strict ring: must be in correct arc
+    if (phase === 'solid' && solidOk) return 'pass';
+    if (phase === 'ghost' && ghostOk) return 'pass';
+    return 'fail';
+  } else {
+    // Close-call band (not in actual ring, just near edge)
+    return 'closecall';
+  }
+}
+
+function checkDoubleGate(gate, px, py, phase) {
+  if (!gate.radius2) return 'none';
+  const dx = px - gate.x;
+  const dy = py - gate.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  const inner = gate.radius2 - GATE_RING_W / 2;
+  const outer = gate.radius2 + GATE_RING_W / 2;
+  const innerCC = inner - CLOSE_CALL_RING;
+  const outerCC = outer + CLOSE_CALL_RING;
+  if (dist < innerCC || dist > outerCC) return 'none';
+  const inRing = dist >= inner && dist <= outer;
+  const playerAng = Math.atan2(dy, dx);
+  const solidOk = angleDiff(playerAng, gate.solidAngle2) <= ARC_HALF;
+  const ghostOk = angleDiff(playerAng, gate.ghostAngle2) <= ARC_HALF;
+  if (inRing) {
+    if (phase === 'solid' && solidOk) return 'pass';
+    if (phase === 'ghost' && ghostOk) return 'pass';
+    return 'fail';
+  }
+  return 'closecall';
+}
+
+// ── Gate passed scoring ───────────────────────────────────────────────────────
+function onGatePassed() {
+  score++;
+  if (score > best) { best = score; saveBest(best); }
+
+  // Checkpoint every 10
+  if (score % CHECKPOINT_INT === 0) {
+    checkpointMsg   = `CHECKPOINT  ${score}!`;
+    checkpointAlpha = 1;
+    doShake(4, 0.3);
+    speedMult += 0.08;
+    gateInterval = Math.max(0.9, gateInterval - 0.06);
+    emitRingBurst(W/2, H/2, 20, `hsl(${hue},100%,65%)`);
+    glowFlash = 1;
+  }
+
+  // Glow meter
+  const mult = getGlowMult();
+  if (mult > 1) {
+    emitBurst(player.x, player.y - 20, 4, '#ffe066', 2, 60);
+  }
+}
+
+function onCloseCall() {
+  glowMeter = Math.min(1, glowMeter + 0.18);
+  emitBurst(player.x, player.y, 5, '#ffffff', 1, 40);
+  glowFlash = Math.max(glowFlash, 0.4);
+}
+
+function getGlowMult() {
+  if (glowMeter >= 0.8) return 3;
+  if (glowMeter >= 0.4) return 2;
+  return 1;
+}
+
+// ── Update ────────────────────────────────────────────────────────────────────
+function update(dt) {
+  if (freezeTimer > 0) {
+    freezeTimer -= dt;
+    return;
+  }
+
+  hue = (hue + dt * 20) % 360;
+
+  // Glow meter decay
+  glowMeter = Math.max(0, glowMeter - GLOW_DECAY * dt);
+  glowFlash = Math.max(0, glowFlash - dt * 2);
+
+  // Shake
+  if (shakeTimer > 0) {
+    shakeTimer -= dt;
+    const amt = shake._amt * (shakeTimer / (shake._amt * 0.1 || 0.3));
+    shake.x = (Math.random() - 0.5) * amt * 2;
+    shake.y = (Math.random() - 0.5) * amt * 2;
+  } else {
+    shake.x = 0; shake.y = 0;
+  }
+
+  // Checkpoint alpha fade
+  if (checkpointAlpha > 0) checkpointAlpha -= dt * 0.8;
+
+  const speed = GATE_SPEED_BASE * speedMult;
+
+  // Spawn gates
+  timeSinceGate += dt;
+  if (timeSinceGate >= gateInterval) {
+    timeSinceGate = 0;
+    let type = 'normal';
+    if (score >= 50 && Math.random() < 0.12) type = 'flicker';
+    else if (score >= 25 && Math.random() < 0.2) type = 'double';
+    gates.push(makeGate(GATE_SPAWN_DIST, type));
+  }
+
+  // Update gates
+  for (let i = gates.length - 1; i >= 0; i--) {
+    const g = gates[i];
+
+    // Move down
+    g.y += speed * dt;
+
+    // Rotate
+    g.solidAngle = normalizeAngle(g.solidAngle + g.rotSpeed * dt);
+    g.ghostAngle = normalizeAngle(g.solidAngle + Math.PI);
+    if (g.solidAngle2 != null) {
+      g.solidAngle2 = normalizeAngle(g.solidAngle2 + g.rotSpeed * dt * 0.7);
+      g.ghostAngle2 = normalizeAngle(g.solidAngle2 + Math.PI);
+    }
+
+    // Flicker
+    if (g.type === 'flicker') {
+      g.flickerTimer += dt;
+      g.flickerVisible = Math.floor(g.flickerTimer * 8) % 2 === 0;
+    }
+
+    // Collision check against player
+    if (!g.passed) {
+      const result  = checkGateCollision(g, player.x, player.y, player.phase);
+      const result2 = g.type === 'double' ? checkDoubleGate(g, player.x, player.y, player.phase) : 'none';
+
+      if (result === 'fail' || result2 === 'fail') {
+        triggerDeath();
+        return;
+      }
+
+      // Mark as passed when gate center passes below player
+      if (g.y > player.y + g.radius + GATE_RING_W) {
+        g.passed = true;
+        onGatePassed();
+        emitBurst(player.x, player.y - 10, 8, phaseColor(player.phase), 2, 80);
+      }
+
+      if (result === 'closecall' || result2 === 'closecall') {
+        onCloseCall();
+      }
+    }
+
+    // Remove off-screen
+    if (g.y > H + 200) {
+      gates.splice(i, 1);
+    }
+  }
+
+  // Trail
+  player.trailPoints.unshift({ x: player.x, y: player.y, life: 1 });
+  if (player.trailPoints.length > 12) player.trailPoints.pop();
+  for (const tp of player.trailPoints) tp.life -= dt * 4;
+
+  // Pulse decay
+  if (player.pulsT > 0) player.pulsT -= dt * 3;
+
+  // Update particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vx *= 0.92;
+    p.vy *= 0.92;
+    p.life -= p.decay * 60 * dt;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+function triggerDeath() {
+  state = 'gameover';
+  doShake(12, 0.5);
+  freezeTimer = 0.15;
+  emitRingBurst(player.x, player.y, 24, phaseColor(player.phase));
+  emitBurst(player.x, player.y, 20, '#ffffff', 3, 120);
+  if (score > best) { best = score; saveBest(best); }
+}
+
+// ── Draw ──────────────────────────────────────────────────────────────────────
+function drawGate(g) {
+  if (g.type === 'flicker' && !g.flickerVisible) return;
+
+  ctx.save();
+  ctx.translate(g.x + shake.x, g.y + shake.y);
+
+  const drawRing = (radius, solidAng, ghostAng) => {
+    const total     = 2 * Math.PI;
+    const solidStart= solidAng - ARC_HALF;
+    const solidEnd  = solidAng + ARC_HALF;
+    const ghostStart= ghostAng - ARC_HALF;
+    const ghostEnd  = ghostAng + ARC_HALF;
+
+    // Draw full ring as "danger" (red-ish)
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, 0, total);
+    ctx.strokeStyle = 'rgba(255,60,60,0.7)';
+    ctx.lineWidth   = GATE_RING_W;
+    ctx.shadowColor = 'rgba(255,60,60,0.5)';
+    ctx.shadowBlur  = 12;
+    ctx.stroke();
+    ctx.shadowBlur  = 0;
+
+    // Overlay solid-phase safe arc (cyan)
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, solidStart, solidEnd);
+    ctx.strokeStyle = COL_SOLID;
+    ctx.lineWidth   = GATE_RING_W;
+    ctx.shadowColor = COL_SOLID;
+    ctx.shadowBlur  = 18;
+    ctx.stroke();
+    ctx.shadowBlur  = 0;
+
+    // Overlay ghost-phase safe arc (magenta)
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, ghostStart, ghostEnd);
+    ctx.strokeStyle = COL_GHOST;
+    ctx.lineWidth   = GATE_RING_W;
+    ctx.shadowColor = COL_GHOST;
+    ctx.shadowBlur  = 18;
+    ctx.stroke();
+    ctx.shadowBlur  = 0;
+
+    // Inner glow edge
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, 0, total);
+    ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+    ctx.lineWidth   = 2;
+    ctx.stroke();
+  };
+
+  drawRing(g.radius, g.solidAngle, g.ghostAngle);
+  if (g.type === 'double' && g.radius2) {
+    drawRing(g.radius2, g.solidAngle2, g.ghostAngle2);
+  }
+
+  // Center dot
+  ctx.beginPath();
+  ctx.arc(0, 0, 3, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(255,255,255,0.2)';
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawPlayer() {
+  const px = player.x + shake.x;
+  const py = player.y + shake.y;
+  const col = phaseColor(player.phase);
+  const pulse = 1 + player.pulsT * 0.5;
+
+  // Trail
+  for (let i = 0; i < player.trailPoints.length; i++) {
+    const tp = player.trailPoints[i];
+    if (tp.life <= 0) continue;
+    ctx.beginPath();
+    ctx.arc(tp.x + shake.x, tp.y + shake.y, player.r * 0.5 * tp.life, 0, Math.PI * 2);
+    ctx.fillStyle = col.replace(')', `,${tp.life * 0.25})`).replace('rgb', 'rgba').replace('#', 'rgba(').replace(/^rgba\(([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2}),/, (m, r, g, b) =>
+      `rgba(${parseInt(r,16)},${parseInt(g,16)},${parseInt(b,16)},`);
+    // Simpler trail:
+    const alpha = tp.life * 0.3;
+    ctx.fillStyle = player.phase === 'solid'
+      ? `rgba(0,255,238,${alpha})`
+      : `rgba(255,68,204,${alpha})`;
+    ctx.fill();
+  }
+
+  // Outer glow ring (pulse)
+  if (pulse > 1.01) {
+    ctx.beginPath();
+    ctx.arc(px, py, player.r * pulse * 1.6, 0, Math.PI * 2);
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = player.pulsT * 0.5;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  // Glow
+  ctx.shadowColor = col;
+  ctx.shadowBlur  = 20 + (glowMeter > 0.4 ? 15 : 0);
+
+  // Core circle
+  ctx.beginPath();
+  ctx.arc(px, py, player.r, 0, Math.PI * 2);
+  const grad = ctx.createRadialGradient(px, py, 0, px, py, player.r);
+  grad.addColorStop(0, '#ffffff');
+  grad.addColorStop(0.5, col);
+  grad.addColorStop(1, col + '88');
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Phase icon: tiny symbol inside
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = player.phase === 'solid' ? '#003' : '#300';
+  ctx.font = `bold ${player.r}px Arial`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(player.phase === 'solid' ? '●' : '○', px, py);
+
+  ctx.shadowBlur = 0;
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, p.life);
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r * p.life, 0, Math.PI * 2);
+    ctx.fillStyle = p.color;
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur  = 8;
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawHUD() {
+  // Score
+  const mult = getGlowMult();
+  ctx.textAlign  = 'center';
+  ctx.textBaseline = 'top';
+  ctx.font       = `bold 36px Arial`;
+  ctx.fillStyle  = '#ffffff';
+  ctx.shadowColor = `hsl(${hue},100%,70%)`;
+  ctx.shadowBlur  = 12;
+  ctx.fillText(score, W / 2, 20);
+  ctx.shadowBlur  = 0;
+
+  if (mult > 1) {
+    ctx.font      = 'bold 14px Arial';
+    ctx.fillStyle = '#ffe066';
+    ctx.shadowColor = '#ffe066';
+    ctx.shadowBlur  = 10;
+    ctx.fillText(`x${mult} GLOW`, W / 2, 60);
+    ctx.shadowBlur  = 0;
+  }
+
+  // Best
+  ctx.font      = '12px Arial';
+  ctx.fillStyle = '#556';
+  ctx.textAlign = 'right';
+  ctx.fillText(`BEST ${best}`, W - 12, 12);
+
+  // Glow meter bar
+  const barW = 100, barH = 6;
+  const bx = W / 2 - barW / 2, by = 70;
+  ctx.fillStyle = 'rgba(255,255,255,0.1)';
+  ctx.beginPath();
+  ctx.roundRect(bx, by, barW, barH, 3);
+  ctx.fill();
+
+  const meterCol = glowMeter >= 0.8 ? '#ff0' : glowMeter >= 0.4 ? '#0ff' : '#f0f';
+  ctx.fillStyle = meterCol;
+  ctx.shadowColor = meterCol;
+  ctx.shadowBlur = glowMeter > 0.1 ? 8 : 0;
+  ctx.beginPath();
+  ctx.roundRect(bx, by, barW * glowMeter, barH, 3);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Phase indicator (bottom)
+  const col = phaseColor(player.phase);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'bottom';
+  ctx.font = 'bold 13px Arial';
+  ctx.fillStyle = col;
+  ctx.shadowColor = col;
+  ctx.shadowBlur = 10;
+  ctx.fillText(player.phase === 'solid' ? '■ SOLID' : '○ GHOST', W / 2, H - 30);
+  ctx.shadowBlur = 0;
+
+  // Checkpoint message
+  if (checkpointAlpha > 0) {
+    ctx.globalAlpha = Math.max(0, checkpointAlpha);
+    ctx.textAlign   = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font        = 'bold 22px Arial';
+    ctx.fillStyle   = '#fff';
+    ctx.shadowColor = `hsl(${hue},100%,70%)`;
+    ctx.shadowBlur  = 20;
+    ctx.fillText(checkpointMsg, W / 2, H * 0.4);
+    ctx.shadowBlur  = 0;
+    ctx.globalAlpha = 1;
+  }
+
+  // Glow flash overlay
+  if (glowFlash > 0) {
+    ctx.globalAlpha = glowFlash * 0.15;
+    ctx.fillStyle = `hsl(${hue},100%,80%)`;
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawBackground() {
+  // Deep space gradient
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, '#03030c');
+  grad.addColorStop(1, '#060612');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Subtle grid lines
+  ctx.strokeStyle = 'rgba(80,80,180,0.04)';
+  ctx.lineWidth = 1;
+  for (let x = 0; x < W; x += 40) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+  }
+  for (let y = 0; y < H; y += 40) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+}
+
+function drawStartScreen() {
+  drawBackground();
+
+  // Title glow
+  ctx.textAlign   = 'center';
+  ctx.textBaseline = 'middle';
+
+  // Subtitle
+  ctx.font      = '15px Arial';
+  ctx.fillStyle = `hsl(${hue+60},80%,65%)`;
+  ctx.shadowColor = `hsl(${hue+60},80%,65%)`;
+  ctx.shadowBlur = 10;
+  ctx.fillText('PHASE GATES', W / 2, H * 0.28);
+  ctx.shadowBlur = 0;
+
+  // Main title
+  ctx.font        = 'bold 52px Arial';
+  ctx.fillStyle   = '#ffffff';
+  ctx.shadowColor = `hsl(${hue},100%,60%)`;
+  ctx.shadowBlur  = 30;
+  ctx.fillText('GLOW', W / 2, H * 0.36);
+  ctx.fillText('ESCAPE', W / 2, H * 0.44);
+  ctx.shadowBlur  = 0;
+
+  // Instructions
+  ctx.font      = '14px Arial';
+  ctx.fillStyle = 'rgba(200,200,255,0.8)';
+  ctx.fillText('Toggle SOLID ↔ GHOST phase', W / 2, H * 0.56);
+  ctx.fillText('to pass through matching gate arcs', W / 2, H * 0.61);
+
+  // Color examples
+  ctx.font = '13px Arial';
+  ctx.fillStyle = COL_SOLID; ctx.shadowColor = COL_SOLID; ctx.shadowBlur = 8;
+  ctx.fillText('■ SOLID = cyan arcs', W / 2, H * 0.67);
+  ctx.fillStyle = COL_GHOST; ctx.shadowColor = COL_GHOST;
+  ctx.fillText('○ GHOST = magenta arcs', W / 2, H * 0.71);
+  ctx.shadowBlur = 0;
+
+  // Tap prompt (pulsing)
+  const pulse = 0.6 + 0.4 * Math.sin(Date.now() / 400);
+  ctx.globalAlpha = pulse;
+  ctx.font      = 'bold 18px Arial';
+  ctx.fillStyle = '#ffffff';
+  ctx.shadowColor = '#ffffff';
+  ctx.shadowBlur  = 15;
+  ctx.fillText('TAP TO START', W / 2, H * 0.82);
+  ctx.shadowBlur  = 0;
+  ctx.globalAlpha = 1;
+
+  // Best score
+  if (best > 0) {
+    ctx.font      = '12px Arial';
+    ctx.fillStyle = '#556';
+    ctx.fillText(`Best: ${best}`, W / 2, H * 0.88);
+  }
+}
+
+function drawGameOverScreen() {
+  // Dim overlay
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.textAlign   = 'center';
+  ctx.textBaseline = 'middle';
+
+  ctx.font      = 'bold 28px Arial';
+  ctx.fillStyle = '#ff4466';
+  ctx.shadowColor = '#ff4466';
+  ctx.shadowBlur  = 20;
+  ctx.fillText('GAME OVER', W / 2, H * 0.38);
+  ctx.shadowBlur  = 0;
+
+  ctx.font      = 'bold 48px Arial';
+  ctx.fillStyle = '#fff';
+  ctx.shadowColor = `hsl(${hue},100%,70%)`;
+  ctx.shadowBlur  = 15;
+  ctx.fillText(score, W / 2, H * 0.48);
+  ctx.shadowBlur  = 0;
+
+  ctx.font      = '14px Arial';
+  ctx.fillStyle = '#556';
+  ctx.fillText(`Best: ${best}`, W / 2, H * 0.57);
+
+  if (score >= best && score > 0) {
+    ctx.font      = 'bold 14px Arial';
+    ctx.fillStyle = '#ffe066';
+    ctx.shadowColor = '#ffe066';
+    ctx.shadowBlur  = 10;
+    ctx.fillText('NEW BEST!', W / 2, H * 0.52);
+    ctx.shadowBlur  = 0;
+  }
+
+  const pulse = 0.6 + 0.4 * Math.sin(Date.now() / 400);
+  ctx.globalAlpha = pulse;
+  ctx.font      = 'bold 17px Arial';
+  ctx.fillStyle = '#ffffff';
+  ctx.shadowColor = '#ffffff';
+  ctx.shadowBlur  = 12;
+  ctx.fillText('TAP TO RETRY', W / 2, H * 0.68);
+  ctx.shadowBlur  = 0;
+  ctx.globalAlpha = 1;
+}
+
+// ── Main loop ─────────────────────────────────────────────────────────────────
+function frame(ts) {
+  const dt = Math.min((ts - (lastTime || ts)) / 1000, 0.05);
+  lastTime = ts;
+
+  if (state === 'playing') {
+    update(dt);
+  } else {
+    hue = (hue + dt * 15) % 360;
+    // Particles still update on screens
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx * dt; p.y += p.vy * dt;
+      p.vx *= 0.93; p.vy *= 0.93;
+      p.life -= p.decay * 60 * dt;
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+  }
+
+  // Render
+  ctx.clearRect(0, 0, W, H);
+
+  if (state === 'start') {
+    drawStartScreen();
+    drawParticles();
+  } else if (state === 'playing') {
+    drawBackground();
+    for (const g of gates) drawGate(g);
+    drawParticles();
+    drawPlayer();
+    drawHUD();
+  } else if (state === 'gameover') {
+    drawBackground();
+    for (const g of gates) drawGate(g);
+    drawParticles();
+    drawPlayer();
+    drawHUD();
+    drawGameOverScreen();
+  }
+
+  rafId = requestAnimationFrame(frame);
+}
+
+// ── Input ─────────────────────────────────────────────────────────────────────
+function handleInput() {
+  if (state === 'start') {
+    initGame();
+    state = 'playing';
+    lastTime = null;
+  } else if (state === 'playing') {
+    togglePhase();
+  } else if (state === 'gameover') {
+    initGame();
+    state = 'playing';
+    lastTime = null;
+  }
+}
+
+canvas.addEventListener('pointerdown', e => { e.preventDefault(); handleInput(); });
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); handleInput(); }
+});
+
+// ── Bootstrap ─────────────────────────────────────────────────────────────────
+// polyfill roundRect for older browsers
+if (!CanvasRenderingContext2D.prototype.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+    r = Math.min(r, w/2, h/2);
+    this.moveTo(x + r, y);
+    this.lineTo(x + w - r, y);
+    this.quadraticCurveTo(x + w, y, x + w, y + r);
+    this.lineTo(x + w, y + h - r);
+    this.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    this.lineTo(x + r, y + h);
+    this.quadraticCurveTo(x, y + h, x, y + h - r);
+    this.lineTo(x, y + r);
+    this.quadraticCurveTo(x, y, x + r, y);
+    this.closePath();
+    return this;
+  };
+}
+
+hue = 180;
+particles = particles || [];
+best = loadBest();
+requestAnimationFrame(frame);
+
+})();
+</script>
+</body>
+</html>

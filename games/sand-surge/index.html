@@ -1,0 +1,1019 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Sand Surge - Free HTML5 Game</title>
+  <meta name="description" content="Play Sand Surge - Swipe to flip gravity and dodge falling rocks in a speeding desert storm.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#1a0a00">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Sand Surge - Free HTML5 Game">
+  <meta property="og:description" content="Play Sand Surge - Tap to swap lanes and dodge hazards in a speeding desert storm!">
+  <meta property="og:url" content="https://balinti.github.io/sand-surge/">
+  <meta property="og:image" content="https://balinti.github.io/sand-surge/preview.png">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Sand Surge - Free HTML5 Game">
+  <meta name="twitter:description" content="Tap to swap lanes and dodge hazards in a speeding desert storm!">
+  <meta name="twitter:image" content="https://balinti.github.io/sand-surge/preview.png">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #0d0500;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      overscroll-behavior: none;
+      overflow: hidden;
+      touch-action: manipulation;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    #game-wrap {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      display: flex; flex-direction: column;
+      align-items: center;
+    }
+    #gameCanvas {
+      display: block;
+      width: 100%;
+      touch-action: manipulation;
+      cursor: pointer;
+      border-radius: 12px;
+      box-shadow: 0 0 40px rgba(255,160,40,0.25), 0 0 80px rgba(255,80,0,0.10);
+    }
+    #seo-text {
+      max-width: 420px;
+      padding: 12px 16px;
+      color: #5a3a1a;
+      font-size: 11px;
+      line-height: 1.5;
+      text-align: center;
+    }
+    #seo-text h1 { font-size: 13px; color: #7a5a2a; margin-bottom: 4px; }
+  </style>
+</head>
+<body>
+<div id="game-wrap">
+  <canvas id="gameCanvas"></canvas>
+</div>
+<div id="seo-text">
+  <h1>Sand Surge - Free Browser Game</h1>
+  <p>Tap or press Space to instantly swap between the top and bottom lane. Dodge incoming rock hazards and sand surges as you race through the desert. Collect shine coins to build your combo multiplier and beat your high score! Play free, no download needed.</p>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+// ─── CONFIG ────────────────────────────────────────────────────────────────
+const HS_KEY = 'sandSurge_highScore';
+const MAX_DPR = 2;
+
+// ─── CANVAS SETUP ──────────────────────────────────────────────────────────
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+const W_LOGICAL = 420;
+const H_LOGICAL = 680;
+
+let dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
+canvas.width  = W_LOGICAL * dpr;
+canvas.height = H_LOGICAL * dpr;
+canvas.style.height = H_LOGICAL + 'px';
+ctx.scale(dpr, dpr);
+
+// Responsive: fit in viewport
+function resizeCanvas() {
+  const wrap = document.getElementById('game-wrap');
+  const vw = window.innerWidth;
+  const vh = window.innerHeight - 60; // leave room for seo text
+  const scale = Math.min(vw / W_LOGICAL, vh / H_LOGICAL, 1);
+  canvas.style.width  = (W_LOGICAL * scale) + 'px';
+  canvas.style.height = (H_LOGICAL * scale) + 'px';
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+// ─── LANE DEFINITIONS ───────────────────────────────────────────────────────
+// Lane 0 = TOP, Lane 1 = BOTTOM
+const LANE_Y = [H_LOGICAL * 0.275, H_LOGICAL * 0.725]; // center Y of each lane
+const LANE_H = H_LOGICAL * 0.22; // height of lane band
+const LANE_TOP    = [LANE_Y[0] - LANE_H/2, LANE_Y[1] - LANE_H/2];
+const LANE_BOTTOM = [LANE_Y[0] + LANE_H/2, LANE_Y[1] + LANE_H/2];
+
+// Player
+const PLAYER_X = 80;
+const PLAYER_R = 18;
+
+// Hazard
+const HAZ_W = 38;
+const HAZ_H = 52;
+const HAZ_R = 22; // for collision (slightly smaller than visual)
+
+// Coin
+const COIN_R = 12;
+
+// ─── STATE ──────────────────────────────────────────────────────────────────
+let state = 'start'; // 'start' | 'playing' | 'gameover'
+let highScore = parseInt(localStorage.getItem(HS_KEY) || '0', 10);
+
+// Game vars
+let t; // elapsed seconds
+let score;
+let combo;
+let multiplier;
+let playerLane; // 0 or 1
+let playerY;
+let targetY;
+let swapAnim; // 0..1
+
+let hazards;  // [{x, lane, passed, nearmissed}]
+let coins;    // [{x, lane, collected}]
+let particles;// [{x,y,vx,vy,life,maxLife,color,r}]
+
+// Spawning
+let spawnTimer;
+let patternIdx;
+let patternPos;
+let waveExpand; // how many patterns are available
+const PATTERNS = [
+  [0,1,0,1],
+  [1,0,1,0],
+  [0,0,1,1],
+  [1,1,0,0],
+  [0,1,1,0],
+  [1,0,0,1],
+  [0,0,1,0,1],
+  [1,1,0,1,0],
+  [0,1,0,0,1],
+];
+
+// Surge
+let surges; // [{lane, phase:'telegraph'|'active', timer}]
+let surgeTimer;
+
+// Visual
+let bgHue;
+let shakeX, shakeY;
+let shakeMag, shakeDecay;
+let freezeTimer;
+let deathBurst;
+
+// Score display
+let displayScore;
+
+// ─── DIFFICULTY FORMULAS ────────────────────────────────────────────────────
+function getSpeed(t)       { return Math.min(260 + 18*t, 520); }
+function getSpawnInterval(t){ return Math.max(1.05 - 0.006*t, 0.58); }
+function getCoinChance(t)   { return Math.min(0.18 + 0.0015*t, 0.32); }
+function getSurgeEvery(t)   { return Math.min(Math.max(8.0 - 0.03*(t-25), 5.8), 8.0); }
+
+// ─── INIT / RESET ───────────────────────────────────────────────────────────
+function initGame() {
+  t = 0;
+  score = 0;
+  displayScore = 0;
+  combo = 0;
+  multiplier = 1;
+  playerLane = 1; // start bottom
+  playerY = LANE_Y[1];
+  targetY = LANE_Y[1];
+  swapAnim = 1;
+
+  hazards = [];
+  coins = [];
+  particles = [];
+  surges = [];
+
+  spawnTimer = 0.4; // first hazard after short delay
+  patternIdx = 0;
+  patternPos = 0;
+  waveExpand = 3;
+
+  surgeTimer = 30; // first surge well after start
+
+  bgHue = 25;
+  shakeX = 0; shakeY = 0; shakeMag = 0; shakeDecay = 0;
+  freezeTimer = 0;
+  deathBurst = false;
+}
+
+// ─── INPUT ───────────────────────────────────────────────────────────────────
+let inputThisFrame = false;
+let retryInput = false;
+
+canvas.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  inputThisFrame = true;
+});
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' || e.code === 'Enter') { inputThisFrame = true; e.preventDefault(); }
+  if (e.code === 'KeyR') { retryInput = true; }
+});
+
+// ─── PARTICLES ───────────────────────────────────────────────────────────────
+function spawnParticles(x, y, count, colorFn, speedMul) {
+  for (let i = 0; i < count; i++) {
+    const angle = (Math.PI * 2 * i / count) + Math.random() * 0.5;
+    const spd = (60 + Math.random() * 120) * (speedMul || 1);
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * spd,
+      vy: Math.sin(angle) * spd,
+      life: 1,
+      maxLife: 0.4 + Math.random() * 0.4,
+      color: colorFn(i),
+      r: 3 + Math.random() * 4
+    });
+  }
+}
+
+function spawnSwapDust(x, y) {
+  spawnParticles(x, y, 10,
+    () => `hsl(35,90%,${60+Math.random()*20}%)`, 0.8);
+}
+
+function spawnNearMiss(x, y) {
+  spawnParticles(x, y, 8,
+    () => `hsl(55,100%,${70+Math.random()*20}%)`, 1.2);
+}
+
+function spawnCoinSparkle(x, y) {
+  spawnParticles(x, y, 12,
+    (i) => `hsl(${45+i*10},100%,70%)`, 1.0);
+}
+
+function spawnDeathBurst(x, y) {
+  spawnParticles(x, y, 24,
+    (i) => `hsl(${i*15},100%,60%)`, 1.6);
+}
+
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy += 180 * dt; // gravity
+    p.vx *= 1 - 2*dt;
+    p.life -= dt / p.maxLife;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    ctx.globalAlpha = Math.max(0, p.life);
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r * p.life, 0, Math.PI*2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ─── SHAKE ────────────────────────────────────────────────────────────────────
+function triggerShake(mag, decay) {
+  shakeMag = Math.max(shakeMag, mag);
+  shakeDecay = decay || 8;
+}
+
+function updateShake(dt) {
+  if (shakeMag > 0.1) {
+    shakeX = (Math.random()*2-1) * shakeMag;
+    shakeY = (Math.random()*2-1) * shakeMag;
+    shakeMag -= shakeMag * shakeDecay * dt;
+  } else {
+    shakeMag = 0; shakeX = 0; shakeY = 0;
+  }
+}
+
+// ─── SURGE ───────────────────────────────────────────────────────────────────
+function isSurgingLane(lane, phase) {
+  for (const s of surges) {
+    if (s.lane === lane && (phase ? s.phase === phase : true)) return true;
+  }
+  return false;
+}
+
+function isSurgeUnsafeForSpawn(lane, windowSec) {
+  // returns true if this lane will be surged within windowSec
+  for (const s of surges) {
+    if (s.lane === lane) {
+      if (s.phase === 'active') return true;
+      if (s.phase === 'telegraph' && s.timer < windowSec) return true;
+    }
+  }
+  return false;
+}
+
+// ─── SPAWNING ─────────────────────────────────────────────────────────────────
+function nextPattern() {
+  const avail = Math.min(waveExpand, PATTERNS.length);
+  patternIdx = Math.floor(Math.random() * avail);
+  patternPos = 0;
+}
+
+function spawnNextHazard() {
+  const pattern = PATTERNS[patternIdx];
+  let lane = pattern[patternPos % pattern.length];
+  patternPos++;
+  if (patternPos >= pattern.length) nextPattern();
+
+  // Fairness guardrail
+  if (isSurgeUnsafeForSpawn(lane, 0.8)) {
+    lane = 1 - lane;
+  }
+
+  const x = W_LOGICAL + HAZ_W;
+  hazards.push({ x, lane, passed: false, nearmissed: false });
+
+  // Maybe spawn coin in opposite lane
+  if (Math.random() < getCoinChance(t)) {
+    const coinLane = 1 - lane;
+    coins.push({ x: x + 60 + Math.random()*80, lane: coinLane, collected: false });
+  }
+}
+
+// ─── COLLISION ────────────────────────────────────────────────────────────────
+function circleAABB(cx, cy, cr, rx, ry, rw, rh) {
+  // rx,ry = top-left corner
+  const nearX = Math.max(rx, Math.min(cx, rx + rw));
+  const nearY = Math.max(ry, Math.min(cy, ry + rh));
+  const dx = cx - nearX, dy = cy - nearY;
+  return dx*dx + dy*dy < cr*cr;
+}
+
+function circleCircle(ax, ay, ar, bx, by, br) {
+  const dx = ax-bx, dy = ay-by;
+  return dx*dx + dy*dy < (ar+br)*(ar+br);
+}
+
+// ─── UPDATE ──────────────────────────────────────────────────────────────────
+let lastTime = null;
+
+function update(ts) {
+  if (lastTime === null) lastTime = ts;
+  let rawDt = Math.min((ts - lastTime) / 1000, 0.05);
+  lastTime = ts;
+
+  // Freeze frame
+  if (freezeTimer > 0) {
+    freezeTimer -= rawDt;
+    draw();
+    requestAnimationFrame(update);
+    return;
+  }
+
+  const dt = rawDt;
+
+  // Handle input
+  const tapped = inputThisFrame;
+  inputThisFrame = false;
+  const retry = retryInput;
+  retryInput = false;
+
+  if (state === 'start') {
+    bgHue = (bgHue + 4 * dt) % 360;
+    if (tapped) {
+      initGame();
+      state = 'playing';
+    }
+    drawStart();
+    requestAnimationFrame(update);
+    return;
+  }
+
+  if (state === 'gameover') {
+    bgHue = (bgHue + 2 * dt) % 360;
+    updateParticles(dt);
+    updateShake(dt);
+    if (tapped || retry) {
+      initGame();
+      state = 'playing';
+    }
+    drawGameOver();
+    requestAnimationFrame(update);
+    return;
+  }
+
+  // ── PLAYING ──
+  t += dt;
+  bgHue = (bgHue + 6 * dt) % 360;
+
+  // Player swap animation
+  const swapSpeed = 12;
+  if (playerY < targetY) {
+    playerY = Math.min(targetY, playerY + (targetY - LANE_Y[0]) * swapSpeed * dt + 200*dt);
+  } else if (playerY > targetY) {
+    playerY = Math.max(targetY, playerY - (playerY - LANE_Y[1]) * swapSpeed * dt - 200*dt);
+  }
+  playerY = Math.max(LANE_Y[0], Math.min(LANE_Y[1], playerY));
+
+  // Swap input
+  if (tapped) {
+    playerLane = 1 - playerLane;
+    targetY = LANE_Y[playerLane];
+    spawnSwapDust(PLAYER_X, playerY);
+  }
+
+  // ── SPEED / SPAWN ──
+  const speed = getSpeed(t);
+
+  // Spawn hazards
+  spawnTimer -= dt;
+  if (spawnTimer <= 0) {
+    spawnNextHazard();
+    spawnTimer = getSpawnInterval(t);
+    // expand pattern variety over time
+    waveExpand = Math.min(2 + Math.floor(t / 12), PATTERNS.length);
+  }
+
+  // ── SURGE ──
+  if (t > 25) {
+    surgeTimer -= dt;
+    if (surgeTimer <= 0) {
+      const sLane = Math.random() < 0.5 ? 0 : 1;
+      // Don't surge if other surge active on any lane
+      if (surges.length === 0) {
+        surges.push({ lane: sLane, phase: 'telegraph', timer: 0.60 });
+        surgeTimer = getSurgeEvery(t);
+      } else {
+        surgeTimer = 1;
+      }
+    }
+  }
+
+  // Update surges
+  for (let i = surges.length - 1; i >= 0; i--) {
+    const s = surges[i];
+    s.timer -= dt;
+    if (s.phase === 'telegraph' && s.timer <= 0) {
+      s.phase = 'active';
+      s.timer = 1.00;
+      s.gracePast = 0; // grace period tracker
+    } else if (s.phase === 'active') {
+      s.gracePast = (s.gracePast || 0) + dt;
+      if (s.timer <= 0) surges.splice(i, 1);
+    }
+  }
+
+  // ── MOVE HAZARDS ──
+  for (let i = hazards.length - 1; i >= 0; i--) {
+    const h = hazards[i];
+    h.x -= speed * dt;
+
+    // Near-miss check
+    if (!h.passed && !h.nearmissed && h.x < PLAYER_X + 60 && h.x > PLAYER_X - 60) {
+      if (h.lane !== playerLane) {
+        const dist = Math.abs(h.x - PLAYER_X);
+        if (dist < 55) {
+          h.nearmissed = true;
+          score += 2 * multiplier;
+          spawnNearMiss(PLAYER_X + 30, playerY);
+          triggerShake(3, 12);
+        }
+      }
+    }
+
+    // Passed
+    if (!h.passed && h.x < PLAYER_X - HAZ_W) {
+      h.passed = true;
+      score += 1 * multiplier;
+      displayScore = score; // update display
+    }
+
+    // Remove off-screen
+    if (h.x < -HAZ_W * 2) {
+      hazards.splice(i, 1);
+      continue;
+    }
+
+    // Collision: player circle vs hazard AABB
+    const hx = h.x - HAZ_W/2;
+    const hy = LANE_Y[h.lane] - HAZ_H/2;
+    if (circleAABB(PLAYER_X, playerY, PLAYER_R * 0.78, hx, hy, HAZ_W, HAZ_H)) {
+      triggerDeath();
+      return;
+    }
+  }
+
+  // ── MOVE COINS ──
+  for (let i = coins.length - 1; i >= 0; i--) {
+    const c = coins[i];
+    c.x -= speed * dt;
+    if (c.x < -COIN_R * 2) { coins.splice(i, 1); continue; }
+
+    if (!c.collected) {
+      if (circleCircle(PLAYER_X, playerY, PLAYER_R, c.x, LANE_Y[c.lane], COIN_R)) {
+        c.collected = true;
+        combo++;
+        multiplier = Math.min(1 + Math.floor(combo / 3), 5);
+        spawnCoinSparkle(c.x, LANE_Y[c.lane]);
+        score += 3 * multiplier;
+      }
+    }
+  }
+
+  // ── SURGE KILL CHECK ──
+  for (const s of surges) {
+    if (s.phase === 'active' && (s.gracePast || 0) > 0.05) {
+      if (s.lane === playerLane) {
+        triggerDeath();
+        return;
+      }
+    }
+  }
+
+  // Smooth score display
+  displayScore += (score - displayScore) * Math.min(dt * 12, 1);
+
+  updateParticles(dt);
+  updateShake(dt);
+  draw();
+  requestAnimationFrame(update);
+}
+
+function triggerDeath() {
+  // Save high score
+  if (score > highScore) {
+    highScore = score;
+    localStorage.setItem(HS_KEY, highScore);
+  }
+  spawnDeathBurst(PLAYER_X, playerY);
+  triggerShake(14, 6);
+  freezeTimer = 0.12; // brief freeze
+  state = 'gameover';
+  lastTime = null;
+}
+
+// ─── DRAWING ─────────────────────────────────────────────────────────────────
+function drawBackground() {
+  const grad = ctx.createLinearGradient(0, 0, 0, H_LOGICAL);
+  grad.addColorStop(0, `hsl(${bgHue},60%,7%)`);
+  grad.addColorStop(0.5, `hsl(${(bgHue+15)%360},50%,10%)`);
+  grad.addColorStop(1, `hsl(${(bgHue+30)%360},55%,7%)`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W_LOGICAL, H_LOGICAL);
+
+  // Sandy ground lines (parallax dunes)
+  ctx.strokeStyle = `hsla(${bgHue},40%,30%,0.15)`;
+  ctx.lineWidth = 1;
+  const lineCount = 6;
+  for (let i = 0; i < lineCount; i++) {
+    const y = (H_LOGICAL * (i+1)) / (lineCount+1);
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.bezierCurveTo(W_LOGICAL/3, y + 8, 2*W_LOGICAL/3, y - 8, W_LOGICAL, y + 4);
+    ctx.stroke();
+  }
+}
+
+function drawLanes() {
+  for (let lane = 0; lane < 2; lane++) {
+    const cy = LANE_Y[lane];
+    const top = cy - LANE_H/2;
+
+    // Lane band fill
+    const lg = ctx.createLinearGradient(0, top, 0, top + LANE_H);
+    lg.addColorStop(0, `hsla(35,70%,40%,0.18)`);
+    lg.addColorStop(0.5, `hsla(35,70%,50%,0.28)`);
+    lg.addColorStop(1, `hsla(35,70%,40%,0.18)`);
+    ctx.fillStyle = lg;
+    ctx.fillRect(0, top, W_LOGICAL, LANE_H);
+
+    // Lane border lines
+    ctx.strokeStyle = `hsla(35,80%,65%,0.5)`;
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0, top); ctx.lineTo(W_LOGICAL, top); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, top+LANE_H); ctx.lineTo(W_LOGICAL, top+LANE_H); ctx.stroke();
+  }
+}
+
+function drawSurges() {
+  for (const s of surges) {
+    const cy = LANE_Y[s.lane];
+    const top = cy - LANE_H/2;
+
+    if (s.phase === 'telegraph') {
+      const prog = 1 - s.timer / 0.60;
+      const pulse = 0.5 + 0.5 * Math.sin(prog * Math.PI * 8);
+      ctx.fillStyle = `hsla(40,100%,60%,${0.12 + pulse * 0.15})`;
+      ctx.fillRect(0, top, W_LOGICAL, LANE_H);
+      // pulsing edge indicators
+      ctx.strokeStyle = `hsla(45,100%,80%,${0.4 + pulse * 0.5})`;
+      ctx.lineWidth = 3 + pulse * 3;
+      ctx.beginPath(); ctx.moveTo(0, top); ctx.lineTo(W_LOGICAL, top); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, top+LANE_H); ctx.lineTo(W_LOGICAL, top+LANE_H); ctx.stroke();
+
+      // WARNING TEXT
+      ctx.globalAlpha = 0.5 + pulse * 0.4;
+      ctx.fillStyle = `hsl(50,100%,75%)`;
+      ctx.font = `bold ${14 + pulse*4}px 'Segoe UI', sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillText('SURGE!', W_LOGICAL / 2, cy + 6);
+      ctx.globalAlpha = 1;
+    } else if (s.phase === 'active') {
+      const alpha = Math.min(s.timer / 0.3, 1); // fade out at end
+      ctx.fillStyle = `hsla(20,100%,50%,${0.30 * alpha})`;
+      ctx.fillRect(0, top, W_LOGICAL, LANE_H);
+      ctx.strokeStyle = `hsla(10,100%,60%,${0.7 * alpha})`;
+      ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(0, top); ctx.lineTo(W_LOGICAL, top); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, top+LANE_H); ctx.lineTo(W_LOGICAL, top+LANE_H); ctx.stroke();
+
+      // Surge particle sweep effect
+      const sweepX = W_LOGICAL * (1 - s.timer / 1.0);
+      ctx.fillStyle = `hsla(40,100%,70%,${0.15 * alpha})`;
+      ctx.fillRect(0, top, sweepX, LANE_H);
+    }
+  }
+}
+
+function drawHazards() {
+  for (const h of hazards) {
+    const cy = LANE_Y[h.lane];
+    const x = h.x;
+
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath();
+    ctx.ellipse(x, cy + HAZ_H/2 - 4, HAZ_W/2 - 2, 6, 0, 0, Math.PI*2);
+    ctx.fill();
+
+    // Rock body (silhouette)
+    ctx.fillStyle = `hsl(${bgHue+180},15%,12%)`;
+    ctx.strokeStyle = `hsl(${bgHue+20},90%,70%)`;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    const rx = x - HAZ_W/2, ry = cy - HAZ_H/2;
+    // Irregular rock shape
+    ctx.moveTo(rx + 8, ry + HAZ_H);
+    ctx.lineTo(rx, ry + HAZ_H * 0.65);
+    ctx.lineTo(rx + 4, ry + HAZ_H * 0.35);
+    ctx.lineTo(rx + HAZ_W*0.25, ry);
+    ctx.lineTo(rx + HAZ_W*0.6, ry + 4);
+    ctx.lineTo(rx + HAZ_W, ry + HAZ_H*0.3);
+    ctx.lineTo(rx + HAZ_W - 4, ry + HAZ_H * 0.7);
+    ctx.lineTo(rx + HAZ_W - 8, ry + HAZ_H);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Highlight
+    ctx.fillStyle = `hsla(${bgHue+20},90%,75%,0.15)`;
+    ctx.beginPath();
+    ctx.ellipse(x - 4, cy - HAZ_H*0.22, HAZ_W*0.2, HAZ_H*0.12, -0.3, 0, Math.PI*2);
+    ctx.fill();
+  }
+}
+
+function drawCoins() {
+  for (const c of coins) {
+    if (c.collected) continue;
+    const cy = LANE_Y[c.lane];
+    const glow = ctx.createRadialGradient(c.x, cy, 1, c.x, cy, COIN_R * 2);
+    glow.addColorStop(0, 'hsla(50,100%,75%,0.5)');
+    glow.addColorStop(1, 'hsla(50,100%,75%,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(c.x - COIN_R*2, cy - COIN_R*2, COIN_R*4, COIN_R*4);
+
+    ctx.fillStyle = `hsl(48,100%,62%)`;
+    ctx.strokeStyle = `hsl(48,100%,85%)`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(c.x, cy, COIN_R, 0, Math.PI*2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Star symbol
+    ctx.fillStyle = 'rgba(255,255,180,0.9)';
+    ctx.font = `bold ${COIN_R}px serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('★', c.x, cy);
+    ctx.textBaseline = 'alphabetic';
+  }
+}
+
+function drawPlayer() {
+  const x = PLAYER_X, y = playerY;
+
+  // Trail
+  const trailLen = 5;
+  for (let i = 1; i <= trailLen; i++) {
+    const alpha = (1 - i / trailLen) * 0.4;
+    const trailX = x - i * 9;
+    ctx.fillStyle = `hsla(${bgHue+30},80%,70%,${alpha})`;
+    ctx.beginPath();
+    ctx.arc(trailX, y, PLAYER_R * (1 - i * 0.12), 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  // Glow
+  const glow = ctx.createRadialGradient(x, y, 2, x, y, PLAYER_R * 2.5);
+  glow.addColorStop(0, `hsla(${bgHue+20},100%,70%,0.6)`);
+  glow.addColorStop(1, `hsla(${bgHue+20},100%,70%,0)`);
+  ctx.fillStyle = glow;
+  ctx.fillRect(x - PLAYER_R*3, y - PLAYER_R*3, PLAYER_R*6, PLAYER_R*6);
+
+  // Body
+  const bodyGrad = ctx.createRadialGradient(x-4, y-4, 2, x, y, PLAYER_R);
+  bodyGrad.addColorStop(0, `hsl(${bgHue+15},100%,85%)`);
+  bodyGrad.addColorStop(0.6, `hsl(${bgHue+10},90%,60%)`);
+  bodyGrad.addColorStop(1, `hsl(${bgHue},85%,40%)`);
+  ctx.fillStyle = bodyGrad;
+  ctx.strokeStyle = `hsl(${bgHue+25},100%,90%)`;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(x, y, PLAYER_R, 0, Math.PI*2);
+  ctx.fill();
+  ctx.stroke();
+}
+
+function drawHUD() {
+  // Score
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  ctx.beginPath();
+  ctx.roundRect(8, 8, 160, 54, 10);
+  ctx.fill();
+
+  ctx.fillStyle = `hsl(${bgHue+20},80%,80%)`;
+  ctx.font = 'bold 11px "Segoe UI", sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText('SCORE', 18, 26);
+  ctx.fillStyle = 'white';
+  ctx.font = 'bold 26px "Segoe UI", sans-serif';
+  ctx.fillText(Math.floor(displayScore), 18, 52);
+
+  // Multiplier
+  if (multiplier > 1) {
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.beginPath();
+    ctx.roundRect(W_LOGICAL - 92, 8, 84, 54, 10);
+    ctx.fill();
+    ctx.fillStyle = `hsl(48,100%,65%)`;
+    ctx.font = 'bold 11px "Segoe UI", sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText('COMBO', W_LOGICAL - 14, 26);
+    ctx.fillStyle = `hsl(48,100%,80%)`;
+    ctx.font = `bold 28px "Segoe UI", sans-serif`;
+    ctx.fillText(`x${multiplier}`, W_LOGICAL - 14, 52);
+  }
+
+  // Combo bar
+  if (combo > 0) {
+    const barW = W_LOGICAL - 32;
+    const filled = ((combo % 3) / 3) * barW;
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath(); ctx.roundRect(16, H_LOGICAL - 24, barW, 8, 4); ctx.fill();
+    ctx.fillStyle = `hsl(48,100%,60%)`;
+    ctx.beginPath(); ctx.roundRect(16, H_LOGICAL - 24, filled, 8, 4); ctx.fill();
+    ctx.fillStyle = `hsla(48,100%,80%,0.5)`;
+    ctx.font = '9px "Segoe UI"';
+    ctx.textAlign = 'center';
+    ctx.fillText(`COMBO ${combo} → x${Math.min(1+Math.floor((combo+1)/3),5)}`, W_LOGICAL/2, H_LOGICAL - 28);
+  }
+
+  // Speed indicator (tiny)
+  const spd = getSpeed(t);
+  ctx.fillStyle = 'rgba(255,255,255,0.12)';
+  ctx.font = '9px monospace';
+  ctx.textAlign = 'right';
+  ctx.fillText(`${Math.floor(spd)} km/h`, W_LOGICAL - 14, H_LOGICAL - 10);
+
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+}
+
+function draw() {
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
+
+  drawBackground();
+  drawLanes();
+  drawSurges();
+
+  if (state === 'playing') {
+    drawHazards();
+    drawCoins();
+    drawPlayer();
+    drawParticles();
+    drawHUD();
+  } else if (state === 'gameover') {
+    drawHazards();
+    drawCoins();
+    drawPlayer();
+    drawParticles();
+    drawHUD();
+    drawGameOverOverlay();
+  }
+
+  ctx.restore();
+}
+
+function drawStart() {
+  drawBackground();
+  drawLanes();
+
+  // Title card
+  const cx = W_LOGICAL / 2;
+
+  // Outer glow
+  const tglow = ctx.createRadialGradient(cx, H_LOGICAL*0.38, 10, cx, H_LOGICAL*0.38, 180);
+  tglow.addColorStop(0, `hsla(${bgHue+20},100%,60%,0.18)`);
+  tglow.addColorStop(1, 'transparent');
+  ctx.fillStyle = tglow;
+  ctx.fillRect(cx-200, H_LOGICAL*0.15, 400, 300);
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  // SAND
+  ctx.fillStyle = `hsl(${bgHue+10},100%,75%)`;
+  ctx.font = 'bold 68px "Segoe UI", sans-serif';
+  ctx.shadowColor = `hsl(${bgHue+10},100%,50%)`;
+  ctx.shadowBlur = 20;
+  ctx.fillText('SAND', cx, H_LOGICAL * 0.32);
+
+  // SURGE
+  ctx.fillStyle = `hsl(${(bgHue+40)%360},100%,80%)`;
+  ctx.shadowColor = `hsl(${(bgHue+40)%360},100%,60%)`;
+  ctx.fillText('SURGE', cx, H_LOGICAL * 0.44);
+  ctx.shadowBlur = 0;
+
+  // Tagline
+  ctx.fillStyle = `hsla(35,70%,70%,0.8)`;
+  ctx.font = '16px "Segoe UI", sans-serif';
+  ctx.fillText('Dune Hop', cx, H_LOGICAL * 0.535);
+
+  // Tap to start button
+  const btnY = H_LOGICAL * 0.65;
+  const pulse = 0.7 + 0.3 * Math.sin(Date.now() * 0.004);
+  ctx.fillStyle = `hsla(${bgHue+20},90%,55%,${pulse})`;
+  ctx.beginPath();
+  ctx.roundRect(cx - 120, btnY - 28, 240, 56, 28);
+  ctx.fill();
+  ctx.strokeStyle = `hsla(${bgHue+20},100%,80%,0.8)`;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.fillStyle = 'white';
+  ctx.font = 'bold 20px "Segoe UI", sans-serif';
+  ctx.fillText('TAP TO START', cx, btnY + 2);
+
+  // Controls hint
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.font = '13px "Segoe UI", sans-serif';
+  ctx.fillText('Space / Enter / Tap to swap lanes', cx, H_LOGICAL * 0.80);
+
+  // Best score
+  if (highScore > 0) {
+    ctx.fillStyle = `hsla(48,100%,70%,0.75)`;
+    ctx.font = '14px "Segoe UI", sans-serif';
+    ctx.fillText(`Best: ${highScore}`, cx, H_LOGICAL * 0.87);
+  }
+
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+}
+
+function drawGameOverOverlay() {
+  // Darken
+  ctx.fillStyle = 'rgba(0,0,0,0.65)';
+  ctx.fillRect(0, 0, W_LOGICAL, H_LOGICAL);
+
+  const cx = W_LOGICAL / 2;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  // Panel
+  ctx.fillStyle = 'rgba(20,8,0,0.88)';
+  ctx.strokeStyle = `hsl(${bgHue+20},80%,50%)`;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(cx - 150, H_LOGICAL*0.28, 300, 320, 18);
+  ctx.fill();
+  ctx.stroke();
+
+  // Game Over text
+  ctx.fillStyle = `hsl(${bgHue},100%,70%)`;
+  ctx.font = 'bold 40px "Segoe UI", sans-serif';
+  ctx.shadowColor = `hsl(${bgHue},100%,50%)`;
+  ctx.shadowBlur = 15;
+  ctx.fillText('GAME OVER', cx, H_LOGICAL*0.36);
+  ctx.shadowBlur = 0;
+
+  // Score
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.font = '14px "Segoe UI", sans-serif';
+  ctx.fillText('SCORE', cx, H_LOGICAL*0.44);
+  ctx.fillStyle = 'white';
+  ctx.font = 'bold 52px "Segoe UI", sans-serif';
+  ctx.fillText(score, cx, H_LOGICAL*0.52);
+
+  // Best
+  ctx.fillStyle = `hsl(48,100%,65%)`;
+  ctx.font = '13px "Segoe UI", sans-serif';
+  ctx.fillText(`BEST: ${highScore}`, cx, H_LOGICAL*0.585);
+
+  // New best
+  if (score >= highScore && score > 0) {
+    ctx.fillStyle = `hsl(50,100%,75%)`;
+    ctx.font = 'bold 15px "Segoe UI", sans-serif';
+    ctx.fillText('★ NEW BEST! ★', cx, H_LOGICAL*0.625);
+  }
+
+  // Retry button
+  const btnY = H_LOGICAL * 0.72;
+  const pulse = 0.75 + 0.25 * Math.sin(Date.now() * 0.005);
+  ctx.fillStyle = `hsla(${bgHue+20},90%,50%,${pulse})`;
+  ctx.beginPath();
+  ctx.roundRect(cx - 110, btnY - 26, 220, 52, 26);
+  ctx.fill();
+  ctx.strokeStyle = `hsla(${bgHue+20},100%,80%,0.8)`;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.fillStyle = 'white';
+  ctx.font = 'bold 19px "Segoe UI", sans-serif';
+  ctx.fillText('TAP TO RETRY', cx, btnY + 2);
+
+  ctx.fillStyle = 'rgba(255,255,255,0.3)';
+  ctx.font = '12px "Segoe UI", sans-serif';
+  ctx.fillText('Press R to retry', cx, btnY + 36);
+
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+}
+
+function drawGameOver() {
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
+  drawBackground();
+  drawLanes();
+  drawSurges();
+  drawHazards();
+  drawCoins();
+  drawPlayer();
+  drawParticles();
+  drawHUD();
+  drawGameOverOverlay();
+  ctx.restore();
+}
+
+// ─── POLYFILL: roundRect ─────────────────────────────────────────────────────
+if (!CanvasRenderingContext2D.prototype.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+    r = Math.min(r, w/2, h/2);
+    this.beginPath();
+    this.moveTo(x + r, y);
+    this.lineTo(x + w - r, y);
+    this.arcTo(x + w, y, x + w, y + r, r);
+    this.lineTo(x + w, y + h - r);
+    this.arcTo(x + w, y + h, x + w - r, y + h, r);
+    this.lineTo(x + r, y + h);
+    this.arcTo(x, y + h, x, y + h - r, r);
+    this.lineTo(x, y + r);
+    this.arcTo(x, y, x + r, y, r);
+    this.closePath();
+  };
+}
+
+// ─── START ────────────────────────────────────────────────────────────────────
+// Init high score display
+bgHue = 25;
+state = 'start';
+// Draw start screen immediately
+function startLoop(ts) {
+  if (lastTime === null) lastTime = ts;
+  const dt = Math.min((ts - lastTime) / 1000, 0.05);
+  lastTime = ts;
+  bgHue = (bgHue + 5 * dt) % 360;
+  const tapped = inputThisFrame;
+  inputThisFrame = false;
+  if (tapped) {
+    initGame();
+    state = 'playing';
+    lastTime = null;
+    requestAnimationFrame(update);
+    return;
+  }
+  drawStart();
+  requestAnimationFrame(startLoop);
+}
+
+requestAnimationFrame(startLoop);
+
+})();
+</script>
+</body>
+</html>

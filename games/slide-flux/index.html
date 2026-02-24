@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Slide Flux - Free HTML5 Game</title>
+<meta name="description" content="Play Slide Flux - Slide tiles to solve puzzles while controls randomly reverse your swipes.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0b0d16">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Slide Flux: Beat Shift - Free HTML5 Game">
+<meta property="og:description" content="Tap to shift lanes as polarity flips! A hyper-casual rhythm-reflex game.">
+<meta property="og:url" content="https://balinti.github.io/slide-flux/">
+<meta property="og:image" content="https://balinti.github.io/slide-flux/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Slide Flux: Beat Shift - Free HTML5 Game">
+<meta name="twitter:description" content="Tap to shift lanes as polarity flips! A hyper-casual rhythm-reflex game.">
+<meta name="twitter:image" content="https://balinti.github.io/slide-flux/og-image.png">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#0b0d16;font-family:'Segoe UI',system-ui,sans-serif;touch-action:none;user-select:none;-webkit-user-select:none}
+#wrap{position:relative;width:100%;max-width:420px;height:100vh;max-height:750px;margin:0 auto;display:flex;flex-direction:column;align-items:center;justify-content:center}
+canvas{display:block;width:100%;height:100%;border-radius:8px}
+#seo{position:absolute;bottom:4px;left:0;right:0;text-align:center;font-size:10px;color:rgba(255,255,255,.18);pointer-events:none;z-index:2;padding:0 8px}
+</style>
+</head>
+<body>
+<div id="wrap">
+<canvas id="c"></canvas>
+<p id="seo">Slide Flux: Beat Shift — a free hyper-casual HTML5 reflex game. Tap to dodge gates, collect orbs, and master polarity flips. Play instantly in your browser!</p>
+</div>
+<script>
+(function(){
+"use strict";
+
+/* ── Canvas setup ── */
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+const wrap = document.getElementById("wrap");
+let W, H, dpr;
+
+function resize(){
+  const r = wrap.getBoundingClientRect();
+  dpr = window.devicePixelRatio || 1;
+  W = r.width;
+  H = r.height;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width = W + "px";
+  canvas.style.height = H + "px";
+}
+window.addEventListener("resize", resize);
+resize();
+
+/* ── Constants ── */
+const LANES = 5;
+const LS_KEY = "slideflux_best";
+const PLAYER_Y_RATIO = 0.82;
+const GATE_HEIGHT = 18;
+
+/* ── State ── */
+let state = "start"; // start | playing | gameover
+let score, combo, bestCombo, bestScore;
+let playerLane, polarity; // 0=blue(right), 1=pink(left)
+let flipTimer, flipInterval, flipCountdown;
+let gates, orbs, particles;
+let speed, spawnTimer, gatesPassed;
+let shakeX, shakeY, shakeDur;
+let hitStop, hitStopTimer;
+let hue;
+let overfluxActive, overfluxTimer;
+let patternIdx, patternStep;
+let deathParticlesDone;
+let lastTime;
+
+/* ── Patterns ── */
+const PATTERNS = [
+  // Each pattern is array of gap positions [startLane, width]
+  // "straight" - gap stays in one place
+  function(step){ const c = 2; return [c, 2]; },
+  // "sweep right"
+  function(step){ return [step % LANES, 1]; },
+  // "sweep left"
+  function(step){ return [(LANES - 1 - step % LANES), 1]; },
+  // "zigzag"
+  function(step){
+    const z = [0,1,2,3,4,3,2,1];
+    return [z[step % z.length], 1];
+  },
+  // "wave"
+  function(step){
+    const w = [0,1,2,3,2,1];
+    return [w[step % w.length], 2];
+  },
+  // "center squeeze"
+  function(step){
+    const s = [0,1,2,3,4];
+    return [s[step % s.length], 1];
+  },
+  // "double sweep"
+  function(step){
+    const d = [0,0,1,1,2,2,3,3,4,4];
+    return [d[step % d.length], 1];
+  }
+];
+
+function loadBest(){ return parseInt(localStorage.getItem(LS_KEY)) || 0; }
+function saveBest(v){ localStorage.setItem(LS_KEY, v); }
+
+function initGame(){
+  score = 0; combo = 0; bestCombo = 0;
+  bestScore = loadBest();
+  playerLane = 2; polarity = 0;
+  flipInterval = 4; flipTimer = flipInterval; flipCountdown = flipInterval;
+  gates = []; orbs = []; particles = [];
+  speed = 120; spawnTimer = 0; gatesPassed = 0;
+  shakeX = 0; shakeY = 0; shakeDur = 0;
+  hitStop = 0; hitStopTimer = 0;
+  hue = 200;
+  overfluxActive = false; overfluxTimer = 0;
+  patternIdx = 0; patternStep = 0;
+  deathParticlesDone = false;
+  lastTime = 0;
+}
+
+function laneX(lane){
+  const margin = W * 0.06;
+  const laneW = (W - margin * 2) / LANES;
+  return margin + laneW * lane + laneW / 2;
+}
+function laneW(){
+  const margin = W * 0.06;
+  return (W - margin * 2) / LANES;
+}
+
+/* ── Particles ── */
+function spawnParticles(x, y, count, col, spdMul){
+  for(let i = 0; i < count; i++){
+    const a = Math.random() * Math.PI * 2;
+    const s = (30 + Math.random() * 60) * (spdMul || 1);
+    particles.push({
+      x: x, y: y,
+      vx: Math.cos(a) * s,
+      vy: Math.sin(a) * s,
+      life: 0.4 + Math.random() * 0.4,
+      maxLife: 0.4 + Math.random() * 0.4,
+      r: 2 + Math.random() * 3,
+      col: col
+    });
+  }
+}
+
+/* ── Gate spawning ── */
+function spawnGate(){
+  const diff = Math.min(gatesPassed / 80, 1);
+  const patFn = PATTERNS[patternIdx % PATTERNS.length];
+  const result = patFn(patternStep);
+  patternStep++;
+
+  // Narrow gates at higher difficulty
+  let gapStart = result[0];
+  let gapW = result[1];
+  if(diff > 0.5 && gapW > 1 && Math.random() < diff - 0.4){
+    gapW = 1;
+  }
+  // Clamp
+  gapStart = Math.max(0, Math.min(gapStart, LANES - gapW));
+
+  gates.push({
+    y: -GATE_HEIGHT,
+    gapStart: gapStart,
+    gapWidth: gapW,
+    scored: false
+  });
+
+  // Switch pattern every 8-12 gates
+  if(patternStep > 8 + Math.floor(Math.random() * 5)){
+    patternIdx++;
+    patternStep = 0;
+  }
+}
+
+function spawnOrb(){
+  orbs.push({
+    y: -20,
+    lane: Math.floor(Math.random() * LANES),
+    collected: false
+  });
+}
+
+/* ── Input ── */
+function handleTap(){
+  if(state === "start"){
+    state = "playing";
+    initGame();
+    return;
+  }
+  if(state === "gameover"){
+    state = "playing";
+    initGame();
+    return;
+  }
+  if(state === "playing"){
+    if(polarity === 0){
+      // Blue: tap moves right
+      playerLane = Math.min(playerLane + 1, LANES - 1);
+    } else {
+      // Pink: tap moves left
+      playerLane = Math.max(playerLane - 1, 0);
+    }
+    // Tap particles
+    const px = laneX(playerLane);
+    const py = H * PLAYER_Y_RATIO;
+    const col = polarity === 0 ? "hsl(210,100%,70%)" : "hsl(330,100%,70%)";
+    spawnParticles(px, py, 6, col, 0.6);
+  }
+}
+
+wrap.addEventListener("pointerdown", function(e){
+  e.preventDefault();
+  handleTap();
+});
+document.addEventListener("keydown", function(e){
+  if(e.code === "Space" || e.code === "Enter"){
+    e.preventDefault();
+    handleTap();
+  }
+});
+
+/* ── Death ── */
+function die(){
+  state = "gameover";
+  if(score > bestScore){
+    bestScore = score;
+    saveBest(bestScore);
+  }
+  // Big shake
+  shakeDur = 0.5;
+  // Hit stop
+  hitStop = 0.15;
+  hitStopTimer = 0.15;
+  // Death particles
+  const px = laneX(playerLane);
+  const py = H * PLAYER_Y_RATIO;
+  spawnParticles(px, py, 40, "hsl(0,100%,60%)", 1.5);
+  spawnParticles(px, py, 20, "hsl(40,100%,70%)", 1.2);
+}
+
+/* ── Draw helpers ── */
+function drawRoundRect(x, y, w, h, r){
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+/* ── Main Loop ── */
+function loop(ts){
+  requestAnimationFrame(loop);
+  if(!lastTime) lastTime = ts;
+  let dt = (ts - lastTime) / 1000;
+  lastTime = ts;
+  dt = Math.min(dt, 0.05); // clamp
+
+  // Hit stop
+  if(hitStop > 0){
+    hitStop -= dt;
+    if(hitStop > 0){
+      draw();
+      return;
+    }
+    hitStop = 0;
+  }
+
+  hue = (hue + dt * 15) % 360;
+
+  if(state === "playing") update(dt);
+  updateParticles(dt);
+  if(shakeDur > 0){
+    shakeDur -= dt;
+    const intensity = shakeDur * 20;
+    shakeX = (Math.random() - 0.5) * intensity;
+    shakeY = (Math.random() - 0.5) * intensity;
+  } else {
+    shakeX = 0; shakeY = 0;
+  }
+
+  draw();
+}
+
+function update(dt){
+  // Difficulty ramp
+  const elapsed = gatesPassed;
+  speed = 120 + elapsed * 1.5;
+  speed = Math.min(speed, 350);
+
+  // Flip timer
+  const diff = Math.min(gatesPassed / 100, 1);
+  flipInterval = 4 - diff * 1.8; // 4s down to 2.2s
+  if(overfluxActive){
+    flipInterval = 1.2;
+  }
+
+  flipTimer -= dt;
+  flipCountdown = flipTimer;
+  if(flipTimer <= 0){
+    polarity = 1 - polarity;
+    flipTimer = flipInterval;
+    flipCountdown = flipInterval;
+    // Pulse particles on flip
+    const px = W / 2;
+    const py = H * PLAYER_Y_RATIO;
+    const col = polarity === 0 ? "hsl(210,100%,70%)" : "hsl(330,100%,70%)";
+    spawnParticles(px, py, 12, col, 0.8);
+  }
+
+  // Overflux trigger after ~60 gates
+  if(!overfluxActive && gatesPassed > 60){
+    overfluxTimer += dt;
+    if(overfluxTimer > 20){ // every 20s after gate 60
+      overfluxActive = true;
+      setTimeout(function(){ overfluxActive = false; overfluxTimer = 0; }, 8000);
+    }
+  }
+
+  // Spawn gates
+  const spawnInterval = Math.max(0.6, 1.8 - diff * 0.9);
+  spawnTimer += dt;
+  if(spawnTimer >= spawnInterval){
+    spawnTimer -= spawnInterval;
+    spawnGate();
+    // Chance to spawn orb
+    if(Math.random() < 0.35){
+      spawnOrb();
+    }
+  }
+
+  const playerY = H * PLAYER_Y_RATIO;
+  const pxPlayer = laneX(playerLane);
+  const lw = laneW();
+
+  // Move gates
+  for(let i = gates.length - 1; i >= 0; i--){
+    const g = gates[i];
+    g.y += speed * dt;
+
+    // Score when gate passes player
+    if(!g.scored && g.y > playerY){
+      g.scored = true;
+
+      // Check collision
+      const margin = W * 0.06;
+      const gapLeft = margin + g.gapStart * lw;
+      const gapRight = gapLeft + g.gapWidth * lw;
+      const playerLeft = pxPlayer - lw * 0.35;
+      const playerRight = pxPlayer + lw * 0.35;
+
+      if(playerLeft < gapLeft || playerRight > gapRight){
+        die();
+        return;
+      }
+
+      // Passed! Check perfect (near center of gap)
+      const gapCenter = (gapLeft + gapRight) / 2;
+      const dist = Math.abs(pxPlayer - gapCenter);
+      const perfectThresh = lw * 0.25;
+
+      gatesPassed++;
+      score++;
+
+      if(dist < perfectThresh){
+        combo++;
+        if(combo > bestCombo) bestCombo = combo;
+        score += combo; // combo bonus
+        spawnParticles(pxPlayer, playerY, 10, "hsl(50,100%,70%)", 0.7);
+        // Small shake on perfect
+        shakeDur = Math.max(shakeDur, 0.08);
+        // Hit stop on combo milestones
+        if(combo % 5 === 0 && combo > 0){
+          hitStop = 0.06;
+          spawnParticles(pxPlayer, playerY, 20, "hsl(50,100%,90%)", 1.0);
+        }
+      } else {
+        combo = 0;
+      }
+
+      // Gate pass particles
+      spawnParticles(pxPlayer, playerY - 10, 5, "hsl(" + hue + ",80%,60%)", 0.5);
+    }
+
+    // Remove off-screen gates
+    if(g.y > H + 40) gates.splice(i, 1);
+  }
+
+  // Move orbs
+  for(let i = orbs.length - 1; i >= 0; i--){
+    const o = orbs[i];
+    o.y += speed * dt;
+
+    if(!o.collected){
+      const ox = laneX(o.lane);
+      const dist = Math.sqrt((pxPlayer - ox) ** 2 + (playerY - o.y) ** 2);
+      if(dist < lw * 0.5){
+        o.collected = true;
+        score++;
+        combo++;
+        if(combo > bestCombo) bestCombo = combo;
+        spawnParticles(ox, o.y, 8, "hsl(160,100%,70%)", 0.8);
+      }
+    }
+
+    if(o.y > H + 40) orbs.splice(i, 1);
+  }
+}
+
+function updateParticles(dt){
+  for(let i = particles.length - 1; i >= 0; i--){
+    const p = particles[i];
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.life -= dt;
+    if(p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+/* ── Drawing ── */
+function draw(){
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  // Background gradient
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, "#0b0d16");
+  bg.addColorStop(1, "#141828");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
+
+  const margin = W * 0.06;
+  const lw = laneW();
+  const playerY = H * PLAYER_Y_RATIO;
+
+  // Draw lane lines
+  ctx.strokeStyle = "rgba(255,255,255,0.06)";
+  ctx.lineWidth = 1;
+  for(let i = 0; i <= LANES; i++){
+    const x = margin + i * lw;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, H);
+    ctx.stroke();
+  }
+
+  // Draw gates
+  for(const g of gates){
+    const gapLeft = margin + g.gapStart * lw;
+    const gapRight = gapLeft + g.gapWidth * lw;
+
+    // Left wall
+    if(gapLeft > margin){
+      const grad = ctx.createLinearGradient(margin, g.y, gapLeft, g.y);
+      grad.addColorStop(0, "hsl(" + ((hue + 40) % 360) + ",60%,25%)");
+      grad.addColorStop(1, "hsl(" + ((hue + 40) % 360) + ",80%,40%)");
+      ctx.fillStyle = grad;
+      drawRoundRect(margin, g.y, gapLeft - margin, GATE_HEIGHT, 4);
+      ctx.fill();
+    }
+    // Right wall
+    if(gapRight < W - margin){
+      const grad = ctx.createLinearGradient(gapRight, g.y, W - margin, g.y);
+      grad.addColorStop(0, "hsl(" + ((hue + 40) % 360) + ",80%,40%)");
+      grad.addColorStop(1, "hsl(" + ((hue + 40) % 360) + ",60%,25%)");
+      ctx.fillStyle = grad;
+      drawRoundRect(gapRight, g.y, (W - margin) - gapRight, GATE_HEIGHT, 4);
+      ctx.fill();
+    }
+
+    // Gate glow edges
+    ctx.shadowColor = "hsl(" + ((hue + 40) % 360) + ",100%,50%)";
+    ctx.shadowBlur = 8;
+    ctx.strokeStyle = "hsl(" + ((hue + 40) % 360) + ",100%,55%)";
+    ctx.lineWidth = 1.5;
+    if(gapLeft > margin){
+      ctx.beginPath();
+      ctx.moveTo(gapLeft, g.y);
+      ctx.lineTo(gapLeft, g.y + GATE_HEIGHT);
+      ctx.stroke();
+    }
+    if(gapRight < W - margin){
+      ctx.beginPath();
+      ctx.moveTo(gapRight, g.y);
+      ctx.lineTo(gapRight, g.y + GATE_HEIGHT);
+      ctx.stroke();
+    }
+    ctx.shadowBlur = 0;
+  }
+
+  // Draw orbs
+  for(const o of orbs){
+    if(o.collected) continue;
+    const ox = laneX(o.lane);
+    const pulse = 1 + Math.sin(Date.now() * 0.006) * 0.15;
+    ctx.shadowColor = "hsl(160,100%,60%)";
+    ctx.shadowBlur = 12;
+    ctx.fillStyle = "hsl(160,100%,65%)";
+    ctx.beginPath();
+    ctx.arc(ox, o.y, 6 * pulse, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Inner glow
+    ctx.fillStyle = "hsl(160,100%,90%)";
+    ctx.beginPath();
+    ctx.arc(ox, o.y, 3 * pulse, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Draw player (Flux Core)
+  if(state === "playing" || state === "start"){
+    drawPlayer(playerY);
+  } else if(state === "gameover"){
+    // Faded player on death
+    ctx.globalAlpha = 0.3;
+    drawPlayer(playerY);
+    ctx.globalAlpha = 1;
+  }
+
+  // Draw particles
+  for(const p of particles){
+    const alpha = Math.max(0, p.life / p.maxLife);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = p.col;
+    ctx.shadowColor = p.col;
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r * alpha, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+  ctx.globalAlpha = 1;
+
+  // HUD
+  if(state === "playing"){
+    drawHUD();
+  }
+
+  // Polarity flip countdown bar
+  if(state === "playing"){
+    drawFlipBar();
+  }
+
+  ctx.restore();
+
+  // Overlays
+  if(state === "start") drawStartScreen();
+  if(state === "gameover") drawGameOverScreen();
+}
+
+function drawPlayer(py){
+  const px = laneX(playerLane);
+  const lw2 = laneW();
+  const baseCol = polarity === 0 ? [210, 100, 65] : [330, 100, 65];
+  const coreCol = "hsl(" + baseCol[0] + "," + baseCol[1] + "%," + baseCol[2] + "%)";
+  const glowCol = "hsl(" + baseCol[0] + ",100%,50%)";
+
+  // Outer glow ring (pulse ring for flip telegraph)
+  const flipRatio = flipCountdown / flipInterval;
+  if(flipRatio < 0.3){
+    const pulse = 1 + (1 - flipRatio / 0.3) * 0.6;
+    ctx.strokeStyle = coreCol;
+    ctx.globalAlpha = (1 - flipRatio / 0.3) * 0.5;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(px, py, lw2 * 0.4 * pulse, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  // Core glow
+  ctx.shadowColor = glowCol;
+  ctx.shadowBlur = 20;
+
+  // Diamond shape
+  const s = lw2 * 0.3;
+  ctx.fillStyle = coreCol;
+  ctx.beginPath();
+  ctx.moveTo(px, py - s);
+  ctx.lineTo(px + s * 0.7, py);
+  ctx.lineTo(px, py + s * 0.6);
+  ctx.lineTo(px - s * 0.7, py);
+  ctx.closePath();
+  ctx.fill();
+
+  // Inner bright core
+  ctx.shadowBlur = 10;
+  ctx.fillStyle = "hsl(" + baseCol[0] + ",100%,85%)";
+  ctx.beginPath();
+  ctx.arc(px, py, s * 0.25, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+}
+
+function drawHUD(){
+  // Score - top left
+  ctx.fillStyle = "rgba(255,255,255,0.9)";
+  ctx.font = "bold 20px 'Segoe UI',system-ui,sans-serif";
+  ctx.textAlign = "left";
+  ctx.fillText(score, 16, 32);
+
+  // Combo - top right
+  if(combo > 1){
+    ctx.fillStyle = "hsl(50,100%,70%)";
+    ctx.font = "bold 16px 'Segoe UI',system-ui,sans-serif";
+    ctx.textAlign = "right";
+    ctx.fillText("x" + combo, W - 16, 32);
+  }
+
+  // Polarity indicator - top center
+  const polCol = polarity === 0 ? "hsl(210,100%,70%)" : "hsl(330,100%,70%)";
+  const polLabel = polarity === 0 ? "BLUE ▶" : "◀ PINK";
+  ctx.fillStyle = polCol;
+  ctx.font = "bold 13px 'Segoe UI',system-ui,sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText(polLabel, W / 2, 28);
+
+  // Overflux warning
+  if(overfluxActive){
+    ctx.fillStyle = "hsl(" + ((Date.now() / 50) % 360) + ",100%,60%)";
+    ctx.font = "bold 14px 'Segoe UI',system-ui,sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("⚡ OVERFLUX ⚡", W / 2, 50);
+  }
+}
+
+function drawFlipBar(){
+  const barW = W * 0.5;
+  const barH = 4;
+  const barX = (W - barW) / 2;
+  const barY = 6;
+  const ratio = Math.max(0, flipCountdown / flipInterval);
+
+  ctx.fillStyle = "rgba(255,255,255,0.1)";
+  drawRoundRect(barX, barY, barW, barH, 2);
+  ctx.fill();
+
+  const nextCol = polarity === 0 ? "hsl(330,100%,60%)" : "hsl(210,100%,60%)";
+  ctx.fillStyle = ratio < 0.3 ? nextCol : "rgba(255,255,255,0.3)";
+  drawRoundRect(barX, barY, barW * ratio, barH, 2);
+  ctx.fill();
+}
+
+function drawStartScreen(){
+  // Overlay
+  ctx.fillStyle = "rgba(11,13,22,0.85)";
+  ctx.fillRect(0, 0, W, H);
+
+  const cx = W / 2;
+
+  // Title
+  ctx.fillStyle = "hsl(210,100%,75%)";
+  ctx.font = "bold 32px 'Segoe UI',system-ui,sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("SLIDE FLUX", cx, H * 0.28);
+
+  ctx.fillStyle = "hsl(330,100%,70%)";
+  ctx.font = "bold 16px 'Segoe UI',system-ui,sans-serif";
+  ctx.fillText("BEAT SHIFT", cx, H * 0.33);
+
+  // Instructions
+  ctx.fillStyle = "rgba(255,255,255,0.7)";
+  ctx.font = "14px 'Segoe UI',system-ui,sans-serif";
+  const lines = [
+    "Tap or press Space to shift lanes",
+    "",
+    "BLUE polarity → tap moves RIGHT",
+    "PINK polarity → tap moves LEFT",
+    "",
+    "Dodge gates, collect orbs,",
+    "hit the gap center for combos!"
+  ];
+  lines.forEach(function(line, i){
+    ctx.fillText(line, cx, H * 0.42 + i * 22);
+  });
+
+  // Tap to start
+  const pulse = 0.7 + Math.sin(Date.now() * 0.004) * 0.3;
+  ctx.globalAlpha = pulse;
+  ctx.fillStyle = "#fff";
+  ctx.font = "bold 18px 'Segoe UI',system-ui,sans-serif";
+  ctx.fillText("TAP TO START", cx, H * 0.75);
+  ctx.globalAlpha = 1;
+
+  // Best score
+  const best = loadBest();
+  if(best > 0){
+    ctx.fillStyle = "rgba(255,255,255,0.4)";
+    ctx.font = "13px 'Segoe UI',system-ui,sans-serif";
+    ctx.fillText("Best: " + best, cx, H * 0.82);
+  }
+}
+
+function drawGameOverScreen(){
+  // Overlay
+  ctx.fillStyle = "rgba(11,13,22,0.88)";
+  ctx.fillRect(0, 0, W, H);
+
+  const cx = W / 2;
+
+  ctx.fillStyle = "hsl(0,80%,65%)";
+  ctx.font = "bold 28px 'Segoe UI',system-ui,sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("GAME OVER", cx, H * 0.3);
+
+  ctx.fillStyle = "#fff";
+  ctx.font = "bold 40px 'Segoe UI',system-ui,sans-serif";
+  ctx.fillText(score, cx, H * 0.42);
+
+  ctx.fillStyle = "rgba(255,255,255,0.5)";
+  ctx.font = "15px 'Segoe UI',system-ui,sans-serif";
+  ctx.fillText("Score", cx, H * 0.46);
+
+  // Best
+  ctx.fillStyle = "hsl(50,100%,70%)";
+  ctx.font = "bold 22px 'Segoe UI',system-ui,sans-serif";
+  ctx.fillText("Best: " + bestScore, cx, H * 0.54);
+
+  // Best combo
+  ctx.fillStyle = "hsl(160,100%,65%)";
+  ctx.font = "16px 'Segoe UI',system-ui,sans-serif";
+  ctx.fillText("Best Combo: x" + bestCombo, cx, H * 0.60);
+
+  // Tap to retry
+  const pulse = 0.7 + Math.sin(Date.now() * 0.004) * 0.3;
+  ctx.globalAlpha = pulse;
+  ctx.fillStyle = "#fff";
+  ctx.font = "bold 18px 'Segoe UI',system-ui,sans-serif";
+  ctx.fillText("TAP TO RETRY", cx, H * 0.75);
+  ctx.globalAlpha = 1;
+}
+
+/* ── Boot ── */
+initGame();
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

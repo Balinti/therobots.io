@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Ash Flight - Free HTML5 Game</title>
+<meta name="description" content="Play Ash Flight - Tap to pilot a phoenix through ash clouds, reversing controls randomly to challenge.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#1a0a2e">
+<link rel="canonical" href="https://balinti.github.io/ash-flight/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Ash Flight - Free HTML5 Game">
+<meta property="og:description" content="Play Ash Flight - Tap to pilot a phoenix through ash clouds, reversing controls randomly to challenge.">
+<meta property="og:url" content="https://balinti.github.io/ash-flight/">
+<meta property="og:image" content="https://balinti.github.io/ash-flight/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Ash Flight - Free HTML5 Game">
+<meta name="twitter:description" content="Play Ash Flight - Tap to pilot a phoenix through ash clouds, reversing controls randomly to challenge.">
+<meta name="twitter:image" content="https://balinti.github.io/ash-flight/og-image.png">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<script type="application/ld+json">
+{
+  "@context":"https://schema.org",
+  "@type":"WebApplication",
+  "name":"Ash Flight",
+  "url":"https://balinti.github.io/ash-flight/",
+  "applicationCategory":"Game",
+  "operatingSystem":"Any",
+  "description":"Hyper-casual HTML5 phoenix runner game with gravity-flipping mechanics."
+}
+</script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#0a0a1a;font-family:system-ui,-apple-system,sans-serif;touch-action:none;user-select:none;-webkit-user-select:none}
+#wrap{position:relative;width:100%;max-width:420px;height:100vh;max-height:750px;margin:0 auto;overflow:hidden}
+canvas{display:block;width:100%;height:100%}
+#share-btn{display:none;position:absolute;bottom:18%;left:50%;transform:translateX(-50%);padding:10px 22px;background:rgba(255,180,60,.85);color:#1a0a2e;border:none;border-radius:20px;font-size:14px;font-weight:700;cursor:pointer;z-index:10;letter-spacing:.5px}
+#share-btn:active{transform:translateX(-50%) scale(.95)}
+</style>
+</head>
+<body>
+<div id="wrap">
+<canvas id="c"></canvas>
+<button id="share-btn">Share Score</button>
+</div>
+<script>
+'use strict';
+(()=>{
+
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+const wrap=document.getElementById('wrap');
+const shareBtn=document.getElementById('share-btn');
+
+const W=420,H=750;
+const DPR=Math.min(window.devicePixelRatio||1,2);
+
+let cw,ch;
+function resize(){
+  const r=wrap.getBoundingClientRect();
+  cw=r.width;ch=r.height;
+  canvas.width=Math.round(cw*DPR);
+  canvas.height=Math.round(ch*DPR);
+  canvas.style.width=cw+'px';
+  canvas.style.height=ch+'px';
+  ctx.setTransform(DPR*(cw/W),0,0,DPR*(ch/H),0,0);
+}
+window.addEventListener('resize',resize);
+resize();
+
+// --- Challenge param ---
+const urlParams=new URLSearchParams(window.location.search);
+const challengeScore=parseInt(urlParams.get('challenge'))||0;
+
+// --- State ---
+const STATE={START:0,PLAYING:1,GAMEOVER:2};
+let state=STATE.START;
+let score=0,bestScore=0,displayScore=0;
+let distScore=0,passScore=0,ringScore=0;
+let multiplier=1,consecutiveRings=0;
+let elapsed=0;
+let gameOverTimer=0;
+let canRestart=false;
+let challengeCleared=false;
+
+// Load best
+try{bestScore=parseInt(localStorage.getItem('ashflight_best'))||0}catch(e){}
+
+// --- Shake ---
+let shakeX=0,shakeY=0,shakeMag=0,shakeDecay=0;
+function triggerShake(mag,decay){shakeMag=mag;shakeDecay=decay}
+function updateShake(dt){
+  if(shakeMag>0.1){
+    shakeX=(Math.random()*2-1)*shakeMag;
+    shakeY=(Math.random()*2-1)*shakeMag;
+    shakeMag*=shakeDecay;
+  }else{shakeX=shakeY=shakeMag=0}
+}
+
+// --- Particle Pool ---
+const MAX_PARTICLES=200;
+const particles=[];
+for(let i=0;i<MAX_PARTICLES;i++)particles.push({active:false,x:0,y:0,vx:0,vy:0,life:0,maxLife:1,size:3,h:30,s:80,l:60,type:0});
+function spawnParticle(x,y,vx,vy,life,size,h,s,l,type){
+  for(let i=0;i<MAX_PARTICLES;i++){
+    const p=particles[i];
+    if(!p.active){
+      p.active=true;p.x=x;p.y=y;p.vx=vx;p.vy=vy;
+      p.life=life;p.maxLife=life;p.size=size;
+      p.h=h;p.s=s;p.l=l;p.type=type||0;
+      return p;
+    }
+  }
+  return null;
+}
+function burstParticles(x,y,count,speed,h,s,l,sizeMin,sizeMax,lifeMin,lifeMax,type){
+  for(let i=0;i<count;i++){
+    const a=Math.random()*Math.PI*2;
+    const sp=speed*(0.3+Math.random()*0.7);
+    const sz=sizeMin+Math.random()*(sizeMax-sizeMin);
+    const lf=lifeMin+Math.random()*(lifeMax-lifeMin);
+    spawnParticle(x,y,Math.cos(a)*sp,Math.sin(a)*sp,lf,sz,h+Math.random()*20,s,l,type);
+  }
+}
+
+// --- Player (Phoenix) ---
+const phoenix={
+  x:100,y:H/2,vy:0,radius:14,
+  gravity:1200,flapStrength:-340,
+  gravFlip:1,flipTimer:0,flipDuration:1.2,
+  trail:[],
+  wingPhase:0
+};
+
+function flapPhoenix(){
+  phoenix.vy=phoenix.flapStrength*phoenix.gravFlip;
+  phoenix.wingPhase=0;
+  const dir=phoenix.gravFlip;
+  for(let i=0;i<6;i++){
+    const a=Math.PI/2*dir+((Math.random()-0.5)*1.2);
+    const sp=60+Math.random()*80;
+    spawnParticle(phoenix.x-8,phoenix.y+6*dir,
+      Math.cos(a)*sp-20,Math.sin(a)*sp,
+      0.3+Math.random()*0.3,2+Math.random()*3,
+      phoenix.flipTimer>0?200:30,80,60,0);
+  }
+}
+
+function activateFlip(){
+  phoenix.gravFlip*=-1;
+  phoenix.flipTimer=phoenix.flipDuration;
+  phoenix.vy*=0.3;
+  triggerShake(5,0.85);
+  burstParticles(phoenix.x,phoenix.y,12,120,200,90,65,2,5,0.2,0.5,0);
+  consecutiveRings++;
+  if(consecutiveRings>1)multiplier=Math.min(4,1+consecutiveRings-1);
+  ringScore+=50*multiplier;
+}
+
+// --- Gates ---
+const gates=[];
+const GATE_WIDTH=40;
+let gateTimer=0;
+let gateSpacing=220;
+let gateSpeed=120;
+
+function spawnGate(){
+  const diff=getDifficulty();
+  const gapSize=diff.gapSize;
+  const minY=gapSize/2+40;
+  const maxY=H-gapSize/2-40;
+  const gapCenter=minY+Math.random()*(maxY-minY);
+  const hasRing=Math.random()<diff.ringChance;
+  gates.push({
+    x:W+GATE_WIDTH,
+    gapCenter,
+    gapSize,
+    passed:false,
+    hasRing,
+    ringCollected:false,
+    ringPulse:0
+  });
+}
+
+// --- Cinders ---
+const cinders=[];
+let cinderTimer=0;
+
+function spawnCinder(){
+  const diff=getDifficulty();
+  const y=40+Math.random()*(H-80);
+  const speed=40+Math.random()*diff.cinderSpeed;
+  const vy=(Math.random()-0.5)*30;
+  cinders.push({x:W+10,y,vx:-speed,vy,radius:4+Math.random()*4,h:15+Math.random()*20});
+}
+
+// --- Ash Sheets ---
+const ashSheets=[];
+let sheetTimer=0;
+
+function spawnAshSheet(){
+  const y=60+Math.random()*(H-120);
+  const w=60+Math.random()*50;
+  const h=8+Math.random()*6;
+  const vy=(Math.random()-0.5)*40;
+  ashSheets.push({x:W+w,y,w,h,vx:-(50+Math.random()*30),vy});
+}
+
+// --- Difficulty ---
+function getDifficulty(){
+  const t=elapsed;
+  let gapSize,ringChance,cinderInterval,cinderSpeed,sheetInterval,speedMult;
+  if(t<10){
+    gapSize=200;ringChance=0.5;cinderInterval=2.5;cinderSpeed=30;sheetInterval=999;speedMult=1;
+  }else if(t<25){
+    const f=(t-10)/15;
+    gapSize=200-f*30;ringChance=0.5+f*0.15;cinderInterval=2.5-f*0.8;cinderSpeed=30+f*30;sheetInterval=999;speedMult=1+f*0.15;
+  }else if(t<45){
+    const f=(t-25)/20;
+    gapSize=170-f*20;ringChance=0.65-f*0.1;cinderInterval=1.7-f*0.4;cinderSpeed=60+f*30;sheetInterval=6-f*2;speedMult=1.15+f*0.2;
+  }else{
+    const f=Math.min((t-45)/60,1);
+    gapSize=150-f*20;ringChance=0.55;cinderInterval=1.3-f*0.3;cinderSpeed=90+f*30;sheetInterval=4-f*1.5;speedMult=1.35+f*0.3;
+  }
+  return{gapSize,ringChance,cinderInterval,cinderSpeed,sheetInterval,speedMult};
+}
+
+// --- Hue cycling ---
+let hueOffset=0;
+
+// --- Game logic ---
+function resetGame(){
+  phoenix.x=100;phoenix.y=H/2;phoenix.vy=0;
+  phoenix.gravFlip=1;phoenix.flipTimer=0;phoenix.trail=[];phoenix.wingPhase=0;
+  gates.length=0;cinders.length=0;ashSheets.length=0;
+  for(let i=0;i<MAX_PARTICLES;i++)particles[i].active=false;
+  score=0;displayScore=0;distScore=0;passScore=0;ringScore=0;
+  multiplier=1;consecutiveRings=0;
+  elapsed=0;gateTimer=0;cinderTimer=0;sheetTimer=0;
+  gameOverTimer=0;canRestart=false;challengeCleared=false;
+  gateSpeed=120;gateSpacing=220;
+  shakeMag=0;shakeX=0;shakeY=0;
+}
+
+function startGame(){
+  resetGame();
+  state=STATE.PLAYING;
+  shareBtn.style.display='none';
+}
+
+function die(){
+  if(state!==STATE.PLAYING)return;
+  state=STATE.GAMEOVER;
+  gameOverTimer=0;canRestart=false;
+  score=Math.floor(distScore+passScore+ringScore);
+  if(score>bestScore){bestScore=score;try{localStorage.setItem('ashflight_best',bestScore)}catch(e){}}
+  challengeCleared=challengeScore>0&&score>=challengeScore;
+  triggerShake(12,0.88);
+  burstParticles(phoenix.x,phoenix.y,40,200,20,90,55,2,7,0.3,0.8,1);
+  burstParticles(phoenix.x,phoenix.y,20,150,40,80,65,3,6,0.5,1.0,1);
+  setTimeout(()=>{shareBtn.style.display='block'},600);
+}
+
+// --- Input ---
+function handleInput(e){
+  if(e)e.preventDefault();
+  if(state===STATE.START){
+    startGame();
+  }else if(state===STATE.PLAYING){
+    flapPhoenix();
+  }else if(state===STATE.GAMEOVER&&canRestart){
+    // Check if share button was clicked
+    if(e&&e.target===shareBtn)return;
+    shareBtn.style.display='none';
+    startGame();
+  }
+}
+
+canvas.addEventListener('pointerdown',handleInput);
+document.addEventListener('keydown',(e)=>{
+  if(e.code==='Space'||e.code==='Enter'){
+    e.preventDefault();
+    handleInput(null);
+  }
+});
+
+// --- Share ---
+shareBtn.addEventListener('pointerdown',(e)=>{
+  e.stopPropagation();
+});
+shareBtn.addEventListener('click',(e)=>{
+  e.stopPropagation();
+  const s=Math.floor(score);
+  const text=`I scored ${s} in Ash Flight! Can you beat me?`;
+  const url=window.location.origin+window.location.pathname+'?challenge='+s;
+  if(navigator.share){
+    navigator.share({title:'Ash Flight',text,url}).catch(()=>{});
+  }else{
+    navigator.clipboard.writeText(text+' '+url).then(()=>{
+      shareBtn.textContent='Link Copied!';
+      setTimeout(()=>{shareBtn.textContent='Share Score'},1500);
+    }).catch(()=>{});
+  }
+});
+
+// --- Update ---
+let lastTime=0;
+function update(now){
+  requestAnimationFrame(update);
+  if(!lastTime){lastTime=now;return}
+  let dt=(now-lastTime)/1000;
+  lastTime=now;
+  if(dt>0.05)dt=0.05;
+
+  hueOffset=(hueOffset+dt*15)%360;
+
+  if(state===STATE.PLAYING){
+    elapsed+=dt;
+    const diff=getDifficulty();
+    const speed=gateSpeed*diff.speedMult;
+
+    // Phoenix physics
+    phoenix.vy+=phoenix.gravity*phoenix.gravFlip*dt;
+    phoenix.y+=phoenix.vy*dt;
+    phoenix.wingPhase+=dt*8;
+
+    // Flip timer
+    if(phoenix.flipTimer>0){
+      phoenix.flipTimer-=dt;
+      if(phoenix.flipTimer<=0){
+        phoenix.flipTimer=0;
+        phoenix.gravFlip=1;
+        consecutiveRings=0;
+        multiplier=1;
+      }
+    }
+
+    // Trail
+    phoenix.trail.unshift({x:phoenix.x,y:phoenix.y,age:0});
+    if(phoenix.trail.length>15)phoenix.trail.pop();
+    for(let i=0;i<phoenix.trail.length;i++)phoenix.trail[i].age+=dt;
+
+    // Distance score
+    distScore+=dt*speed*0.05;
+
+    // Gates
+    gateTimer-=dt;
+    if(gateTimer<=0){
+      spawnGate();
+      gateTimer=gateSpacing/speed;
+    }
+
+    for(let i=gates.length-1;i>=0;i--){
+      const g=gates[i];
+      g.x-=speed*dt;
+      if(g.hasRing&&!g.ringCollected)g.ringPulse+=dt*4;
+
+      // Pass check
+      if(!g.passed&&g.x+GATE_WIDTH/2<phoenix.x){
+        g.passed=true;
+        passScore+=10;
+      }
+
+      // Ring collection
+      if(g.hasRing&&!g.ringCollected){
+        const dx=phoenix.x-(g.x);
+        const dy=phoenix.y-g.gapCenter;
+        if(Math.sqrt(dx*dx+dy*dy)<phoenix.radius+18){
+          g.ringCollected=true;
+          activateFlip();
+          burstParticles(g.x,g.gapCenter,10,100,200,85,70,2,5,0.2,0.5,0);
+        }
+      }
+
+      // Collision with gate pillars
+      if(phoenix.x+phoenix.radius>g.x-GATE_WIDTH/2&&phoenix.x-phoenix.radius<g.x+GATE_WIDTH/2){
+        const topBot=g.gapCenter-g.gapSize/2;
+        const botTop=g.gapCenter+g.gapSize/2;
+        if(phoenix.y-phoenix.radius<topBot||phoenix.y+phoenix.radius>botTop){
+          die();
+        }
+      }
+
+      if(g.x<-GATE_WIDTH)gates.splice(i,1);
+    }
+
+    // Cinders
+    cinderTimer-=dt;
+    if(cinderTimer<=0){
+      spawnCinder();
+      cinderTimer=diff.cinderInterval*(0.7+Math.random()*0.6);
+    }
+    for(let i=cinders.length-1;i>=0;i--){
+      const c=cinders[i];
+      c.x+=c.vx*dt;
+      c.y+=c.vy*dt;
+      const dx=phoenix.x-c.x;
+      const dy=phoenix.y-c.y;
+      if(Math.sqrt(dx*dx+dy*dy)<phoenix.radius+c.radius){
+        die();
+      }
+      if(c.x<-20)cinders.splice(i,1);
+    }
+
+    // Ash sheets
+    if(elapsed>25){
+      sheetTimer-=dt;
+      if(sheetTimer<=0){
+        spawnAshSheet();
+        sheetTimer=diff.sheetInterval*(0.7+Math.random()*0.6);
+      }
+    }
+    for(let i=ashSheets.length-1;i>=0;i--){
+      const s=ashSheets[i];
+      s.x+=s.vx*dt;
+      s.y+=s.vy*dt;
+      // AABB vs circle
+      const cx=Math.max(s.x-s.w/2,Math.min(phoenix.x,s.x+s.w/2));
+      const cy=Math.max(s.y-s.h/2,Math.min(phoenix.y,s.y+s.h/2));
+      const ddx=phoenix.x-cx;
+      const ddy=phoenix.y-cy;
+      if(ddx*ddx+ddy*ddy<phoenix.radius*phoenix.radius){
+        die();
+      }
+      if(s.x<-100)ashSheets.splice(i,1);
+    }
+
+    // Bounds
+    if(phoenix.y<-30||phoenix.y>H+30)die();
+
+    // Score
+    score=distScore+passScore+ringScore;
+    displayScore+=(score-displayScore)*0.15;
+  }
+
+  if(state===STATE.GAMEOVER){
+    gameOverTimer+=dt;
+    if(gameOverTimer>0.5)canRestart=true;
+  }
+
+  // Particles
+  for(let i=0;i<MAX_PARTICLES;i++){
+    const p=particles[i];
+    if(!p.active)continue;
+    p.x+=p.vx*dt;
+    p.y+=p.vy*dt;
+    p.life-=dt;
+    if(p.type===1){p.vy+=200*dt;p.vx*=0.98}
+    if(p.life<=0)p.active=false;
+  }
+
+  updateShake(dt);
+  draw();
+}
+
+// --- Draw ---
+function draw(){
+  ctx.save();
+  ctx.translate(shakeX,shakeY);
+
+  // Background gradient
+  const grad=ctx.createLinearGradient(0,0,0,H);
+  grad.addColorStop(0,'#1a0a2e');
+  grad.addColorStop(0.5,'#2d1b4e');
+  grad.addColorStop(1,'#0f0a1a');
+  ctx.fillStyle=grad;
+  ctx.fillRect(-20,-20,W+40,H+40);
+
+  // Subtle bg ash
+  ctx.globalAlpha=0.08;
+  for(let i=0;i<8;i++){
+    const bx=((elapsed*15+i*60)%520)-50;
+    const by=80+i*85;
+    ctx.fillStyle='#aaa';
+    ctx.beginPath();
+    ctx.arc(bx,by,20+i*3,0,Math.PI*2);
+    ctx.fill();
+  }
+  ctx.globalAlpha=1;
+
+  if(state===STATE.PLAYING||state===STATE.GAMEOVER){
+    // Flip tint overlay
+    if(phoenix.flipTimer>0){
+      ctx.globalAlpha=0.08;
+      ctx.fillStyle='hsl(210,80%,50%)';
+      ctx.fillRect(0,0,W,H);
+      ctx.globalAlpha=1;
+    }
+
+    // Gates
+    for(const g of gates){
+      const topH=g.gapCenter-g.gapSize/2;
+      const botY=g.gapCenter+g.gapSize/2;
+
+      // Top pillar
+      const gGrad1=ctx.createLinearGradient(g.x-GATE_WIDTH/2,0,g.x+GATE_WIDTH/2,0);
+      gGrad1.addColorStop(0,'#3a2a4e');
+      gGrad1.addColorStop(0.5,'#5a4070');
+      gGrad1.addColorStop(1,'#3a2a4e');
+      ctx.fillStyle=gGrad1;
+      ctx.fillRect(g.x-GATE_WIDTH/2,0,GATE_WIDTH,topH);
+
+      // Bottom pillar
+      ctx.fillStyle=gGrad1;
+      ctx.fillRect(g.x-GATE_WIDTH/2,botY,GATE_WIDTH,H-botY);
+
+      // Pillar edges
+      ctx.strokeStyle='rgba(200,160,255,0.3)';
+      ctx.lineWidth=2;
+      ctx.strokeRect(g.x-GATE_WIDTH/2,0,GATE_WIDTH,topH);
+      ctx.strokeRect(g.x-GATE_WIDTH/2,botY,GATE_WIDTH,H-botY);
+
+      // Gap wind streak
+      ctx.strokeStyle='rgba(200,180,255,0.15)';
+      ctx.lineWidth=1;
+      ctx.beginPath();
+      ctx.moveTo(g.x-GATE_WIDTH/2,g.gapCenter);
+      ctx.lineTo(g.x+GATE_WIDTH/2,g.gapCenter);
+      ctx.stroke();
+
+      // Ring
+      if(g.hasRing&&!g.ringCollected){
+        const pulse=Math.sin(g.ringPulse)*3;
+        ctx.strokeStyle='hsl(210,85%,65%)';
+        ctx.lineWidth=3;
+        ctx.shadowColor='hsl(210,85%,65%)';
+        ctx.shadowBlur=10;
+        ctx.beginPath();
+        ctx.arc(g.x,g.gapCenter,16+pulse,0,Math.PI*2);
+        ctx.stroke();
+        // Inner glow
+        ctx.strokeStyle='hsl(200,90%,80%)';
+        ctx.lineWidth=1.5;
+        ctx.beginPath();
+        ctx.arc(g.x,g.gapCenter,10+pulse*0.5,0,Math.PI*2);
+        ctx.stroke();
+        ctx.shadowBlur=0;
+      }
+    }
+
+    // Cinders
+    for(const c of cinders){
+      ctx.fillStyle=`hsl(${c.h},80%,55%)`;
+      ctx.shadowColor=`hsl(${c.h},80%,55%)`;
+      ctx.shadowBlur=6;
+      ctx.beginPath();
+      ctx.arc(c.x,c.y,c.radius,0,Math.PI*2);
+      ctx.fill();
+      ctx.shadowBlur=0;
+    }
+
+    // Ash sheets
+    for(const s of ashSheets){
+      ctx.fillStyle='rgba(80,60,100,0.7)';
+      ctx.fillRect(s.x-s.w/2,s.y-s.h/2,s.w,s.h);
+      ctx.strokeStyle='rgba(150,120,180,0.4)';
+      ctx.lineWidth=1;
+      ctx.strokeRect(s.x-s.w/2,s.y-s.h/2,s.w,s.h);
+    }
+
+    // Phoenix trail
+    for(let i=0;i<phoenix.trail.length;i++){
+      const t=phoenix.trail[i];
+      const a=1-(i/phoenix.trail.length);
+      const isFlip=phoenix.flipTimer>0;
+      const hue=isFlip?210:(30+hueOffset%40);
+      ctx.fillStyle=`hsla(${hue},80%,60%,${a*0.4})`;
+      ctx.beginPath();
+      ctx.arc(t.x-i*2,t.y,phoenix.radius*(1-i*0.05),0,Math.PI*2);
+      ctx.fill();
+    }
+
+    // Phoenix body
+    const isFlipped=phoenix.gravFlip===-1;
+    const flipHue=phoenix.flipTimer>0?210:((30+hueOffset*0.5)%60);
+    const bodyColor=`hsl(${flipHue},85%,58%)`;
+    const glowColor=`hsl(${flipHue},85%,65%)`;
+
+    ctx.save();
+    ctx.translate(phoenix.x,phoenix.y);
+    const rot=Math.atan2(phoenix.vy*0.003,1);
+    ctx.rotate(rot);
+
+    // Glow
+    ctx.shadowColor=glowColor;
+    ctx.shadowBlur=15;
+
+    // Body
+    ctx.fillStyle=bodyColor;
+    ctx.beginPath();
+    ctx.ellipse(0,0,phoenix.radius+2,phoenix.radius-2,0,0,Math.PI*2);
+    ctx.fill();
+
+    // Wing
+    const wingA=Math.sin(phoenix.wingPhase)*0.4;
+    ctx.fillStyle=`hsl(${flipHue+15},80%,50%)`;
+    ctx.beginPath();
+    ctx.moveTo(-4,0);
+    ctx.quadraticCurveTo(-12,-14*(isFlipped?-1:1)+wingA*20,-6,-20*(isFlipped?-1:1)+wingA*15);
+    ctx.quadraticCurveTo(0,-10*(isFlipped?-1:1),2,0);
+    ctx.fill();
+
+    // Eye
+    ctx.fillStyle='#fff';
+    ctx.beginPath();
+    ctx.arc(8,-3*(isFlipped?-1:1),3,0,Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle='#111';
+    ctx.beginPath();
+    ctx.arc(9,-3*(isFlipped?-1:1),1.5,0,Math.PI*2);
+    ctx.fill();
+
+    // Tail feathers
+    ctx.strokeStyle=`hsl(${flipHue+30},70%,45%)`;
+    ctx.lineWidth=2;
+    for(let i=0;i<3;i++){
+      ctx.beginPath();
+      ctx.moveTo(-phoenix.radius+2, (i-1)*4);
+      ctx.quadraticCurveTo(-phoenix.radius-8,(i-1)*6,-phoenix.radius-12+i*2,(i-1)*8);
+      ctx.stroke();
+    }
+
+    ctx.shadowBlur=0;
+    ctx.restore();
+
+    // Particles
+    for(let i=0;i<MAX_PARTICLES;i++){
+      const p=particles[i];
+      if(!p.active)continue;
+      const a=p.life/p.maxLife;
+      ctx.globalAlpha=a;
+      ctx.fillStyle=`hsl(${p.h},${p.s}%,${p.l}%)`;
+      ctx.beginPath();
+      ctx.arc(p.x,p.y,p.size*a,0,Math.PI*2);
+      ctx.fill();
+    }
+    ctx.globalAlpha=1;
+
+    // HUD
+    if(state===STATE.PLAYING){
+      // Score
+      ctx.fillStyle='#fff';
+      ctx.font='bold 28px system-ui, sans-serif';
+      ctx.textAlign='center';
+      ctx.fillText(Math.floor(displayScore),W/2,50);
+
+      // Multiplier
+      if(multiplier>1){
+        ctx.fillStyle=`hsl(${40+hueOffset%30},90%,60%)`;
+        ctx.font='bold 20px system-ui, sans-serif';
+        ctx.fillText('Heat x'+multiplier,W/2,78);
+      }
+
+      // Flip timer bar
+      if(phoenix.flipTimer>0){
+        const frac=phoenix.flipTimer/phoenix.flipDuration;
+        const barW=100;
+        const barH=6;
+        const bx=W/2-barW/2;
+        const by=90;
+        ctx.fillStyle='rgba(0,0,0,0.3)';
+        ctx.fillRect(bx,by,barW,barH);
+        ctx.fillStyle='hsl(210,80%,60%)';
+        ctx.fillRect(bx,by,barW*frac,barH);
+        ctx.strokeStyle='rgba(100,180,255,0.4)';
+        ctx.lineWidth=1;
+        ctx.strokeRect(bx,by,barW,barH);
+      }
+    }
+  }
+
+  // Start screen
+  if(state===STATE.START){
+    // Animated bg embers
+    const t=performance.now()/1000;
+    for(let i=0;i<12;i++){
+      const ex=W/2+Math.sin(t*0.5+i*1.3)*120;
+      const ey=H/2+Math.cos(t*0.7+i*0.9)*180;
+      ctx.globalAlpha=0.12+Math.sin(t+i)*0.06;
+      ctx.fillStyle=`hsl(${25+i*5},80%,55%)`;
+      ctx.beginPath();
+      ctx.arc(ex,ey,4+i*0.5,0,Math.PI*2);
+      ctx.fill();
+    }
+    ctx.globalAlpha=1;
+
+    // Title
+    ctx.fillStyle='#fff';
+    ctx.font='bold 48px system-ui, sans-serif';
+    ctx.textAlign='center';
+    ctx.shadowColor='hsl(30,90%,50%)';
+    ctx.shadowBlur=20;
+    ctx.fillText('ASH FLIGHT',W/2,H*0.32);
+    ctx.shadowBlur=0;
+
+    // Subtitle
+    ctx.fillStyle='rgba(255,200,120,0.7)';
+    ctx.font='16px system-ui, sans-serif';
+    ctx.fillText('Heatflip Run',W/2,H*0.32+32);
+
+    // Instructions
+    ctx.fillStyle='rgba(255,255,255,0.6)';
+    ctx.font='14px system-ui, sans-serif';
+    ctx.fillText('Tap to flap \u2022 Blue rings flip gravity',W/2,H*0.52);
+    ctx.fillText('Chain rings for score multiplier',W/2,H*0.52+22);
+
+    // Tap to start
+    const pulse=0.7+Math.sin(t*3)*0.3;
+    ctx.globalAlpha=pulse;
+    ctx.fillStyle='#fff';
+    ctx.font='bold 22px system-ui, sans-serif';
+    ctx.fillText('Tap to Start',W/2,H*0.66);
+    ctx.globalAlpha=1;
+
+    // Best score
+    if(bestScore>0){
+      ctx.fillStyle='rgba(255,180,80,0.6)';
+      ctx.font='15px system-ui, sans-serif';
+      ctx.fillText('Best: '+bestScore,W/2,H*0.74);
+    }
+
+    // Challenge
+    if(challengeScore>0){
+      ctx.fillStyle='hsl(50,90%,65%)';
+      ctx.font='bold 16px system-ui, sans-serif';
+      ctx.fillText('Challenge: Beat '+challengeScore,W/2,H*0.82);
+    }
+  }
+
+  // Game over screen
+  if(state===STATE.GAMEOVER&&gameOverTimer>0.5){
+    ctx.fillStyle='rgba(0,0,0,0.55)';
+    ctx.fillRect(0,0,W,H);
+
+    ctx.fillStyle='#fff';
+    ctx.font='bold 36px system-ui, sans-serif';
+    ctx.textAlign='center';
+    ctx.fillText('GAME OVER',W/2,H*0.3);
+
+    ctx.font='bold 52px system-ui, sans-serif';
+    ctx.fillStyle='hsl(40,90%,60%)';
+    ctx.fillText(Math.floor(score),W/2,H*0.42);
+
+    ctx.font='15px system-ui, sans-serif';
+    ctx.fillStyle='rgba(255,255,255,0.5)';
+    ctx.fillText('Best: '+bestScore,W/2,H*0.48);
+
+    if(challengeCleared){
+      ctx.fillStyle='hsl(120,70%,60%)';
+      ctx.font='bold 16px system-ui, sans-serif';
+      ctx.fillText('Challenge Cleared!',W/2,H*0.54);
+    }else if(challengeScore>0){
+      ctx.fillStyle='rgba(255,100,80,0.7)';
+      ctx.font='14px system-ui, sans-serif';
+      ctx.fillText('Challenge: '+challengeScore+' (not beaten)',W/2,H*0.54);
+    }
+
+    const p2=0.7+Math.sin(performance.now()/1000*3)*0.3;
+    ctx.globalAlpha=p2;
+    ctx.fillStyle='#fff';
+    ctx.font='bold 20px system-ui, sans-serif';
+    ctx.fillText('Tap to Retry',W/2,H*0.68);
+    ctx.globalAlpha=1;
+  }
+
+  ctx.restore();
+}
+
+requestAnimationFrame(update);
+
+})();
+</script>
+</body>
+</html>

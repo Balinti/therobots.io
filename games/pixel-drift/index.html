@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Pixel Drift - Free HTML5 Game</title>
+  <meta name="description" content="Play Pixel Drift - Swipe to jump gaps while the camera zooms dynamically around a glowing neon metropolis.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a0a1a">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Pixel Drift - Free HTML5 Game">
+  <meta property="og:description" content="Play Pixel Drift - Swipe to jump gaps while the camera zooms dynamically around a glowing neon metropolis.">
+  <meta property="og:url" content="https://balinti.github.io/pixel-drift/">
+  <meta property="og:image" content="https://balinti.github.io/pixel-drift/preview.png">
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%; height: 100%;
+      background: #0a0a1a;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Courier New', monospace;
+      overflow: hidden;
+      touch-action: manipulation;
+    }
+
+    #wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 100%;
+      max-width: 420px;
+    }
+
+    #gameCanvas {
+      display: block;
+      width: 100%;
+      max-width: 420px;
+      max-height: 750px;
+      aspect-ratio: 420 / 750;
+      cursor: pointer;
+      touch-action: none;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      border-radius: 4px;
+      box-shadow: 0 0 40px rgba(0,255,255,0.15), 0 0 80px rgba(0,255,255,0.05);
+    }
+
+    #howto {
+      margin-top: 10px;
+      color: rgba(0,220,255,0.45);
+      font-size: 11px;
+      text-align: center;
+      letter-spacing: 0.08em;
+      line-height: 1.6;
+      padding: 0 8px;
+      max-width: 420px;
+    }
+
+    @media (max-height: 700px) {
+      #howto { display: none; }
+    }
+  </style>
+</head>
+<body>
+<div id="wrapper">
+  <canvas id="gameCanvas"></canvas>
+  <p id="howto">TAP or SPACE to flip rail &bull; Dodge blocks &amp; gaps &bull; Perfect Drifts = combo bonus<br>
+  Cyan&rarr;Magenta&rarr;Gold rail color tracks your combo streak</p>
+</div>
+<script>
+(function() {
+'use strict';
+
+// Canvas setup
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const DPR = window.devicePixelRatio || 1;
+const LOGICAL_W = 420;
+const LOGICAL_H = 750;
+
+function resizeCanvas() {
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = Math.round(rect.width * DPR);
+  canvas.height = Math.round(rect.height * DPR);
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+function getScale() { return canvas.width / LOGICAL_W; }
+
+// Constants
+const RAIL_TOP_Y     = 140;
+const RAIL_BOT_Y     = LOGICAL_H - 140;
+const PLAYER_W       = 14;
+const PLAYER_H       = 14;
+const PLAYER_X       = 90;
+const BASE_SPEED     = 220;
+const MAX_SPEED      = 520;
+const SPEED_RAMP     = 18;
+const GAP_MIN_W      = 60;
+const GAP_MAX_W      = 130;
+const BLOCK_MIN_W    = 24;
+const BLOCK_MAX_W    = 52;
+const BLOCK_H        = 22;
+const SPAWN_MIN      = 0.5;
+const SPAWN_MAX      = 1.8;
+const PERFECT_WINDOW = 30;
+
+// State
+let state = 'start';
+let score = 0;
+let bestScore = parseInt(localStorage.getItem('pixelDrift_best') || '0');
+let combo = 0;
+let distance = 0;
+let speed = BASE_SPEED;
+let playerRail = 'bottom';
+let flipAnim = 0;
+let lastTime = 0;
+let shakeMag = 0;
+let shakeDur = 0;
+let zoomScale = 1;
+let zoomTarget = 1;
+let hue = 180;
+let hueTarget = 180;
+let particles = [];
+let speedLines = [];
+let hazards = [];
+let buildings = [];
+let spawnTimer = 0;
+let nextSpawnAt = 1.2;
+let trail = [];
+
+function rand(a, b) { return a + Math.random() * (b - a); }
+function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+function lerp(a, b, t) { return a + (b - a) * t; }
+function railY(rail) { return rail === 'top' ? RAIL_TOP_Y : RAIL_BOT_Y; }
+
+// Particles
+function spawnPerfectSparks(x, y, count) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const spd = rand(60, 220);
+    particles.push({
+      type: 'spark', x, y,
+      vx: Math.cos(angle) * spd, vy: Math.sin(angle) * spd,
+      life: 1, decay: rand(1.4, 2.4), size: rand(2, 5),
+      hue: hue + rand(-20, 20)
+    });
+  }
+}
+
+function spawnNearStreaks(x, y) {
+  for (let i = 0; i < 8; i++) {
+    particles.push({
+      type: 'streak', x: x + rand(-4, 4), y: y + rand(-6, 6),
+      vx: rand(-180, -60), vy: rand(-20, 20),
+      life: 1, decay: rand(2.5, 4), len: rand(18, 40),
+      hue: hue + rand(-30, 30)
+    });
+  }
+}
+
+function spawnDeathChunks(x, y) {
+  for (let i = 0; i < 32; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const spd = rand(80, 360);
+    particles.push({
+      type: 'chunk', x: x + rand(-8, 8), y: y + rand(-8, 8),
+      vx: Math.cos(angle) * spd, vy: Math.sin(angle) * spd,
+      life: 1, decay: rand(0.7, 1.4), size: rand(3, 8),
+      hue: rand(0, 360), gravity: rand(120, 280)
+    });
+  }
+}
+
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.life -= p.decay * dt;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    if (p.gravity) p.vy += p.gravity * dt;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    const a = Math.max(0, p.life);
+    if (p.type === 'spark') {
+      ctx.globalAlpha = a * 0.25;
+      ctx.fillStyle = `hsl(${p.hue},100%,70%)`;
+      ctx.fillRect(p.x - p.size * 2, p.y - p.size * 2, p.size * 4, p.size * 4);
+      ctx.globalAlpha = a * 0.9;
+      ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+    } else if (p.type === 'streak') {
+      ctx.globalAlpha = a * 0.7;
+      ctx.strokeStyle = `hsl(${p.hue},100%,75%)`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + p.len, p.y); ctx.stroke();
+    } else if (p.type === 'chunk') {
+      ctx.globalAlpha = a * 0.85;
+      ctx.fillStyle = `hsl(${p.hue},90%,65%)`;
+      ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+// Speed lines
+function initSpeedLines() {
+  speedLines = [];
+  for (let i = 0; i < 18; i++) {
+    speedLines.push({
+      x: rand(0, LOGICAL_W), y: rand(0, LOGICAL_H),
+      len: rand(30, 100), h: rand(0.5, 1.5), alpha: rand(0.03, 0.10)
+    });
+  }
+}
+
+function updateSpeedLines(dt) {
+  for (const sl of speedLines) {
+    sl.x -= speed * dt * 1.5;
+    if (sl.x + sl.len < 0) {
+      sl.x = LOGICAL_W + rand(0, 80); sl.y = rand(0, LOGICAL_H);
+      sl.len = rand(30, 100); sl.alpha = rand(0.03, 0.12) * (speed / MAX_SPEED);
+    }
+  }
+}
+
+function drawSpeedLines() {
+  for (const sl of speedLines) {
+    ctx.globalAlpha = sl.alpha;
+    ctx.fillStyle = `hsl(${hue},80%,80%)`;
+    ctx.fillRect(sl.x, sl.y, sl.len, sl.h);
+  }
+  ctx.globalAlpha = 1;
+}
+
+// Buildings
+function makeBuilding(x) {
+  const h = rand(60, 240);
+  return { x, w: rand(28, 70), h, y: LOGICAL_H - h, hue: 160 + Math.random() * 140 };
+}
+
+function initBuildings() {
+  buildings = [];
+  for (let i = 0; i < 14; i++) buildings.push(makeBuilding(rand(0, LOGICAL_W * 1.5)));
+}
+
+function updateBuildings(dt) {
+  for (const b of buildings) {
+    b.x -= speed * 0.18 * dt;
+    if (b.x + b.w < -10) Object.assign(b, makeBuilding(LOGICAL_W + rand(0, 60)));
+  }
+}
+
+function drawBuildings() {
+  for (const b of buildings) {
+    ctx.globalAlpha = 0.12;
+    ctx.fillStyle = `hsl(${b.hue},60%,40%)`;
+    ctx.fillRect(b.x - 3, b.y - 3, b.w + 6, b.h + 6);
+    ctx.globalAlpha = 0.55;
+    ctx.fillStyle = `hsl(${b.hue},30%,12%)`;
+    ctx.fillRect(b.x, b.y, b.w, b.h);
+    ctx.globalAlpha = 0.35;
+    const winW = 5, winH = 4, gapX = 8, gapY = 10;
+    for (let wy = b.y + 8; wy < b.y + b.h - 10; wy += gapY) {
+      for (let wx = b.x + 6; wx < b.x + b.w - 6; wx += gapX) {
+        if (Math.random() < 0.65) {
+          ctx.fillStyle = `hsl(${b.hue + rand(-20, 20)},80%,70%)`;
+          ctx.fillRect(wx, wy, winW, winH);
+        }
+      }
+    }
+    ctx.globalAlpha = 0.25;
+    ctx.strokeStyle = `hsl(${b.hue},80%,60%)`;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(b.x, b.y, b.w, b.h);
+  }
+  ctx.globalAlpha = 1;
+}
+
+// Rails
+function drawRail(ry, isActive) {
+  const a = isActive ? 1 : 0.35;
+  ctx.globalAlpha = a * 0.3;
+  ctx.strokeStyle = `hsl(${hue},100%,65%)`;
+  ctx.lineWidth = 6;
+  ctx.beginPath(); ctx.moveTo(0, ry); ctx.lineTo(LOGICAL_W, ry); ctx.stroke();
+  ctx.globalAlpha = a;
+  ctx.strokeStyle = `hsl(${hue},100%,80%)`;
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0, ry); ctx.lineTo(LOGICAL_W, ry); ctx.stroke();
+  ctx.globalAlpha = 1;
+}
+
+// Hazards
+function spawnHazard() {
+  const diff = clamp(distance / 2000, 0, 1);
+  const roll = Math.random();
+  const rail = Math.random() < 0.5 ? 'top' : 'bottom';
+
+  if (roll < 0.45) {
+    const bW = rand(BLOCK_MIN_W, BLOCK_MAX_W * (0.8 + diff * 0.3));
+    hazards.push({ type: 'block', rail, x: LOGICAL_W + 60, w: bW, warned: false, passed: false });
+  } else if (roll < 0.82) {
+    const gW = rand(GAP_MIN_W, GAP_MAX_W * (0.7 + diff * 0.4));
+    hazards.push({ type: 'gap', rail, x: LOGICAL_W + 60, w: gW, warned: false, passed: false });
+  } else {
+    // pinch: block on both rails, staggered
+    const bW = rand(BLOCK_MIN_W, BLOCK_MAX_W);
+    hazards.push({ type: 'block', rail: 'top',    x: LOGICAL_W + 60, w: bW, warned: false, passed: false });
+    hazards.push({ type: 'block', rail: 'bottom', x: LOGICAL_W + 60 + rand(50, 110), w: bW, warned: false, passed: false });
+  }
+}
+
+function updateHazards(dt) {
+  for (let i = hazards.length - 1; i >= 0; i--) {
+    const h = hazards[i];
+    h.x -= speed * dt;
+    if (!h.warned && h.x - PLAYER_X < speed * 0.95) h.warned = true;
+
+    // near-miss check: hazard just passed player on opposite rail
+    if (!h.passed && h.x + h.w < PLAYER_X - PLAYER_W / 2) {
+      h.passed = true;
+      if (h.rail !== playerRail) {
+        const dy = Math.abs(railY(playerRail) - railY(h.rail));
+        if (dy < 80) {
+          combo++;
+          score += 50 * Math.min(combo, 8);
+          spawnNearStreaks(PLAYER_X, railY(h.rail));
+          updateHue();
+        }
+      }
+    }
+
+    if (h.x + h.w < -100) hazards.splice(i, 1);
+  }
+}
+
+function updateHue() {
+  if (combo < 5)      hueTarget = 180;
+  else if (combo < 9) hueTarget = 300;
+  else                hueTarget = 45;
+}
+
+function checkCollisions() {
+  const px = PLAYER_X;
+  for (const h of hazards) {
+    if (h.passed || h.rail !== playerRail) continue;
+    const pL = px - PLAYER_W / 2, pR = px + PLAYER_W / 2;
+    if (h.type === 'block') {
+      if (pR > h.x && pL < h.x + h.w) { triggerDeath(); return; }
+    } else if (h.type === 'gap') {
+      if (px > h.x && px < h.x + h.w) { triggerDeath(); return; }
+    }
+  }
+}
+
+// Flip
+function doFlip() {
+  if (state !== 'playing') return;
+  const prev = playerRail;
+  playerRail = playerRail === 'top' ? 'bottom' : 'top';
+  flipAnim = 1;
+
+  // perfect drift check
+  for (const h of hazards) {
+    if (h.passed || h.rail !== prev) continue;
+    const dist = h.x - (PLAYER_X + PLAYER_W / 2);
+    if (dist > 0 && dist < PERFECT_WINDOW + 20) {
+      combo++;
+      score += 150 * Math.min(combo, 8);
+      spawnPerfectSparks(PLAYER_X, railY(prev), 18);
+      shakeMag = 1.5; shakeDur = 0.12;
+      zoomTarget = 1.03;
+      updateHue();
+      break;
+    }
+  }
+}
+
+// Death
+function triggerDeath() {
+  state = 'gameover';
+  spawnDeathChunks(PLAYER_X, railY(playerRail));
+  shakeMag = 8; shakeDur = 0.45;
+  zoomTarget = 1;
+  if (score > bestScore) {
+    bestScore = score;
+    localStorage.setItem('pixelDrift_best', bestScore);
+  }
+}
+
+// Trail
+function updateTrail() {
+  trail.unshift({ x: PLAYER_X, y: railY(playerRail), hue });
+  if (trail.length > 18) trail.pop();
+}
+
+function drawTrail() {
+  for (let i = 0; i < trail.length; i++) {
+    const t = trail[i];
+    const a = (1 - i / trail.length) * 0.55;
+    const sz = PLAYER_W * (1 - i / trail.length) * 0.7;
+    ctx.globalAlpha = a * 0.3;
+    ctx.fillStyle = `hsl(${t.hue},100%,65%)`;
+    ctx.fillRect(t.x - sz * 1.5, t.y - sz * 1.5, sz * 3, sz * 3);
+    ctx.globalAlpha = a;
+    ctx.fillRect(t.x - sz / 2, t.y - sz / 2, sz, sz);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawPlayer() {
+  if (state === 'gameover') return;
+  const px = PLAYER_X, py = railY(playerRail);
+  const flip = Math.sin(flipAnim * Math.PI);
+  const sx = PLAYER_W * (1 + flip * 0.35);
+  const sy = PLAYER_H * (1 - flip * 0.25);
+  // glow
+  ctx.globalAlpha = 0.35 + flip * 0.2;
+  ctx.fillStyle = `hsl(${hue},100%,65%)`;
+  ctx.fillRect(px - PLAYER_W - 4, py - PLAYER_H - 4, PLAYER_W * 2 + 8, PLAYER_H + 8);
+  // body
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = `hsl(${hue},90%,75%)`;
+  ctx.fillRect(px - sx / 2, py - sy / 2, sx, sy);
+  // core
+  ctx.fillStyle = '#fff';
+  ctx.globalAlpha = 0.7;
+  ctx.fillRect(px - sx / 2 + 2, py - sy / 2 + 2, sx - 4, sy - 4);
+  ctx.globalAlpha = 1;
+}
+
+// Hazard drawing
+function drawHazards() {
+  const t = Date.now();
+  for (const h of hazards) {
+    const ry = railY(h.rail);
+    if (h.type === 'block') {
+      if (h.warned) {
+        ctx.globalAlpha = 0.35 + 0.25 * Math.sin(t / 80);
+        ctx.fillStyle = '#ff4444';
+        ctx.fillRect(h.x - 5, ry - BLOCK_H - 5, h.w + 10, BLOCK_H + 10);
+      }
+      ctx.globalAlpha = 0.28;
+      ctx.fillStyle = '#ff2222';
+      ctx.fillRect(h.x - 3, ry - BLOCK_H - 3, h.w + 6, BLOCK_H + 6);
+      ctx.globalAlpha = 0.92;
+      ctx.fillStyle = '#cc1111';
+      ctx.fillRect(h.x, ry - BLOCK_H, h.w, BLOCK_H);
+      ctx.globalAlpha = 0.7;
+      ctx.strokeStyle = '#ff6666';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(h.x, ry - BLOCK_H, h.w, BLOCK_H);
+      ctx.globalAlpha = 0.5;
+      ctx.fillStyle = '#ffaa00';
+      for (let sx = h.x + 4; sx < h.x + h.w - 4; sx += 10) {
+        ctx.fillRect(sx, ry - BLOCK_H + 4, 5, BLOCK_H - 8);
+      }
+    } else if (h.type === 'gap') {
+      if (h.warned) {
+        ctx.globalAlpha = 0.4 + 0.2 * Math.sin(t / 100);
+        ctx.fillStyle = '#ff8800';
+        ctx.fillRect(h.x - 4, ry - 8, h.w + 8, 16);
+      }
+      ctx.globalAlpha = 0.88;
+      ctx.fillStyle = '#050510';
+      ctx.fillRect(h.x, ry - 5, h.w, 10);
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = '#ff6600';
+      ctx.fillRect(h.x - 3, ry - 6, 6, 12);
+      ctx.fillRect(h.x + h.w - 3, ry - 6, 6, 12);
+    }
+    ctx.globalAlpha = 1;
+  }
+}
+
+// HUD
+function drawHUD() {
+  ctx.textAlign = 'center';
+  if (combo >= 2) {
+    const label = combo >= 9 ? `GOLD x${combo}` : combo >= 5 ? `DRIFT x${combo}` : `x${combo}`;
+    ctx.globalAlpha = 0.8;
+    ctx.font = 'bold 14px "Courier New",monospace';
+    ctx.fillStyle = `hsl(${hue},100%,70%)`;
+    ctx.fillText(label, LOGICAL_W / 2, 55);
+  }
+  ctx.font = 'bold 28px "Courier New",monospace';
+  ctx.globalAlpha = 0.9;
+  ctx.fillStyle = `hsl(${hue},80%,80%)`;
+  ctx.fillText(Math.floor(score), LOGICAL_W / 2, 38);
+  ctx.globalAlpha = 0.45;
+  ctx.font = '11px "Courier New",monospace';
+  ctx.fillStyle = '#aaa';
+  ctx.fillText('BEST ' + bestScore, LOGICAL_W / 2, 78);
+  ctx.globalAlpha = 1;
+}
+
+// Start screen
+function drawStartScreen() {
+  ctx.globalAlpha = 0.82;
+  ctx.fillStyle = '#0a0a1a';
+  ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
+  ctx.globalAlpha = 1;
+  ctx.textAlign = 'center';
+  // glow
+  ctx.globalAlpha = 0.3;
+  ctx.font = 'bold 56px "Courier New",monospace';
+  ctx.fillStyle = `hsl(${hue},100%,65%)`;
+  ctx.fillText('PIXEL', LOGICAL_W / 2, LOGICAL_H / 2 - 68);
+  ctx.fillText('DRIFT', LOGICAL_W / 2, LOGICAL_H / 2 - 12);
+  ctx.globalAlpha = 1;
+  ctx.font = 'bold 50px "Courier New",monospace';
+  ctx.fillStyle = `hsl(${hue},90%,78%)`;
+  ctx.fillText('PIXEL', LOGICAL_W / 2, LOGICAL_H / 2 - 68);
+  ctx.fillStyle = `hsl(${hue + 40},90%,78%)`;
+  ctx.fillText('DRIFT', LOGICAL_W / 2, LOGICAL_H / 2 - 12);
+  ctx.globalAlpha = 0.7;
+  ctx.font = '13px "Courier New",monospace';
+  ctx.fillStyle = '#ccc';
+  ctx.fillText('Rail Flip Runner', LOGICAL_W / 2, LOGICAL_H / 2 + 28);
+  const pulse = 0.65 + 0.35 * Math.sin(Date.now() / 380);
+  ctx.globalAlpha = pulse;
+  ctx.font = 'bold 16px "Courier New",monospace';
+  ctx.fillStyle = `hsl(${hue},100%,75%)`;
+  ctx.fillText('TAP TO START', LOGICAL_W / 2, LOGICAL_H / 2 + 80);
+  ctx.globalAlpha = 0.5;
+  ctx.font = '11px "Courier New",monospace';
+  ctx.fillStyle = '#aaa';
+  ctx.fillText('TAP / SPACE \u2192 flip rail', LOGICAL_W / 2, LOGICAL_H / 2 + 112);
+  ctx.fillText('Dodge blocks & gaps', LOGICAL_W / 2, LOGICAL_H / 2 + 130);
+  ctx.globalAlpha = 1;
+}
+
+// Game over screen
+function drawGameOverScreen() {
+  ctx.globalAlpha = 0.78;
+  ctx.fillStyle = '#0a0a1a';
+  ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
+  ctx.globalAlpha = 1;
+  ctx.textAlign = 'center';
+  ctx.globalAlpha = 0.3;
+  ctx.font = 'bold 44px "Courier New",monospace';
+  ctx.fillStyle = '#ff3344';
+  ctx.fillText('GAME OVER', LOGICAL_W / 2, LOGICAL_H / 2 - 80);
+  ctx.globalAlpha = 1;
+  ctx.font = 'bold 38px "Courier New",monospace';
+  ctx.fillStyle = '#ff5566';
+  ctx.fillText('GAME OVER', LOGICAL_W / 2, LOGICAL_H / 2 - 80);
+  ctx.globalAlpha = 0.9;
+  ctx.font = '16px "Courier New",monospace';
+  ctx.fillStyle = '#ccc';
+  ctx.fillText('SCORE', LOGICAL_W / 2, LOGICAL_H / 2 - 28);
+  ctx.font = 'bold 36px "Courier New",monospace';
+  ctx.fillStyle = `hsl(${hue},90%,78%)`;
+  ctx.fillText(Math.floor(score), LOGICAL_W / 2, LOGICAL_H / 2 + 8);
+  const isNew = score > 0 && score >= bestScore;
+  ctx.font = '13px "Courier New",monospace';
+  ctx.fillStyle = isNew ? '#ffdd44' : '#888';
+  ctx.globalAlpha = isNew ? 1 : 0.6;
+  ctx.fillText(isNew ? 'NEW BEST!  ' + bestScore : 'BEST  ' + bestScore, LOGICAL_W / 2, LOGICAL_H / 2 + 44);
+  const pulse = 0.65 + 0.35 * Math.sin(Date.now() / 380);
+  ctx.globalAlpha = pulse;
+  ctx.font = 'bold 16px "Courier New",monospace';
+  ctx.fillStyle = `hsl(${hue},100%,75%)`;
+  ctx.fillText('TAP TO RETRY', LOGICAL_W / 2, LOGICAL_H / 2 + 100);
+  ctx.globalAlpha = 1;
+}
+
+// Init game
+function initGame() {
+  score = 0; combo = 0; distance = 0;
+  speed = BASE_SPEED; playerRail = 'bottom'; flipAnim = 0;
+  hue = 180; hueTarget = 180;
+  hazards = []; particles = []; trail = [];
+  spawnTimer = 0; nextSpawnAt = 1.2;
+  zoomScale = 1; zoomTarget = 1;
+  shakeMag = 0; shakeDur = 0;
+  initBuildings(); initSpeedLines();
+  lastTime = performance.now();
+}
+
+// Update
+function update(dt) {
+  if (state !== 'playing') return;
+  speed = Math.min(MAX_SPEED, speed + SPEED_RAMP * dt);
+  distance += speed * dt;
+  score = Math.floor(distance / 10) + combo * 10;
+  hue = lerp(hue, hueTarget, dt * 3);
+  if (flipAnim > 0) flipAnim = Math.max(0, flipAnim - dt * 6);
+  zoomScale = lerp(zoomScale, zoomTarget, dt * 5);
+  if (zoomTarget > 1 && Math.abs(zoomScale - zoomTarget) < 0.002) zoomTarget = 1;
+  if (shakeDur > 0) { shakeDur -= dt; if (shakeDur <= 0) { shakeDur = 0; shakeMag = 0; } }
+
+  spawnTimer += dt;
+  if (spawnTimer >= nextSpawnAt) {
+    spawnTimer = 0;
+    const diff = clamp(distance / 2000, 0, 1);
+    nextSpawnAt = rand(SPAWN_MIN, lerp(SPAWN_MAX, SPAWN_MIN + 0.2, diff));
+    spawnHazard();
+  }
+
+  updateHazards(dt);
+  updateParticles(dt);
+  updateSpeedLines(dt);
+  updateBuildings(dt);
+  updateTrail();
+  checkCollisions();
+}
+
+// Draw
+function draw() {
+  const scale = getScale();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  let sx = 0, sy = 0;
+  if (shakeDur > 0) {
+    sx = (Math.random() - 0.5) * shakeMag * 2;
+    sy = (Math.random() - 0.5) * shakeMag * 2;
+  }
+
+  const cx = LOGICAL_W / 2, cy = LOGICAL_H / 2;
+  ctx.setTransform(
+    scale * zoomScale, 0, 0, scale * zoomScale,
+    (canvas.width / 2 - cx * scale * zoomScale) + sx * scale,
+    (canvas.height / 2 - cy * scale * zoomScale) + sy * scale
+  );
+
+  // background
+  const grad = ctx.createLinearGradient(0, 0, 0, LOGICAL_H);
+  grad.addColorStop(0, '#050510');
+  grad.addColorStop(0.5, '#080818');
+  grad.addColorStop(1, '#050510');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
+
+  drawBuildings();
+  drawSpeedLines();
+
+  if (state !== 'start') {
+    drawRail(RAIL_TOP_Y, playerRail === 'top');
+    drawRail(RAIL_BOT_Y, playerRail === 'bottom');
+  }
+
+  if (state === 'playing' || state === 'gameover') drawHazards();
+  if (state === 'playing') { drawTrail(); drawPlayer(); }
+  drawParticles();
+  if (state === 'playing') drawHUD();
+  if (state === 'start') drawStartScreen();
+  else if (state === 'gameover') drawGameOverScreen();
+}
+
+// Game loop
+function loop(ts) {
+  requestAnimationFrame(loop);
+  const dt = Math.min((ts - lastTime) / 1000, 0.05);
+  lastTime = ts;
+
+  if (state === 'start') {
+    hueTarget = 180 + 40 * Math.sin(ts / 2000);
+    hue = lerp(hue, hueTarget, dt * 1.5);
+    updateBuildings(dt);
+  }
+  if (state === 'gameover') updateParticles(dt);
+
+  update(dt);
+  draw();
+}
+
+// Input
+function handleInput() {
+  if (state === 'start') { state = 'playing'; initGame(); }
+  else if (state === 'playing') doFlip();
+  else if (state === 'gameover') { state = 'playing'; initGame(); }
+}
+
+canvas.addEventListener('pointerdown', (e) => { e.preventDefault(); handleInput(); });
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); handleInput(); }
+});
+canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+// Boot
+initBuildings();
+initSpeedLines();
+lastTime = performance.now();
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

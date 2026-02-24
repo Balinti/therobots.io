@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Split Ember - Free HTML5 Game</title>
+<meta name="description" content="Play Split Ember - Tap to split and balance two characters on a crackling lava bridge without falling.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<link rel="canonical" href="https://balinti.github.io/split-ember/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Split Ember - Free HTML5 Game">
+<meta property="og:description" content="Tap to split and balance two characters on a crackling lava bridge without falling.">
+<meta property="og:url" content="https://balinti.github.io/split-ember/">
+<meta property="og:image" content="https://balinti.github.io/split-ember/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Split Ember - Free HTML5 Game">
+<meta name="twitter:description" content="Tap to split and balance two characters on a crackling lava bridge without falling.">
+<meta name="twitter:image" content="https://balinti.github.io/split-ember/og-image.png">
+<meta name="theme-color" content="#1a0a00">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#0d0500;overflow:hidden;font-family:'Segoe UI',Arial,sans-serif;color:#fff}
+#wrap{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;width:100%;min-height:100vh;padding-bottom:60px}
+#gameContainer{position:relative;width:100%;max-width:420px;flex-shrink:0}
+canvas{display:block;width:100%;height:auto;touch-action:none}
+#below{max-width:420px;width:100%;padding:12px 16px 0;color:#a07050;font-size:13px;line-height:1.6}
+#below h2{color:#e8803a;font-size:16px;margin-bottom:6px}
+#below p{margin-bottom:8px}
+#challengeBanner{display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:linear-gradient(90deg,#c44200,#ff7c00);color:#fff;text-align:center;padding:8px 16px;font-size:14px;font-weight:bold;letter-spacing:.5px}
+</style>
+</head>
+<body>
+<div id="challengeBanner"></div>
+<div id="wrap">
+  <div id="gameContainer">
+    <canvas id="c"></canvas>
+  </div>
+  <div id="below">
+    <h2>How to Play</h2>
+    <p><strong>Tap or press Space/Enter</strong> to toggle between MERGED and SPLIT mode.</p>
+    <p>In <strong>MERGED</strong> mode your ember travels down the center lane. Pass through blue merge gates and double-break sections.</p>
+    <p>In <strong>SPLIT</strong> mode your ember splits into two runners on the left and right rails. Clear split gaps and survive single rail breaks for a <em>CLUTCH</em> bonus!</p>
+    <p>Survive as long as possible, rack up multipliers, and beat your high score!</p>
+    <p style="color:#704030;font-size:11px">A free browser game — no download required. Works on mobile and desktop.</p>
+  </div>
+</div>
+<script>
+(function(){
+'use strict';
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+const LW=420,LH=750;
+const CENTER_X=210,RAIL_OFFSET=78,LEFT_X=132,RIGHT_X=288,RUNNER_Y=540;
+const HS_KEY='splitEmber_highScore';
+
+const OB={MERGE_GATE:0,SPLIT_GAP:1,LEFT_BREAK:2,RIGHT_BREAK:3,DOUBLE_BREAK:4};
+
+// ─── Canvas setup ─────────────────────────────────────────────────────────────
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+let DPR=Math.min(window.devicePixelRatio||1,3);
+let canvasW,canvasH;
+
+function resizeCanvas(){
+  const cont=document.getElementById('gameContainer');
+  const w=Math.min(cont.clientWidth,420);
+  const h=Math.round(w*(LH/LW));
+  canvasW=w; canvasH=h;
+  canvas.width=Math.round(w*DPR);
+  canvas.height=Math.round(h*DPR);
+  canvas.style.width=w+'px';
+  canvas.style.height=h+'px';
+}
+resizeCanvas();
+window.addEventListener('resize',resizeCanvas);
+
+// scale logical -> canvas pixels
+function sx(x){return x*(canvasW/LW)*DPR}
+function sy(y){return y*(canvasH/LH)*DPR}
+function ss(s){return s*(canvasW/LW)*DPR}
+
+// ─── State ────────────────────────────────────────────────────────────────────
+let state='start'; // start | playing | gameover
+let isMerged=true;
+let score=0,distance=0,meters=0;
+let streak=0,multiplier=1;
+let highScore=parseInt(localStorage.getItem(HS_KEY)||'0')||0;
+let t=0; // game time in seconds
+let scrollY=0;
+let obstacles=[];
+let particles=[];
+let lastOb=null;
+let nextSpawnDist=0;
+let shakeAmt=0,shakeDur=0;
+let hue=0;
+let gameoverTimer=0;
+let gameoverLock=false;
+let bgBands=[];
+
+// banner
+(function(){
+  const p=new URLSearchParams(location.search);
+  const sc=p.get('score');
+  if(sc&&parseInt(sc)>0){
+    const b=document.getElementById('challengeBanner');
+    b.textContent='Can you beat '+parseInt(sc)+' points?';
+    b.style.display='block';
+    setTimeout(()=>{b.style.display='none'},4000);
+  }
+})();
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function clamp01(v){return Math.max(0,Math.min(1,v))}
+function rand(a,b){return a+(b-a)*Math.random()}
+function randInt(a,b){return Math.floor(rand(a,b+1))}
+
+function diffParams(){
+  const s=Math.min(760,260+22*t+0.9*t*t);
+  const si=Math.max(0.55,1.05-0.012*t);
+  const ph=clamp01((t-18)/30);
+  const w=[1.0,1.0,0.6+0.8*ph,0.6+0.8*ph,0.05+0.35*ph];
+  return{scrollSpeed:s,spawnInterval:si,weights:w};
+}
+
+function pickObstacle(){
+  const{weights}=diffParams();
+  // fairness: never double_break twice in a row
+  let ws=[...weights];
+  if(lastOb!==null&&lastOb.type===OB.DOUBLE_BREAK) ws[OB.DOUBLE_BREAK]=0;
+  const total=ws.reduce((a,b)=>a+b,0);
+  let r=Math.random()*total;
+  for(let i=0;i<ws.length;i++){if(r<ws[i])return i;r-=ws[i];}
+  return 0;
+}
+
+function getMultiplier(str){
+  if(str>=10)return 4.0;
+  if(str>=6)return 3.0;
+  if(str>=3)return 2.0;
+  if(str>=1)return 1.5;
+  return 1.0;
+}
+
+// ─── Particles ────────────────────────────────────────────────────────────────
+function spawnTrail(x,y,h){
+  for(let i=0;i<2;i++){
+    particles.push({
+      x,y,
+      vx:rand(-18,18),vy:rand(-40,-10),
+      life:rand(0.3,0.7),maxLife:rand(0.3,0.7),
+      r:rand(2,5),
+      hue:h+rand(-20,20),
+      type:'trail'
+    });
+  }
+}
+
+function spawnBurst(x,y,h,count){
+  count=count||20;
+  for(let i=0;i<count;i++){
+    const a=rand(0,Math.PI*2);
+    const sp=rand(40,200);
+    particles.push({
+      x,y,
+      vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,
+      life:rand(0.4,1.0),maxLife:rand(0.4,1.0),
+      r:rand(2,7),
+      hue:h+rand(-30,30),
+      type:'burst'
+    });
+  }
+}
+
+function updateParticles(dt){
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    p.x+=p.vx*dt;
+    p.y+=p.vy*dt;
+    p.vy+=80*dt; // gravity
+    p.life-=dt;
+    if(p.life<=0){particles.splice(i,1);}
+  }
+}
+
+function drawParticles(){
+  for(const p of particles){
+    const a=Math.max(0,p.life/p.maxLife);
+    ctx.globalAlpha=a*0.85;
+    ctx.fillStyle=`hsl(${p.hue},100%,60%)`;
+    const r=ss(p.r*a);
+    ctx.beginPath();
+    ctx.arc(sx(p.x),sy(p.y),Math.max(0.5,r),0,Math.PI*2);
+    ctx.fill();
+  }
+  ctx.globalAlpha=1;
+}
+
+// ─── Shake ────────────────────────────────────────────────────────────────────
+function doShake(amt,dur){
+  shakeAmt=Math.max(shakeAmt,amt);
+  shakeDur=Math.max(shakeDur,dur);
+}
+
+// ─── Obstacle spawning ────────────────────────────────────────────────────────
+function spawnObstacle(first){
+  const type=first?OB.MERGE_GATE:pickObstacle();
+  const ob={
+    type,
+    y:-60, // logical y, scrolls down
+    passed:false,
+    evaluated:false
+  };
+  obstacles.push(ob);
+  lastOb=ob;
+}
+
+function resetGame(){
+  state='playing';
+  isMerged=true;
+  score=0; distance=0; meters=0;
+  streak=0; multiplier=1;
+  t=0; scrollY=0;
+  obstacles=[];
+  particles=[];
+  lastOb=null;
+  shakeAmt=0; shakeDur=0;
+  hue=0;
+  gameoverTimer=0;
+  gameoverLock=true;
+  // first obstacle quickly
+  nextSpawnDist=180;
+  spawnObstacle(true);
+}
+
+// ─── Evaluate obstacle ────────────────────────────────────────────────────────
+function evaluateObstacle(ob){
+  if(ob.evaluated)return;
+  ob.evaluated=true;
+  const type=ob.type;
+  let pass=false,clutch=false,fail=false;
+
+  if(isMerged){
+    // MERGED: fail if requires SPLIT, or center not solid
+    if(type===OB.SPLIT_GAP){fail=true;}
+    else if(type===OB.DOUBLE_BREAK){pass=true;} // center solid, MERGED ok
+    else if(type===OB.MERGE_GATE){pass=true;streak++;}
+    else{pass=true;} // LEFT_BREAK, RIGHT_BREAK ok in merged
+  } else {
+    // SPLIT: fail if requires MERGED OR both rails missing
+    if(type===OB.MERGE_GATE){fail=true;}
+    else if(type===OB.DOUBLE_BREAK){fail=true;}
+    else if(type===OB.SPLIT_GAP){pass=true;streak++;}
+    else if(type===OB.LEFT_BREAK){clutch=true;}
+    else if(type===OB.RIGHT_BREAK){clutch=true;}
+    else{pass=true;}
+  }
+
+  if(fail){
+    triggerGameOver(ob);
+  } else {
+    multiplier=getMultiplier(streak);
+    const pts=Math.round(10*multiplier);
+    score+=pts;
+    ob.passed=true;
+    spawnBurst(CENTER_X,RUNNER_Y,hue,12);
+    if(clutch){
+      score+=25;
+      doShake(3,0.18);
+      spawnBurst(CENTER_X,RUNNER_Y,30,18);
+    }
+  }
+}
+
+function triggerGameOver(ob){
+  state='gameover';
+  doShake(14,0.6);
+  spawnBurst(CENTER_X,RUNNER_Y,0,40);
+  if(isMerged){
+    spawnBurst(CENTER_X,RUNNER_Y,30,20);
+  } else {
+    spawnBurst(LEFT_X,RUNNER_Y,180,20);
+    spawnBurst(RIGHT_X,RUNNER_Y,30,20);
+  }
+  if(score>highScore){
+    highScore=score;
+    localStorage.setItem(HS_KEY,highScore);
+  }
+  setTimeout(()=>{gameoverLock=false;},900);
+}
+
+// ─── Input ────────────────────────────────────────────────────────────────────
+function handleInput(){
+  if(state==='start'){
+    resetGame();
+  } else if(state==='playing'){
+    // toggle merged/split
+    isMerged=!isMerged;
+    streak=0;
+    multiplier=1;
+    spawnBurst(CENTER_X,RUNNER_Y,hue,8);
+  } else if(state==='gameover'&&!gameoverLock){
+    resetGame();
+  }
+}
+
+window.addEventListener('pointerdown',function(e){
+  e.preventDefault();
+  handleInput();
+},{passive:false});
+
+window.addEventListener('keydown',function(e){
+  if(e.code==='Space'||e.code==='Enter'){
+    e.preventDefault();
+    handleInput();
+  }
+});
+
+// ─── Background ───────────────────────────────────────────────────────────────
+// Pre-generate band offsets
+for(let i=0;i<6;i++){
+  bgBands.push({y:rand(0,LH),speed:rand(20,60),amp:rand(10,40),phase:rand(0,Math.PI*2)});
+}
+
+function drawBackground(now){
+  // Deep dark gradient
+  const grad=ctx.createLinearGradient(0,0,0,sy(LH));
+  grad.addColorStop(0,'#0d0300');
+  grad.addColorStop(0.5,'#1a0600');
+  grad.addColorStop(1,'#2a0800');
+  ctx.fillStyle=grad;
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  // Animated lava glow bands
+  ctx.save();
+  for(let i=0;i<bgBands.length;i++){
+    const band=bgBands[i];
+    const yOff=Math.sin(now*0.001*band.speed*0.05+band.phase)*band.amp;
+    const yy=((band.y+yOff)%LH+LH)%LH;
+    const g=ctx.createLinearGradient(0,sy(yy-20),0,sy(yy+20));
+    g.addColorStop(0,'rgba(200,60,0,0)');
+    g.addColorStop(0.5,`rgba(${120+i*15},${20+i*5},0,0.07)`);
+    g.addColorStop(1,'rgba(200,60,0,0)');
+    ctx.fillStyle=g;
+    ctx.fillRect(0,sy(yy-20),canvas.width,sy(40));
+  }
+  ctx.restore();
+}
+
+// ─── Rail drawing ─────────────────────────────────────────────────────────────
+function drawRails(){
+  const railW=ss(12);
+  // scrolling texture offset
+  const off=sy(scrollY%60);
+
+  if(isMerged){
+    // center lane glow
+    const cg=ctx.createLinearGradient(sx(CENTER_X-16),0,sx(CENTER_X+16),0);
+    cg.addColorStop(0,'rgba(255,160,40,0)');
+    cg.addColorStop(0.5,'rgba(255,180,60,0.22)');
+    cg.addColorStop(1,'rgba(255,160,40,0)');
+    ctx.fillStyle=cg;
+    ctx.fillRect(sx(CENTER_X-16),0,sx(32),canvas.height);
+
+    // center rail
+    ctx.strokeStyle='rgba(255,200,80,0.9)';
+    ctx.lineWidth=ss(6);
+    ctx.setLineDash([ss(24),ss(12)]);
+    ctx.lineDashOffset=-off;
+    ctx.shadowColor='rgba(255,160,0,0.8)';
+    ctx.shadowBlur=ss(10);
+    ctx.beginPath();
+    ctx.moveTo(sx(CENTER_X),0);
+    ctx.lineTo(sx(CENTER_X),canvas.height);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.shadowBlur=0;
+  } else {
+    // LEFT rail - cyan
+    const lg=ctx.createLinearGradient(sx(LEFT_X-16),0,sx(LEFT_X+16),0);
+    lg.addColorStop(0,'rgba(0,200,255,0)');
+    lg.addColorStop(0.5,'rgba(0,220,255,0.15)');
+    lg.addColorStop(1,'rgba(0,200,255,0)');
+    ctx.fillStyle=lg;
+    ctx.fillRect(sx(LEFT_X-16),0,sx(32),canvas.height);
+
+    ctx.strokeStyle='rgba(0,220,255,0.9)';
+    ctx.lineWidth=ss(5);
+    ctx.setLineDash([ss(22),ss(11)]);
+    ctx.lineDashOffset=-off;
+    ctx.shadowColor='rgba(0,200,255,0.7)';
+    ctx.shadowBlur=ss(10);
+    ctx.beginPath();
+    ctx.moveTo(sx(LEFT_X),0);
+    ctx.lineTo(sx(LEFT_X),canvas.height);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.shadowBlur=0;
+
+    // RIGHT rail - orange
+    const rg=ctx.createLinearGradient(sx(RIGHT_X-16),0,sx(RIGHT_X+16),0);
+    rg.addColorStop(0,'rgba(255,120,0,0)');
+    rg.addColorStop(0.5,'rgba(255,140,0,0.15)');
+    rg.addColorStop(1,'rgba(255,120,0,0)');
+    ctx.fillStyle=rg;
+    ctx.fillRect(sx(RIGHT_X-16),0,sx(32),canvas.height);
+
+    ctx.strokeStyle='rgba(255,140,30,0.9)';
+    ctx.lineWidth=ss(5);
+    ctx.setLineDash([ss(22),ss(11)]);
+    ctx.lineDashOffset=-off;
+    ctx.shadowColor='rgba(255,120,0,0.7)';
+    ctx.shadowBlur=ss(10);
+    ctx.beginPath();
+    ctx.moveTo(sx(RIGHT_X),0);
+    ctx.lineTo(sx(RIGHT_X),canvas.height);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.shadowBlur=0;
+  }
+}
+
+// ─── Player drawing ───────────────────────────────────────────────────────────
+function drawPlayer(now){
+  const bob=Math.sin(now*0.006)*3;
+  const ph=hue;
+
+  if(isMerged){
+    // single ember at center
+    drawEmber(CENTER_X,RUNNER_Y+bob,ph,18,now);
+  } else {
+    // two embers
+    drawEmber(LEFT_X,RUNNER_Y+bob,180,14,now); // cyan
+    drawEmber(RIGHT_X,RUNNER_Y+bob,20,14,now);  // orange
+  }
+}
+
+function drawEmber(lx,ly,h,r,now){
+  const x=sx(lx),y=sy(ly);
+  const rs=ss(r);
+
+  // outer glow
+  const og=ctx.createRadialGradient(x,y,0,x,y,rs*2.5);
+  og.addColorStop(0,`hsla(${h},100%,70%,0.3)`);
+  og.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=og;
+  ctx.beginPath();
+  ctx.arc(x,y,rs*2.5,0,Math.PI*2);
+  ctx.fill();
+
+  // core
+  const cg=ctx.createRadialGradient(x,y*0.99,0,x,y,rs);
+  cg.addColorStop(0,`hsl(${h+30},100%,90%)`);
+  cg.addColorStop(0.5,`hsl(${h},100%,65%)`);
+  cg.addColorStop(1,`hsl(${h-20},100%,40%)`);
+  ctx.fillStyle=cg;
+  ctx.shadowColor=`hsl(${h},100%,60%)`;
+  ctx.shadowBlur=rs*1.5;
+  ctx.beginPath();
+  ctx.arc(x,y,rs,0,Math.PI*2);
+  ctx.fill();
+  ctx.shadowBlur=0;
+
+  // inner highlight
+  ctx.fillStyle='rgba(255,255,255,0.4)';
+  ctx.beginPath();
+  ctx.arc(x-rs*0.25,y-rs*0.3,rs*0.35,0,Math.PI*2);
+  ctx.fill();
+}
+
+// ─── Obstacle drawing ─────────────────────────────────────────────────────────
+function drawObstacle(ob){
+  const y=ob.y; // logical y
+  const passed=ob.passed;
+  const alpha=passed?0.3:1.0;
+  ctx.globalAlpha=alpha;
+
+  switch(ob.type){
+    case OB.MERGE_GATE:
+      drawMergeGate(y);
+      break;
+    case OB.SPLIT_GAP:
+      drawSplitGap(y);
+      break;
+    case OB.LEFT_BREAK:
+      drawLeftBreak(y);
+      break;
+    case OB.RIGHT_BREAK:
+      drawRightBreak(y);
+      break;
+    case OB.DOUBLE_BREAK:
+      drawDoubleBreak(y);
+      break;
+  }
+  ctx.globalAlpha=1;
+}
+
+function drawMergeGate(y){
+  // Cool blue arch spanning center
+  const cx=sx(CENTER_X),cy=sy(y);
+  const hw=ss(50),hh=ss(32);
+  ctx.strokeStyle='#40c0ff';
+  ctx.lineWidth=ss(5);
+  ctx.shadowColor='#40c0ff';
+  ctx.shadowBlur=ss(12);
+  // arch top
+  ctx.beginPath();
+  ctx.moveTo(cx-hw,cy+hh);
+  ctx.quadraticCurveTo(cx,cy-hh,cx+hw,cy+hh);
+  ctx.stroke();
+  // pillars
+  ctx.beginPath();
+  ctx.moveTo(cx-hw,cy-ss(4));
+  ctx.lineTo(cx-hw,cy+hh+ss(4));
+  ctx.moveTo(cx+hw,cy-ss(4));
+  ctx.lineTo(cx+hw,cy+hh+ss(4));
+  ctx.stroke();
+  // glow fill
+  ctx.shadowBlur=0;
+  const g=ctx.createLinearGradient(cx-hw,cy-hh,cx+hw,cy+hh);
+  g.addColorStop(0,'rgba(64,192,255,0.08)');
+  g.addColorStop(1,'rgba(64,192,255,0)');
+  ctx.fillStyle=g;
+  ctx.beginPath();
+  ctx.moveTo(cx-hw,cy+hh);
+  ctx.quadraticCurveTo(cx,cy-hh,cx+hw,cy+hh);
+  ctx.closePath();
+  ctx.fill();
+  ctx.shadowBlur=0;
+  // label
+  ctx.fillStyle='#80e0ff';
+  ctx.font=`bold ${ss(11)}px Arial`;
+  ctx.textAlign='center';
+  ctx.fillText('MERGE',cx,cy-hh-ss(4));
+}
+
+function drawSplitGap(y){
+  // Hot orange outward chevrons on left/right, gap in center
+  const cy=sy(y);
+  ctx.strokeStyle='#ff7c00';
+  ctx.lineWidth=ss(5);
+  ctx.shadowColor='#ff7c00';
+  ctx.shadowBlur=ss(12);
+
+  // Left chevron (pointing left-outward)
+  const lx=sx(LEFT_X);
+  ctx.beginPath();
+  ctx.moveTo(lx-ss(8),cy-ss(20));
+  ctx.lineTo(lx-ss(30),cy);
+  ctx.lineTo(lx-ss(8),cy+ss(20));
+  ctx.stroke();
+
+  // Right chevron (pointing right-outward)
+  const rx=sx(RIGHT_X);
+  ctx.beginPath();
+  ctx.moveTo(rx+ss(8),cy-ss(20));
+  ctx.lineTo(rx+ss(30),cy);
+  ctx.lineTo(rx+ss(8),cy+ss(20));
+  ctx.stroke();
+  ctx.shadowBlur=0;
+
+  // label
+  ctx.fillStyle='#ffb060';
+  ctx.font=`bold ${ss(10)}px Arial`;
+  ctx.textAlign='center';
+  ctx.fillText('SPLIT',sx(CENTER_X),cy-ss(28));
+}
+
+function drawLeftBreak(y){
+  const cy=sy(y);
+  // Red X on left rail
+  const lx=sx(LEFT_X);
+  ctx.strokeStyle='#ff3030';
+  ctx.lineWidth=ss(5);
+  ctx.shadowColor='#ff3030';
+  ctx.shadowBlur=ss(10);
+  const s=ss(18);
+  ctx.beginPath();
+  ctx.moveTo(lx-s,cy-s); ctx.lineTo(lx+s,cy+s);
+  ctx.moveTo(lx+s,cy-s); ctx.lineTo(lx-s,cy+s);
+  ctx.stroke();
+  ctx.shadowBlur=0;
+  ctx.fillStyle='rgba(255,48,48,0.12)';
+  ctx.beginPath();
+  ctx.arc(lx,cy,s*1.4,0,Math.PI*2);
+  ctx.fill();
+}
+
+function drawRightBreak(y){
+  const cy=sy(y);
+  const rx=sx(RIGHT_X);
+  ctx.strokeStyle='#ff3030';
+  ctx.lineWidth=ss(5);
+  ctx.shadowColor='#ff3030';
+  ctx.shadowBlur=ss(10);
+  const s=ss(18);
+  ctx.beginPath();
+  ctx.moveTo(rx-s,cy-s); ctx.lineTo(rx+s,cy+s);
+  ctx.moveTo(rx+s,cy-s); ctx.lineTo(rx-s,cy+s);
+  ctx.stroke();
+  ctx.shadowBlur=0;
+  ctx.fillStyle='rgba(255,48,48,0.12)';
+  ctx.beginPath();
+  ctx.arc(rx,cy,s*1.4,0,Math.PI*2);
+  ctx.fill();
+}
+
+function drawDoubleBreak(y){
+  const cy=sy(y);
+  // X on both sides, green center = center only passable
+  drawLeftBreak(y);
+  drawRightBreak(y);
+  // center safe zone indicator
+  const cx=sx(CENTER_X);
+  ctx.strokeStyle='#80ff80';
+  ctx.lineWidth=ss(3);
+  ctx.shadowColor='#80ff80';
+  ctx.shadowBlur=ss(8);
+  ctx.beginPath();
+  ctx.arc(cx,cy,ss(16),0,Math.PI*2);
+  ctx.stroke();
+  ctx.shadowBlur=0;
+  ctx.fillStyle='rgba(128,255,128,0.1)';
+  ctx.beginPath();
+  ctx.arc(cx,cy,ss(16),0,Math.PI*2);
+  ctx.fill();
+  ctx.fillStyle='#80ff80';
+  ctx.font=`bold ${ss(9)}px Arial`;
+  ctx.textAlign='center';
+  ctx.fillText('MERGE',cx,cy+ss(28));
+}
+
+// ─── HUD ──────────────────────────────────────────────────────────────────────
+function drawHUD(){
+  // Score
+  ctx.fillStyle='rgba(0,0,0,0.45)';
+  ctx.beginPath();
+  ctx.roundRect(sx(8),sy(8),sx(200),sy(52),ss(10));
+  ctx.fill();
+
+  ctx.fillStyle='#fff';
+  ctx.font=`bold ${ss(22)}px Arial`;
+  ctx.textAlign='left';
+  ctx.fillText(score,sx(18),sy(36));
+
+  ctx.fillStyle='#c08040';
+  ctx.font=`${ss(11)}px Arial`;
+  ctx.fillText(`${meters}m  BEST:${highScore}`,sx(18),sy(52));
+
+  // Mode pill
+  const modeColor=isMerged?'rgba(255,180,40,0.8)':'rgba(0,200,255,0.8)';
+  ctx.fillStyle=modeColor;
+  ctx.beginPath();
+  ctx.roundRect(sx(LW-90),sy(8),sx(82),sy(26),ss(13));
+  ctx.fill();
+  ctx.fillStyle='#000';
+  ctx.font=`bold ${ss(12)}px Arial`;
+  ctx.textAlign='center';
+  ctx.fillText(isMerged?'MERGED':'SPLIT',sx(LW-90+41),sy(25));
+
+  // Streak/multiplier
+  if(streak>0||multiplier>1){
+    ctx.fillStyle='rgba(255,220,0,0.9)';
+    ctx.font=`bold ${ss(13)}px Arial`;
+    ctx.textAlign='right';
+    ctx.fillText(`x${multiplier.toFixed(1)} streak:${streak}`,sx(LW-8),sy(52));
+  }
+}
+
+// ─── Overlays ─────────────────────────────────────────────────────────────────
+function drawStartScreen(){
+  ctx.fillStyle='rgba(0,0,0,0.65)';
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  // Title
+  ctx.textAlign='center';
+  ctx.shadowColor='rgba(255,120,0,0.9)';
+  ctx.shadowBlur=ss(30);
+  ctx.fillStyle=`hsl(${hue},100%,65%)`;
+  ctx.font=`bold ${ss(52)}px Arial`;
+  ctx.fillText('SPLIT',sx(LW/2),sy(270));
+  ctx.fillStyle=`hsl(${hue+40},100%,55%)`;
+  ctx.fillText('EMBER',sx(LW/2),sy(330));
+  ctx.shadowBlur=0;
+
+  // Tagline
+  ctx.fillStyle='#c0784a';
+  ctx.font=`${ss(14)}px Arial`;
+  ctx.fillText('Balance on the lava rails',sx(LW/2),sy(368));
+
+  // Tap to start
+  const pulse=0.7+0.3*Math.sin(Date.now()*0.003);
+  ctx.globalAlpha=pulse;
+  ctx.fillStyle='#fff';
+  ctx.font=`bold ${ss(18)}px Arial`;
+  ctx.fillText('TAP TO START',sx(LW/2),sy(430));
+  ctx.globalAlpha=1;
+
+  // Controls hint
+  ctx.fillStyle='#705040';
+  ctx.font=`${ss(12)}px Arial`;
+  ctx.fillText('Tap / Space / Enter to toggle MERGED ↔ SPLIT',sx(LW/2),sy(475));
+  ctx.fillText('Space or Enter to start',sx(LW/2),sy(495));
+
+  // Share banner already shown above canvas
+}
+
+function drawGameoverScreen(){
+  ctx.fillStyle='rgba(0,0,0,0.72)';
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  ctx.textAlign='center';
+  ctx.shadowColor='rgba(255,60,0,0.8)';
+  ctx.shadowBlur=ss(20);
+  ctx.fillStyle='#ff6030';
+  ctx.font=`bold ${ss(38)}px Arial`;
+  ctx.fillText('GAME OVER',sx(LW/2),sy(290));
+  ctx.shadowBlur=0;
+
+  ctx.fillStyle='#fff';
+  ctx.font=`bold ${ss(28)}px Arial`;
+  ctx.fillText(score,sx(LW/2),sy(342));
+
+  ctx.fillStyle='#c08040';
+  ctx.font=`${ss(13)}px Arial`;
+  ctx.fillText(`${meters} meters`,sx(LW/2),sy(368));
+
+  ctx.fillStyle='#ff9040';
+  ctx.font=`${ss(14)}px Arial`;
+  ctx.fillText(`BEST: ${highScore}`,sx(LW/2),sy(395));
+
+  if(!gameoverLock){
+    const pulse=0.7+0.3*Math.sin(Date.now()*0.004);
+    ctx.globalAlpha=pulse;
+    ctx.fillStyle='#fff';
+    ctx.font=`bold ${ss(17)}px Arial`;
+    ctx.fillText('TAP TO RETRY',sx(LW/2),sy(445));
+    ctx.globalAlpha=1;
+
+    // Share button (text-based)
+    ctx.fillStyle='rgba(255,140,40,0.15)';
+    ctx.beginPath();
+    ctx.roundRect(sx(LW/2-70),sy(465),sx(140),sy(32),ss(16));
+    ctx.fill();
+    ctx.strokeStyle='rgba(255,140,40,0.5)';
+    ctx.lineWidth=ss(1.5);
+    ctx.stroke();
+    ctx.fillStyle='#ffa040';
+    ctx.font=`${ss(13)}px Arial`;
+    ctx.fillText('📤 SHARE SCORE',sx(LW/2),sy(486));
+  } else {
+    ctx.fillStyle='rgba(255,255,255,0.3)';
+    ctx.font=`${ss(13)}px Arial`;
+    ctx.fillText('...',sx(LW/2),sy(445));
+  }
+}
+
+// Share button click detection
+canvas.addEventListener('pointerdown',function(e){
+  if(state!=='gameover'||gameoverLock)return;
+  const rect=canvas.getBoundingClientRect();
+  const scaleX=LW/rect.width;
+  const scaleY=LH/rect.height;
+  const lx=(e.clientX-rect.left)*scaleX;
+  const ly=(e.clientY-rect.top)*scaleY;
+  if(lx>LW/2-70&&lx<LW/2+70&&ly>465&&ly<497){
+    e.stopPropagation();
+    const url=`https://balinti.github.io/split-ember/?ref=share&score=${score}`;
+    const text=`I scored ${score} points in Split Ember! Can you beat me? ${url}`;
+    if(navigator.share){
+      navigator.share({title:'Split Ember',text,url}).catch(()=>{});
+    } else {
+      navigator.clipboard&&navigator.clipboard.writeText(text).then(()=>{
+        // brief flash
+        const b=document.getElementById('challengeBanner');
+        b.textContent='Link copied to clipboard!';
+        b.style.display='block';
+        setTimeout(()=>{b.style.display='none'},2000);
+      });
+    }
+  }
+},{passive:false});
+
+// ─── Main loop ────────────────────────────────────────────────────────────────
+let lastTime=null;
+
+function loop(now){
+  requestAnimationFrame(loop);
+  if(!lastTime){lastTime=now;}
+  const dt=Math.min((now-lastTime)/1000,0.05);
+  lastTime=now;
+
+  // update hue cycling
+  hue=(hue+30*dt)%360;
+
+  // shake
+  let sx_off=0,sy_off=0;
+  if(shakeDur>0){
+    shakeDur-=dt;
+    const s=shakeAmt*(shakeDur/0.6);
+    sx_off=rand(-s,s);
+    sy_off=rand(-s,s);
+    if(shakeDur<=0){shakeAmt=0;sx_off=0;sy_off=0;}
+  }
+
+  ctx.save();
+  ctx.translate(ss(sx_off),ss(sy_off));
+
+  // Background
+  drawBackground(now);
+
+  if(state==='playing'){
+    t+=dt;
+    const{scrollSpeed,spawnInterval}=diffParams();
+
+    // scroll
+    const dDist=scrollSpeed*dt;
+    scrollY+=dDist;
+    distance+=dDist;
+    meters=Math.floor(distance/10);
+    score+=dt*2; // tiny continuous points
+
+    // Spawn obstacles
+    nextSpawnDist-=dDist;
+    if(nextSpawnDist<=0){
+      spawnObstacle(false);
+      const{spawnInterval:si}=diffParams();
+      nextSpawnDist=si*scrollSpeed;
+    }
+
+    // Update obstacles
+    for(let i=obstacles.length-1;i>=0;i--){
+      const ob=obstacles[i];
+      ob.y+=scrollSpeed*dt; // scroll down in logical coords
+
+      // evaluate when crossing runner
+      if(!ob.evaluated&&ob.y>=RUNNER_Y-10&&ob.y<=RUNNER_Y+30){
+        evaluateObstacle(ob);
+      }
+
+      // remove off-screen
+      if(ob.y>LH+80){obstacles.splice(i,1);}
+    }
+
+    // Trail particles
+    if(isMerged){
+      if(Math.random()<0.4) spawnTrail(CENTER_X,RUNNER_Y+8,hue);
+    } else {
+      if(Math.random()<0.3) spawnTrail(LEFT_X,RUNNER_Y+8,180);
+      if(Math.random()<0.3) spawnTrail(RIGHT_X,RUNNER_Y+8,20);
+    }
+
+    // Milestone shake
+    if(meters>0&&meters%100===0&&meters!==lastMilestone){
+      lastMilestone=meters;
+      doShake(2,0.15);
+    }
+  }
+
+  updateParticles(dt);
+
+  // Draw obstacles
+  for(const ob of obstacles){
+    drawObstacle(ob);
+  }
+
+  // Rails
+  if(state==='playing'||state==='gameover'){
+    drawRails();
+    drawPlayer(now);
+  }
+
+  drawParticles();
+
+  // HUD
+  if(state==='playing'){
+    drawHUD();
+  }
+
+  if(state==='start'){
+    drawStartScreen();
+  } else if(state==='gameover'){
+    drawGameoverScreen();
+  }
+
+  ctx.restore();
+}
+
+let lastMilestone=-1;
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

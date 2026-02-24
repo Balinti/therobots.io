@@ -1,0 +1,1119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Gravity Veil - Free HTML5 Game</title>
+  <meta name="description" content="Play Gravity Veil - Tap to switch gravity and evade neon-lit asteroid fields in a pulsating cyber city.">
+  <meta name="theme-color" content="#0a0a1a">
+  <link rel="canonical" href="https://balinti.github.io/gravity-veil/">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Gravity Veil - Free HTML5 Game">
+  <meta property="og:description" content="Play Gravity Veil - Tap to switch gravity and evade neon-lit asteroid fields in a pulsating cyber city.">
+  <meta property="og:url" content="https://balinti.github.io/gravity-veil/">
+  <meta property="og:image" content="https://balinti.github.io/gravity-veil/og-image.png">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Gravity Veil - Free HTML5 Game">
+  <meta name="twitter:description" content="Play Gravity Veil - Tap to switch gravity and evade neon-lit asteroid fields in a pulsating cyber city.">
+  <meta name="twitter:image" content="https://balinti.github.io/gravity-veil/og-image.png">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      font-family: 'Courier New', monospace;
+      overflow: hidden;
+      touch-action: none;
+    }
+
+    #wrapper {
+      position: relative;
+      width: min(420px, 100vw);
+      height: min(750px, 100vh);
+      background: #0a0a1a;
+      overflow: hidden;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      image-rendering: pixelated;
+    }
+
+    #ui {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding: 12px 16px;
+    }
+
+    .score-block { text-align: left; }
+    .best-block { text-align: right; }
+
+    .label {
+      font-size: 10px;
+      color: rgba(255,255,255,0.4);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .value {
+      font-size: 22px;
+      font-weight: bold;
+      color: #fff;
+      line-height: 1;
+    }
+
+    #combo-area {
+      text-align: center;
+      padding: 4px 0;
+    }
+
+    #combo-label {
+      font-size: 11px;
+      color: rgba(255,255,255,0.4);
+      letter-spacing: 1px;
+    }
+
+    #combo-value {
+      font-size: 28px;
+      font-weight: bold;
+      color: #ff6ec7;
+      text-shadow: 0 0 12px #ff6ec7;
+      transition: transform 0.1s;
+      line-height: 1;
+    }
+
+    #streak-bar {
+      text-align: center;
+      font-size: 11px;
+      color: rgba(255,200,100,0.8);
+      padding: 2px 0;
+      min-height: 18px;
+    }
+
+    #mute-btn {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      pointer-events: all;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.15);
+      color: rgba(255,255,255,0.6);
+      font-size: 14px;
+      width: 30px;
+      height: 30px;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+    }
+
+    #mute-btn:active { background: rgba(255,255,255,0.15); }
+
+    #overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: rgba(10,10,26,0.88);
+      pointer-events: all;
+      cursor: pointer;
+      transition: opacity 0.3s;
+    }
+
+    #overlay.hidden { display: none; }
+
+    #game-title {
+      font-size: 38px;
+      font-weight: bold;
+      color: #fff;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    #game-subtitle {
+      font-size: 13px;
+      color: rgba(255,255,255,0.4);
+      letter-spacing: 2px;
+      margin-bottom: 32px;
+    }
+
+    #overlay-score {
+      font-size: 56px;
+      font-weight: bold;
+      color: #fff;
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+
+    #overlay-label {
+      font-size: 12px;
+      color: rgba(255,255,255,0.4);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+    }
+
+    #stats-row {
+      display: flex;
+      gap: 24px;
+      margin-bottom: 24px;
+    }
+
+    .stat-item { text-align: center; }
+
+    .stat-val {
+      font-size: 20px;
+      font-weight: bold;
+      color: #ff6ec7;
+    }
+
+    .stat-lbl {
+      font-size: 10px;
+      color: rgba(255,255,255,0.35);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    #tap-prompt {
+      font-size: 14px;
+      color: rgba(255,255,255,0.6);
+      letter-spacing: 2px;
+      animation: pulse-text 1.4s ease-in-out infinite;
+    }
+
+    @keyframes pulse-text {
+      0%, 100% { opacity: 0.6; }
+      50% { opacity: 1; }
+    }
+
+    #share-btn {
+      margin-top: 14px;
+      padding: 8px 20px;
+      background: rgba(255,110,199,0.15);
+      border: 1px solid rgba(255,110,199,0.4);
+      color: #ff6ec7;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      letter-spacing: 1px;
+      border-radius: 6px;
+      cursor: pointer;
+      pointer-events: all;
+    }
+
+    #share-btn:active { background: rgba(255,110,199,0.3); }
+
+    #challenge-banner {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      background: linear-gradient(135deg, rgba(110,50,199,0.9), rgba(255,50,130,0.9));
+      padding: 10px 16px;
+      text-align: center;
+      font-size: 12px;
+      color: #fff;
+      letter-spacing: 1px;
+      z-index: 20;
+      display: none;
+    }
+
+    #challenge-banner b { font-size: 15px; display: block; margin-bottom: 2px; }
+
+    /* About section */
+    #about-section {
+      width: min(420px, 100vw);
+      max-height: 120px;
+      overflow-y: auto;
+      background: rgba(10,10,26,0.95);
+      border-top: 1px solid rgba(255,255,255,0.07);
+      padding: 12px 16px;
+      color: rgba(255,255,255,0.45);
+      font-size: 11px;
+      line-height: 1.6;
+    }
+
+    #about-toggle {
+      background: none;
+      border: none;
+      color: rgba(255,255,255,0.35);
+      font-family: 'Courier New', monospace;
+      font-size: 10px;
+      cursor: pointer;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      padding: 2px 0 6px;
+      display: block;
+    }
+
+    #about-content { display: none; }
+    #about-content.open { display: block; }
+
+    #near-miss-flash {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 18px;
+      font-weight: bold;
+      color: #ffe066;
+      text-shadow: 0 0 10px #ffe066;
+      pointer-events: none;
+      opacity: 0;
+      letter-spacing: 2px;
+    }
+
+    #near-miss-flash.show {
+      animation: flash-up 0.7s ease-out forwards;
+    }
+
+    @keyframes flash-up {
+      0% { opacity: 1; transform: translate(-50%, -50%); }
+      100% { opacity: 0; transform: translate(-50%, -120%); }
+    }
+  </style>
+</head>
+<body>
+
+<div id="wrapper">
+  <canvas id="c"></canvas>
+
+  <div id="challenge-banner">
+    <b id="challenge-score-text"></b>
+    Beat this challenge!
+  </div>
+
+  <div id="ui">
+    <div id="top-bar">
+      <div class="score-block">
+        <div class="label">Score</div>
+        <div class="value" id="score-display">0</div>
+      </div>
+      <div class="best-block">
+        <div class="label">Best</div>
+        <div class="value" id="best-display">0</div>
+      </div>
+    </div>
+    <div id="combo-area">
+      <div id="combo-label">MULTIPLIER</div>
+      <div id="combo-value">x1</div>
+    </div>
+    <div id="streak-bar"></div>
+  </div>
+
+  <button id="mute-btn" title="Toggle sound">🔊</button>
+
+  <div id="near-miss-flash">NEAR MISS!</div>
+
+  <div id="overlay">
+    <div id="game-title">GRAVITY VEIL</div>
+    <div id="game-subtitle">POLARITY GATES</div>
+    <div id="overlay-score" style="display:none"></div>
+    <div id="overlay-label" style="display:none"></div>
+    <div id="stats-row" style="display:none">
+      <div class="stat-item">
+        <div class="stat-val" id="stat-streak">0</div>
+        <div class="stat-lbl">Best Streak</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-val" id="stat-mult">x1</div>
+        <div class="stat-lbl">Max Mult</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-val" id="stat-gates">0</div>
+        <div class="stat-lbl">Gates</div>
+      </div>
+    </div>
+    <div id="tap-prompt">TAP TO START</div>
+    <button id="share-btn" style="display:none">SHARE SCORE</button>
+  </div>
+</div>
+
+<div id="about-section">
+  <button id="about-toggle" onclick="toggleAbout()">▼ How to Play / About</button>
+  <div id="about-content">
+    <strong style="color:rgba(255,255,255,0.7)">Gravity Veil: Polarity Gates</strong><br><br>
+    Navigate your ship through an endless neon maintenance tunnel. Your ship rides either the ceiling or the floor — tap anywhere to instantly flip between them.<br><br>
+    <strong style="color:rgba(110,180,255,0.8)">Blue Gates</strong> can only be passed on the <em>ceiling</em>.<br>
+    <strong style="color:rgba(255,110,199,0.8)">Pink Gates</strong> can only be passed on the <em>floor</em>.<br><br>
+    Pass a gate without flipping to build your <strong style="color:rgba(255,200,100,0.8)">Combo Streak</strong> and multiply your score. A near-miss earns a bonus! Stay sharp — gates come faster as you survive longer. Your best score, streak, and max multiplier are saved locally. Share your score and challenge friends with a link!<br><br>
+    Controls: Tap screen, click, press Space or Enter to flip gravity. Works on all devices.
+  </div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+// ── Constants ──────────────────────────────────────────────────────────────
+const CANVAS_W = 420, CANVAS_H = 750;
+const PLAYER_X = 80;
+const PLAYER_R = 14;
+const LANE_CEILING = PLAYER_R + 2;
+const LANE_FLOOR = CANVAS_H - PLAYER_R - 2;
+const GATE_W = 22;
+const GATE_NOTCH = PLAYER_R * 2.4;
+const NEAR_MISS_MARGIN = 10;
+
+// ── DOM ────────────────────────────────────────────────────────────────────
+const wrapper = document.getElementById('wrapper');
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const scoreEl = document.getElementById('score-display');
+const bestEl = document.getElementById('best-display');
+const comboEl = document.getElementById('combo-value');
+const streakBarEl = document.getElementById('streak-bar');
+const overlay = document.getElementById('overlay');
+const overlayScore = document.getElementById('overlay-score');
+const overlayLabel = document.getElementById('overlay-label');
+const statsRow = document.getElementById('stats-row');
+const tapPrompt = document.getElementById('tap-prompt');
+const shareBtn = document.getElementById('share-btn');
+const muteBtn = document.getElementById('mute-btn');
+const nmFlash = document.getElementById('near-miss-flash');
+const challengeBanner = document.getElementById('challenge-banner');
+const challengeScoreText = document.getElementById('challenge-score-text');
+const statStreak = document.getElementById('stat-streak');
+const statMult = document.getElementById('stat-mult');
+const statGates = document.getElementById('stat-gates');
+
+// ── HiDPI ─────────────────────────────────────────────────────────────────
+const dpr = window.devicePixelRatio || 1;
+canvas.width = CANVAS_W * dpr;
+canvas.height = CANVAS_H * dpr;
+ctx.scale(dpr, dpr);
+
+// ── LocalStorage ───────────────────────────────────────────────────────────
+const LS = {
+  get(k, def) { try { const v = localStorage.getItem(k); return v !== null ? JSON.parse(v) : def; } catch(e) { return def; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch(e) {} }
+};
+
+let bestScore = LS.get('gv_best', 0);
+let bestStreak = LS.get('gv_best_streak', 0);
+let bestMult = LS.get('gv_best_mult', 1);
+let deathCount = LS.get('gv_death_count', 0);
+let lastDeathTime = LS.get('gv_last_death_time', 0);
+bestEl.textContent = bestScore;
+
+// ── Audio ──────────────────────────────────────────────────────────────────
+let audioCtx = null;
+let muted = false;
+
+function getAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+
+function beep(freq, dur, vol=0.15, type='square') {
+  if (muted) return;
+  try {
+    const ac = getAudio();
+    const osc = ac.createOscillator();
+    const gain = ac.createGain();
+    osc.connect(gain); gain.connect(ac.destination);
+    osc.type = type;
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(vol, ac.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + dur);
+    osc.start(ac.currentTime);
+    osc.stop(ac.currentTime + dur);
+  } catch(e) {}
+}
+
+function playFlip() { beep(440, 0.08, 0.1, 'square'); }
+function playPass() { beep(660 + combo * 40, 0.07, 0.08, 'sine'); }
+function playNearMiss() { beep(880, 0.12, 0.12, 'triangle'); }
+function playCrash() {
+  beep(180, 0.3, 0.2, 'sawtooth');
+  setTimeout(() => beep(120, 0.4, 0.15, 'sawtooth'), 80);
+}
+
+muteBtn.addEventListener('click', e => {
+  e.stopPropagation();
+  muted = !muted;
+  muteBtn.textContent = muted ? '🔇' : '🔊';
+});
+
+// ── State ──────────────────────────────────────────────────────────────────
+const STATE = { START: 0, PLAYING: 1, GAMEOVER: 2 };
+let state = STATE.START;
+
+// ── Game vars ──────────────────────────────────────────────────────────────
+let player, gates, particles;
+let score, rawScore, combo, streak, maxMult, gateCount;
+let speed, trauma, shakeX, shakeY;
+let freezeTimer;
+let hue;
+let frameCount;
+let firstGateSpawned;
+let mercyMode;
+let runStartTime;
+
+// Tunnel strips (decorative)
+let strips = [];
+
+function initGame() {
+  player = {
+    lane: 0, // 0=ceiling, 1=floor
+    y: LANE_CEILING,
+    vy: 0,
+    glowHue: 200
+  };
+  gates = [];
+  particles = [];
+  strips = [];
+  score = 0;
+  rawScore = 0;
+  combo = 0; // gates passed without flipping
+  streak = 0; // display streak
+  maxMult = 1;
+  gateCount = 0;
+  speed = 280; // px/sec
+  trauma = 0;
+  shakeX = 0; shakeY = 0;
+  freezeTimer = 0;
+  hue = 200;
+  frameCount = 0;
+  firstGateSpawned = false;
+  runStartTime = performance.now();
+
+  // Check mercy mode
+  const now = Date.now();
+  const recentDeaths = (now - lastDeathTime < 30000) ? deathCount : 0;
+  mercyMode = (recentDeaths >= 3);
+
+  // Init tunnel strips
+  for (let i = 0; i < 8; i++) {
+    strips.push({
+      x: i * (CANVAS_W / 8),
+      y: 40 + Math.random() * (CANVAS_H - 80),
+      speed: 60 + Math.random() * 80,
+      alpha: 0.04 + Math.random() * 0.06,
+      w: 1
+    });
+  }
+
+  scoreEl.textContent = '0';
+  bestEl.textContent = bestScore;
+  comboEl.textContent = 'x1';
+  streakBarEl.textContent = '';
+}
+
+// ── Challenge Banner ───────────────────────────────────────────────────────
+(function checkChallenge() {
+  const params = new URLSearchParams(location.search);
+  const cs = params.get('score'), cst = params.get('streak'), cm = params.get('mult');
+  if (cs) {
+    challengeScoreText.textContent = `Score: ${cs}  Streak: ${cst || '?'}  Mult: x${cm || '1'}`;
+    challengeBanner.style.display = 'block';
+    setTimeout(() => { challengeBanner.style.display = 'none'; }, 6000);
+  }
+})();
+
+// ── Gate spawning ──────────────────────────────────────────────────────────
+let nextGateX = CANVAS_W + 100;
+let nextGateTimer = 0;
+
+function gateSpacing() {
+  const base = mercyMode && frameCount < 600 ? 340 : 220;
+  const t = (performance.now() - runStartTime) / 1000;
+  const reduction = Math.min(t * 4, 120); // shrinks up to 120px over time
+  return Math.max(base - reduction, 140) + Math.random() * 60;
+}
+
+function spawnGate(x) {
+  // Gate type: 0=blue(ceiling), 1=pink(floor)
+  const type = Math.floor(Math.random() * 2);
+  gates.push({
+    x: x,
+    type: type,       // 0=ceiling passable, 1=floor passable
+    passed: false,
+    nearMissed: false,
+    w: GATE_W,
+    h: CANVAS_H
+  });
+}
+
+// ── Particles ──────────────────────────────────────────────────────────────
+function spawnParticles(x, y, color, count=8) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const spd = 60 + Math.random() * 120;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * spd,
+      vy: Math.sin(angle) * spd,
+      life: 1,
+      decay: 1.5 + Math.random() * 1.5,
+      size: 2 + Math.random() * 4,
+      color
+    });
+  }
+}
+
+function spawnCrashParticles(x, y) {
+  for (let i = 0; i < 30; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const spd = 80 + Math.random() * 200;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * spd,
+      vy: Math.sin(angle) * spd,
+      life: 1,
+      decay: 0.8 + Math.random() * 1.2,
+      size: 3 + Math.random() * 8,
+      color: `hsl(${Math.floor(Math.random()*360)},100%,70%)`
+    });
+  }
+}
+
+// ── Flip ───────────────────────────────────────────────────────────────────
+let lastFlipFrame = -10;
+
+function flip() {
+  if (state !== STATE.PLAYING) return;
+  if (freezeTimer > 0) return;
+  if (frameCount - lastFlipFrame < 3) return; // debounce
+  lastFlipFrame = frameCount;
+
+  player.lane = 1 - player.lane;
+  combo = 0; // reset combo on flip
+  comboEl.textContent = 'x1';
+  streakBarEl.textContent = '';
+  playFlip();
+  spawnParticles(PLAYER_X, player.y, `hsl(${hue},100%,70%)`, 5);
+  trauma = Math.min(trauma + 0.05, 0.15);
+}
+
+// ── Scoring ────────────────────────────────────────────────────────────────
+function getMultiplier() {
+  if (combo < 2) return 1;
+  if (combo < 4) return 2;
+  if (combo < 7) return 3;
+  return 4;
+}
+
+// ── Input ──────────────────────────────────────────────────────────────────
+function handleInput() {
+  if (state === STATE.START) {
+    startGame();
+  } else if (state === STATE.PLAYING) {
+    flip();
+  } else if (state === STATE.GAMEOVER) {
+    startGame();
+  }
+}
+
+document.addEventListener('pointerdown', e => {
+  if (e.target === muteBtn || e.target === shareBtn) return;
+  e.preventDefault();
+  handleInput();
+}, { passive: false });
+
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    handleInput();
+  }
+});
+
+shareBtn.addEventListener('click', e => {
+  e.stopPropagation();
+  doShare();
+});
+
+// ── Share ──────────────────────────────────────────────────────────────────
+function doShare() {
+  const url = `https://balinti.github.io/gravity-veil/?ref=share&score=${Math.floor(score)}&streak=${bestStreak}&mult=${bestMult}`;
+  const text = `I scored ${Math.floor(score)} in Gravity Veil! Streak: ${bestStreak}, Max x${bestMult}. Beat me!`;
+  if (navigator.share) {
+    navigator.share({ title: 'Gravity Veil', text, url }).catch(() => fallbackCopy(url));
+  } else {
+    fallbackCopy(url);
+  }
+}
+
+function fallbackCopy(url) {
+  navigator.clipboard.writeText(url).then(() => {
+    shareBtn.textContent = 'LINK COPIED!';
+    setTimeout(() => shareBtn.textContent = 'SHARE SCORE', 2000);
+  }).catch(() => {
+    shareBtn.textContent = url.slice(0, 30) + '...';
+  });
+}
+
+// ── Start / Gameover ───────────────────────────────────────────────────────
+function startGame() {
+  initGame();
+  state = STATE.PLAYING;
+  overlay.classList.add('hidden');
+}
+
+function endGame() {
+  state = STATE.GAMEOVER;
+  playCrash();
+  trauma = 1;
+  freezeTimer = 0.18;
+
+  // Update bests
+  const finalScore = Math.floor(score);
+  if (finalScore > bestScore) { bestScore = finalScore; LS.set('gv_best', bestScore); }
+  if (streak > bestStreak) { bestStreak = streak; LS.set('gv_best_streak', bestStreak); }
+  if (maxMult > bestMult) { bestMult = maxMult; LS.set('gv_best_mult', bestMult); }
+
+  // Mercy tracking
+  const runTime = (performance.now() - runStartTime) / 1000;
+  if (runTime < 5) {
+    deathCount = (Date.now() - lastDeathTime < 30000) ? deathCount + 1 : 1;
+  } else {
+    deathCount = 0;
+  }
+  lastDeathTime = Date.now();
+  LS.set('gv_death_count', deathCount);
+  LS.set('gv_last_death_time', lastDeathTime);
+
+  // Show overlay
+  overlay.classList.remove('hidden');
+  document.getElementById('game-title').style.display = 'none';
+  document.getElementById('game-subtitle').style.display = 'none';
+  overlayScore.textContent = finalScore;
+  overlayScore.style.display = 'block';
+  overlayLabel.textContent = finalScore >= bestScore ? '★ NEW BEST ★' : 'SCORE';
+  overlayLabel.style.display = 'block';
+  statsRow.style.display = 'flex';
+  statStreak.textContent = streak;
+  statMult.textContent = `x${maxMult}`;
+  statGates.textContent = gateCount;
+  tapPrompt.textContent = 'TAP TO RETRY';
+  shareBtn.style.display = 'block';
+  bestEl.textContent = bestScore;
+}
+
+// ── Shake ──────────────────────────────────────────────────────────────────
+function updateShake() {
+  if (trauma > 0) {
+    const mag = trauma * trauma * 14;
+    shakeX = (Math.random() * 2 - 1) * mag;
+    shakeY = (Math.random() * 2 - 1) * mag;
+    trauma = Math.max(0, trauma - 0.04);
+  } else {
+    shakeX = 0; shakeY = 0;
+  }
+}
+
+// ── Background drawing ─────────────────────────────────────────────────────
+function drawBG() {
+  // Deep space gradient
+  const grad = ctx.createLinearGradient(0, 0, 0, CANVAS_H);
+  grad.addColorStop(0, '#04040f');
+  grad.addColorStop(0.5, '#080818');
+  grad.addColorStop(1, '#04040f');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+
+  // Tunnel walls
+  ctx.save();
+  ctx.strokeStyle = `hsla(${hue}, 80%, 50%, 0.25)`;
+  ctx.lineWidth = 1;
+
+  // Top wall
+  ctx.fillStyle = `hsla(${hue}, 70%, 20%, 0.3)`;
+  ctx.fillRect(0, 0, CANVAS_W, 2);
+  // Bottom wall
+  ctx.fillRect(0, CANVAS_H - 2, CANVAS_W, 2);
+
+  // Grid lines
+  ctx.strokeStyle = `hsla(${hue}, 60%, 40%, 0.06)`;
+  for (let y = 0; y < CANVAS_H; y += 60) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(CANVAS_W, y); ctx.stroke();
+  }
+
+  // Moving strips
+  ctx.restore();
+  strips.forEach(s => {
+    ctx.fillStyle = `hsla(${hue}, 80%, 60%, ${s.alpha})`;
+    ctx.fillRect(0, s.y, CANVAS_W, s.w);
+  });
+}
+
+// ── Draw gate ─────────────────────────────────────────────────────────────
+function drawGate(g) {
+  // type 0 = blue (ceiling passable) → gap at top
+  // type 1 = pink (floor passable) → gap at bottom
+  const isBlue = g.type === 0;
+  const baseHue = isBlue ? 200 : 320;
+  const col = `hsl(${baseHue}, 100%, 65%)`;
+  const dimCol = `hsla(${baseHue}, 80%, 30%, 0.7)`;
+
+  const gapSize = GATE_NOTCH * 2.5;
+
+  if (isBlue) {
+    // gap at top (ceiling lane), solid at bottom
+    const solidTop = gapSize;
+    const solidH = CANVAS_H - gapSize;
+
+    // Dim fill
+    ctx.fillStyle = dimCol;
+    ctx.fillRect(g.x, solidTop, g.w, solidH);
+
+    // Neon outline
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 2;
+    ctx.shadowColor = col;
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.rect(g.x, solidTop, g.w, solidH);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // Notch indicator at top
+    ctx.fillStyle = `hsla(${baseHue}, 100%, 65%, 0.15)`;
+    ctx.fillRect(g.x, 0, g.w, gapSize);
+    ctx.strokeStyle = `hsla(${baseHue}, 100%, 65%, 0.5)`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(g.x, gapSize); ctx.lineTo(g.x + g.w, gapSize);
+    ctx.stroke();
+
+    // Arrow cue
+    drawArrow(ctx, g.x + g.w/2, gapSize/2, 0, col);
+  } else {
+    // gap at bottom (floor lane), solid at top
+    const solidH = CANVAS_H - gapSize;
+
+    ctx.fillStyle = dimCol;
+    ctx.fillRect(g.x, 0, g.w, solidH);
+
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 2;
+    ctx.shadowColor = col;
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.rect(g.x, 0, g.w, solidH);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    ctx.fillStyle = `hsla(${baseHue}, 100%, 65%, 0.15)`;
+    ctx.fillRect(g.x, solidH, g.w, gapSize);
+    ctx.strokeStyle = `hsla(${baseHue}, 100%, 65%, 0.5)`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(g.x, solidH); ctx.lineTo(g.x + g.w, solidH);
+    ctx.stroke();
+
+    drawArrow(ctx, g.x + g.w/2, solidH + gapSize/2, 1, col);
+  }
+}
+
+function drawArrow(ctx, x, y, dir, col) {
+  const sz = 6;
+  ctx.save();
+  ctx.fillStyle = col;
+  ctx.globalAlpha = 0.7;
+  ctx.beginPath();
+  if (dir === 0) {
+    ctx.moveTo(x, y - sz); ctx.lineTo(x + sz, y + sz); ctx.lineTo(x - sz, y + sz);
+  } else {
+    ctx.moveTo(x, y + sz); ctx.lineTo(x + sz, y - sz); ctx.lineTo(x - sz, y - sz);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+// ── Draw player ────────────────────────────────────────────────────────────
+function drawPlayer() {
+  const x = PLAYER_X;
+  const y = player.y;
+  const r = PLAYER_R;
+
+  ctx.save();
+
+  // Engine trail
+  const trailLen = player.lane === 0 ? -1 : 1;
+  const tg = ctx.createLinearGradient(x + r, y, x - r * 3, y);
+  tg.addColorStop(0, `hsla(${player.glowHue}, 100%, 70%, 0.7)`);
+  tg.addColorStop(1, 'transparent');
+  ctx.fillStyle = tg;
+  ctx.fillRect(x - r * 3, y - 3, r * 4, 6);
+
+  // Ship body
+  ctx.shadowColor = `hsl(${player.glowHue}, 100%, 70%)`;
+  ctx.shadowBlur = 16;
+  ctx.fillStyle = `hsl(${player.glowHue}, 100%, 70%)`;
+  ctx.beginPath();
+  // Diamond-ish ship
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x, y - r * 0.6);
+  ctx.lineTo(x - r * 0.8, y);
+  ctx.lineTo(x, y + r * 0.6);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.shadowBlur = 0;
+  ctx.restore();
+}
+
+// ── Collision ──────────────────────────────────────────────────────────────
+function checkCollision(g) {
+  const px = PLAYER_X;
+  const py = player.y;
+  const pr = PLAYER_R * 0.75; // slightly forgiving
+
+  // Only check when gate overlaps player x
+  if (px + pr < g.x || px - pr > g.x + g.w) return false;
+
+  const gapSize = GATE_NOTCH * 2.5;
+
+  if (g.type === 0) {
+    // Blue: gap at top, solid from gapSize down
+    // Player is safe only if in ceiling lane (py < gapSize)
+    if (py + pr > gapSize) return true;
+  } else {
+    // Pink: gap at bottom, solid from 0 to CANVAS_H-gapSize
+    const solidH = CANVAS_H - gapSize;
+    if (py - pr < solidH) return true;
+  }
+  return false;
+}
+
+function checkNearMiss(g) {
+  if (g.nearMissed || g.passed) return false;
+  const px = PLAYER_X;
+  const py = player.y;
+  const gapSize = GATE_NOTCH * 2.5;
+
+  if (px + PLAYER_R < g.x || px - PLAYER_R > g.x + g.w) return false;
+
+  if (g.type === 0) {
+    const boundary = gapSize;
+    const dist = Math.abs(py + PLAYER_R - boundary);
+    return dist < NEAR_MISS_MARGIN && py < boundary;
+  } else {
+    const boundary = CANVAS_H - gapSize;
+    const dist = Math.abs(py - PLAYER_R - boundary);
+    return dist < NEAR_MISS_MARGIN && py > boundary;
+  }
+}
+
+// ── Main update ────────────────────────────────────────────────────────────
+let lastTime = 0;
+
+function update(dt) {
+  if (freezeTimer > 0) { freezeTimer -= dt; return; }
+
+  frameCount++;
+  hue = (hue + dt * 15) % 360;
+  player.glowHue = (player.glowHue + dt * 20) % 360;
+
+  // Score
+  rawScore += speed * dt * 0.05;
+  const mult = getMultiplier();
+  score += speed * dt * 0.05 * mult;
+  scoreEl.textContent = Math.floor(score);
+
+  // Speed increase
+  speed = Math.min(280 + (performance.now() - runStartTime) / 1000 * 18, 600);
+
+  // Player lerp to lane
+  const targetY = player.lane === 0 ? LANE_CEILING : LANE_FLOOR;
+  player.y += (targetY - player.y) * (1 - Math.pow(0.01, dt * 12));
+
+  // Tunnel strips
+  strips.forEach(s => {
+    s.x -= s.speed * dt;
+    if (s.x < -2) s.x = CANVAS_W + 2;
+  });
+
+  // Spawn gates
+  nextGateTimer -= dt;
+  if (!firstGateSpawned && (performance.now() - runStartTime) > 600) {
+    spawnGate(CANVAS_W + 40);
+    firstGateSpawned = true;
+    nextGateTimer = gateSpacing() / speed;
+  } else if (firstGateSpawned && nextGateTimer <= 0) {
+    spawnGate(CANVAS_W + 30);
+    nextGateTimer = gateSpacing() / speed;
+  }
+
+  // Update / check gates
+  for (let i = gates.length - 1; i >= 0; i--) {
+    const g = gates[i];
+    g.x -= speed * dt;
+
+    if (!g.passed) {
+      if (checkCollision(g)) {
+        // Crash
+        spawnCrashParticles(PLAYER_X, player.y);
+        endGame();
+        return;
+      }
+
+      // Near miss
+      if (checkNearMiss(g)) {
+        g.nearMissed = true;
+        playNearMiss();
+        score += 25;
+        showNearMiss();
+        spawnParticles(PLAYER_X, player.y, '#ffe066', 6);
+        trauma = Math.min(trauma + 0.08, 0.2);
+      }
+
+      // Gate passed
+      if (PLAYER_X - PLAYER_R > g.x + g.w) {
+        g.passed = true;
+        gateCount++;
+
+        // Check if correct lane (no flip needed = combo preserved)
+        // Combo increments since flip already resets it
+        combo++;
+        streak = Math.max(streak, combo);
+        const m = getMultiplier();
+        maxMult = Math.max(maxMult, m);
+        score += 50 * m;
+        comboEl.textContent = `x${m}`;
+        if (combo >= 2) {
+          streakBarEl.textContent = `STREAK x${combo} !!`;
+        }
+        playPass();
+        spawnParticles(PLAYER_X, player.y, g.type === 0 ? '#44aaff' : '#ff6ec7', 5);
+        trauma = Math.min(trauma + 0.04, 0.12);
+      }
+    }
+
+    if (g.x < -60) gates.splice(i, 1);
+  }
+
+  // Particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vx *= 0.95;
+    p.vy *= 0.95;
+    p.life -= p.decay * dt;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+
+  updateShake();
+}
+
+// ── Near miss flash ────────────────────────────────────────────────────────
+function showNearMiss() {
+  nmFlash.classList.remove('show');
+  void nmFlash.offsetWidth;
+  nmFlash.classList.add('show');
+}
+
+// ── Draw ───────────────────────────────────────────────────────────────────
+function draw() {
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
+
+  drawBG();
+
+  // Gates
+  gates.forEach(g => drawGate(g));
+
+  // Player
+  if (state === STATE.PLAYING || (state === STATE.GAMEOVER && freezeTimer > 0)) {
+    drawPlayer();
+  }
+
+  // Particles
+  particles.forEach(p => {
+    ctx.save();
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.color;
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  });
+
+  // Neon wall glow
+  const wallGrad = ctx.createLinearGradient(0, 0, CANVAS_W, 0);
+  wallGrad.addColorStop(0, `hsla(${hue}, 80%, 50%, 0.3)`);
+  wallGrad.addColorStop(0.5, `hsla(${hue}, 80%, 50%, 0.05)`);
+  wallGrad.addColorStop(1, `hsla(${hue}, 80%, 50%, 0.3)`);
+  ctx.fillStyle = wallGrad;
+  ctx.fillRect(0, 0, CANVAS_W, 3);
+  ctx.fillRect(0, CANVAS_H - 3, CANVAS_W, 3);
+
+  ctx.restore();
+}
+
+// ── Loop ───────────────────────────────────────────────────────────────────
+function loop(ts) {
+  const dt = Math.min((ts - lastTime) / 1000, 0.05);
+  lastTime = ts;
+
+  if (state === STATE.PLAYING || (state === STATE.GAMEOVER && (freezeTimer > 0 || particles.length))) {
+    update(dt);
+    draw();
+  } else if (state === STATE.START) {
+    // Animate bg on start screen
+    hue = (hue + dt * 15) % 360;
+    strips.forEach(s => { s.x -= s.speed * dt; if (s.x < -2) s.x = CANVAS_W + 2; });
+    draw();
+  }
+
+  requestAnimationFrame(loop);
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+function toggleAbout() {
+  const c = document.getElementById('about-content');
+  const b = document.getElementById('about-toggle');
+  c.classList.toggle('open');
+  b.textContent = c.classList.contains('open') ? '▲ How to Play / About' : '▼ How to Play / About';
+}
+window.toggleAbout = toggleAbout;
+
+// Show start screen
+initGame();
+state = STATE.START;
+overlay.classList.remove('hidden');
+document.getElementById('game-title').style.display = 'block';
+document.getElementById('game-subtitle').style.display = 'block';
+overlayScore.style.display = 'none';
+overlayLabel.style.display = 'none';
+statsRow.style.display = 'none';
+tapPrompt.textContent = 'TAP TO START';
+shareBtn.style.display = 'none';
+
+requestAnimationFrame(ts => { lastTime = ts; loop(ts); });
+
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Gravity Chain - Free HTML5 Game</title>
+  <meta name="description" content="Play Gravity Chain - Tap to chain dots in a minimalist grid, reacting dynamically as gravity flips every few seconds.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0d0d1a">
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Gravity Chain - Free HTML5 Game">
+  <meta property="og:description" content="Play Gravity Chain - Tap to chain dots in a minimalist grid, reacting dynamically as gravity flips every few seconds.">
+  <meta property="og:url" content="https://balinti.github.io/gravity-chain/">
+  <meta property="og:image" content="https://balinti.github.io/gravity-chain/og-image.png">
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Gravity Chain - Free HTML5 Game">
+  <meta name="twitter:description" content="Play Gravity Chain - Tap to chain dots in a minimalist grid, reacting dynamically as gravity flips every few seconds.">
+  <meta name="twitter:image" content="https://balinti.github.io/gravity-chain/og-image.png">
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: linear-gradient(135deg, #0d0d1a 0%, #1a0d2e 50%, #0d1a2e 100%);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      color: #e0e0ff;
+      overflow-x: hidden;
+    }
+    body { display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+    header {
+      width: 100%; max-width: 420px;
+      padding: 10px 16px 6px;
+      display: flex; align-items: center; justify-content: space-between;
+      background: rgba(255,255,255,0.03);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    header h1 {
+      font-size: 1.1rem; font-weight: 700; letter-spacing: 2px;
+      background: linear-gradient(90deg, #a78bfa, #60a5fa, #34d399);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    header span { font-size: 0.72rem; color: rgba(255,255,255,0.4); letter-spacing: 1px; }
+    #game-wrap {
+      position: relative;
+      width: 100%; max-width: 420px;
+      flex: 0 0 auto;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      touch-action: none;
+      cursor: pointer;
+    }
+    footer {
+      width: 100%; max-width: 420px;
+      padding: 28px 20px 40px;
+      color: rgba(255,255,255,0.55);
+      font-size: 0.85rem; line-height: 1.7;
+    }
+    footer h2 { font-size: 1rem; color: rgba(255,255,255,0.8); margin-bottom: 10px; letter-spacing: 1px; }
+    footer h3 { font-size: 0.9rem; color: rgba(255,255,255,0.7); margin: 16px 0 8px; }
+    footer p { margin-bottom: 10px; }
+    footer ul { padding-left: 20px; margin-bottom: 10px; }
+    footer ul li { margin-bottom: 5px; }
+    footer a { color: #a78bfa; text-decoration: none; }
+    .divider { border: none; border-top: 1px solid rgba(255,255,255,0.07); margin: 20px 0; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>GRAVITY CHAIN</h1>
+  <span>TAP / SPACE</span>
+</header>
+<div id="game-wrap">
+  <canvas id="c"></canvas>
+</div>
+<footer>
+  <h2>About Gravity Chain</h2>
+  <p>Gravity Chain is a free, minimalist HTML5 casual game where you control one thing and one thing only: gravity. Tap the screen or press Space to instantly flip gravitational direction, sending all dots hurtling toward the opposite wall.</p>
+  <p>The real magic happens on the flip. Dots near the new "bottom" automatically form tether chains with nearest same-color neighbors. Those chains pull the dots together like magnets, and when a pair snaps close enough, they pop — clearing the board and adding to your score.</p>
+  <h3>How to Play</h3>
+  <ul>
+    <li><strong>Tap or press Space/Enter</strong> to flip gravity instantly.</li>
+    <li>Dots in the same color that land near the new floor will auto-chain and merge.</li>
+    <li>Chain merges build your combo multiplier — don't waste flips with no merges!</li>
+    <li>Don't let any dot cross the danger line on the wall it's falling toward.</li>
+    <li>Survive longer for higher difficulty: more colors, faster spawn, heavier dots, and wind!</li>
+  </ul>
+  <h3>Scoring & Combos</h3>
+  <p>Each dot pop scores base points multiplied by your current combo. Consecutive merges on sequential flips grow the combo. A flip that triggers no merge within a short window resets it to 1x. Aim for chain reactions — 3 or more pops on a single flip = bonus multiplier burst!</p>
+  <h3>Difficulty Progression</h3>
+  <ul>
+    <li><strong>0–15s:</strong> 3 colors, slow spawn, normal-sized dots.</li>
+    <li><strong>15–30s:</strong> 4 colors introduced, spawn rate increases.</li>
+    <li><strong>30–60s:</strong> 5 colors, heavy dots appear (fall faster, need 2 chains to pop).</li>
+    <li><strong>60s+:</strong> Lateral wind kicks in, pushing dots sideways — timing becomes critical.</li>
+  </ul>
+  <h3>Tips & Tricks</h3>
+  <ul>
+    <li>Watch the color clusters. Flip when same-colored dots are grouped near a wall.</li>
+    <li>Avoid flipping too fast — newly spawned dots won't have had time to cluster.</li>
+    <li>The danger line pulses red when you're at risk. Use that as your pressure cue.</li>
+    <li>Hit-stop (brief slowdown) on big merges is intentional — enjoy the visual reward!</li>
+    <li>High scores are saved to your device automatically via localStorage.</li>
+  </ul>
+  <hr class="divider">
+  <p style="font-size:0.75rem;color:rgba(255,255,255,0.3);">Gravity Chain is a free browser game. No downloads, no installs, no accounts required. Works on desktop and mobile. Built with vanilla JavaScript and HTML5 Canvas.</p>
+</footer>
+
+<script>
+(function(){
+'use strict';
+
+// ─── Canvas setup ───────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const wrap = document.getElementById('game-wrap');
+const DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+let CW, CH; // logical CSS px
+
+function resize() {
+  const maxW = 420, maxH = 750;
+  const ww = window.innerWidth, wh = window.innerHeight - 50;
+  CW = Math.min(maxW, ww);
+  CH = Math.min(maxH, Math.max(500, wh));
+  canvas.style.width  = CW + 'px';
+  canvas.style.height = CH + 'px';
+  canvas.width  = CW * DPR;
+  canvas.height = CH * DPR;
+  wrap.style.height = CH + 'px';
+  ctx.scale(DPR, DPR);
+}
+resize();
+window.addEventListener('resize', () => { resize(); });
+
+// ─── Constants ────────────────────────────────────────────────
+const PADDING   = 20;
+const DANGER_MARGIN = 36;
+const MAX_DOTS  = 120;
+const TETHER_BAND = 0.22; // fraction of playfield height
+const TETHER_MAX_DIST = 120;
+const SPRING_K  = 0.06;
+const SNAP_DIST = 18;
+const SNAP_TIME = 0.35; // seconds before pop
+const BASE_SCORE = 80;
+const GRAVITY_BASE = 340; // px/s²
+
+// ─── Palette cycling ──────────────────────────────────────────
+let hueOffset = 0;
+const PALETTES = [
+  [0,120,240],
+  [0,120,240,60],
+  [0,72,144,216,288],
+];
+
+function getDotColor(colorIdx, alpha=1) {
+  const hue = (PALETTES[colorCount-3][colorIdx] + hueOffset) % 360;
+  return `hsla(${hue},80%,62%,${alpha})`;
+}
+function getDotColorGlow(colorIdx) {
+  const hue = (PALETTES[colorCount-3][colorIdx] + hueOffset) % 360;
+  return `hsl(${hue},100%,75%)`;
+}
+
+// ─── State ───────────────────────────────────────────────────
+let state = 'start'; // start | playing | gameover
+let score = 0, combo = 1, bestScore = 0;
+let elapsed = 0;       // game time in seconds
+let gravitySign = 1;   // 1=down, -1=up
+let dots = [];
+let tethers = [];
+let particles = [];
+let shakeAmt = 0, shakeDecay = 0.85;
+let slowMoTimer = 0;
+let dangerPulse = 0;
+let comboResetTimer = 0;
+let colorCount = 3;
+let spawnTimer = 0;
+let windStrength = 0;
+let lastFlipTime = 0;
+let flipHadPop = false;
+let lastTimestamp = 0;
+let animId = null;
+let hitStopTimer = 0;
+
+try { bestScore = parseInt(localStorage.getItem('gc_best') || '0') || 0; } catch(e){}
+
+// ─── Dot class ────────────────────────────────────────────────
+function makeDot(x, y, r, colorIdx, heavy=false) {
+  return {
+    x, y, vx: (Math.random()-0.5)*40, vy: 0,
+    r, colorIdx,
+    heavy,          // heavy dots need 2 tether-pops
+    hp: heavy ? 2 : 1,
+    tethered: null, // partner dot or null
+    snapTimer: 0,
+    age: 0,
+    id: Math.random(),
+    dead: false,
+    warning: false,
+  };
+}
+
+// ─── Spatial hash ────────────────────────────────────────────
+function buildGrid(dotArr, cellSize) {
+  const grid = {};
+  for (let d of dotArr) {
+    const cx = Math.floor(d.x / cellSize);
+    const cy = Math.floor(d.y / cellSize);
+    const key = cx + ',' + cy;
+    if (!grid[key]) grid[key] = [];
+    grid[key].push(d);
+  }
+  return grid;
+}
+function getNeighbors(grid, x, y, cellSize) {
+  const cx = Math.floor(x / cellSize);
+  const cy = Math.floor(y / cellSize);
+  const out = [];
+  for (let dx=-1;dx<=1;dx++) for (let dy=-1;dy<=1;dy++) {
+    const key = (cx+dx)+','+(cy+dy);
+    if (grid[key]) out.push(...grid[key]);
+  }
+  return out;
+}
+
+// ─── Particles ────────────────────────────────────────────────
+function spawnParticles(x, y, colorIdx, count=12) {
+  for (let i=0;i<count;i++) {
+    const angle = (Math.PI*2/count)*i + Math.random()*0.4;
+    const speed = 60 + Math.random()*120;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle)*speed,
+      vy: Math.sin(angle)*speed,
+      life: 1, decay: 1.8 + Math.random(),
+      r: 3 + Math.random()*4,
+      colorIdx,
+      alpha: 1,
+    });
+  }
+}
+
+// ─── Input ────────────────────────────────────────────────────
+function onInput() {
+  if (state === 'start')    { startGame(); return; }
+  if (state === 'gameover') { startGame(); return; }
+  if (state === 'playing')  { doFlip(); }
+}
+canvas.addEventListener('pointerdown', onInput);
+document.addEventListener('keydown', e => {
+  if (e.code==='Space'||e.code==='Enter') { e.preventDefault(); onInput(); }
+});
+
+// ─── Game flow ────────────────────────────────────────────────
+function startGame() {
+  dots = []; tethers = []; particles = [];
+  score = 0; combo = 1; elapsed = 0;
+  gravitySign = 1; shakeAmt = 0; slowMoTimer = 0;
+  dangerPulse = 0; comboResetTimer = 0;
+  colorCount = 3; spawnTimer = 0; windStrength = 0;
+  lastFlipTime = 0; flipHadPop = false;
+  hitStopTimer = 0;
+  hueOffset = Math.random()*360;
+
+  // seed some dots
+  for (let i=0;i<8;i++) {
+    const r = dotRadius();
+    const x = PADDING + r + Math.random()*(CW - 2*PADDING - 2*r);
+    const y = PADDING + r + Math.random()*(CH*0.5);
+    dots.push(makeDot(x, y, r, Math.floor(Math.random()*colorCount)));
+  }
+
+  state = 'playing';
+  lastTimestamp = performance.now();
+  if (animId) cancelAnimationFrame(animId);
+  loop(performance.now());
+}
+
+function endGame() {
+  state = 'gameover';
+  shakeAmt = 14;
+  if (score > bestScore) {
+    bestScore = score;
+    try { localStorage.setItem('gc_best', bestScore); } catch(e){}
+  }
+  spawnParticles(CW/2, CH/2, 0, 30);
+  spawnParticles(CW/2, CH/2, 1, 20);
+  spawnParticles(CW/2, CH/2, 2, 20);
+}
+
+function dotRadius() {
+  const t = elapsed;
+  if (t < 15) return 16;
+  if (t < 30) return 15;
+  if (t < 60) return 14;
+  return 13;
+}
+function getSpawnInterval() {
+  if (elapsed < 15) return 1.6;
+  if (elapsed < 30) return 1.2;
+  if (elapsed < 60) return 0.9;
+  return 0.65;
+}
+function getGravity() {
+  if (elapsed < 15) return GRAVITY_BASE;
+  if (elapsed < 30) return GRAVITY_BASE * 1.15;
+  if (elapsed < 60) return GRAVITY_BASE * 1.3;
+  return GRAVITY_BASE * 1.45;
+}
+
+// ─── Flip ────────────────────────────────────────────────────
+function doFlip() {
+  // combo reset if last flip had no pop
+  if (elapsed - lastFlipTime > 0.1 && !flipHadPop && lastFlipTime > 0) {
+    combo = 1;
+  }
+  gravitySign *= -1;
+  shakeAmt = Math.max(shakeAmt, 3);
+  lastFlipTime = elapsed;
+  flipHadPop = false;
+  // clear old tethers
+  tethers = [];
+  for (let d of dots) { d.tethered = null; d.snapTimer = 0; }
+  // build new tethers
+  buildTethers();
+}
+
+function buildTethers() {
+  const pf_top = PADDING;
+  const pf_bot = CH - PADDING;
+  const pf_h   = pf_bot - pf_top;
+  // new bottom
+  const newBottom = gravitySign === 1 ? pf_bot : pf_top;
+  // band: dots within top TETHER_BAND fraction of height from new bottom
+  const bandDist = pf_h * TETHER_BAND;
+
+  // gather "leading" dots
+  const leading = dots.filter(d => {
+    const distToBottom = gravitySign === 1 ? (newBottom - d.y) : (d.y - newBottom);
+    return distToBottom >= 0 && distToBottom <= bandDist;
+  });
+
+  // sort by closeness to new bottom
+  leading.sort((a,b) => {
+    const da = gravitySign === 1 ? (newBottom - a.y) : (a.y - newBottom);
+    const db = gravitySign === 1 ? (newBottom - b.y) : (b.y - newBottom);
+    return da - db;
+  });
+
+  const used = new Set();
+  for (let lead of leading) {
+    if (used.has(lead.id) || lead.tethered) continue;
+    // find nearest same-color dot not already tethered/used
+    let best = null, bestDist = TETHER_MAX_DIST;
+    for (let other of dots) {
+      if (other === lead) continue;
+      if (other.colorIdx !== lead.colorIdx) continue;
+      if (used.has(other.id) || other.tethered) continue;
+      const dx = other.x - lead.x, dy = other.y - lead.y;
+      const dist = Math.sqrt(dx*dx+dy*dy);
+      if (dist < bestDist) { bestDist = dist; best = other; }
+    }
+    if (best) {
+      lead.tethered = best;
+      best.tethered = lead;
+      used.add(lead.id);
+      used.add(best.id);
+      tethers.push({ a: lead, b: best });
+    }
+  }
+}
+
+// ─── Update ──────────────────────────────────────────────────
+function update(dt) {
+  if (state !== 'playing') return;
+
+  elapsed += dt;
+  hueOffset = (hueOffset + dt * 12) % 360;
+
+  // difficulty
+  if (elapsed > 15 && colorCount < 4) colorCount = 4;
+  if (elapsed > 30 && colorCount < 5) colorCount = 5;
+  if (elapsed > 60) windStrength = 30 * Math.sin(elapsed * 0.7);
+
+  // combo decay
+  if (comboResetTimer > 0) {
+    comboResetTimer -= dt;
+    if (comboResetTimer <= 0 && !flipHadPop) { combo = 1; }
+  }
+
+  // spawn
+  spawnTimer -= dt;
+  if (spawnTimer <= 0 && dots.length < MAX_DOTS) {
+    spawnTimer = getSpawnInterval() * (0.8 + Math.random()*0.4);
+    const r = dotRadius();
+    const heavy = elapsed > 30 && Math.random() < 0.2;
+    const x = PADDING + r + Math.random()*(CW - 2*PADDING - 2*r);
+    const y = gravitySign === 1
+      ? PADDING + r * 2
+      : CH - PADDING - r * 2;
+    const c = Math.floor(Math.random()*colorCount);
+    dots.push(makeDot(x, y, r, c, heavy));
+  }
+
+  const grav = getGravity() * gravitySign;
+  const pf_top = PADDING + DANGER_MARGIN;
+  const pf_bot = CH - PADDING - DANGER_MARGIN;
+
+  // physics
+  for (let d of dots) {
+    if (d.dead) continue;
+    d.age += dt;
+    const heavyMul = d.heavy ? 1.5 : 1.0;
+    d.vy += grav * heavyMul * dt;
+    d.vx += windStrength * dt * 0.5;
+    // drag
+    d.vx *= (1 - 2*dt);
+    d.vy *= (1 - 0.3*dt);
+    d.x += d.vx * dt;
+    d.y += d.vy * dt;
+    // wall bounds
+    if (d.x - d.r < PADDING) { d.x = PADDING + d.r; d.vx = Math.abs(d.vx)*0.5; }
+    if (d.x + d.r > CW-PADDING) { d.x = CW-PADDING-d.r; d.vx = -Math.abs(d.vx)*0.5; }
+    // danger check
+    d.warning = false;
+    if (gravitySign === 1 && d.y + d.r > pf_bot - 20) d.warning = true;
+    if (gravitySign === -1 && d.y - d.r < pf_top + 20) d.warning = true;
+  }
+
+  // tether spring
+  for (let t of tethers) {
+    if (t.a.dead || t.b.dead) continue;
+    const dx = t.b.x - t.a.x;
+    const dy = t.b.y - t.a.y;
+    const dist = Math.sqrt(dx*dx+dy*dy);
+    if (dist > 0) {
+      const fx = (dx/dist) * SPRING_K * dist;
+      const fy = (dy/dist) * SPRING_K * dist;
+      t.a.vx += fx * 60; t.a.vy += fy * 60;
+      t.b.vx -= fx * 60; t.b.vy -= fy * 60;
+    }
+    // snap timer
+    if (dist < SNAP_DIST * 2) {
+      t.a.snapTimer += dt;
+      t.b.snapTimer += dt;
+    } else {
+      t.a.snapTimer = Math.max(0, t.a.snapTimer - dt);
+      t.b.snapTimer = Math.max(0, t.b.snapTimer - dt);
+    }
+  }
+
+  // collision separation
+  const cellSize = 50;
+  const grid = buildGrid(dots.filter(d=>!d.dead), cellSize);
+  for (let d of dots) {
+    if (d.dead) continue;
+    const neighbors = getNeighbors(grid, d.x, d.y, cellSize);
+    for (let n of neighbors) {
+      if (n === d || n.dead) continue;
+      const dx = n.x - d.x, dy = n.y - d.y;
+      const dist = Math.sqrt(dx*dx+dy*dy);
+      const minDist = d.r + n.r;
+      if (dist < minDist && dist > 0) {
+        const overlap = (minDist - dist) / 2;
+        d.x -= (dx/dist)*overlap;
+        d.y -= (dy/dist)*overlap;
+        n.x += (dx/dist)*overlap;
+        n.y += (dy/dist)*overlap;
+      }
+    }
+  }
+
+  // pop check via BFS
+  const toProcess = new Set();
+  for (let t of tethers) {
+    if (!t.a.dead && !t.b.dead && t.a.snapTimer >= SNAP_TIME && t.b.snapTimer >= SNAP_TIME) {
+      toProcess.add(t.a);
+      toProcess.add(t.b);
+    }
+  }
+
+  if (toProcess.size > 0) {
+    // BFS group connected ready dots
+    const visited = new Set();
+    const groups = [];
+    for (let start of toProcess) {
+      if (visited.has(start)) continue;
+      const group = [];
+      const queue = [start];
+      while (queue.length) {
+        const cur = queue.shift();
+        if (visited.has(cur)) continue;
+        visited.add(cur);
+        group.push(cur);
+        // find tethered partner if also ready
+        if (cur.tethered && toProcess.has(cur.tethered) && !visited.has(cur.tethered)) {
+          queue.push(cur.tethered);
+        }
+      }
+      if (group.length >= 2) groups.push(group);
+    }
+
+    for (let group of groups) {
+      let popCount = 0;
+      for (let d of group) {
+        d.hp--;
+        if (d.hp <= 0) {
+          spawnParticles(d.x, d.y, d.colorIdx, 14);
+          d.dead = true;
+          popCount++;
+        } else {
+          // heavy dot — reduce snap timer, remove tether
+          d.snapTimer = 0;
+          d.tethered = null;
+        }
+      }
+      if (popCount > 0) {
+        flipHadPop = true;
+        const groupBonus = popCount >= 4 ? 2 : popCount >= 3 ? 1.5 : 1;
+        score += Math.floor(BASE_SCORE * combo * groupBonus * popCount);
+        combo = Math.min(combo + 1, 12);
+        comboResetTimer = 2.0;
+        if (popCount >= 3) {
+          hitStopTimer = 0.18;
+          shakeAmt = Math.max(shakeAmt, 5);
+        }
+      }
+    }
+
+    // clean tethers
+    tethers = tethers.filter(t => !t.a.dead && !t.b.dead);
+    for (let d of dots) {
+      if (d.tethered && d.tethered.dead) { d.tethered = null; d.snapTimer = 0; }
+    }
+  }
+
+  // remove dead dots
+  dots = dots.filter(d => !d.dead);
+
+  // particles
+  for (let p of particles) {
+    p.life -= p.decay * dt;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vx *= (1 - 3*dt);
+    p.vy *= (1 - 3*dt);
+    p.alpha = Math.max(0, p.life);
+  }
+  particles = particles.filter(p => p.life > 0);
+
+  // shake decay
+  shakeAmt *= Math.pow(shakeDecay, dt * 60);
+  if (shakeAmt < 0.1) shakeAmt = 0;
+
+  // danger pulse
+  dangerPulse = (dangerPulse + dt * 4) % (Math.PI * 2);
+
+  // hit stop
+  if (hitStopTimer > 0) hitStopTimer -= dt;
+
+  // game over check
+  for (let d of dots) {
+    if (gravitySign === 1 && d.y + d.r >= CH - PADDING - DANGER_MARGIN) { endGame(); return; }
+    if (gravitySign === -1 && d.y - d.r <= PADDING + DANGER_MARGIN)      { endGame(); return; }
+  }
+}
+
+// ─── Draw ─────────────────────────────────────────────────────
+function draw() {
+  const sx = shakeAmt > 0 ? (Math.random()-0.5)*shakeAmt*2 : 0;
+  const sy = shakeAmt > 0 ? (Math.random()-0.5)*shakeAmt*2 : 0;
+
+  ctx.save();
+  ctx.translate(sx, sy);
+
+  // background
+  const grad = ctx.createLinearGradient(0,0,CW,CH);
+  grad.addColorStop(0, '#0d0d1a');
+  grad.addColorStop(0.5, '#110d20');
+  grad.addColorStop(1, '#0d1525');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0,0,CW,CH);
+
+  if (state === 'start') {
+    drawStartScreen();
+  } else if (state === 'playing' || state === 'gameover') {
+    drawPlayfield();
+    drawDots();
+    drawTethers();
+    drawParticles();
+    drawHUD();
+    if (state === 'gameover') drawGameOverScreen();
+  }
+
+  ctx.restore();
+}
+
+function drawPlayfield() {
+  const pf_top = PADDING;
+  const pf_bot = CH - PADDING;
+  const danger_top = pf_top + DANGER_MARGIN;
+  const danger_bot = pf_bot - DANGER_MARGIN;
+
+  // playfield border
+  ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(PADDING, pf_top, CW-2*PADDING, pf_bot-pf_top);
+
+  // danger lines
+  const pulse = (Math.sin(dangerPulse) + 1) / 2;
+  const anyWarning = dots.some(d => d.warning);
+  const dangerAlpha = anyWarning ? 0.4 + pulse * 0.5 : 0.15 + pulse * 0.1;
+
+  if (gravitySign === 1) {
+    // falling down — danger at bottom
+    const grad = ctx.createLinearGradient(0, danger_bot, 0, pf_bot);
+    grad.addColorStop(0, `rgba(255,60,60,0)`);
+    grad.addColorStop(1, `rgba(255,60,60,${dangerAlpha})`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(PADDING, danger_bot, CW-2*PADDING, pf_bot-danger_bot);
+
+    ctx.strokeStyle = `rgba(255,80,80,${0.4 + pulse*0.5})`;
+    ctx.lineWidth = anyWarning ? 2 : 1;
+    ctx.setLineDash([6,4]);
+    ctx.beginPath(); ctx.moveTo(PADDING, danger_bot); ctx.lineTo(CW-PADDING, danger_bot);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  } else {
+    // falling up — danger at top
+    const grad = ctx.createLinearGradient(0, pf_top, 0, danger_top);
+    grad.addColorStop(0, `rgba(255,60,60,${dangerAlpha})`);
+    grad.addColorStop(1, `rgba(255,60,60,0)`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(PADDING, pf_top, CW-2*PADDING, danger_top-pf_top);
+
+    ctx.strokeStyle = `rgba(255,80,80,${0.4 + pulse*0.5})`;
+    ctx.lineWidth = anyWarning ? 2 : 1;
+    ctx.setLineDash([6,4]);
+    ctx.beginPath(); ctx.moveTo(PADDING, danger_top); ctx.lineTo(CW-PADDING, danger_top);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // gravity indicator arrow
+  drawGravityArrow();
+}
+
+function drawGravityArrow() {
+  const x = CW - PADDING - 14;
+  const pulse = (Math.sin(dangerPulse*1.5) + 1) / 2;
+  ctx.save();
+  ctx.globalAlpha = 0.35 + pulse * 0.25;
+  ctx.fillStyle = '#60a5fa';
+  ctx.beginPath();
+  if (gravitySign === 1) {
+    const y = CH - PADDING - DANGER_MARGIN - 50;
+    ctx.moveTo(x, y+24); ctx.lineTo(x-7, y+10); ctx.lineTo(x+7, y+10); ctx.closePath();
+  } else {
+    const y = PADDING + DANGER_MARGIN + 26;
+    ctx.moveTo(x, y-24); ctx.lineTo(x-7, y-10); ctx.lineTo(x+7, y-10); ctx.closePath();
+  }
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawDots() {
+  for (let d of dots) {
+    const col = getDotColor(d.colorIdx);
+    const glow = getDotColorGlow(d.colorIdx);
+
+    ctx.save();
+
+    // warning glow
+    if (d.warning) {
+      const pulse = (Math.sin(dangerPulse * 2) + 1) / 2;
+      ctx.shadowColor = 'rgba(255,80,80,0.9)';
+      ctx.shadowBlur = 14 + pulse * 8;
+    } else if (d.snapTimer > 0) {
+      ctx.shadowColor = glow;
+      ctx.shadowBlur = 6 + d.snapTimer * 20;
+    } else {
+      ctx.shadowColor = glow;
+      ctx.shadowBlur = 8;
+    }
+
+    // body
+    ctx.beginPath();
+    ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
+    ctx.fillStyle = col;
+    ctx.fill();
+
+    // heavy ring
+    if (d.heavy) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    // snap progress ring
+    if (d.snapTimer > 0) {
+      const prog = Math.min(d.snapTimer / SNAP_TIME, 1);
+      ctx.beginPath();
+      ctx.arc(d.x, d.y, d.r + 4, -Math.PI/2, -Math.PI/2 + Math.PI*2*prog);
+      ctx.strokeStyle = glow;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+}
+
+function drawTethers() {
+  for (let t of tethers) {
+    if (t.a.dead || t.b.dead) continue;
+    const prog = Math.min((t.a.snapTimer + t.b.snapTimer) / (SNAP_TIME * 2), 1);
+    const alpha = 0.2 + prog * 0.6;
+    const glow = getDotColorGlow(t.a.colorIdx);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = glow;
+    ctx.lineWidth = 1.5 + prog * 2;
+    ctx.shadowColor = glow;
+    ctx.shadowBlur = 6 + prog * 10;
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath();
+    ctx.moveTo(t.a.x, t.a.y);
+    ctx.lineTo(t.b.x, t.b.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+}
+
+function drawParticles() {
+  for (let p of particles) {
+    ctx.save();
+    ctx.globalAlpha = p.alpha * p.alpha;
+    ctx.fillStyle = getDotColor(p.colorIdx % colorCount, 1);
+    ctx.shadowColor = getDotColorGlow(p.colorIdx % colorCount);
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r * p.life, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawHUD() {
+  // score
+  ctx.save();
+  ctx.font = 'bold 28px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(255,255,255,0.92)';
+  ctx.shadowColor = 'rgba(167,139,250,0.5)';
+  ctx.shadowBlur = 12;
+  ctx.fillText(score, CW/2, PADDING + 26);
+  ctx.restore();
+
+  // combo
+  if (combo > 1) {
+    ctx.save();
+    ctx.font = `bold 14px monospace`;
+    ctx.textAlign = 'center';
+    const hue = (hueOffset + 120) % 360;
+    ctx.fillStyle = `hsl(${hue},90%,70%)`;
+    ctx.shadowColor = `hsl(${hue},100%,80%)`;
+    ctx.shadowBlur = 8;
+    ctx.fillText(`x${combo} COMBO`, CW/2, PADDING + 46);
+    ctx.restore();
+  }
+
+  // best
+  ctx.save();
+  ctx.font = '11px monospace';
+  ctx.textAlign = 'right';
+  ctx.fillStyle = 'rgba(255,255,255,0.3)';
+  ctx.fillText(`BEST ${bestScore}`, CW - PADDING - 4, PADDING + 16);
+  ctx.restore();
+
+  // gravity indicator text
+  ctx.save();
+  ctx.font = '10px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  ctx.fillText(gravitySign === 1 ? '▼ DOWN' : '▲ UP', PADDING + 4, PADDING + 16);
+  ctx.restore();
+}
+
+function drawStartScreen() {
+  // Title
+  ctx.save();
+  ctx.textAlign = 'center';
+
+  // Animated dots preview
+  const t = performance.now() / 1000;
+  for (let i=0;i<6;i++) {
+    const x = CW/2 + Math.cos(t*0.7 + i*1.05)*80;
+    const y = CH/2 - 60 + Math.sin(t*0.9 + i*0.9)*50;
+    const hue = (hueOffset + i*60) % 360;
+    ctx.beginPath();
+    ctx.arc(x, y, 14, 0, Math.PI*2);
+    ctx.fillStyle = `hsl(${hue},80%,62%)`;
+    ctx.shadowColor = `hsl(${hue},100%,75%)`;
+    ctx.shadowBlur = 18;
+    ctx.fill();
+  }
+
+  ctx.shadowColor = 'rgba(167,139,250,0.8)';
+  ctx.shadowBlur = 30;
+  ctx.font = 'bold 36px monospace';
+  ctx.fillStyle = '#fff';
+  ctx.fillText('GRAVITY', CW/2, CH/2 + 40);
+  ctx.fillText('CHAIN', CW/2, CH/2 + 82);
+
+  ctx.shadowBlur = 0;
+  ctx.font = '13px monospace';
+  ctx.fillStyle = `rgba(255,255,255,${0.5 + 0.5*Math.sin(t*3)})`;
+  ctx.fillText('TAP TO START', CW/2, CH/2 + 130);
+
+  ctx.font = '11px monospace';
+  ctx.fillStyle = 'rgba(255,255,255,0.3)';
+  ctx.fillText('SPACE / ENTER / TAP', CW/2, CH/2 + 155);
+
+  ctx.restore();
+}
+
+function drawGameOverScreen() {
+  // overlay
+  ctx.fillStyle = 'rgba(0,0,0,0.65)';
+  ctx.fillRect(0,0,CW,CH);
+
+  ctx.save();
+  ctx.textAlign = 'center';
+
+  ctx.font = 'bold 28px monospace';
+  ctx.fillStyle = 'rgba(255,100,100,0.95)';
+  ctx.shadowColor = 'rgba(255,80,80,0.8)';
+  ctx.shadowBlur = 20;
+  ctx.fillText('GAME OVER', CW/2, CH/2 - 60);
+
+  ctx.shadowBlur = 0;
+  ctx.font = 'bold 48px monospace';
+  ctx.fillStyle = '#fff';
+  ctx.fillText(score, CW/2, CH/2 - 8);
+
+  ctx.font = '14px monospace';
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.fillText(`BEST: ${bestScore}`, CW/2, CH/2 + 28);
+
+  const t = performance.now() / 1000;
+  ctx.font = '14px monospace';
+  ctx.fillStyle = `rgba(255,255,255,${0.5 + 0.5*Math.sin(t*3)})`;
+  ctx.fillText('TAP TO RETRY', CW/2, CH/2 + 72);
+
+  ctx.restore();
+}
+
+// ─── Main loop ────────────────────────────────────────────────
+function loop(ts) {
+  animId = requestAnimationFrame(loop);
+  let dt = Math.min((ts - lastTimestamp) / 1000, 0.05);
+  lastTimestamp = ts;
+
+  if (hitStopTimer > 0) dt *= 0.15; // slow-mo during hit stop
+
+  if (state === 'start') {
+    hueOffset = (hueOffset + dt * 20) % 360;
+  }
+
+  update(dt);
+  draw();
+}
+
+// ─── Boot ─────────────────────────────────────────────────────
+hueOffset = Math.random() * 360;
+loop(performance.now());
+
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Prism Rise - Free HTML5 Game</title>
+  <meta name="description" content="Play Prism Rise - Swipe to change gravity direction and scale geometric blocks upward.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a0a1a">
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Prism Rise - Free HTML5 Game">
+  <meta property="og:description" content="Flip between walls, dodge laser gates and spike bars. How high can you rise?">
+  <meta property="og:url" content="https://balinti.github.io/prism-rise/">
+  <meta property="og:image" content="https://balinti.github.io/prism-rise/preview.png">
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Prism Rise - Free HTML5 Game">
+  <meta name="twitter:description" content="Flip between walls, dodge laser gates and spike bars. How high can you rise?">
+  <meta name="twitter:image" content="https://balinti.github.io/prism-rise/preview.png">
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    html,body{width:100%;height:100%;background:#0a0a1a;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;font-family:'Segoe UI',Arial,sans-serif;touch-action:none}
+    #game-wrap{position:relative;width:100%;max-width:420px;max-height:750px;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center}
+    canvas{display:block;width:100%;max-width:420px;max-height:750px;cursor:pointer}
+    #overlay{position:absolute;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;z-index:10}
+    #overlay.hidden{display:none}
+    .screen{background:rgba(5,5,20,0.88);border:1px solid rgba(120,80,255,0.35);border-radius:18px;padding:32px 28px;text-align:center;max-width:340px;width:90%;pointer-events:all;box-shadow:0 0 40px rgba(100,60,255,0.25)}
+    .screen h1{font-size:2.2em;font-weight:900;letter-spacing:2px;background:linear-gradient(135deg,#a78bfa,#38bdf8,#f472b6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:6px}
+    .screen h2{font-size:1.5em;font-weight:800;background:linear-gradient(135deg,#a78bfa,#f472b6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:10px}
+    .screen p{color:#94a3b8;font-size:0.95em;margin-bottom:8px;line-height:1.5}
+    .score-big{font-size:2.8em;font-weight:900;color:#fff;margin:10px 0 4px}
+    .score-label{color:#64748b;font-size:0.8em;letter-spacing:1px;text-transform:uppercase;margin-bottom:14px}
+    .best-row{display:flex;justify-content:space-between;gap:18px;margin-bottom:14px}
+    .stat-box{flex:1;background:rgba(120,80,255,0.1);border-radius:10px;padding:8px 10px}
+    .stat-val{font-size:1.3em;font-weight:700;color:#a78bfa}
+    .stat-lbl{font-size:0.7em;color:#64748b;text-transform:uppercase;letter-spacing:1px}
+    .tap-hint{margin-top:16px;color:#a78bfa;font-size:1em;font-weight:700;letter-spacing:1px;animation:pulse 1.2s ease-in-out infinite}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.45}}
+    .controls-tip{font-size:0.78em;color:#475569;margin-top:8px}
+    #seo-block{max-width:420px;width:100%;padding:10px 16px;color:#334155;font-size:0.72em;line-height:1.5;text-align:center}
+  </style>
+</head>
+<body>
+<div id="game-wrap">
+  <canvas id="c"></canvas>
+  <div id="overlay">
+    <div class="screen" id="start-screen">
+      <h1>PRISM RISE</h1>
+      <p>Cling to the walls. Flip between sides.<br>Dodge lasers and spikes. Rise higher.</p>
+      <div class="tap-hint">TAP TO START</div>
+      <div class="controls-tip">Tap · Click · Space · Enter</div>
+    </div>
+    <div class="screen hidden" id="gameover-screen">
+      <h2>GAME OVER</h2>
+      <div class="score-big" id="go-score">0</div>
+      <div class="score-label">HEIGHT</div>
+      <div class="best-row">
+        <div class="stat-box"><div class="stat-val" id="go-best">0</div><div class="stat-lbl">Best</div></div>
+        <div class="stat-box"><div class="stat-val" id="go-perfects">0</div><div class="stat-lbl">Perfects</div></div>
+        <div class="stat-box"><div class="stat-val" id="go-maxmult">x1</div><div class="stat-lbl">Max Mult</div></div>
+        <div class="stat-box"><div class="stat-val" id="go-nearmiss">0</div><div class="stat-lbl">Near Miss</div></div>
+      </div>
+      <div class="tap-hint">TAP TO RETRY</div>
+    </div>
+  </div>
+</div>
+<div id="seo-block">
+  <strong>Prism Rise</strong> — A wall-flip survival game. Tap or press Space to switch walls, dodge laser gates and spike bars, and climb as high as you can. Free to play, no download needed.
+</div>
+
+<script>
+(()=>{
+'use strict';
+
+// ─── Constants ──────────────────────────────────────────────────────────────
+const LS_KEY = 'prismrise_highscore_v1';
+const WALL_W = 18;
+const SHAFT_FRAC = 0.72; // shaft width as fraction of canvas width
+const RUNNER_H = 26, RUNNER_W = 18;
+const RUNNER_ANCHOR_Y = 0.62; // runner screen position (from top)
+const MAX_DT = 1/30;
+const SPEED_BASE = 220;
+const SPEED_RAMP = 18; // px/s added per 1000 units height
+const SPEED_MAX = 580;
+const LASER_W = 3;
+const PERFECT_WINDOW = 0.22; // seconds for perfect-flip window
+const COMBO_CAP = 6;
+const DPR_CAP = 2;
+
+// ─── DOM ────────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const overlay = document.getElementById('overlay');
+const startScreen = document.getElementById('start-screen');
+const gameoverScreen = document.getElementById('gameover-screen');
+const goScore = document.getElementById('go-score');
+const goBest = document.getElementById('go-best');
+const goPerfects = document.getElementById('go-perfects');
+const goMaxMult = document.getElementById('go-maxmult');
+const goNearmiss = document.getElementById('go-nearmiss');
+
+// ─── State ───────────────────────────────────────────────────────────────────
+let W, H, DPR, shaftX, shaftW;
+let state = 'start';
+let raf;
+
+// Game vars
+let worldY, speed, score, bestScore, hue;
+let runner; // {side:'left'|'right', x, y, vy, trail:[]}
+let hazards; // [{type:'laser'|'spike', y, ...}]
+let particles;
+let shake, shakeDur;
+let hitstopLeft;
+let combo, maxCombo, perfects, nearMisses;
+let lastFlipY;
+let pendingPerfect; // {timer, done}
+let bgHue;
+let spawnCooldown;
+let lastHazardY; // world Y of last spawned hazard
+let difficultyTier;
+let scoreDisplay;
+
+// ─── Resize ──────────────────────────────────────────────────────────────────
+function resize() {
+  const wrap = document.getElementById('game-wrap');
+  const rect = wrap.getBoundingClientRect();
+  W = Math.min(rect.width, 420);
+  H = Math.min(rect.height, 750);
+  DPR = Math.min(window.devicePixelRatio || 1, DPR_CAP);
+  canvas.width = W * DPR;
+  canvas.height = H * DPR;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.scale(DPR, DPR);
+  shaftW = W * SHAFT_FRAC;
+  shaftX = (W - shaftW) / 2;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ─── Utils ───────────────────────────────────────────────────────────────────
+function lerp(a, b, t) { return a + (b - a) * t; }
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+function rand(lo, hi) { return lo + Math.random() * (hi - lo); }
+function randInt(lo, hi) { return Math.floor(rand(lo, hi + 1)); }
+
+function worldToScreen(wy) {
+  // runner is anchored at RUNNER_ANCHOR_Y * H
+  return (wy - worldY) + H * RUNNER_ANCHOR_Y;
+}
+
+// ─── Init ────────────────────────────────────────────────────────────────────
+function initGame() {
+  worldY = 0;
+  speed = SPEED_BASE;
+  score = 0;
+  scoreDisplay = 0;
+  hue = 260;
+  bgHue = 240;
+  hazards = [];
+  particles = [];
+  shake = {x:0,y:0};
+  shakeDur = 0;
+  hitstopLeft = 0;
+  combo = 1;
+  maxCombo = 1;
+  perfects = 0;
+  nearMisses = 0;
+  lastFlipY = 0;
+  pendingPerfect = null;
+  spawnCooldown = 0;
+  lastHazardY = -400; // start clear
+  difficultyTier = 0;
+  bestScore = parseInt(localStorage.getItem(LS_KEY) || '0');
+
+  runner = {
+    side: 'right',
+    x: 0,
+    y: H * RUNNER_ANCHOR_Y,
+    trail: []
+  };
+  setRunnerX();
+}
+
+function setRunnerX() {
+  if (runner.side === 'right') {
+    runner.x = shaftX + shaftW - WALL_W - RUNNER_W / 2;
+  } else {
+    runner.x = shaftX + WALL_W + RUNNER_W / 2;
+  }
+}
+
+// ─── Input ───────────────────────────────────────────────────────────────────
+function handleInput() {
+  if (state === 'start') { startGame(); return; }
+  if (state === 'gameover') { startGame(); return; }
+  if (state === 'playing') { doFlip(); }
+}
+
+canvas.addEventListener('pointerdown', handleInput);
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); handleInput(); }
+});
+// Touch on overlay screens
+startScreen.addEventListener('pointerdown', handleInput);
+gameoverScreen.addEventListener('pointerdown', handleInput);
+
+function startGame() {
+  initGame();
+  state = 'playing';
+  overlay.classList.add('hidden');
+  startScreen.classList.add('hidden');
+  gameoverScreen.classList.add('hidden');
+}
+
+function doFlip() {
+  if (hitstopLeft > 0) return;
+  const oldSide = runner.side;
+  runner.side = oldSide === 'left' ? 'right' : 'left';
+  setRunnerX();
+  lastFlipY = worldY;
+
+  // Check perfect flip timing
+  let isPerfect = false;
+  if (pendingPerfect && !pendingPerfect.done && pendingPerfect.timer > 0) {
+    isPerfect = true;
+    pendingPerfect.done = true;
+    combo = Math.min(combo + 1, COMBO_CAP);
+    maxCombo = Math.max(maxCombo, combo);
+    perfects++;
+    spawnPerfectBurst(runner.x, runner.y);
+    triggerShake(3, 0.15);
+  } else {
+    // non-perfect flip resets combo slowly (don't hard reset)
+    combo = Math.max(1, combo - 1);
+  }
+
+  // Flip burst particles
+  spawnFlipBurst(runner.x, runner.y, hue);
+}
+
+// ─── Particle System ─────────────────────────────────────────────────────────
+function spawnFlipBurst(x, y, h) {
+  for (let i = 0; i < 12; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const spd = rand(60, 200);
+    particles.push({
+      x, y, vx: Math.cos(angle)*spd, vy: Math.sin(angle)*spd - 40,
+      life: 1, decay: rand(1.8, 3.2),
+      r: rand(2, 5), hue: h + rand(-30, 30), alpha: 1,
+      type: 'circle'
+    });
+  }
+}
+
+function spawnPerfectBurst(x, y) {
+  for (let i = 0; i < 24; i++) {
+    const angle = (i / 24) * Math.PI * 2;
+    const spd = rand(80, 260);
+    particles.push({
+      x, y, vx: Math.cos(angle)*spd, vy: Math.sin(angle)*spd - 60,
+      life: 1, decay: rand(1.2, 2.4),
+      r: rand(3, 7), hue: rand(0,360), alpha: 1,
+      type: 'star'
+    });
+  }
+}
+
+function spawnDeathShatter(x, y) {
+  for (let i = 0; i < 36; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const spd = rand(100, 380);
+    particles.push({
+      x, y, vx: Math.cos(angle)*spd, vy: Math.sin(angle)*spd,
+      life: 1, decay: rand(0.9, 1.8),
+      r: rand(3, 9), hue: hue + rand(-40, 40), alpha: 1,
+      type: 'rect'
+    });
+  }
+}
+
+function spawnNearMissGlow(x, y) {
+  for (let i = 0; i < 8; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    particles.push({
+      x, y, vx: Math.cos(angle)*rand(30,90), vy: Math.sin(angle)*rand(30,90),
+      life: 1, decay: rand(2.5, 4),
+      r: rand(2, 4), hue: 60, alpha: 0.7,
+      type: 'circle'
+    });
+  }
+}
+
+// ─── Hazard Spawning ─────────────────────────────────────────────────────────
+function getMinGap() {
+  // Minimum gap in world units based on current speed & reaction time
+  return speed * 0.55 + 60; // ~0.55s reaction time
+}
+
+function spawnHazard() {
+  const tier = difficultyTier;
+  const wy = worldY - H * 0.15; // spawn above screen
+  const gap = getMinGap();
+
+  if (wy - lastHazardY < gap) return;
+
+  const types = ['laser', 'spike'];
+  // At higher tiers, add double laser
+  const weights = tier < 2 ? [0.55, 0.45] : tier < 4 ? [0.45, 0.35, 0.20] : [0.35, 0.25, 0.25, 0.15];
+  const typeList = tier < 2 ? ['laser','spike'] : tier < 4 ? ['laser','spike','double_laser'] : ['laser','spike','double_laser','spike_laser'];
+
+  let pick = Math.random();
+  let cumul = 0, htype = typeList[0];
+  for (let i = 0; i < typeList.length; i++) {
+    cumul += weights[i];
+    if (pick < cumul) { htype = typeList[i]; break; }
+  }
+
+  const side = Math.random() < 0.5 ? 'left' : 'right';
+  const h = {type: htype, wy, active: true, telegraphTime: 0.7 + Math.random()*0.3, telegraphing: true, side};
+
+  if (htype === 'laser') {
+    // Laser gate: a beam from one side that leaves a gap
+    const gapH = clamp(shaftW * rand(0.38, 0.55), 80, 160);
+    const gapStart = rand(shaftX + WALL_W + 10, shaftX + shaftW - WALL_W - gapH - 10);
+    h.gapStart = gapStart;
+    h.gapH = gapH;
+  } else if (htype === 'spike') {
+    // Spikes on one wall
+    h.wallSide = Math.random() < 0.5 ? 'left' : 'right';
+    h.spikeCount = randInt(2,5);
+    h.spikeH = 14;
+  } else if (htype === 'double_laser') {
+    const gapH = clamp(shaftW * rand(0.30, 0.45), 70, 140);
+    const gapStart = rand(shaftX + WALL_W + 10, shaftX + shaftW - WALL_W - gapH - 10);
+    h.gapStart = gapStart;
+    h.gapH = gapH;
+    h.offset2 = randInt(80, 140); // second laser below
+  } else if (htype === 'spike_laser') {
+    const gapH = clamp(shaftW * rand(0.35, 0.50), 80, 150);
+    const gapStart = rand(shaftX + WALL_W + 10, shaftX + shaftW - WALL_W - gapH - 10);
+    h.gapStart = gapStart;
+    h.gapH = gapH;
+    h.wallSide = Math.random() < 0.5 ? 'left' : 'right';
+  }
+
+  // Check that hazard doesn't create impossible scenario:
+  // Ensure player CAN survive by being on the correct wall or center
+  // (fair: always leave enough room for runner on either side near a wall)
+
+  hazards.push(h);
+  lastHazardY = wy;
+
+  // Register perfect flip window: ~64px before hazard reaches runner
+  const triggerOffset = Math.min(80, speed * 0.15);
+  const pfwY = wy + triggerOffset;
+  // We'll check this in update
+  h.perfectWindowY = pfwY;
+  h.perfectWindowOpen = false;
+}
+
+// ─── Collision ───────────────────────────────────────────────────────────────
+function runnerAABB() {
+  return {
+    left: runner.x - RUNNER_W/2 + 2,
+    right: runner.x + RUNNER_W/2 - 2,
+    top: runner.y - RUNNER_H/2 + 2,
+    bottom: runner.y + RUNNER_H/2 - 2
+  };
+}
+
+function rectOverlap(a, b) {
+  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+}
+
+function checkCollisions() {
+  const rb = runnerAABB();
+  for (const h of hazards) {
+    if (!h.active || h.telegraphing) continue;
+    const sy = worldToScreen(h.wy);
+    const thick = 4;
+
+    if (h.type === 'laser' || h.type === 'double_laser') {
+      // Left segment: shaftX+WALL_W .. gapStart
+      const leftSeg = {left: shaftX+WALL_W, right: h.gapStart, top: sy-thick, bottom: sy+thick};
+      // Right segment: gapStart+gapH .. shaftX+shaftW-WALL_W
+      const rightSeg = {left: h.gapStart+h.gapH, right: shaftX+shaftW-WALL_W, top: sy-thick, bottom: sy+thick};
+      if (rectOverlap(rb, leftSeg) || rectOverlap(rb, rightSeg)) return true;
+
+      if (h.type === 'double_laser') {
+        const sy2 = worldToScreen(h.wy + h.offset2);
+        const ls2 = {left: shaftX+WALL_W, right: h.gapStart, top: sy2-thick, bottom: sy2+thick};
+        const rs2 = {left: h.gapStart+h.gapH, right: shaftX+shaftW-WALL_W, top: sy2-thick, bottom: sy2+thick};
+        if (rectOverlap(rb, ls2) || rectOverlap(rb, rs2)) return true;
+      }
+    }
+
+    if (h.type === 'spike' || h.type === 'spike_laser') {
+      const wx = h.wallSide === 'left' ? shaftX + WALL_W : shaftX + shaftW - WALL_W - 10;
+      const sw = 12;
+      for (let i = 0; i < (h.spikeCount||3); i++) {
+        const ssy = sy - (i - (h.spikeCount||3)/2) * 20;
+        const sb = {left: wx, right: wx+sw, top: ssy-8, bottom: ssy+8};
+        if (rectOverlap(rb, sb)) return true;
+      }
+      if (h.type === 'spike_laser') {
+        const leftSeg = {left: shaftX+WALL_W, right: h.gapStart, top: sy-thick, bottom: sy+thick};
+        const rightSeg = {left: h.gapStart+h.gapH, right: shaftX+shaftW-WALL_W, top: sy-thick, bottom: sy+thick};
+        if (rectOverlap(rb, leftSeg) || rectOverlap(rb, rightSeg)) return true;
+      }
+    }
+  }
+  return false;
+}
+
+function checkNearMiss() {
+  const rb = runnerAABB();
+  const nearDist = 12;
+  const expanded = {left: rb.left-nearDist, right: rb.right+nearDist, top: rb.top-nearDist, bottom: rb.bottom+nearDist};
+  for (const h of hazards) {
+    if (!h.active || h.telegraphing || h.nearMissChecked) continue;
+    const sy = worldToScreen(h.wy);
+    if (sy < rb.top - 40 || sy > rb.bottom + 40) continue;
+    const thick = 10;
+    if (h.type === 'laser' || h.type === 'double_laser' || h.type === 'spike_laser') {
+      const ls = {left: shaftX+WALL_W, right: h.gapStart, top: sy-thick, bottom: sy+thick};
+      const rs = {left: h.gapStart+h.gapH, right: shaftX+shaftW-WALL_W, top: sy-thick, bottom: sy+thick};
+      if ((rectOverlap(expanded, ls) || rectOverlap(expanded, rs)) && !rectOverlap(rb, ls) && !rectOverlap(rb, rs)) {
+        h.nearMissChecked = true;
+        nearMisses++;
+        spawnNearMissGlow(runner.x, runner.y);
+      }
+    }
+  }
+}
+
+// ─── Update ──────────────────────────────────────────────────────────────────
+function update(dt) {
+  if (hitstopLeft > 0) { hitstopLeft -= dt; return; }
+
+  // Screen shake
+  if (shakeDur > 0) {
+    shakeDur -= dt;
+    const mag = shakeDur * 14;
+    shake.x = (Math.random()-0.5)*mag;
+    shake.y = (Math.random()-0.5)*mag;
+  } else { shake.x = 0; shake.y = 0; }
+
+  // Speed ramp
+  speed = Math.min(SPEED_BASE + (worldY / 1000) * SPEED_RAMP, SPEED_MAX);
+  difficultyTier = Math.floor(worldY / 800);
+
+  // World scroll
+  worldY += speed * dt;
+  score = Math.floor(worldY / 10);
+  scoreDisplay += (score - scoreDisplay) * 0.15;
+
+  // HSL drift
+  hue = (260 + worldY / 40) % 360;
+  bgHue = (240 + worldY / 60) % 360;
+
+  // Runner trail
+  runner.trail.unshift({x: runner.x, y: runner.y, age: 0});
+  if (runner.trail.length > 24) runner.trail.pop();
+  for (const t of runner.trail) t.age += dt * (1 + combo * 0.3);
+
+  // Update particles
+  for (let i = particles.length-1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy += 280 * dt;
+    p.life -= p.decay * dt;
+    p.alpha = Math.max(0, p.life);
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+
+  // Spawn hazards
+  spawnCooldown -= dt;
+  if (spawnCooldown <= 0) {
+    spawnHazard();
+    spawnCooldown = 0.06;
+  }
+
+  // Update hazard telegraph timers & perfect windows
+  for (const h of hazards) {
+    if (!h.active) continue;
+    const sy = worldToScreen(h.wy);
+
+    if (h.telegraphing) {
+      h.telegraphTime -= dt;
+      if (h.telegraphTime <= 0) h.telegraphing = false;
+    }
+
+    // Open perfect flip window when hazard is ~120px above runner
+    if (!h.perfectWindowOpen && sy < runner.y - 30 && sy > runner.y - 160) {
+      h.perfectWindowOpen = true;
+      if (!pendingPerfect || pendingPerfect.done) {
+        pendingPerfect = {timer: PERFECT_WINDOW, done: false};
+      }
+    }
+
+    // Cull far below
+    if (sy > H + 80) { h.active = false; }
+  }
+
+  // Decay pending perfect window
+  if (pendingPerfect && !pendingPerfect.done) {
+    pendingPerfect.timer -= dt;
+    if (pendingPerfect.timer <= 0) {
+      pendingPerfect.done = true;
+      combo = Math.max(1, combo - 1);
+    }
+  }
+
+  // Near miss check
+  checkNearMiss();
+
+  // Collision
+  if (checkCollisions()) {
+    triggerDeath();
+    return;
+  }
+}
+
+function triggerDeath() {
+  spawnDeathShatter(runner.x, runner.y);
+  triggerShake(12, 0.45);
+  hitstopLeft = 0.10;
+  const finalScore = score;
+  const prev = parseInt(localStorage.getItem(LS_KEY) || '0');
+  if (finalScore > prev) localStorage.setItem(LS_KEY, String(finalScore));
+  bestScore = Math.max(prev, finalScore);
+
+  setTimeout(()=>{
+    state = 'gameover';
+    goScore.textContent = finalScore;
+    goBest.textContent = bestScore;
+    goPerfects.textContent = perfects;
+    goMaxMult.textContent = 'x' + maxCombo;
+    goNearmiss.textContent = nearMisses;
+    overlay.classList.remove('hidden');
+    gameoverScreen.classList.remove('hidden');
+  }, 250);
+}
+
+function triggerShake(mag, dur) {
+  shake.x = (Math.random()-0.5)*mag;
+  shake.y = (Math.random()-0.5)*mag;
+  shakeDur = Math.max(shakeDur, dur);
+}
+
+// ─── Draw ────────────────────────────────────────────────────────────────────
+function draw() {
+  ctx.save();
+  ctx.translate(shake.x, shake.y);
+
+  // Background gradient
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, `hsl(${bgHue},60%,5%)`);
+  bg.addColorStop(1, `hsl(${(bgHue+40)%360},50%,8%)`);
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // Draw shaft walls
+  drawWalls();
+
+  // Draw hazards
+  for (const h of hazards) {
+    if (!h.active) continue;
+    drawHazard(h);
+  }
+
+  // Draw trail
+  drawTrail();
+
+  // Draw runner
+  drawRunner();
+
+  // Draw particles
+  drawParticles();
+
+  // HUD
+  drawHUD();
+
+  ctx.restore();
+}
+
+function drawWalls() {
+  // Outer darkness
+  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+  ctx.fillRect(0, 0, shaftX, H);
+  ctx.fillRect(shaftX + shaftW, 0, W - (shaftX + shaftW), H);
+
+  // Wall glow (fake, multi-pass)
+  for (let i = 3; i >= 1; i--) {
+    ctx.fillStyle = `hsla(${hue},70%,55%,${0.04*i})`;
+    ctx.fillRect(shaftX - i*4, 0, WALL_W + i*8, H);
+    ctx.fillRect(shaftX + shaftW - WALL_W - i*4, 0, WALL_W + i*8, H);
+  }
+  ctx.fillStyle = `hsl(${hue},60%,40%)`;
+  ctx.fillRect(shaftX, 0, WALL_W, H);
+  ctx.fillRect(shaftX + shaftW - WALL_W, 0, WALL_W, H);
+
+  // Wall highlight
+  ctx.fillStyle = `hsla(${hue},80%,80%,0.18)`;
+  ctx.fillRect(shaftX + WALL_W - 3, 0, 3, H);
+  ctx.fillRect(shaftX + shaftW - WALL_W, 0, 3, H);
+
+  // Scrolling wall texture lines
+  const lineSpacing = 48;
+  const offset = worldY % lineSpacing;
+  ctx.strokeStyle = `hsla(${hue},60%,70%,0.08)`;
+  ctx.lineWidth = 1;
+  for (let y = -lineSpacing + offset; y < H; y += lineSpacing) {
+    ctx.beginPath();
+    ctx.moveTo(shaftX, y); ctx.lineTo(shaftX + WALL_W, y);
+    ctx.moveTo(shaftX + shaftW - WALL_W, y); ctx.lineTo(shaftX + shaftW, y);
+    ctx.stroke();
+  }
+}
+
+function drawHazard(h) {
+  const sy = worldToScreen(h.wy);
+  const telegraphFrac = h.telegraphing ? clamp(1 - h.telegraphTime / (0.7+0.3), 0, 1) : 1;
+  const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 120);
+  const alpha = h.telegraphing ? lerp(0.15, 0.85, telegraphFrac) * (0.6 + 0.4*pulse) : 1;
+
+  if (h.type === 'laser' || h.type === 'double_laser' || h.type === 'spike_laser') {
+    drawLaserBeam(h, sy, alpha, h.gapStart, h.gapH);
+    if (h.type === 'double_laser') {
+      const sy2 = worldToScreen(h.wy + h.offset2);
+      drawLaserBeam(h, sy2, alpha * 0.85, h.gapStart, h.gapH);
+    }
+  }
+
+  if (h.type === 'spike' || h.type === 'spike_laser') {
+    drawSpikes(h, sy, alpha);
+  }
+}
+
+function drawLaserBeam(h, sy, alpha, gapStart, gapH) {
+  const lx1 = shaftX + WALL_W;
+  const rx2 = shaftX + shaftW - WALL_W;
+  const pulse = 0.6 + 0.4 * Math.sin(Date.now() / 90);
+  const laserHue = 0 + (hue * 0.1);
+
+  // Glow pass
+  for (let g = 3; g >= 1; g--) {
+    ctx.globalAlpha = alpha * 0.12 * g;
+    ctx.strokeStyle = `hsl(${laserHue+20},100%,70%)`;
+    ctx.lineWidth = (LASER_W + g*5) * pulse;
+    ctx.beginPath();
+    ctx.moveTo(lx1, sy); ctx.lineTo(gapStart, sy);
+    ctx.moveTo(gapStart + gapH, sy); ctx.lineTo(rx2, sy);
+    ctx.stroke();
+  }
+
+  // Core
+  ctx.globalAlpha = alpha;
+  ctx.strokeStyle = `hsl(${laserHue},100%,75%)`;
+  ctx.lineWidth = LASER_W;
+  ctx.beginPath();
+  ctx.moveTo(lx1, sy); ctx.lineTo(gapStart, sy);
+  ctx.moveTo(gapStart + gapH, sy); ctx.lineTo(rx2, sy);
+  ctx.stroke();
+
+  // Gap marker
+  ctx.globalAlpha = alpha * 0.35;
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4,4]);
+  ctx.beginPath();
+  ctx.moveTo(gapStart, sy); ctx.lineTo(gapStart + gapH, sy);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.globalAlpha = 1;
+}
+
+function drawSpikes(h, sy, alpha) {
+  const wallX = h.wallSide === 'left' ? shaftX + WALL_W : shaftX + shaftW - WALL_W;
+  const dir = h.wallSide === 'left' ? 1 : -1;
+  const count = h.spikeCount || 3;
+  ctx.globalAlpha = alpha;
+
+  for (let i = 0; i < count; i++) {
+    const ey = sy + (i - count/2 + 0.5) * 22;
+    // Glow
+    ctx.globalAlpha = alpha * 0.2;
+    ctx.fillStyle = `hsl(30,100%,60%)`;
+    ctx.beginPath();
+    ctx.arc(wallX + dir*6, ey, 10, 0, Math.PI*2);
+    ctx.fill();
+
+    // Spike shape
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = `hsl(30,100%,65%)`;
+    ctx.beginPath();
+    ctx.moveTo(wallX, ey - 6);
+    ctx.lineTo(wallX + dir*14, ey);
+    ctx.lineTo(wallX, ey + 6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = `hsl(40,100%,85%)`;
+    ctx.beginPath();
+    ctx.moveTo(wallX, ey - 2);
+    ctx.lineTo(wallX + dir*8, ey);
+    ctx.lineTo(wallX, ey + 2);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawTrail() {
+  const trailLen = runner.trail.length;
+  for (let i = trailLen-1; i >= 0; i--) {
+    const t = runner.trail[i];
+    const frac = 1 - i/trailLen;
+    const r = RUNNER_W/2 * frac * (0.6 + combo * 0.1);
+    const a = frac * 0.35 * (0.5 + combo * 0.15);
+    ctx.globalAlpha = Math.min(a, 0.7);
+    ctx.fillStyle = `hsl(${hue + i*3},90%,70%)`;
+    ctx.beginPath();
+    ctx.arc(t.x, t.y, r, 0, Math.PI*2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawRunner() {
+  const rx = runner.x, ry = runner.y;
+  const rw = RUNNER_W, rh = RUNNER_H;
+
+  // Glow
+  for (let g = 3; g >= 1; g--) {
+    ctx.globalAlpha = 0.07 * g * (1 + combo * 0.1);
+    ctx.fillStyle = `hsl(${hue},100%,70%)`;
+    ctx.beginPath();
+    ctx.roundRect(rx - rw/2 - g*3, ry - rh/2 - g*3, rw + g*6, rh + g*6, g*3);
+    ctx.fill();
+  }
+
+  // Body gradient
+  const grad = ctx.createLinearGradient(rx-rw/2, ry-rh/2, rx+rw/2, ry+rh/2);
+  grad.addColorStop(0, `hsl(${hue},90%,75%)`);
+  grad.addColorStop(1, `hsl(${(hue+60)%360},80%,55%)`);
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.roundRect(rx-rw/2, ry-rh/2, rw, rh, 5);
+  ctx.fill();
+
+  // Prism face detail
+  ctx.strokeStyle = `hsla(${hue},100%,90%,0.5)`;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(rx - rw/2 + 4, ry - rh/2 + 4);
+  ctx.lineTo(rx + rw/2 - 4, ry);
+  ctx.lineTo(rx - rw/2 + 4, ry + rh/2 - 4);
+  ctx.stroke();
+
+  // Perfect flash
+  if (pendingPerfect && !pendingPerfect.done && pendingPerfect.timer > 0) {
+    const pf = pendingPerfect.timer / PERFECT_WINDOW;
+    ctx.globalAlpha = pf * 0.5 * (0.5 + 0.5*Math.sin(Date.now()/60));
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.roundRect(rx-rw/2-4, ry-rh/2-4, rw+8, rh+8, 8);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    ctx.globalAlpha = p.alpha;
+    ctx.fillStyle = `hsl(${p.hue},90%,65%)`;
+    if (p.type === 'circle') {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r * p.life, 0, Math.PI*2);
+      ctx.fill();
+    } else if (p.type === 'rect') {
+      const sz = p.r * p.life;
+      ctx.fillRect(p.x - sz/2, p.y - sz/2, sz, sz);
+    } else if (p.type === 'star') {
+      const sz = p.r * p.life;
+      ctx.beginPath();
+      for (let i = 0; i < 5; i++) {
+        const a = (i * 4 * Math.PI / 5) - Math.PI/2;
+        const ia = ((i*2+1) * 2 * Math.PI / 10) - Math.PI/2;
+        if (i === 0) ctx.moveTo(p.x + sz * Math.cos(a), p.y + sz * Math.sin(a));
+        else ctx.lineTo(p.x + sz * Math.cos(a), p.y + sz * Math.sin(a));
+        ctx.lineTo(p.x + sz*0.45 * Math.cos(ia), p.y + sz*0.45 * Math.sin(ia));
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawHUD() {
+  const disp = Math.floor(scoreDisplay);
+
+  // Score
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.beginPath();
+  ctx.roundRect(W/2 - 65, 10, 130, 40, 10);
+  ctx.fill();
+
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 22px "Segoe UI", Arial, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(disp, W/2, 30);
+
+  // Combo
+  if (combo > 1) {
+    ctx.fillStyle = `hsl(${hue},90%,70%)`;
+    ctx.font = 'bold 14px "Segoe UI", Arial, sans-serif';
+    ctx.fillText(`x${combo} COMBO`, W/2, 50);
+  }
+
+  // Perfect window indicator
+  if (pendingPerfect && !pendingPerfect.done && pendingPerfect.timer > 0) {
+    const pf = pendingPerfect.timer / PERFECT_WINDOW;
+    ctx.fillStyle = `hsla(60,100%,70%,${pf})`;
+    ctx.font = 'bold 12px "Segoe UI", Arial, sans-serif';
+    ctx.fillText('PERFECT!', W/2, 68);
+  }
+
+  // Best score (small)
+  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  ctx.font = '11px "Segoe UI", Arial, sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillText('BEST ' + bestScore, W - 10, 20);
+
+  ctx.restore();
+}
+
+// ─── Main loop ───────────────────────────────────────────────────────────────
+let lastT = 0;
+function loop(t) {
+  raf = requestAnimationFrame(loop);
+  const dt = clamp((t - lastT) / 1000, 0, MAX_DT);
+  lastT = t;
+
+  if (state === 'playing') {
+    update(dt);
+    draw();
+  } else if (state === 'start' || state === 'gameover') {
+    // Still draw background animation
+    drawIdleBackground(t);
+  }
+}
+
+function drawIdleBackground(t) {
+  const ih = (240 + t/80) % 360;
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, `hsl(${ih},60%,5%)`);
+  bg.addColorStop(1, `hsl(${(ih+40)%360},50%,8%)`);
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // Subtle walls
+  ctx.fillStyle = `hsl(${ih},50%,25%)`;
+  ctx.fillRect(shaftX, 0, WALL_W, H);
+  ctx.fillRect(shaftX+shaftW-WALL_W, 0, WALL_W, H);
+
+  // Floating prisms
+  const cnt = 5;
+  for (let i = 0; i < cnt; i++) {
+    const iy = ((t/3000 + i/cnt) % 1) * H * 1.3 - H*0.15;
+    const ix = shaftX + WALL_W + 10 + (i%2)*(shaftW-WALL_W*2-30);
+    const ia = 0.15 + 0.1*Math.sin(t/800+i);
+    ctx.globalAlpha = ia;
+    ctx.fillStyle = `hsl(${(ih+i*40)%360},80%,65%)`;
+    ctx.beginPath();
+    ctx.roundRect(ix, iy, RUNNER_W, RUNNER_H, 4);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ─── Boot ────────────────────────────────────────────────────────────────────
+bestScore = parseInt(localStorage.getItem(LS_KEY) || '0');
+overlay.classList.remove('hidden');
+startScreen.classList.remove('hidden');
+gameoverScreen.classList.add('hidden');
+requestAnimationFrame(t => { lastT = t; raf = requestAnimationFrame(loop); });
+
+})();
+</script>
+</body>
+</html>

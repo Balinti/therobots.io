@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Zoom Pong - Free HTML5 Game</title>
+  <meta name="description" content="Play Zoom Pong - Bounce the ball while the screen smoothly zooms in and out to challenge your timing.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Zoom Pong - Free HTML5 Game">
+  <meta property="og:description" content="Play Zoom Pong - Bounce the ball while the screen smoothly zooms in and out to challenge your timing.">
+  <meta property="og:url" content="https://balinti.github.io/zoom-pong/">
+  <meta property="og:image" content="https://balinti.github.io/zoom-pong/preview.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Zoom Pong - Free HTML5 Game">
+  <meta name="twitter:description" content="Play Zoom Pong - Bounce the ball while the screen smoothly zooms in and out to challenge your timing.">
+  <meta name="twitter:image" content="https://balinti.github.io/zoom-pong/preview.png">
+  <meta name="theme-color" content="#0a0a1a">
+  <link rel="canonical" href="https://balinti.github.io/zoom-pong/">
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #0a0a1a;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      color: #ccc;
+      overflow-x: hidden;
+    }
+    #game-wrap {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      flex: 0 0 auto;
+      display: flex;
+      justify-content: center;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      touch-action: none;
+      cursor: pointer;
+    }
+    #seo-section {
+      max-width: 420px;
+      width: 100%;
+      padding: 18px 18px 32px;
+      color: #888;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    #seo-section h1 { font-size: 17px; color: #aaa; margin-bottom: 6px; }
+    #seo-section h2 { font-size: 14px; color: #999; margin: 12px 0 4px; }
+    #seo-section p, #seo-section ul { margin-bottom: 6px; }
+    #seo-section ul { padding-left: 18px; }
+  </style>
+</head>
+<body>
+<div id="game-wrap">
+  <canvas id="c"></canvas>
+</div>
+
+<section id="seo-section" aria-label="About Zoom Pong">
+  <h1>Zoom Pong &mdash; Zoom Flip: Risk Paddle</h1>
+  <p>Zoom Pong is a free browser-based HTML5 arcade game. Keep the ball alive by bouncing it with your paddle. The twist: tap or press Space to flip between WIDE (safe) and CLOSE (risky) modes. In CLOSE mode the arena walls slide inward, the screen zooms in, your paddle shrinks, and every bounce builds a score multiplier. Chain CLOSE bounces for a massive score!</p>
+  <h2>How to Play</h2>
+  <ul>
+    <li><strong>Tap / Space / Enter</strong> &mdash; Flip between WIDE and CLOSE mode</li>
+    <li><strong>Move pointer / finger</strong> &mdash; Aim the paddle left and right</li>
+    <li><strong>Arrow keys / A &amp; D</strong> &mdash; Keyboard paddle movement (optional)</li>
+    <li>Survive as long as possible and chain CLOSE bounces for a high multiplier</li>
+    <li>Score is saved locally &mdash; beat your best!</li>
+  </ul>
+  <h2>Tips</h2>
+  <ul>
+    <li>WIDE mode gives you a big paddle and open arena &mdash; recover here</li>
+    <li>CLOSE mode shrinks walls AND your paddle &mdash; stay alert</li>
+    <li>Your multiplier grows with every consecutive CLOSE bounce</li>
+    <li>The ball speeds up the longer you play &mdash; react fast!</li>
+  </ul>
+</section>
+
+<script>
+(function(){
+'use strict';
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+const WORLD_W = 420, WORLD_H = 750;
+const PADDLE_Y_OFFSET = 60;        // paddle center from bottom
+const BALL_RADIUS = 10;
+const BALL_TRAIL = 10;
+
+const WIDE_INSET   = 0;
+const CLOSE_INSET  = 46;
+const WIDE_ZOOM    = 1.0;
+const CLOSE_ZOOM   = 1.22;
+const EASE_INSET   = 0.09;
+const EASE_ZOOM    = 0.07;
+
+const PADDLE_WIDE_W  = 88;
+const PADDLE_CLOSE_W = 52;
+const PADDLE_H = 14;
+const PADDLE_SPEED = 7;   // keyboard px/frame in world units
+
+const BASE_SPEED    = 5.8;
+const MAX_SPEED     = 14;
+const SPEED_RAMP    = 0.08;   // per bounce
+const CLOSE_SPEED_BONUS = 0.12;
+
+const PARTICLE_MAX = 200;
+
+// localStorage keys
+const LS_BEST       = 'zp_best';
+const LS_BEST_MULT  = 'zp_best_mult';
+const LS_BEST_CLOSE = 'zp_best_close';
+
+// ── Reduced motion ─────────────────────────────────────────────────────────────
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const SHAKE_SCALE   = reducedMotion ? 0.25 : 1;
+const PARTICLE_SCALE= reducedMotion ? 0.4  : 1;
+
+// ── Canvas / HiDPI setup ───────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+const DPR    = Math.min(window.devicePixelRatio || 1, 2);
+
+let cw, ch, fitScale, offX, offY; // fit-to-container layout
+
+function resize(){
+  const wrap  = document.getElementById('game-wrap');
+  const avail = Math.min(wrap.clientWidth, 420);
+  fitScale = avail / WORLD_W;
+  cw = WORLD_W * fitScale;
+  ch = WORLD_H * fitScale;
+  canvas.style.width  = cw + 'px';
+  canvas.style.height = ch + 'px';
+  canvas.width  = cw * DPR;
+  canvas.height = ch * DPR;
+  offX = 0; offY = 0;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ── State ──────────────────────────────────────────────────────────────────────
+let state = 'start'; // 'start' | 'playing' | 'gameover'
+let score, best, bestMult, bestClose;
+let bounces;
+let mode;       // 'wide' | 'close'
+let inset, zoom;
+let paddleX, paddleW;
+let ballX, ballY, ballVX, ballVY;
+let ballTrail = [];
+let ballSX = 1, ballSY = 1; // squash
+let targetSpeed;
+
+let closeStreak, maxCloseMult, maxCloseStreak;
+let multiplier;
+let hue = 0;
+
+// particles
+let particles = [];
+
+// shake
+let shakeX = 0, shakeY = 0, shakeMag = 0;
+
+// pressed keys
+let keysLeft = false, keysRight = false;
+
+// pointer
+let pointerWorldX = WORLD_W / 2;
+
+// ── Load persisted ─────────────────────────────────────────────────────────────
+function loadPersist(){
+  best       = parseInt(localStorage.getItem(LS_BEST)      || '0');
+  bestMult   = parseFloat(localStorage.getItem(LS_BEST_MULT) || '1');
+  bestClose  = parseInt(localStorage.getItem(LS_BEST_CLOSE)  || '0');
+}
+function savePersist(){
+  if(score > best)         { best = score;        localStorage.setItem(LS_BEST, best); }
+  if(multiplier > bestMult){ bestMult = multiplier; localStorage.setItem(LS_BEST_MULT, bestMult.toFixed(1)); }
+  if(closeStreak > bestClose){ bestClose = closeStreak; localStorage.setItem(LS_BEST_CLOSE, bestClose); }
+}
+loadPersist();
+
+// ── Init game ──────────────────────────────────────────────────────────────────
+function initGame(){
+  score        = 0;
+  bounces      = 0;
+  mode         = 'wide';
+  inset        = 0;
+  zoom         = 1.0;
+  closeStreak  = 0;
+  maxCloseMult = 1;
+  maxCloseStreak = 0;
+  multiplier   = 1;
+  hue          = Math.random() * 360;
+  particles    = [];
+  shakeX = shakeY = shakeMag = 0;
+  ballTrail    = [];
+  ballSX = 1; ballSY = 1;
+
+  paddleW = PADDLE_WIDE_W;
+  paddleX = WORLD_W / 2;
+
+  targetSpeed = BASE_SPEED;
+  ballX = WORLD_W / 2;
+  ballY = WORLD_H * 0.35;
+  const angle = (Math.random() * 60 + 60) * Math.PI / 180;
+  ballVX = Math.cos(angle) * targetSpeed * (Math.random()<0.5?1:-1);
+  ballVY = Math.sin(angle) * targetSpeed;
+}
+
+// ── Particles ──────────────────────────────────────────────────────────────────
+function spawnParticles(x, y, count, speedMult, h, s, l){
+  count = Math.round(count * PARTICLE_SCALE);
+  for(let i=0; i<count; i++){
+    if(particles.length >= PARTICLE_MAX) break;
+    const a  = Math.random() * Math.PI * 2;
+    const sp = (1 + Math.random() * 3) * speedMult;
+    particles.push({
+      x, y,
+      vx: Math.cos(a)*sp, vy: Math.sin(a)*sp,
+      life: 1, decay: 0.02 + Math.random()*0.03,
+      r: 2 + Math.random()*3,
+      h: h + (Math.random()-0.5)*30, s, l,
+      gravity: 0.12
+    });
+  }
+}
+function spawnRingBurst(x, y, count, h){
+  count = Math.round(count * PARTICLE_SCALE);
+  for(let i=0; i<count; i++){
+    if(particles.length >= PARTICLE_MAX) break;
+    const a  = (i / count) * Math.PI * 2;
+    const sp = 3 + Math.random() * 2;
+    particles.push({
+      x, y,
+      vx: Math.cos(a)*sp, vy: Math.sin(a)*sp,
+      life: 1, decay: 0.015 + Math.random()*0.015,
+      r: 2 + Math.random()*2,
+      h: h + i*10, s: 80, l: 65,
+      gravity: 0
+    });
+  }
+}
+function updateParticles(){
+  for(let i = particles.length-1; i>=0; i--){
+    const p = particles[i];
+    p.x  += p.vx;
+    p.y  += p.vy;
+    p.vy += p.gravity;
+    p.vx *= 0.97; p.vy *= 0.97;
+    p.life -= p.decay;
+    if(p.life <= 0) particles.splice(i,1);
+  }
+}
+
+// ── Shake ──────────────────────────────────────────────────────────────────────
+function addShake(mag){
+  shakeMag = Math.max(shakeMag, mag * SHAKE_SCALE);
+}
+function updateShake(){
+  if(shakeMag > 0.2){
+    shakeX = (Math.random()-0.5)*shakeMag*2;
+    shakeY = (Math.random()-0.5)*shakeMag*2;
+    shakeMag *= 0.75;
+  } else {
+    shakeX = shakeY = shakeMag = 0;
+  }
+}
+
+// ── Flip mode ──────────────────────────────────────────────────────────────────
+function flipMode(){
+  if(state !== 'playing') return;
+  mode = mode === 'wide' ? 'close' : 'wide';
+  // ring burst at paddle
+  spawnRingBurst(paddleX, WORLD_H - PADDLE_Y_OFFSET, 18, hue);
+  addShake(4);
+  // reset close streak if switching to wide
+  if(mode === 'wide'){
+    closeStreak = 0;
+  }
+}
+
+// ── Physics update ─────────────────────────────────────────────────────────────
+function getLeftWall()  { return inset + BALL_RADIUS; }
+function getRightWall() { return WORLD_W - inset - BALL_RADIUS; }
+function getTopWall()   { return inset + BALL_RADIUS; }
+function getPaddleY()   { return WORLD_H - PADDLE_Y_OFFSET; }
+
+function renorm(){
+  const sp = Math.hypot(ballVX, ballVY);
+  if(sp < 0.01) return;
+  const t = Math.min(targetSpeed, MAX_SPEED);
+  ballVX = ballVX/sp * t;
+  ballVY = ballVY/sp * t;
+}
+
+function updatePhysics(){
+  // ease inset & zoom
+  const tInset = mode === 'close' ? CLOSE_INSET  : WIDE_INSET;
+  const tZoom  = mode === 'close' ? CLOSE_ZOOM   : WIDE_ZOOM;
+  inset += (tInset - inset) * EASE_INSET;
+  zoom  += (tZoom  - zoom)  * EASE_ZOOM;
+
+  // paddle width ease
+  const tPW = mode === 'close' ? PADDLE_CLOSE_W : PADDLE_WIDE_W;
+  paddleW += (tPW - paddleW) * 0.1;
+
+  // multiplier based on close streak
+  multiplier = 1 + Math.floor(closeStreak / 3) * 0.5;
+  if(multiplier > maxCloseMult) maxCloseMult = multiplier;
+
+  // hue cycle
+  hue = (hue + 0.4) % 360;
+
+  // ball squash recover
+  ballSX += (1 - ballSX) * 0.18;
+  ballSY += (1 - ballSY) * 0.18;
+
+  // move ball
+  ballX += ballVX;
+  ballY += ballVY;
+
+  // trail
+  ballTrail.push({x: ballX, y: ballY});
+  if(ballTrail.length > BALL_TRAIL) ballTrail.shift();
+
+  // left wall
+  if(ballX < getLeftWall()){
+    ballX = getLeftWall();
+    ballVX = Math.abs(ballVX);
+    spawnParticles(ballX, ballY, 4, 1, hue, 70, 60);
+    addShake(2);
+  }
+  // right wall
+  if(ballX > getRightWall()){
+    ballX = getRightWall();
+    ballVX = -Math.abs(ballVX);
+    spawnParticles(ballX, ballY, 4, 1, hue, 70, 60);
+    addShake(2);
+  }
+  // top wall
+  if(ballY < getTopWall()){
+    ballY = getTopWall();
+    ballVY = Math.abs(ballVY);
+    spawnParticles(ballX, ballY, 4, 1, hue, 70, 60);
+    addShake(2);
+  }
+
+  // paddle collision (only moving down)
+  const py = getPaddleY();
+  const halfPW = paddleW / 2;
+  if(ballVY > 0 &&
+     ballY + BALL_RADIUS >= py - PADDLE_H/2 &&
+     ballY + BALL_RADIUS <= py + PADDLE_H/2 + 4 &&
+     ballX >= paddleX - halfPW - BALL_RADIUS &&
+     ballX <= paddleX + halfPW + BALL_RADIUS)
+  {
+    ballY = py - PADDLE_H/2 - BALL_RADIUS;
+    // angle based on hit position
+    const hit = (ballX - paddleX) / halfPW; // -1..1
+    const angle = hit * 65 * Math.PI / 180;
+    const sp = Math.hypot(ballVX, ballVY);
+    ballVX = Math.sin(angle) * sp;
+    ballVY = -Math.abs(Math.cos(angle) * sp);
+
+    bounces++;
+
+    // score
+    const pts = Math.round(10 * multiplier);
+    score += pts;
+
+    // speed ramp
+    targetSpeed = Math.min(BASE_SPEED + bounces * SPEED_RAMP, MAX_SPEED);
+    if(mode === 'close') targetSpeed = Math.min(targetSpeed + CLOSE_SPEED_BONUS, MAX_SPEED);
+    renorm();
+
+    // close streak
+    if(mode === 'close'){
+      closeStreak++;
+      if(closeStreak > maxCloseStreak) maxCloseStreak = closeStreak;
+    }
+
+    // particles
+    const cnt = mode === 'close' ? 14 : 7;
+    spawnParticles(ballX, ballY, cnt, 1.5, hue, 80, 65);
+
+    // squash
+    ballSX = 1.4; ballSY = 0.6;
+    addShake(mode === 'close' ? 4 : 2);
+  }
+
+  // death (ball below paddle)
+  if(ballY > WORLD_H + 20){
+    savePersist();
+    addShake(18);
+    state = 'gameover';
+    // big particle burst at bottom
+    spawnParticles(ballX, WORLD_H - 30, 30, 2.5, hue, 80, 60);
+  }
+}
+
+// ── Paddle control ─────────────────────────────────────────────────────────────
+function updatePaddle(){
+  // pointer
+  paddleX += (pointerWorldX - paddleX) * 0.2;
+
+  // keyboard
+  if(keysLeft)  paddleX -= PADDLE_SPEED;
+  if(keysRight) paddleX += PADDLE_SPEED;
+
+  // clamp
+  const hw = paddleW / 2;
+  paddleX = Math.max(inset + hw, Math.min(WORLD_W - inset - hw, paddleX));
+}
+
+// ── Camera ──────────────────────────────────────────────────────────────────────
+let camX = WORLD_W/2, camY = WORLD_H/2;
+function updateCamera(){
+  const tx = WORLD_W/2 + (ballX - WORLD_W/2) * 0.15;
+  const ty = WORLD_H/2 + (ballY - WORLD_H/2) * 0.12;
+  camX += (tx - camX) * 0.06;
+  camY += (ty - camY) * 0.06;
+  // clamp so world edges stay in view
+  const hw = (WORLD_W / zoom) / 2;
+  const hh = (WORLD_H / zoom) / 2;
+  camX = Math.max(hw, Math.min(WORLD_W - hw, camX));
+  camY = Math.max(hh, Math.min(WORLD_H - hh, camY));
+}
+
+// ── Drawing ────────────────────────────────────────────────────────────────────
+function drawBg(){
+  // dark gradient, shifts slightly in CLOSE
+  const t = (inset / CLOSE_INSET);
+  const g = ctx.createLinearGradient(0,0,0, WORLD_H);
+  g.addColorStop(0, `hsl(${220+t*30},30%,${7+t*4}%)`);
+  g.addColorStop(1, `hsl(${250+t*20},25%,${4+t*3}%)`);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, WORLD_W, WORLD_H);
+}
+
+function drawDangerWalls(){
+  if(inset < 1) return;
+  const t = inset / CLOSE_INSET;
+  const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 300);
+  const alpha = 0.3 + 0.3 * t + 0.15 * pulse * t;
+  ctx.save();
+  ctx.strokeStyle = `hsla(${hue+30},85%,60%,${alpha})`;
+  ctx.lineWidth = 3 + 2*t;
+  ctx.setLineDash([8, 6]);
+  ctx.lineDashOffset = -Date.now() / 60 % 14;
+  ctx.strokeRect(inset, inset, WORLD_W - inset*2, WORLD_H - inset*2);
+  ctx.setLineDash([]);
+  // thick inner glow strips
+  ctx.strokeStyle = `hsla(${hue+60},90%,65%,${0.1*t + 0.08*pulse*t})`;
+  ctx.lineWidth = inset * 0.9;
+  ctx.strokeRect(inset/2, inset/2, WORLD_W - inset, WORLD_H - inset);
+  ctx.restore();
+}
+
+function drawTrail(){
+  for(let i=0; i<ballTrail.length; i++){
+    const p = ballTrail[i];
+    const a = (i / ballTrail.length) * 0.5;
+    const r = BALL_RADIUS * (i / ballTrail.length) * 0.8;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI*2);
+    ctx.fillStyle = `hsla(${hue},80%,60%,${a})`;
+    ctx.fill();
+  }
+}
+
+function drawBall(){
+  ctx.save();
+  ctx.translate(ballX, ballY);
+  ctx.scale(ballSX, ballSY);
+  // glow
+  const glow = ctx.createRadialGradient(0,0,0, 0,0,BALL_RADIUS*2);
+  glow.addColorStop(0, `hsla(${hue},90%,80%,0.4)`);
+  glow.addColorStop(1, `hsla(${hue},90%,60%,0)`);
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(0, 0, BALL_RADIUS*2, 0, Math.PI*2);
+  ctx.fill();
+  // core
+  ctx.beginPath();
+  ctx.arc(0, 0, BALL_RADIUS, 0, Math.PI*2);
+  ctx.fillStyle = `hsl(${hue},85%,70%)`;
+  ctx.fill();
+  ctx.strokeStyle = `hsl(${hue+30},90%,85%)`;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawPaddle(){
+  const py = getPaddleY();
+  const hw = paddleW / 2;
+  ctx.save();
+  ctx.translate(paddleX, py);
+  const pg = ctx.createLinearGradient(-hw, -PADDLE_H/2, hw, PADDLE_H/2);
+  pg.addColorStop(0, `hsl(${hue+60},80%,60%)`);
+  pg.addColorStop(1, `hsl(${hue},80%,50%)`);
+  ctx.fillStyle = pg;
+  ctx.shadowColor = `hsl(${hue},80%,60%)`;
+  ctx.shadowBlur = 12;
+  ctx.beginPath();
+  ctx.roundRect(-hw, -PADDLE_H/2, paddleW, PADDLE_H, 7);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawParticles(){
+  for(const p of particles){
+    ctx.globalAlpha = p.life * 0.85;
+    ctx.fillStyle = `hsl(${p.h},${p.s}%,${p.l}%)`;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r * p.life, 0, Math.PI*2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// HUD is drawn in screen space AFTER we undo the zoom transform
+function drawHUD(){
+  // we draw directly in canvas coords (already scaled by fitScale*DPR)
+  const sw = WORLD_W * fitScale * DPR;
+  const sh = WORLD_H * fitScale * DPR;
+  const fs = Math.round(14 * DPR);
+  const fs2 = Math.round(11 * DPR);
+  ctx.save();
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.font = `bold ${fs}px 'Segoe UI',system-ui,sans-serif`;
+  ctx.fillStyle = '#fff';
+  ctx.shadowColor = 'rgba(0,0,0,0.7)';
+  ctx.shadowBlur = 6;
+  // score top left
+  ctx.textAlign = 'left';
+  ctx.fillText(`Score: ${score}`, 12*DPR, 26*DPR);
+  ctx.font = `${fs2}px 'Segoe UI',system-ui,sans-serif`;
+  ctx.fillStyle = '#bbb';
+  ctx.fillText(`Best: ${best}`, 12*DPR, 42*DPR);
+  // mode top right
+  const modeLabel = mode === 'close'
+    ? `CLOSE x${multiplier.toFixed(1)}`
+    : 'WIDE';
+  const modeColor = mode === 'close' ? `hsl(${hue+30},90%,65%)` : '#6cf';
+  ctx.textAlign = 'right';
+  ctx.font = `bold ${fs}px 'Segoe UI',system-ui,sans-serif`;
+  ctx.fillStyle = modeColor;
+  ctx.fillText(modeLabel, sw - 12*DPR, 26*DPR);
+  ctx.font = `${fs2}px 'Segoe UI',system-ui,sans-serif`;
+  ctx.fillStyle = '#aaa';
+  ctx.fillText(`Streak: ${closeStreak}`, sw - 12*DPR, 42*DPR);
+  ctx.restore();
+}
+
+// ── Overlay screens ────────────────────────────────────────────────────────────
+function drawStart(){
+  const sw = WORLD_W, sh = WORLD_H;
+  // bg
+  const g = ctx.createLinearGradient(0,0,0,sh);
+  g.addColorStop(0,'#0d0d22'); g.addColorStop(1,'#07070f');
+  ctx.fillStyle = g; ctx.fillRect(0,0,sw,sh);
+
+  // decorative ball
+  ctx.save();
+  ctx.globalAlpha = 0.15 + 0.08*Math.sin(Date.now()/600);
+  ctx.beginPath();
+  ctx.arc(sw/2, sh*0.38, 80, 0, Math.PI*2);
+  ctx.fillStyle = `hsl(${hue},70%,55%)`; ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  ctx.textAlign = 'center';
+  // title
+  ctx.font = `bold ${Math.round(42)}px 'Segoe UI',system-ui,sans-serif`;
+  ctx.fillStyle = `hsl(${hue},85%,72%)`;
+  ctx.shadowColor = `hsl(${hue},80%,50%)`; ctx.shadowBlur = 20;
+  ctx.fillText('Zoom Pong', sw/2, sh*0.3);
+  ctx.shadowBlur = 0;
+  // subtitle
+  ctx.font = `bold 18px 'Segoe UI',system-ui,sans-serif`;
+  ctx.fillStyle = `hsl(${hue+60},75%,65%)`;
+  ctx.fillText('Zoom Flip: Risk Paddle', sw/2, sh*0.3+40);
+  // instructions box
+  const bx = 30, by = sh*0.46, bw = sw-60, bh = 130;
+  ctx.fillStyle = 'rgba(255,255,255,0.05)';
+  ctx.beginPath(); ctx.roundRect(bx,by,bw,bh,12); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+  ctx.lineWidth = 1; ctx.stroke();
+  ctx.fillStyle = '#ccc';
+  ctx.font = '14px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText('Tap / Space / Enter → Flip WIDE/CLOSE', sw/2, by+28);
+  ctx.fillText('Move pointer or arrows → Aim paddle', sw/2, by+52);
+  ctx.fillStyle = `hsl(${hue+30},85%,68%)`;
+  ctx.font = 'bold 13px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText('CLOSE = multiplier + shrinking walls', sw/2, by+78);
+  ctx.fillStyle = '#999';
+  ctx.font = '12px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText('Chain CLOSE bounces for a huge score!', sw/2, by+100);
+  // tap to start
+  const pulse = 0.5 + 0.5*Math.sin(Date.now()/400);
+  ctx.globalAlpha = 0.7 + 0.3*pulse;
+  ctx.font = `bold 20px 'Segoe UI',system-ui,sans-serif`;
+  ctx.fillStyle = '#fff';
+  ctx.fillText('Tap to Start', sw/2, sh*0.82);
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+function drawGameover(){
+  const sw = WORLD_W, sh = WORLD_H;
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+  ctx.fillRect(0,0,sw,sh);
+  ctx.textAlign = 'center';
+  // Game Over title
+  ctx.font = `bold 38px 'Segoe UI',system-ui,sans-serif`;
+  ctx.fillStyle = `hsl(${hue},80%,65%)`;
+  ctx.shadowColor = `hsl(${hue},70%,40%)`; ctx.shadowBlur = 18;
+  ctx.fillText('Game Over', sw/2, sh*0.22);
+  ctx.shadowBlur = 0;
+  // stats box
+  const bx=30, by=sh*0.28, bw=sw-60, bh=210;
+  ctx.fillStyle='rgba(255,255,255,0.06)';
+  ctx.beginPath(); ctx.roundRect(bx,by,bw,bh,14); ctx.fill();
+  ctx.strokeStyle='rgba(255,255,255,0.12)'; ctx.lineWidth=1; ctx.stroke();
+
+  const row = (label, val, y, valColor='#fff') => {
+    ctx.textAlign='left'; ctx.font='13px "Segoe UI",system-ui,sans-serif';
+    ctx.fillStyle='#aaa'; ctx.fillText(label, bx+18, y);
+    ctx.textAlign='right'; ctx.font='bold 15px "Segoe UI",system-ui,sans-serif';
+    ctx.fillStyle=valColor; ctx.fillText(val, bx+bw-18, y);
+  };
+  row('Score',           score,               by+36, `hsl(${hue},85%,70%)`);
+  row('Best Score',      best,                by+66, '#ffd');
+  row('Max Multiplier',  maxCloseMult.toFixed(1)+'x', by+96,  `hsl(${hue+60},85%,70%)`);
+  row('Longest CLOSE Streak', maxCloseStreak, by+126, `hsl(${hue+30},80%,65%)`);
+  row('Best Streak Ever',  bestClose,         by+156, '#ccc');
+  row('Bounces',           bounces,            by+186, '#aaa');
+
+  // new best banner
+  if(score >= best && score > 0){
+    ctx.textAlign='center';
+    ctx.font='bold 14px "Segoe UI",system-ui,sans-serif';
+    ctx.fillStyle=`hsl(${hue+90},90%,70%)`;
+    ctx.fillText('🏆 New Best!', sw/2, by-14);
+  }
+
+  // tap to retry
+  const pulse = 0.5+0.5*Math.sin(Date.now()/400);
+  ctx.globalAlpha=0.7+0.3*pulse;
+  ctx.textAlign='center'; ctx.font='bold 20px "Segoe UI",system-ui,sans-serif';
+  ctx.fillStyle='#fff';
+  ctx.fillText('Tap to Retry', sw/2, sh*0.78);
+  ctx.globalAlpha=1;
+
+  // share button area (draw as button)
+  const btnX = sw/2-90, btnY = sh*0.83, btnW=180, btnH=38;
+  ctx.fillStyle='rgba(255,255,255,0.1)';
+  ctx.beginPath(); ctx.roundRect(btnX,btnY,btnW,btnH,10); ctx.fill();
+  ctx.strokeStyle='rgba(255,255,255,0.2)'; ctx.lineWidth=1; ctx.stroke();
+  ctx.fillStyle='#ccc'; ctx.font='13px "Segoe UI",system-ui,sans-serif';
+  ctx.textAlign='center';
+  ctx.fillText('Challenge a Friend ↗', sw/2, btnY+24);
+
+  ctx.restore();
+  // store share btn bounds in world space for click detection
+  window._shareBtnBounds = {x:btnX, y:btnY, w:btnW, h:btnH};
+}
+
+// ── Main loop ──────────────────────────────────────────────────────────────────
+function tick(){
+  requestAnimationFrame(tick);
+
+  updateShake();
+  hue = (hue + 0.3) % 360;
+
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+
+  if(state === 'start'){
+    // draw start screen in world space
+    ctx.save();
+    ctx.scale(fitScale*DPR, fitScale*DPR);
+    ctx.translate(shakeX, shakeY);
+    drawStart();
+    ctx.restore();
+    return;
+  }
+
+  if(state === 'playing'){
+    updatePaddle();
+    updatePhysics();
+    updateCamera();
+    updateParticles();
+  } else {
+    // gameover still animates particles + shake
+    updateParticles();
+    updateCamera();
+  }
+
+  // ── Render world with zoom + camera ──────────────────────────────────────────
+  ctx.save();
+  // apply fit scale + DPR
+  ctx.scale(fitScale*DPR, fitScale*DPR);
+  // shake
+  ctx.translate(shakeX, shakeY);
+  // zoom: translate so camX,camY is screen center
+  ctx.translate(WORLD_W/2, WORLD_H/2);
+  ctx.scale(zoom, zoom);
+  ctx.translate(-camX, -camY);
+
+  drawBg();
+  drawDangerWalls();
+  drawTrail();
+  drawParticles();
+  drawBall();
+  if(state === 'playing') drawPaddle();
+  ctx.restore();
+
+  // HUD in screen space
+  if(state === 'playing') drawHUD();
+
+  // gameover overlay
+  if(state === 'gameover'){
+    ctx.save();
+    ctx.scale(fitScale*DPR, fitScale*DPR);
+    ctx.translate(shakeX, shakeY);
+    drawGameover();
+    ctx.restore();
+  }
+}
+requestAnimationFrame(tick);
+
+// ── Input ──────────────────────────────────────────────────────────────────────
+function handleAction(worldX, worldY){
+  if(state === 'start'){
+    initGame();
+    state = 'playing';
+    return;
+  }
+  if(state === 'gameover'){
+    // check share button
+    const b = window._shareBtnBounds;
+    if(b && worldX>=b.x && worldX<=b.x+b.w && worldY>=b.y && worldY<=b.y+b.h){
+      shareGame(); return;
+    }
+    initGame();
+    state = 'playing';
+    return;
+  }
+  if(state === 'playing'){
+    flipMode();
+  }
+}
+
+function shareGame(){
+  const txt = `I scored ${score} in Zoom Pong (x${maxCloseMult.toFixed(1)} multiplier)! Can you beat me? https://balinti.github.io/zoom-pong/`;
+  if(navigator.share){
+    navigator.share({ title:'Zoom Pong', text:txt, url:'https://balinti.github.io/zoom-pong/' }).catch(()=>{});
+  } else {
+    navigator.clipboard.writeText(txt).then(()=>alert('Link copied!')).catch(()=>alert(txt));
+  }
+}
+
+canvas.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const wx = (e.clientX - rect.left) / fitScale;
+  const wy = (e.clientY - rect.top)  / fitScale;
+  handleAction(wx, wy);
+});
+
+canvas.addEventListener('pointermove', e => {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  pointerWorldX = (e.clientX - rect.left) / fitScale;
+});
+
+window.addEventListener('keydown', e => {
+  if(e.key === ' ' || e.key === 'Enter'){
+    e.preventDefault();
+    handleAction(WORLD_W/2, WORLD_H/2);
+  }
+  if(e.key === 'ArrowLeft'  || e.key === 'a' || e.key === 'A') { keysLeft  = true; e.preventDefault(); }
+  if(e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') { keysRight = true; e.preventDefault(); }
+});
+window.addEventListener('keyup', e => {
+  if(e.key === 'ArrowLeft'  || e.key === 'a' || e.key === 'A') keysLeft  = false;
+  if(e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keysRight = false;
+});
+
+// ── Set canvas height for mobile ───────────────────────────────────────────────
+function setMobileHeight(){
+  const vh = window.innerHeight;
+  const maxH = Math.min(vh, Math.round(WORLD_H * (document.getElementById('game-wrap').clientWidth / WORLD_W)));
+  canvas.style.height = maxH + 'px';
+}
+window.addEventListener('resize', () => { resize(); setMobileHeight(); });
+setMobileHeight();
+
+})();
+</script>
+</body>
+</html>

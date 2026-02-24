@@ -1,0 +1,1221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Trail Runner - Free HTML5 Game</title>
+  <meta name="description" content="Play Trail Runner - Swipe to create paths that leave dynamic, shifting geometric trail marks behind.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a0a1a">
+
+  <!-- Canonical -->
+  <link rel="canonical" href="https://balinti.github.io/trail-runner/">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Trail Runner - Free HTML5 Game">
+  <meta property="og:description" content="Play Trail Runner - Swipe to create paths that leave dynamic, shifting geometric trail marks behind.">
+  <meta property="og:url" content="https://balinti.github.io/trail-runner/">
+  <meta property="og:image" content="https://balinti.github.io/trail-runner/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Trail Runner - Free HTML5 Game">
+  <meta name="twitter:description" content="Play Trail Runner - Swipe to create paths that leave dynamic, shifting geometric trail marks behind.">
+  <meta name="twitter:image" content="https://balinti.github.io/trail-runner/og.png">
+
+  <!-- Preconnects -->
+  <link rel="preconnect" href="https://pagead2.googlesyndication.com">
+  <link rel="preconnect" href="https://googleads.g.doubleclick.net">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #0a0a1a;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      overflow: hidden;
+      touch-action: none;
+    }
+    #game-wrap {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      max-height: 750px;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    #canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      max-width: 420px;
+      max-height: 750px;
+      touch-action: none;
+      cursor: pointer;
+    }
+    #seo-desc {
+      position: absolute;
+      bottom: -9999px;
+      left: 0;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      opacity: 0;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+<div id="game-wrap">
+  <canvas id="canvas"></canvas>
+</div>
+
+<!-- SEO indexable content (visually hidden) -->
+<div id="seo-desc" aria-hidden="true">
+  <h1>Trail Runner - Free HTML5 Game</h1>
+  <p>Trail Runner: Ink Bridge is a hyper-casual browser game. An auto-running dot races across platforms with gaps.
+  Hold or press to draw an ink bridge straight ahead as the ground to cross gaps.
+  Manage your ink meter wisely — it drains while drawing and regenerates when you release.
+  Avoid spike gates and wall obstacles by passing through their safe openings.
+  Score distance, combo bonuses, and near-miss bonuses.
+  Controls: Hold mouse button, tap, or press Space/Enter to draw your ink bridge. Release to stop and save ink.</p>
+</div>
+
+<script>
+'use strict';
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+const VW = 420, VH = 750;
+const LANE_Y = VH * 0.62;
+const RUNNER_R = 11;
+const GRAVITY = 1800;
+const COYOTE_TIME = 0.08;
+const INK_MAX = 100;
+const INK_DRAIN = 55;
+const INK_REGEN_FAST = 85;
+const INK_REGEN_SLOW = 60;
+const BASE_SPEED = 220;
+const MAX_SPEED = 520;
+const SPEED_RAMP_TIME = 60; // seconds to reach max
+const PLAT_H = 18;
+const GATE_W = 28;
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function lerp(a, b, t) { return a + (b - a) * t; }
+function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+function rnd(lo, hi) { return lo + Math.random() * (hi - lo); }
+function rndInt(lo, hi) { return Math.floor(rnd(lo, hi + 1)); }
+function hsl(h, s, l, a = 1) { return `hsla(${h},${s}%,${l}%,${a})`; }
+
+// ─── Canvas Setup ────────────────────────────────────────────────────────────
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let DPR = 1, cw, ch, scaleX, scaleY;
+
+function resize() {
+  const wrap = document.getElementById('game-wrap');
+  const rect = wrap.getBoundingClientRect();
+  const w = Math.min(rect.width, 420);
+  const h = Math.min(rect.height, 750);
+  DPR = window.devicePixelRatio || 1;
+  cw = w; ch = h;
+  canvas.width = w * DPR;
+  canvas.height = h * DPR;
+  canvas.style.width = w + 'px';
+  canvas.style.height = h + 'px';
+  scaleX = w / VW;
+  scaleY = h / VH;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ─── State ───────────────────────────────────────────────────────────────────
+let state = 'start'; // 'start' | 'playing' | 'gameover'
+let score, best, combo, comboTimer;
+let camX;
+let worldTime, gameTime;
+let scrollSpeed;
+let particles;
+let shakeAmt, shakeDur, shakeT;
+let holdInput;
+let challengeScore = null;
+
+// Runner
+let runner;
+// Platforms (ground chunks)
+let platforms;
+// Gates (obstacles)
+let gates;
+// Ink segments (finalized bridge pieces)
+let inkSegs;
+// Active ink segment being drawn
+let activeInk;
+// Ink level
+let ink;
+// Gap tracking
+let gapStart, gapInkStart;
+// Last ground state for coyote
+let onGround, coyoteTimer;
+// Death flag
+let dead;
+// Near-miss tracking per gate
+let gateChecked;
+
+// ─── Challenge score from URL ─────────────────────────────────────────────
+(function() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const cs = params.get('challengeScore');
+    if (cs) challengeScore = parseInt(cs, 10) || null;
+  } catch(e) {}
+})();
+
+// ─── Init / Reset ─────────────────────────────────────────────────────────
+function loadBest() {
+  try { return parseInt(localStorage.getItem('trailrunner_best') || '0', 10) || 0; } catch(e) { return 0; }
+}
+function saveBest(v) {
+  try { localStorage.setItem('trailrunner_best', String(v)); } catch(e) {}
+}
+
+function initGame() {
+  score = 0;
+  best = loadBest();
+  combo = 0;
+  comboTimer = 0;
+  camX = 0;
+  worldTime = 0;
+  gameTime = 0;
+  scrollSpeed = BASE_SPEED;
+  particles = [];
+  shakeAmt = 0; shakeDur = 0; shakeT = 0;
+  holdInput = false;
+  inkSegs = [];
+  activeInk = null;
+  ink = INK_MAX;
+  gapStart = null;
+  gapInkStart = null;
+  onGround = true;
+  coyoteTimer = 0;
+  dead = false;
+  gateChecked = new Set();
+
+  runner = {
+    x: VW * 0.25,
+    y: LANE_Y,
+    vy: 0,
+    grounded: true,
+    hue: 180,
+    trail: []
+  };
+
+  // Generate initial platforms
+  platforms = [];
+  gates = [];
+  // Starting safe platform
+  platforms.push({ x: -200, y: LANE_Y, w: VW * 0.6, id: 0 });
+  genWorld();
+}
+
+// ─── World Generation ─────────────────────────────────────────────────────
+let genId = 0;
+let genCursor = 0; // x position of next thing to generate
+
+function genWorld() {
+  genCursor = genCursor || VW * 0.6 - 200;
+  const AHEAD = camX + VW * 2.5;
+  while (genCursor < AHEAD) {
+    genCursor = spawnNext(genCursor);
+  }
+}
+
+function diffFactor() {
+  // 0..1 as gameTime goes 0..SPEED_RAMP_TIME
+  return clamp(gameTime / SPEED_RAMP_TIME, 0, 1);
+}
+
+function spawnNext(x) {
+  const df = diffFactor();
+  // platform length
+  const platLen = lerp(160, 80, df) + rnd(-20, 20);
+  // gap size
+  const gapLen = lerp(80, 200, df) + rnd(-15, 15);
+
+  platforms.push({ x, y: LANE_Y, w: platLen, id: ++genId });
+
+  // Maybe spawn a gate on this platform section
+  const gateChance = lerp(0.2, 0.7, df);
+  if (Math.random() < gateChance) {
+    const gx = x + platLen * 0.5;
+    const openH = lerp(90, 50, df) + rnd(-8, 8);
+    // top obstacle y, bottom obstacle y
+    const centerY = LANE_Y - 40;
+    gates.push({
+      x: gx,
+      topY: centerY - openH / 2 - 60,   // top spike bottom edge
+      botY: centerY + openH / 2,          // bottom spike top edge
+      openTop: centerY - openH / 2,
+      openBot: centerY + openH / 2,
+      id: ++genId,
+      passed: false
+    });
+  }
+
+  return x + platLen + gapLen;
+}
+
+// ─── Particles ────────────────────────────────────────────────────────────
+function spawnParticles(px, py, type) {
+  if (type === 'inkSplat') {
+    for (let i = 0; i < 12; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = rnd(30, 120);
+      particles.push({
+        x: px, y: py,
+        vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd - 40,
+        life: 1, maxLife: rnd(0.3, 0.6),
+        r: rnd(2, 5),
+        hue: rnd(160, 220), sat: 90, lit: 60,
+        type: 'dot'
+      });
+    }
+  } else if (type === 'burst') {
+    for (let i = 0; i < 20; i++) {
+      const ang = (i / 20) * Math.PI * 2 + Math.random() * 0.3;
+      const spd = rnd(80, 180);
+      particles.push({
+        x: px, y: py,
+        vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd,
+        life: 1, maxLife: rnd(0.4, 0.8),
+        r: rnd(2, 6),
+        hue: rnd(40, 80), sat: 100, lit: 65,
+        type: 'dot'
+      });
+    }
+    // ring
+    particles.push({
+      x: px, y: py,
+      vx: 0, vy: 0,
+      life: 1, maxLife: 0.5,
+      r: 0, maxR: 60,
+      hue: 60, sat: 100, lit: 70,
+      type: 'ring'
+    });
+  } else if (type === 'sparks') {
+    for (let i = 0; i < 8; i++) {
+      const ang = -Math.PI / 2 + rnd(-0.5, 0.5);
+      const spd = rnd(60, 160);
+      particles.push({
+        x: px, y: py,
+        vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd,
+        life: 1, maxLife: rnd(0.2, 0.5),
+        r: rnd(1, 3),
+        hue: rnd(0, 40), sat: 100, lit: 70,
+        type: 'dot'
+      });
+    }
+  } else if (type === 'death') {
+    for (let i = 0; i < 30; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = rnd(50, 250);
+      particles.push({
+        x: px, y: py,
+        vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd - 100,
+        life: 1, maxLife: rnd(0.5, 1.2),
+        r: rnd(2, 8),
+        hue: rnd(0, 30), sat: 100, lit: 60,
+        type: 'dot'
+      });
+    }
+  } else if (type === 'land') {
+    for (let i = 0; i < 8; i++) {
+      const ang = Math.PI + rnd(-0.5, 0.5);
+      const spd = rnd(30, 80);
+      particles.push({
+        x: px, y: py,
+        vx: Math.cos(ang + rnd(-0.8, 0.8)) * spd, vy: Math.sin(ang) * spd * 0.5 - 30,
+        life: 1, maxLife: rnd(0.2, 0.4),
+        r: rnd(2, 4),
+        hue: rnd(180, 220), sat: 80, lit: 60,
+        type: 'dot'
+      });
+    }
+  }
+}
+
+// ─── Screen Shake ─────────────────────────────────────────────────────────
+function triggerShake(amount, duration) {
+  shakeAmt = Math.max(shakeAmt, amount);
+  shakeDur = Math.max(shakeDur, duration);
+  shakeT = 0;
+}
+
+// ─── Input ────────────────────────────────────────────────────────────────
+function onInputStart(e) {
+  e.preventDefault();
+  if (state === 'start' || state === 'gameover') {
+    startGame();
+    return;
+  }
+  if (state === 'playing' && !dead) {
+    holdInput = true;
+  }
+}
+
+function onInputEnd(e) {
+  if (e) e.preventDefault();
+  holdInput = false;
+}
+
+canvas.addEventListener('pointerdown', onInputStart, { passive: false });
+canvas.addEventListener('pointerup', onInputEnd, { passive: false });
+canvas.addEventListener('pointercancel', onInputEnd, { passive: false });
+
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    if (state === 'start' || state === 'gameover') {
+      startGame();
+    } else if (state === 'playing' && !dead) {
+      holdInput = true;
+    }
+  }
+});
+document.addEventListener('keyup', (e) => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    holdInput = false;
+  }
+});
+
+function startGame() {
+  initGame();
+  state = 'playing';
+}
+
+// ─── Ground Check ─────────────────────────────────────────────────────────
+function getGroundY(wx) {
+  // Check platforms
+  for (const p of platforms) {
+    if (wx >= p.x && wx <= p.x + p.w) return p.y;
+  }
+  // Check ink segments (finalized)
+  for (const seg of inkSegs) {
+    if (wx >= seg.x1 && wx <= seg.x2) return seg.y;
+  }
+  // Check active ink
+  if (activeInk && wx >= activeInk.x1 && wx <= activeInk.x2) {
+    return activeInk.y;
+  }
+  return null; // in gap
+}
+
+// ─── Gate Check ───────────────────────────────────────────────────────────
+function checkGates(rx, ry) {
+  for (const g of gates) {
+    if (g.passed) continue;
+    // Check if runner x has passed gate x
+    const gWorldX = g.x - camX; // screen x of gate center
+    const runnerScreenX = runner.x; // runner.x is in virtual coords
+    // We compare in world space
+    const rwx = rx + camX; // runner world x
+    if (rwx > g.x + GATE_W / 2) {
+      // Passed gate
+      g.passed = true;
+      // Check if runner was in the opening
+      const inOpen = ry > g.openTop && ry < g.openBot;
+      if (!inOpen) {
+        // Hit gate - die
+        return 'hit';
+      }
+      // Near-miss check
+      const distToEdge = Math.min(Math.abs(ry - g.openTop), Math.abs(ry - g.openBot));
+      if (distToEdge < 6) {
+        // Near-miss bonus
+        addScore(50 + combo * 10, 'Near Miss!');
+        combo++;
+        spawnParticles(runner.x, runner.y, 'sparks');
+      }
+    }
+  }
+  return 'ok';
+}
+
+// ─── Score ────────────────────────────────────────────────────────────────
+let floatTexts = [];
+
+function addScore(pts, label) {
+  score += pts;
+  floatTexts.push({
+    x: runner.x + rnd(-20, 20),
+    y: runner.y - 30,
+    text: (pts > 0 ? '+' : '') + pts + (label ? ' ' + label : ''),
+    life: 1, maxLife: 1.2,
+    hue: pts > 0 ? 60 : 0
+  });
+}
+
+// ─── Update ───────────────────────────────────────────────────────────────
+let lastTime = null;
+
+function update(ts) {
+  if (lastTime === null) lastTime = ts;
+  let dt = Math.min((ts - lastTime) / 1000, 0.05);
+  lastTime = ts;
+
+  if (state === 'playing') {
+    updateGame(dt);
+  }
+
+  // Update particles always
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.life -= dt / p.maxLife;
+    if (p.life <= 0) { particles.splice(i, 1); continue; }
+    if (p.type === 'dot') {
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy += 400 * dt; // gravity on particles
+    } else if (p.type === 'ring') {
+      p.r = (1 - p.life) * p.maxR;
+    }
+  }
+
+  // Update float texts
+  for (let i = floatTexts.length - 1; i >= 0; i--) {
+    const ft = floatTexts[i];
+    ft.life -= dt / ft.maxLife;
+    ft.y -= 40 * dt;
+    if (ft.life <= 0) floatTexts.splice(i, 1);
+  }
+
+  // Update shake
+  if (shakeDur > 0) {
+    shakeT += dt;
+    if (shakeT >= shakeDur) { shakeAmt = 0; shakeDur = 0; shakeT = 0; }
+  }
+
+  render();
+  requestAnimationFrame(update);
+}
+
+function updateGame(dt) {
+  if (dead) {
+    // Wait briefly then show gameover
+    deadTimer = (deadTimer || 0) + dt;
+    if (deadTimer > 0.8) {
+      state = 'gameover';
+      deadTimer = 0;
+      if (score > best) { best = score; saveBest(best); }
+    }
+    // still update particles, runner falls
+    runner.vy += GRAVITY * dt;
+    runner.y += runner.vy * dt;
+    return;
+  }
+
+  worldTime += dt;
+  gameTime += dt;
+  scrollSpeed = lerp(BASE_SPEED, MAX_SPEED, clamp(gameTime / SPEED_RAMP_TIME, 0, 1));
+
+  // Score: distance
+  score += scrollSpeed * dt * 0.1;
+
+  // Combo decay
+  comboTimer -= dt;
+  if (comboTimer <= 0) { combo = 0; }
+
+  // Move camera
+  camX += scrollSpeed * dt;
+
+  // Gen world
+  genWorld();
+
+  // Cleanup old platforms/gates/inksegs
+  platforms = platforms.filter(p => p.x + p.w > camX - 200);
+  gates = gates.filter(g => g.x > camX - 200);
+  inkSegs = inkSegs.filter(s => s.x2 > camX - 200);
+
+  // Runner world x = runner.x + camX (runner.x is screen-fixed near left)
+  const runnerWX = runner.x + camX;
+
+  // Ground check
+  const gy = getGroundY(runnerWX);
+  const wasOnGround = onGround;
+
+  if (gy !== null && runner.y >= gy - 2 && runner.vy >= 0) {
+    // On ground
+    if (!wasOnGround) {
+      // Just landed
+      spawnParticles(runner.x, runner.y, 'land');
+      triggerShake(3, 0.12);
+    }
+    runner.y = gy;
+    runner.vy = 0;
+    onGround = true;
+    coyoteTimer = COYOTE_TIME;
+
+    // Gap perfect bridge check
+    if (gapStart !== null) {
+      const gapWidth = runnerWX - gapStart;
+      const inkUsed = (gapInkStart || INK_MAX) - ink;
+      const threshold = gapWidth * 0.35; // efficient = used less per px
+      if (inkUsed < threshold && gapWidth > 60) {
+        // Perfect bridge!
+        addScore(100 + combo * 20, 'Perfect!');
+        combo++;
+        comboTimer = 3;
+        spawnParticles(runner.x, runner.y, 'burst');
+      }
+      gapStart = null;
+      gapInkStart = null;
+    }
+  } else {
+    // In air or gap
+    if (gy === null) {
+      // Over gap
+      if (gapStart === null && wasOnGround) {
+        gapStart = runnerWX;
+        gapInkStart = ink;
+      }
+    }
+
+    if (onGround) {
+      coyoteTimer = COYOTE_TIME;
+      onGround = false;
+    } else {
+      coyoteTimer -= dt;
+    }
+
+    runner.vy += GRAVITY * dt;
+    runner.y += runner.vy * dt;
+  }
+
+  // Ink drawing logic
+  const canDraw = holdInput && ink > 0;
+
+  if (canDraw) {
+    const prevInk = ink;
+    ink -= INK_DRAIN * dt;
+    if (ink < 0) ink = 0;
+
+    if (ink <= 0 && prevInk > 0) {
+      // Ran out of ink
+      finalizeInk();
+      spawnParticles(runner.x, runner.y, 'inkSplat');
+    } else {
+      // Extend active ink
+      if (activeInk === null) {
+        // Start new segment at runner world pos
+        activeInk = {
+          x1: runnerWX,
+          x2: runnerWX,
+          y: LANE_Y,
+          id: ++genId
+        };
+        spawnParticles(runner.x, runner.y, 'inkSplat');
+      } else {
+        activeInk.x2 = runnerWX;
+      }
+    }
+  } else {
+    // Not drawing: regen ink
+    const regenRate = gameTime > 45 ? INK_REGEN_SLOW : INK_REGEN_FAST;
+    ink = Math.min(INK_MAX, ink + regenRate * dt);
+
+    if (activeInk !== null) {
+      // Finalize
+      finalizeInk();
+      spawnParticles(runner.x, runner.y, 'inkSplat');
+    }
+  }
+
+  // Gate collision
+  const gateResult = checkGates(runner.x, runner.y);
+  if (gateResult === 'hit') {
+    killRunner('gate');
+    return;
+  }
+
+  // Fall death
+  if (runner.y > VH + 100) {
+    killRunner('fall');
+    return;
+  }
+
+  // Runner color cycle
+  runner.hue = (runner.hue + 60 * dt) % 360;
+
+  // Runner trail
+  runner.trail.push({ x: runner.x, y: runner.y, hue: runner.hue, life: 1 });
+  if (runner.trail.length > 20) runner.trail.shift();
+  for (const t of runner.trail) t.life -= dt * 5;
+}
+
+let deadTimer = 0;
+
+function finalizeInk() {
+  if (activeInk && activeInk.x2 > activeInk.x1) {
+    inkSegs.push({ ...activeInk });
+  }
+  activeInk = null;
+}
+
+function killRunner(cause) {
+  dead = true;
+  deadTimer = 0;
+  holdInput = false;
+  finalizeInk();
+  spawnParticles(runner.x, runner.y, 'death');
+  triggerShake(cause === 'fall' ? 10 : 14, 0.4);
+  runner.vy = -400;
+}
+
+// ─── Render ───────────────────────────────────────────────────────────────
+function render() {
+  const scale = Math.min(cw / VW, ch / VH);
+
+  ctx.save();
+  ctx.scale(DPR, DPR);
+
+  // Shake offset
+  let sx = 0, sy = 0;
+  if (shakeDur > 0 && shakeAmt > 0) {
+    const prog = shakeT / shakeDur;
+    const decay = Math.max(0, 1 - prog);
+    sx = Math.sin(shakeT * 60) * shakeAmt * decay;
+    sy = Math.cos(shakeT * 47) * shakeAmt * decay;
+  }
+
+  // Background
+  const grad = ctx.createLinearGradient(0, 0, 0, ch);
+  grad.addColorStop(0, '#06060f');
+  grad.addColorStop(1, '#0d0d22');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, cw, ch);
+
+  ctx.save();
+  // Scale virtual coords to canvas
+  const ox = (cw - VW * scale) / 2;
+  const oy = (ch - VH * scale) / 2;
+  ctx.translate(ox + sx, oy + sy);
+  ctx.scale(scale, scale);
+
+  if (state === 'playing' || (state === 'gameover' && dead)) {
+    renderWorld();
+  }
+
+  ctx.restore();
+
+  // UI on top (no shake)
+  ctx.save();
+  ctx.translate(ox, oy);
+  ctx.scale(scale, scale);
+  renderUI();
+  ctx.restore();
+
+  ctx.restore();
+}
+
+function renderWorld() {
+  // Background grid lines for depth
+  ctx.save();
+  ctx.globalAlpha = 0.07;
+  ctx.strokeStyle = '#4488ff';
+  ctx.lineWidth = 1;
+  const gridSpacing = 60;
+  const gridOff = -(camX % gridSpacing);
+  for (let x = gridOff; x < VW + gridSpacing; x += gridSpacing) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, VH); ctx.stroke();
+  }
+  for (let y = 0; y < VH; y += gridSpacing) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(VW, y); ctx.stroke();
+  }
+  ctx.restore();
+
+  // Platforms
+  for (const p of platforms) {
+    const sx = p.x - camX;
+    if (sx > VW + 50 || sx + p.w < -50) continue;
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fillRect(sx + 3, p.y + 3, p.w, PLAT_H);
+    // Platform body
+    const pg = ctx.createLinearGradient(sx, p.y, sx, p.y + PLAT_H);
+    pg.addColorStop(0, '#2a6ef5');
+    pg.addColorStop(1, '#1a3a8a');
+    ctx.fillStyle = pg;
+    ctx.fillRect(sx, p.y, p.w, PLAT_H);
+    // Top edge highlight
+    ctx.fillStyle = 'rgba(100,180,255,0.5)';
+    ctx.fillRect(sx, p.y, p.w, 2);
+    // Grid pattern on platform
+    ctx.save();
+    ctx.globalAlpha = 0.15;
+    ctx.strokeStyle = '#88aaff';
+    ctx.lineWidth = 0.5;
+    for (let gx = sx; gx < sx + p.w; gx += 20) {
+      ctx.beginPath(); ctx.moveTo(gx, p.y); ctx.lineTo(gx, p.y + PLAT_H); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // Ink segments (finalized)
+  for (const seg of inkSegs) {
+    const sx1 = seg.x1 - camX;
+    const sx2 = seg.x2 - camX;
+    if (sx2 < -50 || sx1 > VW + 50) continue;
+    drawInkSeg(sx1, sx2, seg.y, 0.85);
+  }
+
+  // Active ink segment
+  if (activeInk) {
+    const sx1 = activeInk.x1 - camX;
+    const sx2 = activeInk.x2 - camX;
+    drawInkSeg(sx1, sx2, activeInk.y, 1.0);
+    // Pulsing leading edge
+    ctx.save();
+    ctx.shadowColor = hsl(190, 100, 70);
+    ctx.shadowBlur = 12;
+    ctx.fillStyle = hsl(190, 100, 80);
+    ctx.fillRect(sx2 - 3, activeInk.y - 2, 6, PLAT_H + 4);
+    ctx.restore();
+  }
+
+  // Gates
+  for (const g of gates) {
+    const sx = g.x - camX;
+    if (sx > VW + 100 || sx < -100) continue;
+    drawGate(sx, g);
+  }
+
+  // Particles
+  for (const p of particles) {
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, p.life) * 0.9;
+    if (p.type === 'dot') {
+      ctx.fillStyle = hsl(p.hue, p.sat, p.lit);
+      ctx.shadowColor = hsl(p.hue, p.sat, p.lit);
+      ctx.shadowBlur = 6;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r * p.life, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (p.type === 'ring') {
+      ctx.strokeStyle = hsl(p.hue, p.sat, p.lit);
+      ctx.lineWidth = 2 * p.life;
+      ctx.shadowColor = hsl(p.hue, p.sat, p.lit);
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // Runner trail
+  for (let i = 0; i < runner.trail.length; i++) {
+    const t = runner.trail[i];
+    const alpha = Math.max(0, t.life) * 0.5;
+    const r = RUNNER_R * (i / runner.trail.length) * 0.6;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = hsl(t.hue, 80, 65);
+    ctx.beginPath();
+    ctx.arc(t.x, t.y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Runner
+  if (!dead || runner.y < VH + 50) {
+    const rh = runner.hue;
+    ctx.save();
+    ctx.shadowColor = hsl(rh, 100, 70);
+    ctx.shadowBlur = 20;
+    // Outer glow
+    const rg = ctx.createRadialGradient(runner.x, runner.y, 0, runner.x, runner.y, RUNNER_R);
+    rg.addColorStop(0, hsl(rh, 100, 80));
+    rg.addColorStop(0.6, hsl(rh, 100, 60));
+    rg.addColorStop(1, hsl(rh + 30, 100, 40, 0));
+    ctx.fillStyle = rg;
+    ctx.beginPath();
+    ctx.arc(runner.x, runner.y, RUNNER_R + 4, 0, Math.PI * 2);
+    ctx.fill();
+    // Core
+    ctx.fillStyle = hsl(rh, 100, 85);
+    ctx.shadowBlur = 30;
+    ctx.beginPath();
+    ctx.arc(runner.x, runner.y, RUNNER_R, 0, Math.PI * 2);
+    ctx.fill();
+    // Specular
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.shadowBlur = 0;
+    ctx.beginPath();
+    ctx.arc(runner.x - RUNNER_R * 0.3, runner.y - RUNNER_R * 0.3, RUNNER_R * 0.35, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Float texts
+  for (const ft of floatTexts) {
+    ctx.save();
+    ctx.globalAlpha = ft.life;
+    ctx.font = 'bold 14px "Segoe UI", sans-serif';
+    ctx.fillStyle = hsl(ft.hue, 100, 75);
+    ctx.shadowColor = hsl(ft.hue, 100, 60);
+    ctx.shadowBlur = 8;
+    ctx.textAlign = 'center';
+    ctx.fillText(ft.text, ft.x, ft.y);
+    ctx.restore();
+  }
+}
+
+function drawInkSeg(x1, x2, y, alpha) {
+  if (x2 <= x1) return;
+  const w = x2 - x1;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  // Shadow
+  ctx.fillStyle = 'rgba(0,180,255,0.15)';
+  ctx.fillRect(x1 + 2, y + 3, w, PLAT_H);
+  // Ink gradient
+  const ig = ctx.createLinearGradient(x1, y, x2, y);
+  ig.addColorStop(0, '#00d4ff');
+  ig.addColorStop(0.5, '#00ffcc');
+  ig.addColorStop(1, '#0099ff');
+  ctx.fillStyle = ig;
+  ctx.shadowColor = '#00d4ff';
+  ctx.shadowBlur = 8;
+  ctx.fillRect(x1, y, w, PLAT_H);
+  // Top highlight
+  ctx.fillStyle = 'rgba(200,255,255,0.6)';
+  ctx.shadowBlur = 0;
+  ctx.fillRect(x1, y, w, 2);
+  ctx.restore();
+}
+
+function drawGate(sx, g) {
+  ctx.save();
+  // Top spike/wall
+  const topH = g.openTop - 0; // height from top of screen
+  ctx.fillStyle = '#cc2244';
+  ctx.shadowColor = '#ff3366';
+  ctx.shadowBlur = 12;
+  ctx.fillRect(sx - GATE_W / 2, 0, GATE_W, g.openTop);
+  // Bottom spike/wall
+  ctx.fillRect(sx - GATE_W / 2, g.openBot, GATE_W, VH - g.openBot);
+  // Highlight edges
+  ctx.fillStyle = '#ff6688';
+  ctx.shadowBlur = 0;
+  ctx.fillRect(sx - GATE_W / 2, g.openTop - 4, GATE_W, 4);
+  ctx.fillRect(sx - GATE_W / 2, g.openBot, GATE_W, 4);
+  // Warning stripes on walls
+  ctx.save();
+  ctx.globalAlpha = 0.3;
+  ctx.fillStyle = '#ffcc00';
+  const stripeW = 8, stripeH = 20;
+  for (let y = 0; y < g.openTop; y += stripeH * 2) {
+    ctx.fillRect(sx - GATE_W / 2, y, GATE_W, stripeH);
+  }
+  for (let y = g.openBot; y < VH; y += stripeH * 2) {
+    ctx.fillRect(sx - GATE_W / 2, y, GATE_W, stripeH);
+  }
+  ctx.restore();
+  // Opening indicator
+  ctx.strokeStyle = 'rgba(255,255,100,0.5)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(sx, g.openTop);
+  ctx.lineTo(sx, g.openBot);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+function renderUI() {
+  if (state === 'start') {
+    renderStartScreen();
+  } else if (state === 'playing') {
+    renderHUD();
+  } else if (state === 'gameover') {
+    renderHUD();
+    renderGameOver();
+  }
+}
+
+function renderStartScreen() {
+  // Semi-dark overlay
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillRect(0, 0, VW, VH);
+
+  // Animated dots in background
+  const t = Date.now() / 1000;
+  for (let i = 0; i < 20; i++) {
+    const x = (Math.sin(i * 2.3 + t * 0.5) * 0.5 + 0.5) * VW;
+    const y = (Math.cos(i * 1.7 + t * 0.3) * 0.5 + 0.5) * VH;
+    ctx.save();
+    ctx.globalAlpha = 0.15 + 0.1 * Math.sin(i + t);
+    ctx.fillStyle = hsl((i * 20 + t * 20) % 360, 80, 60);
+    ctx.beginPath();
+    ctx.arc(x, y, 3 + 2 * Math.sin(i + t), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Title
+  ctx.save();
+  ctx.textAlign = 'center';
+  // Trail Runner text with glow
+  ctx.font = 'bold 52px "Segoe UI", sans-serif';
+  ctx.shadowColor = hsl((t * 40) % 360, 100, 60);
+  ctx.shadowBlur = 30;
+  ctx.fillStyle = hsl((t * 40) % 360, 100, 80);
+  ctx.fillText('Trail Runner', VW / 2, VH * 0.35);
+
+  // Subtitle
+  ctx.font = '18px "Segoe UI", sans-serif';
+  ctx.shadowColor = '#00d4ff';
+  ctx.shadowBlur = 10;
+  ctx.fillStyle = '#00d4ff';
+  ctx.fillText('Ink Bridge', VW / 2, VH * 0.35 + 38);
+
+  // How to play
+  ctx.shadowBlur = 0;
+  ctx.font = '14px "Segoe UI", sans-serif';
+  ctx.fillStyle = 'rgba(200,220,255,0.8)';
+  ctx.fillText('Hold to draw an ink bridge', VW / 2, VH * 0.52);
+  ctx.fillText('Release to conserve ink', VW / 2, VH * 0.52 + 22);
+  ctx.fillText('Pass through gate openings', VW / 2, VH * 0.52 + 44);
+
+  // Tap to start (pulsing)
+  const pulse = 0.7 + 0.3 * Math.sin(t * 3);
+  ctx.globalAlpha = pulse;
+  ctx.font = 'bold 22px "Segoe UI", sans-serif';
+  ctx.fillStyle = '#ffffff';
+  ctx.shadowColor = '#ffffff';
+  ctx.shadowBlur = 15;
+  ctx.fillText('Tap to Start', VW / 2, VH * 0.72);
+
+  // Best score
+  if (best > 0) {
+    ctx.globalAlpha = 0.7;
+    ctx.shadowBlur = 0;
+    ctx.font = '14px "Segoe UI", sans-serif';
+    ctx.fillStyle = '#aabbff';
+    ctx.fillText('Best: ' + Math.floor(best), VW / 2, VH * 0.72 + 32);
+  }
+
+  // Challenge banner
+  if (challengeScore !== null) {
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = 'rgba(255,180,0,0.2)';
+    ctx.strokeStyle = 'rgba(255,180,0,0.6)';
+    ctx.lineWidth = 1;
+    roundRect(ctx, VW / 2 - 110, VH * 0.82 - 15, 220, 30, 8);
+    ctx.fill(); ctx.stroke();
+    ctx.font = 'bold 13px "Segoe UI", sans-serif';
+    ctx.fillStyle = '#ffcc44';
+    ctx.shadowColor = '#ffcc44';
+    ctx.shadowBlur = 8;
+    ctx.fillText('Challenge: Beat ' + challengeScore + '!', VW / 2, VH * 0.82 + 5);
+  }
+
+  ctx.restore();
+}
+
+function renderHUD() {
+  // Score
+  ctx.save();
+  ctx.font = 'bold 24px "Segoe UI", sans-serif';
+  ctx.fillStyle = '#ffffff';
+  ctx.shadowColor = 'rgba(100,150,255,0.8)';
+  ctx.shadowBlur = 10;
+  ctx.textAlign = 'left';
+  ctx.fillText(Math.floor(score), 16, 36);
+
+  // Best
+  ctx.font = '13px "Segoe UI", sans-serif';
+  ctx.fillStyle = 'rgba(180,200,255,0.8)';
+  ctx.shadowBlur = 0;
+  ctx.fillText('Best ' + Math.floor(best), 16, 54);
+
+  // Ink bar
+  const inkBarX = VW - 100, inkBarY = 14, inkBarW = 85, inkBarH = 14;
+  // Background
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  roundRect(ctx, inkBarX - 1, inkBarY - 1, inkBarW + 2, inkBarH + 2, 7);
+  ctx.fill();
+  // Fill
+  const inkRatio = ink / INK_MAX;
+  const inkHue = lerp(0, 190, inkRatio);
+  const ig = ctx.createLinearGradient(inkBarX, 0, inkBarX + inkBarW * inkRatio, 0);
+  ig.addColorStop(0, hsl(inkHue, 100, 50));
+  ig.addColorStop(1, hsl(inkHue + 30, 100, 70));
+  ctx.fillStyle = ig;
+  ctx.shadowColor = hsl(inkHue + 15, 100, 60);
+  ctx.shadowBlur = 6;
+  if (inkRatio > 0.01) {
+    roundRect(ctx, inkBarX, inkBarY, inkBarW * inkRatio, inkBarH, 6);
+    ctx.fill();
+  }
+  // Label
+  ctx.shadowBlur = 0;
+  ctx.font = '10px "Segoe UI", sans-serif';
+  ctx.fillStyle = 'rgba(200,220,255,0.9)';
+  ctx.textAlign = 'right';
+  ctx.fillText('INK', inkBarX - 6, inkBarY + 10);
+
+  // Combo
+  if (combo > 1) {
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 18px "Segoe UI", sans-serif';
+    ctx.fillStyle = hsl(50, 100, 70);
+    ctx.shadowColor = hsl(50, 100, 60);
+    ctx.shadowBlur = 12;
+    ctx.fillText('x' + combo + ' COMBO', VW / 2, 36);
+  }
+
+  ctx.restore();
+}
+
+function renderGameOver() {
+  ctx.fillStyle = 'rgba(0,0,0,0.65)';
+  ctx.fillRect(0, 0, VW, VH);
+
+  ctx.save();
+  ctx.textAlign = 'center';
+  const t = Date.now() / 1000;
+
+  // Game Over title
+  ctx.font = 'bold 44px "Segoe UI", sans-serif';
+  ctx.fillStyle = '#ff4466';
+  ctx.shadowColor = '#ff2244';
+  ctx.shadowBlur = 20;
+  ctx.fillText('Game Over', VW / 2, VH * 0.3);
+
+  // Score
+  ctx.font = 'bold 36px "Segoe UI", sans-serif';
+  ctx.fillStyle = '#ffffff';
+  ctx.shadowColor = 'rgba(100,150,255,0.8)';
+  ctx.shadowBlur = 15;
+  ctx.fillText(Math.floor(score), VW / 2, VH * 0.42);
+
+  // Best
+  ctx.font = '16px "Segoe UI", sans-serif';
+  ctx.fillStyle = score >= best ? '#ffcc44' : 'rgba(180,200,255,0.8)';
+  ctx.shadowBlur = score >= best ? 12 : 0;
+  ctx.shadowColor = '#ffcc44';
+  ctx.fillText(score >= best ? 'New Best!' : 'Best: ' + Math.floor(best), VW / 2, VH * 0.42 + 30);
+
+  // Retry button
+  const pulse = 0.7 + 0.3 * Math.sin(t * 3);
+  ctx.globalAlpha = pulse;
+  ctx.font = 'bold 22px "Segoe UI", sans-serif';
+  ctx.fillStyle = '#ffffff';
+  ctx.shadowColor = '#ffffff';
+  ctx.shadowBlur = 15;
+  ctx.fillText('Tap to Retry', VW / 2, VH * 0.62);
+  ctx.globalAlpha = 1;
+
+  // Share button
+  ctx.shadowBlur = 0;
+  const sbx = VW / 2 - 70, sby = VH * 0.68, sbw = 140, sbh = 36;
+  ctx.fillStyle = 'rgba(0,180,255,0.25)';
+  ctx.strokeStyle = 'rgba(0,180,255,0.7)';
+  ctx.lineWidth = 1.5;
+  roundRect(ctx, sbx, sby, sbw, sbh, 10);
+  ctx.fill(); ctx.stroke();
+  ctx.font = 'bold 14px "Segoe UI", sans-serif';
+  ctx.fillStyle = '#00d4ff';
+  ctx.fillText('Share Score', VW / 2, sby + 23);
+
+  // Challenge banner
+  if (challengeScore !== null) {
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = score > challengeScore ? 'rgba(0,200,100,0.2)' : 'rgba(255,100,0,0.2)';
+    ctx.strokeStyle = score > challengeScore ? 'rgba(0,200,100,0.6)' : 'rgba(255,100,0,0.6)';
+    ctx.lineWidth = 1;
+    roundRect(ctx, VW / 2 - 110, VH * 0.77 - 15, 220, 30, 8);
+    ctx.fill(); ctx.stroke();
+    ctx.font = 'bold 13px "Segoe UI", sans-serif';
+    ctx.fillStyle = score > challengeScore ? '#44ff88' : '#ff8844';
+    ctx.shadowColor = ctx.fillStyle;
+    ctx.shadowBlur = 8;
+    const msg = score > challengeScore
+      ? 'Challenge Beaten! (' + Math.floor(score) + ' vs ' + challengeScore + ')'
+      : 'Challenge: Beat ' + challengeScore + '!';
+    ctx.fillText(msg, VW / 2, VH * 0.77 + 5);
+  }
+
+  ctx.restore();
+}
+
+// ─── Share Button Click ───────────────────────────────────────────────────
+canvas.addEventListener('click', (e) => {
+  if (state !== 'gameover') return;
+  e.preventDefault();
+
+  // Get click position in virtual coords
+  const rect = canvas.getBoundingClientRect();
+  const scale = Math.min(cw / VW, ch / VH);
+  const ox = (cw - VW * scale) / 2;
+  const oy = (ch - VH * scale) / 2;
+  const cx = (e.clientX - rect.left - ox) / scale;
+  const cy = (e.clientY - rect.top - oy) / scale;
+
+  const sbx = VW / 2 - 70, sby = VH * 0.68, sbw = 140, sbh = 36;
+  if (cx >= sbx && cx <= sbx + sbw && cy >= sby && cy <= sby + sbh) {
+    shareScore();
+  }
+});
+
+function shareScore() {
+  const link = `https://balinti.github.io/trail-runner/?challengeScore=${Math.floor(score)}`;
+  const text = `I scored ${Math.floor(score)} in Trail Runner! Can you beat me? ${link}`;
+  if (navigator.share) {
+    navigator.share({ title: 'Trail Runner', text, url: link }).catch(() => {});
+  } else {
+    navigator.clipboard.writeText(text).then(() => {
+      floatTexts.push({
+        x: VW / 2, y: VH * 0.68 - 20,
+        text: 'Link copied!',
+        life: 1, maxLife: 1.5,
+        hue: 120
+      });
+    }).catch(() => {
+      window.prompt('Copy this link:', text);
+    });
+  }
+}
+
+// ─── Utils ────────────────────────────────────────────────────────────────
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+// ─── Bootstrap ───────────────────────────────────────────────────────────
+initGame();
+requestAnimationFrame(update);
+</script>
+</body>
+</html>

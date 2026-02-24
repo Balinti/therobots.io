@@ -1,0 +1,1034 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Steam Pulse - Free HTML5 Game</title>
+  <meta name="description" content="Play Steam Pulse - Tap on steam bursts at the right moment to power your airship and grab surprise powerups.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0b1020">
+  <link rel="canonical" href="https://balinti.github.io/steam-pulse/">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Steam Pulse - Free HTML5 Game">
+  <meta property="og:description" content="Play Steam Pulse - Tap on steam bursts at the right moment to power your airship and grab surprise powerups.">
+  <meta property="og:url" content="https://balinti.github.io/steam-pulse/">
+  <meta property="og:image" content="https://balinti.github.io/steam-pulse/og-image.png">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Steam Pulse - Free HTML5 Game">
+  <meta name="twitter:description" content="Play Steam Pulse - Tap on steam bursts at the right moment to power your airship and grab surprise powerups.">
+  <meta name="twitter:image" content="https://balinti.github.io/steam-pulse/og-image.png">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0b1020;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      min-height: 100vh;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      color: #c8d8f0;
+      overflow-x: hidden;
+    }
+
+    #shell {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      height: 100svh;
+      max-height: 750px;
+      background: linear-gradient(160deg, #0d1428 0%, #0b1a2e 60%, #0a1218 100%);
+      overflow: hidden;
+      touch-action: manipulation;
+      cursor: pointer;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: manipulation;
+    }
+
+    #how-to-play {
+      width: 100%;
+      max-width: 420px;
+      padding: 18px 20px;
+      font-size: 13px;
+      line-height: 1.6;
+      color: #8090a8;
+    }
+    #how-to-play h2 { font-size: 14px; color: #a0b4cc; margin-bottom: 8px; letter-spacing: 0.05em; }
+    #how-to-play ul { padding-left: 18px; }
+    #how-to-play li { margin-bottom: 4px; }
+
+    #footer {
+      width: 100%;
+      max-width: 420px;
+      padding: 10px 20px 20px;
+      display: flex;
+      gap: 16px;
+      font-size: 12px;
+      color: #5a6a7a;
+    }
+    #footer button {
+      background: none;
+      border: none;
+      color: #5a7a9a;
+      font-size: 12px;
+      cursor: pointer;
+      text-decoration: underline;
+      padding: 0;
+    }
+
+    #modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.75);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+    #modal-overlay.open { display: flex; }
+    #modal-box {
+      background: #111a2e;
+      border: 1px solid #2a3a5a;
+      border-radius: 12px;
+      padding: 28px 24px;
+      max-width: 340px;
+      width: 90%;
+      font-size: 13px;
+      line-height: 1.7;
+      color: #8090a8;
+    }
+    #modal-box h3 { font-size: 15px; color: #c0d0e8; margin-bottom: 10px; }
+    #modal-close {
+      margin-top: 16px;
+      background: #1a2a4a;
+      border: 1px solid #2a4a7a;
+      color: #a0b8d0;
+      padding: 8px 20px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+
+<div id="shell">
+  <canvas id="gc"></canvas>
+</div>
+
+<section id="how-to-play" aria-label="How to play Steam Pulse">
+  <h2>How to Play</h2>
+  <ul>
+    <li>Tap or press <strong>Space / Enter</strong> to fire the steam engine.</li>
+    <li>Watch the <strong>pressure gauge</strong> needle — tap when it's in the <span style="color:#22ff88">green zone</span> for a powerful thrust.</li>
+    <li>Yellow zone gives a small boost; red zone causes a pressure leak and drops you faster.</li>
+    <li>Fly through the <strong>gaps in gates</strong> to score. Miss a gate and it's game over!</li>
+    <li>Build a <strong>combo</strong> by hitting perfect greens to grow your score multiplier.</li>
+    <li>Difficulty increases over time — gates speed up and the sweet spot shrinks!</li>
+  </ul>
+</section>
+
+<div id="footer">
+  <button onclick="openModal('privacy')">Privacy Policy</button>
+  <button onclick="openModal('terms')">Terms of Use</button>
+</div>
+
+<div id="modal-overlay" role="dialog" aria-modal="true">
+  <div id="modal-box">
+    <h3 id="modal-title"></h3>
+    <div id="modal-content"></div>
+    <button id="modal-close" onclick="closeModal()">Close</button>
+  </div>
+</div>
+
+<script>
+// ─── Modal helpers ───────────────────────────────────────────────────────────
+const MODAL_DATA = {
+  privacy: {
+    title: 'Privacy Policy',
+    content: 'This game does not collect personal data. High scores are stored locally in your browser via localStorage. Third-party advertising (Google AdSense) may use cookies as described in <a href="https://policies.google.com/privacy" target="_blank" style="color:#6090c0">Google\'s Privacy Policy</a>. By playing, you consent to these terms.'
+  },
+  terms: {
+    title: 'Terms of Use',
+    content: 'Steam Pulse is provided for free personal entertainment. You may not reproduce or redistribute this game without permission. The game is provided as-is without warranty of any kind. High scores are stored locally and are not backed up.'
+  }
+};
+
+function openModal(key) {
+  const d = MODAL_DATA[key];
+  document.getElementById('modal-title').textContent = d.title;
+  document.getElementById('modal-content').innerHTML = d.content;
+  document.getElementById('modal-overlay').classList.add('open');
+}
+function closeModal() {
+  document.getElementById('modal-overlay').classList.remove('open');
+}
+document.getElementById('modal-overlay').addEventListener('pointerdown', e => {
+  if (e.target === document.getElementById('modal-overlay')) closeModal();
+});
+
+// ─── Game ────────────────────────────────────────────────────────────────────
+(function() {
+'use strict';
+
+// Virtual resolution
+const VW = 420, VH = 750;
+
+const shell  = document.getElementById('shell');
+const canvas = document.getElementById('gc');
+const ctx    = canvas.getContext('2d');
+
+// ─── High-DPI / responsive scaling ──────────────────────────────────────────
+let dpr = 1, scale = 1, offX = 0, offY = 0;
+
+function resize() {
+  dpr   = window.devicePixelRatio || 1;
+  const cw = shell.clientWidth;
+  const ch = shell.clientHeight;
+  scale = Math.min(cw / VW, ch / VH);
+  const pw = VW * scale;
+  const ph = VH * scale;
+  offX = (cw - pw) / 2;
+  offY = (ch - ph) / 2;
+  canvas.width  = cw * dpr;
+  canvas.height = ch * dpr;
+  canvas.style.width  = cw + 'px';
+  canvas.style.height = ch + 'px';
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ─── Audio (minimal WebAudio) ────────────────────────────────────────────────
+let audioCtx = null;
+let muted = false;
+
+function getAudioCtx() {
+  if (!audioCtx) {
+    try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {}
+  }
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+function playTone(freq, type, duration, vol, freqEnd) {
+  if (muted) return;
+  const ac = getAudioCtx();
+  if (!ac) return;
+  try {
+    const g = ac.createGain();
+    const o = ac.createOscillator();
+    o.type = type || 'sine';
+    o.frequency.setValueAtTime(freq, ac.currentTime);
+    if (freqEnd) o.frequency.exponentialRampToValueAtTime(freqEnd, ac.currentTime + duration);
+    g.gain.setValueAtTime(vol || 0.15, ac.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + duration);
+    o.connect(g);
+    g.connect(ac.destination);
+    o.start(ac.currentTime);
+    o.stop(ac.currentTime + duration + 0.01);
+  } catch(e) {}
+}
+
+function sfxPerfect()  { playTone(520, 'triangle', 0.18, 0.18, 780); }
+function sfxOkay()     { playTone(300, 'sine',     0.12, 0.10, 340); }
+function sfxMiss()     { playTone(180, 'sawtooth', 0.22, 0.18, 90);  }
+function sfxGate()     { playTone(660, 'sine',     0.1,  0.12, 660); }
+function sfxCrash()    {
+  playTone(200, 'sawtooth', 0.5,  0.25, 40);
+  playTone(80,  'sawtooth', 0.4,  0.15, 30);
+}
+
+// ─── Game state ──────────────────────────────────────────────────────────────
+const LS_KEY = 'spr_best';
+
+let state      = 'start'; // start | playing | gameover
+let score      = 0;
+let best       = parseInt(localStorage.getItem(LS_KEY) || '0');
+let combo      = 0;
+let multiplier = 1;
+let maxMult    = 1;
+let maxCombo   = 0;
+let elapsed    = 0; // seconds since run start
+let frameTime  = 0;
+
+// Shake
+let shakeAmt   = 0;
+let shakeDur   = 0;
+let shakeX     = 0;
+let shakeY     = 0;
+
+// Speed lines state
+let speedLines = [];
+let speedLineTimer = 0;
+
+// ─── Player ──────────────────────────────────────────────────────────────────
+const PLAYER_X = 110;
+const PLAYER_R = 18;
+
+let playerY, playerVY;
+let gravity;
+let leakTimer; // countdown of extra gravity after miss
+
+function resetPlayer() {
+  playerY  = VH / 2;
+  playerVY = 0;
+  gravity  = 900;
+  leakTimer = 0;
+}
+
+// ─── Gauge ───────────────────────────────────────────────────────────────────
+// Needle sweeps -1..+1 (maps to arc)
+let needlePos  = 0;    // -1 to +1
+let needleDir  = 1;
+let needleSpd  = 1.4;  // units/sec
+
+// Zone boundaries (in needle space, symmetric)
+// Green zone: |needle| <= sweetGreen
+// Yellow zone: sweetGreen < |needle| <= sweetYellow
+// Red: rest
+let sweetGreen  = 0.28;
+let sweetYellow = 0.58;
+
+function getNeedleZone() {
+  const a = Math.abs(needlePos);
+  if (a <= sweetGreen)  return 'green';
+  if (a <= sweetYellow) return 'yellow';
+  return 'red';
+}
+
+// ─── Gates ───────────────────────────────────────────────────────────────────
+const GATE_W   = 18;
+let gateGap    = 200;  // px vertical gap
+let gateSpeed  = 160;  // px/sec rightward scroll (actually gates move left)
+let gateSpawnInterval = 2.2; // seconds
+let gateTimer  = 0;
+let gates      = [];
+let gateScoreValue = 10;
+
+function spawnGate() {
+  // Gap center between 15% and 85% of VH
+  const margin = gateGap / 2 + 20;
+  const cx = VW + GATE_W;
+  const cy = margin + Math.random() * (VH - 2 * margin);
+  gates.push({ x: cx, gapCy: cy, passed: false, active: true });
+}
+
+// ─── Particles ───────────────────────────────────────────────────────────────
+let particles = [];
+
+function spawnSteamPuff(x, y, count) {
+  for (let i = 0; i < count; i++) {
+    const angle = -Math.PI/2 + (Math.random()-0.5) * Math.PI * 0.7;
+    const spd   = 40 + Math.random() * 120;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * spd,
+      vy: Math.sin(angle) * spd,
+      life: 1,
+      decay: 0.6 + Math.random() * 0.8,
+      r: 5 + Math.random() * 10,
+      type: 'steam',
+      hue: 190 + Math.random() * 40
+    });
+  }
+}
+
+function spawnSparkles(x, y, count) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const spd   = 60 + Math.random() * 200;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * spd,
+      vy: Math.sin(angle) * spd,
+      life: 1,
+      decay: 1.5 + Math.random() * 1.5,
+      r: 2 + Math.random() * 4,
+      type: 'spark',
+      hue: 40 + Math.random() * 60
+    });
+  }
+}
+
+function spawnCrashBurst(x, y) {
+  for (let i = 0; i < 40; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const spd   = 80 + Math.random() * 300;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * spd,
+      vy: Math.sin(angle) * spd,
+      life: 1,
+      decay: 0.8 + Math.random() * 1.2,
+      r: 3 + Math.random() * 8,
+      type: 'crash',
+      hue: Math.random() * 360
+    });
+  }
+  // Expanding ring
+  particles.push({ x, y, life: 1, decay: 1.6, r: 10, maxR: 100, type: 'ring', hue: 30 });
+}
+
+function spawnSpeedLines() {
+  for (let i = 0; i < 3; i++) {
+    particles.push({
+      x: VW + 10,
+      y: 30 + Math.random() * (VH - 60),
+      vx: -(600 + Math.random() * 400),
+      vy: 0,
+      life: 1,
+      decay: 3.5,
+      r: 1,
+      len: 60 + Math.random() * 100,
+      type: 'line',
+      hue: 180 + Math.random() * 60
+    });
+  }
+}
+
+// ─── Difficulty scaling ───────────────────────────────────────────────────────
+function applyDifficulty() {
+  // All based on elapsed seconds
+  const t = elapsed;
+  needleSpd         = 1.4 + t * 0.028;
+  sweetGreen        = Math.max(0.10, 0.28 - t * 0.002);
+  sweetYellow       = Math.max(0.28, 0.58 - t * 0.003);
+  gateSpeed         = 160 + t * 2.5;
+  gateSpawnInterval = Math.max(1.0, 2.2 - t * 0.016);
+  gateGap           = Math.max(110, 200 - t * 1.2);
+}
+
+// ─── Game logic: tap ─────────────────────────────────────────────────────────
+function onTap() {
+  if (state === 'start') {
+    startGame();
+    return;
+  }
+  if (state === 'gameover') {
+    startGame();
+    return;
+  }
+
+  const zone = getNeedleZone();
+  const px   = PLAYER_X;
+  const py   = playerY;
+
+  if (zone === 'green') {
+    playerVY = -420;
+    combo++;
+    if (combo > maxCombo) maxCombo = combo;
+    multiplier = Math.min(8, 1 + Math.floor(combo / 3));
+    if (multiplier > maxMult) maxMult = multiplier;
+    shakeAmt = 3; shakeDur = 0.1;
+    spawnSteamPuff(px - PLAYER_R, py, 10);
+    spawnSparkles(px, py, 12);
+    sfxPerfect();
+    speedLineTimer = 0.35;
+  } else if (zone === 'yellow') {
+    playerVY = -240;
+    spawnSteamPuff(px - PLAYER_R, py, 5);
+    sfxOkay();
+  } else {
+    // red — miss: leak penalty
+    leakTimer = 1.2 + elapsed * 0.01;
+    combo = 0;
+    multiplier = Math.max(1, multiplier - 1);
+    spawnSteamPuff(px - PLAYER_R, py, 3);
+    sfxMiss();
+  }
+}
+
+// ─── Game lifecycle ───────────────────────────────────────────────────────────
+function startGame() {
+  state      = 'playing';
+  score      = 0;
+  combo      = 0;
+  multiplier = 1;
+  maxMult    = 1;
+  maxCombo   = 0;
+  elapsed    = 0;
+  frameTime  = performance.now();
+  gates      = [];
+  particles  = [];
+  speedLines = [];
+  gateTimer  = 1.0; // first gate spawns after 1s
+  shakeAmt   = 0;
+  shakeDur   = 0;
+  needlePos  = 0;
+  needleDir  = 1;
+  speedLineTimer = 0;
+  resetPlayer();
+  applyDifficulty();
+  spawnGate();
+}
+
+function endGame() {
+  state = 'gameover';
+  if (score > best) {
+    best = score;
+    localStorage.setItem(LS_KEY, best);
+  }
+  shakeAmt = 14; shakeDur = 0.6;
+  spawnCrashBurst(PLAYER_X, playerY);
+  sfxCrash();
+}
+
+// ─── Update ───────────────────────────────────────────────────────────────────
+function update(now) {
+  let dt = (now - frameTime) / 1000;
+  frameTime = now;
+  dt = Math.min(dt, 0.033);
+
+  if (state !== 'playing') return;
+
+  elapsed += dt;
+  applyDifficulty();
+
+  // Needle
+  needlePos += needleDir * needleSpd * dt;
+  if (needlePos >  1) { needlePos =  1; needleDir = -1; }
+  if (needlePos < -1) { needlePos = -1; needleDir =  1; }
+
+  // Player physics
+  const effectiveG = gravity + (leakTimer > 0 ? 480 : 0);
+  playerVY += effectiveG * dt;
+  playerY  += playerVY * dt;
+  if (leakTimer > 0) leakTimer -= dt;
+
+  // Score accumulation
+  score += Math.floor(dt * 20 * multiplier);
+
+  // Gates
+  gateTimer -= dt;
+  if (gateTimer <= 0) {
+    spawnGate();
+    gateTimer = gateSpawnInterval;
+  }
+
+  for (let i = gates.length - 1; i >= 0; i--) {
+    const g = gates[i];
+    g.x -= gateSpeed * dt;
+
+    // Check pass
+    if (!g.passed && g.x + GATE_W < PLAYER_X - PLAYER_R) {
+      g.passed = true;
+      score += gateScoreValue * multiplier;
+      sfxGate();
+    }
+
+    // Collision: player overlapping gate x range?
+    const gLeft  = g.x - GATE_W / 2;
+    const gRight = g.x + GATE_W / 2;
+    if (PLAYER_X + PLAYER_R > gLeft && PLAYER_X - PLAYER_R < gRight) {
+      const topWall    = g.gapCy - gateGap / 2;
+      const bottomWall = g.gapCy + gateGap / 2;
+      if (playerY - PLAYER_R < topWall || playerY + PLAYER_R > bottomWall) {
+        endGame();
+        return;
+      }
+    }
+
+    if (g.x < -GATE_W - 10) gates.splice(i, 1);
+  }
+
+  // Boundary death
+  if (playerY + PLAYER_R > VH - 10) {
+    playerY = VH - 10 - PLAYER_R;
+    endGame();
+    return;
+  }
+  if (playerY - PLAYER_R < 0) {
+    playerY = PLAYER_R;
+    playerVY = 0;
+  }
+
+  // Speed lines
+  if (speedLineTimer > 0) {
+    speedLineTimer -= dt;
+    if (Math.random() < 0.5) spawnSpeedLines();
+  }
+
+  // Particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.life -= p.decay * dt;
+    if (p.type !== 'ring') {
+      p.x += (p.vx || 0) * dt;
+      p.y += (p.vy || 0) * dt;
+      if (p.type === 'steam') p.r += 18 * dt;
+    }
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+
+  // Shake
+  if (shakeDur > 0) {
+    shakeDur -= dt;
+    shakeX = (Math.random() - 0.5) * shakeAmt * 2;
+    shakeY = (Math.random() - 0.5) * shakeAmt * 2;
+  } else {
+    shakeX = 0; shakeY = 0;
+  }
+}
+
+// ─── Draw ─────────────────────────────────────────────────────────────────────
+const hue0 = () => (elapsed * 18 + combo * 12) % 360;
+
+function drawBG() {
+  const h = hue0();
+  const g = ctx.createLinearGradient(0, 0, 0, VH);
+  g.addColorStop(0, `hsl(${h},35%,7%)`);
+  g.addColorStop(1, `hsl(${(h+40)%360},28%,5%)`);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, VW, VH);
+
+  // Subtle horizontal scan lines feel
+  ctx.fillStyle = 'rgba(0,0,0,0.06)';
+  for (let y = 0; y < VH; y += 4) {
+    ctx.fillRect(0, y, VW, 1);
+  }
+}
+
+function drawGates() {
+  for (const g of gates) {
+    const topH    = g.gapCy - gateGap / 2;
+    const botY    = g.gapCy + gateGap / 2;
+    const botH    = VH - botY;
+    const hue = hue0();
+
+    // Gate body
+    const grad = ctx.createLinearGradient(g.x - GATE_W/2, 0, g.x + GATE_W/2, 0);
+    grad.addColorStop(0, `hsl(${hue},70%,30%)`);
+    grad.addColorStop(0.5, `hsl(${hue},80%,50%)`);
+    grad.addColorStop(1, `hsl(${hue},70%,30%)`);
+
+    ctx.fillStyle = grad;
+    // Top bar
+    ctx.fillRect(g.x - GATE_W/2, 0, GATE_W, topH);
+    // Bot bar
+    ctx.fillRect(g.x - GATE_W/2, botY, GATE_W, botH);
+
+    // Edge glow
+    ctx.shadowBlur = 14;
+    ctx.shadowColor = `hsl(${hue},90%,60%)`;
+    ctx.fillRect(g.x - GATE_W/2, topH - 4, GATE_W, 4);
+    ctx.fillRect(g.x - GATE_W/2, botY, GATE_W, 4);
+    ctx.shadowBlur = 0;
+  }
+}
+
+function drawPlayer() {
+  const x = PLAYER_X;
+  const y = playerY;
+  const r = PLAYER_R;
+  const h = hue0();
+
+  // Shadow
+  ctx.beginPath();
+  ctx.ellipse(x, y + r + 4, r * 0.7, 5, 0, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  ctx.fill();
+
+  // Body — airship ellipse
+  ctx.save();
+  ctx.translate(x, y);
+
+  // Glow aura
+  const grd = ctx.createRadialGradient(0, 0, 2, 0, 0, r * 2.2);
+  grd.addColorStop(0, `hsla(${h},90%,80%,0.35)`);
+  grd.addColorStop(1, 'transparent');
+  ctx.fillStyle = grd;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, r * 2.2, r * 2.2, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Main hull
+  const hull = ctx.createLinearGradient(-r, -r*0.6, r, r*0.6);
+  hull.addColorStop(0, `hsl(${h},80%,70%)`);
+  hull.addColorStop(0.5, `hsl(${h},90%,55%)`);
+  hull.addColorStop(1, `hsl(${(h+180)%360},60%,35%)`);
+  ctx.beginPath();
+  ctx.ellipse(0, 0, r * 1.5, r * 0.75, 0, 0, Math.PI * 2);
+  ctx.fillStyle = hull;
+  ctx.fill();
+
+  // Highlight
+  ctx.beginPath();
+  ctx.ellipse(-r*0.3, -r*0.25, r*0.6, r*0.22, -0.3, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(255,255,255,0.3)';
+  ctx.fill();
+
+  // Engine nozzle (left side)
+  ctx.fillStyle = `hsl(${h},50%,40%)`;
+  ctx.beginPath();
+  ctx.roundRect(-r*1.5, -r*0.2, r*0.5, r*0.4, 3);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawGauge() {
+  // Centered gauge at bottom portion
+  const cx = VW / 2;
+  const cy = VH - 90;
+  const rad = 55;
+  const start = Math.PI * 0.8;
+  const end   = Math.PI * 2.2;
+
+  // Background arc
+  ctx.beginPath();
+  ctx.arc(cx, cy, rad, start, end);
+  ctx.strokeStyle = '#1a2a3a';
+  ctx.lineWidth = 14;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+
+  // Red zone (full arc, background)
+  ctx.beginPath();
+  ctx.arc(cx, cy, rad, start, end);
+  ctx.strokeStyle = '#ff3333';
+  ctx.lineWidth = 13;
+  ctx.stroke();
+
+  // Yellow zone
+  const totalArc = end - start;
+  const half = totalArc / 2;
+  const yStart = start + half * (1 - sweetYellow);
+  const yEnd   = end   - half * (1 - sweetYellow);
+  ctx.beginPath();
+  ctx.arc(cx, cy, rad, yStart, yEnd);
+  ctx.strokeStyle = '#ffcc00';
+  ctx.lineWidth = 13;
+  ctx.stroke();
+
+  // Green zone
+  const gStart = start + half * (1 - sweetGreen);
+  const gEnd   = end   - half * (1 - sweetGreen);
+  ctx.beginPath();
+  ctx.arc(cx, cy, rad, gStart, gEnd);
+  ctx.strokeStyle = '#22ff88';
+  ctx.lineWidth = 13;
+  ctx.stroke();
+
+  // Needle
+  const needleAngle = start + ((needlePos + 1) / 2) * totalArc;
+  const nx = cx + Math.cos(needleAngle) * rad;
+  const ny = cy + Math.sin(needleAngle) * rad;
+
+  // Needle glow
+  ctx.shadowBlur = 10;
+  ctx.shadowColor = 'white';
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(nx, ny);
+  ctx.strokeStyle = 'white';
+  ctx.lineWidth = 3;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Center dot
+  ctx.beginPath();
+  ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+  ctx.fillStyle = '#eee';
+  ctx.fill();
+
+  // Gauge label
+  ctx.fillStyle = 'rgba(180,200,220,0.7)';
+  ctx.font = 'bold 11px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('PRESSURE', cx, cy + 22);
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, p.life);
+
+    if (p.type === 'steam') {
+      const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r);
+      g.addColorStop(0, `hsla(${p.hue},60%,80%,0.6)`);
+      g.addColorStop(1, `hsla(${p.hue},40%,70%,0)`);
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (p.type === 'spark') {
+      ctx.fillStyle = `hsl(${p.hue},100%,75%)`;
+      ctx.shadowBlur = 6;
+      ctx.shadowColor = `hsl(${p.hue},100%,60%)`;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    } else if (p.type === 'crash') {
+      ctx.fillStyle = `hsl(${p.hue},100%,65%)`;
+      ctx.shadowBlur = 8;
+      ctx.shadowColor = `hsl(${p.hue},100%,60%)`;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    } else if (p.type === 'ring') {
+      const progress = 1 - p.life;
+      const r = p.r + (p.maxR - p.r) * progress;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+      ctx.strokeStyle = `hsl(${p.hue},100%,70%)`;
+      ctx.lineWidth = 3 * p.life;
+      ctx.stroke();
+    } else if (p.type === 'line') {
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(p.x + p.len, p.y);
+      ctx.strokeStyle = `hsla(${p.hue},80%,80%,${p.life})`;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
+function drawHUD() {
+  // Score
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.font = 'bold 32px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(score, VW / 2, 50);
+
+  // Multiplier
+  if (multiplier > 1) {
+    ctx.fillStyle = `hsl(${hue0()},90%,70%)`;
+    ctx.font = 'bold 18px sans-serif';
+    ctx.fillText(`x${multiplier}`, VW / 2, 75);
+  }
+
+  // Combo streak
+  if (combo > 0) {
+    ctx.fillStyle = `hsla(${hue0()},80%,75%,0.85)`;
+    ctx.font = '13px sans-serif';
+    ctx.fillText(`COMBO ${combo}`, VW / 2, 96);
+  }
+
+  // Mute toggle (top-right)
+  drawMuteBtn();
+}
+
+function drawMuteBtn() {
+  const bx = VW - 36, by = 14;
+  ctx.fillStyle = 'rgba(255,255,255,0.08)';
+  ctx.beginPath();
+  ctx.roundRect(bx, by, 28, 28, 6);
+  ctx.fill();
+  ctx.fillStyle = muted ? '#666' : '#aad';
+  ctx.font = '16px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(muted ? '🔇' : '🔊', bx + 14, by + 20);
+}
+
+function drawStartScreen() {
+  drawBG();
+
+  const cx = VW / 2;
+  const cy = VH / 2;
+  const h  = (Date.now() / 50) % 360;
+
+  // Title
+  ctx.save();
+  ctx.shadowBlur = 30;
+  ctx.shadowColor = `hsl(${h},100%,60%)`;
+  ctx.fillStyle = `hsl(${h},90%,70%)`;
+  ctx.font = 'bold 48px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('STEAM', cx, cy - 60);
+  ctx.fillStyle = `hsl(${(h+40)%360},90%,75%)`;
+  ctx.fillText('PULSE', cx, cy - 10);
+  ctx.shadowBlur = 0;
+  ctx.restore();
+
+  // Subtitle
+  ctx.fillStyle = 'rgba(180,200,220,0.8)';
+  ctx.font = '16px sans-serif';
+  ctx.fillText('Pressure Rail', cx, cy + 22);
+
+  // Best score
+  if (best > 0) {
+    ctx.fillStyle = 'rgba(180,200,220,0.55)';
+    ctx.font = '14px sans-serif';
+    ctx.fillText(`Best: ${best}`, cx, cy + 50);
+  }
+
+  // Tap prompt — pulsing
+  const pulse = 0.6 + 0.4 * Math.sin(Date.now() / 400);
+  ctx.fillStyle = `rgba(200,220,255,${pulse})`;
+  ctx.font = 'bold 18px sans-serif';
+  ctx.fillText('TAP TO START', cx, cy + 120);
+
+  // Mini gauge hint
+  ctx.fillStyle = 'rgba(120,160,190,0.6)';
+  ctx.font = '13px sans-serif';
+  ctx.fillText('Tap when needle is in the green!', cx, cy + 150);
+
+  drawMuteBtn();
+}
+
+function drawGameoverScreen() {
+  // Dim overlay
+  ctx.fillStyle = 'rgba(5,10,20,0.72)';
+  ctx.fillRect(0, 0, VW, VH);
+
+  const cx = VW / 2;
+  const h  = (Date.now() / 50) % 360;
+
+  ctx.save();
+  ctx.shadowBlur = 20;
+  ctx.shadowColor = '#ff4444';
+  ctx.fillStyle = '#ff6666';
+  ctx.font = 'bold 36px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('GAME OVER', cx, 210);
+  ctx.shadowBlur = 0;
+  ctx.restore();
+
+  ctx.fillStyle = '#c8d8f0';
+  ctx.font = 'bold 28px sans-serif';
+  ctx.fillText(score, cx, 260);
+
+  ctx.fillStyle = 'rgba(160,180,200,0.7)';
+  ctx.font = '15px sans-serif';
+  ctx.fillText(`Best: ${best}`, cx, 290);
+
+  ctx.fillStyle = `hsl(${h},80%,70%)`;
+  ctx.font = '14px sans-serif';
+  ctx.fillText(`Max Multiplier: x${maxMult}   Max Combo: ${maxCombo}`, cx, 320);
+
+  // Buttons
+  const pulse = 0.7 + 0.3 * Math.sin(Date.now() / 380);
+  ctx.fillStyle = `rgba(100,200,130,${pulse})`;
+  ctx.font = 'bold 20px sans-serif';
+  ctx.fillText('TAP TO RETRY', cx, 390);
+
+  // Share button area
+  ctx.fillStyle = 'rgba(60,120,200,0.25)';
+  ctx.beginPath();
+  ctx.roundRect(cx - 70, 415, 140, 38, 10);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(80,150,240,0.6)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.fillStyle = '#8ab8f0';
+  ctx.font = 'bold 15px sans-serif';
+  ctx.fillText('SHARE SCORE', cx, 439);
+
+  drawMuteBtn();
+}
+
+function drawPlayingScreen() {
+  drawBG();
+  drawGates();
+  drawParticles();
+  drawPlayer();
+  drawGauge();
+  drawHUD();
+}
+
+// ─── Render loop ──────────────────────────────────────────────────────────────
+function render(now) {
+  requestAnimationFrame(render);
+  update(now);
+
+  ctx.save();
+  // Map virtual coords → canvas pixels with dpr & scale & shake
+  ctx.setTransform(
+    dpr * scale, 0,
+    0, dpr * scale,
+    (offX + shakeX) * dpr,
+    (offY + shakeY) * dpr
+  );
+
+  if (state === 'start')    drawStartScreen();
+  else if (state === 'playing')  drawPlayingScreen();
+  else if (state === 'gameover') {
+    drawPlayingScreen();
+    drawGameoverScreen();
+  }
+
+  ctx.restore();
+}
+
+requestAnimationFrame(t => { frameTime = t; requestAnimationFrame(render); });
+
+// ─── Input ────────────────────────────────────────────────────────────────────
+// Tap/click on canvas
+shell.addEventListener('pointerdown', e => {
+  e.preventDefault();
+
+  // Check mute button tap
+  const rect   = shell.getBoundingClientRect();
+  const tapX   = (e.clientX - rect.left) / (rect.width  / VW);
+  const tapY   = (e.clientY - rect.top)  / (rect.height / VH);
+
+  // Mute button region (top-right)
+  if (tapX > VW - 50 && tapY < 52) {
+    muted = !muted;
+    return;
+  }
+
+  // Share button region on gameover
+  if (state === 'gameover') {
+    const cx = VW / 2;
+    if (tapX > cx - 70 && tapX < cx + 70 && tapY > 415 && tapY < 453) {
+      doShare();
+      return;
+    }
+  }
+
+  onTap();
+}, { passive: false });
+
+// Keyboard
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    onTap();
+  }
+});
+
+// ─── Share ────────────────────────────────────────────────────────────────────
+async function doShare() {
+  const url  = `https://balinti.github.io/steam-pulse/?score=${score}`;
+  const text = `I scored ${score} in Steam Pulse! Can you beat me?`;
+
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: 'Steam Pulse', text, url });
+      return;
+    } catch(e) {}
+  }
+  // Fallback: copy to clipboard
+  try {
+    await navigator.clipboard.writeText(`${text}\n${url}`);
+    // Brief feedback — show in canvas by borrowing score
+    const old = score;
+    score = 0;
+    setTimeout(() => { score = old; }, 1200);
+  } catch(e) {}
+}
+
+})(); // end IIFE
+</script>
+
+</body>
+</html>

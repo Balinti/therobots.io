@@ -1,0 +1,1123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Synth Shots - Free HTML5 Game</title>
+<meta name="description" content="Play Synth Shots - Shoot rhythmic vaporwave targets that accelerate with every successful hit.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0d0d2b">
+<link rel="canonical" href="https://balinti.github.io/synth-shots/">
+
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="Synth Shots - Free HTML5 Game">
+<meta property="og:description" content="Play Synth Shots - Shoot rhythmic vaporwave targets that accelerate with every successful hit.">
+<meta property="og:url" content="https://balinti.github.io/synth-shots/">
+<meta property="og:image" content="https://balinti.github.io/synth-shots/og.png">
+
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Synth Shots - Free HTML5 Game">
+<meta name="twitter:description" content="Play Synth Shots - Shoot rhythmic vaporwave targets that accelerate with every successful hit.">
+<meta name="twitter:image" content="https://balinti.github.io/synth-shots/og.png">
+
+<!-- AdSense -->
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+<!-- JSON-LD Schema -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "VideoGame",
+  "name": "Synth Shots",
+  "description": "Play Synth Shots - Shoot rhythmic vaporwave targets that accelerate with every successful hit.",
+  "url": "https://balinti.github.io/synth-shots/",
+  "genre": "Arcade",
+  "gamePlatform": "Web Browser",
+  "applicationCategory": "Game",
+  "operatingSystem": "Any"
+}
+</script>
+
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 100%; height: 100%;
+    background: #080818;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: flex-start;
+    overflow: hidden;
+    font-family: 'Courier New', Courier, monospace;
+    color: #e0d0ff;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  #game-wrap {
+    position: relative;
+    width: 100%;
+    max-width: 420px;
+    height: 100dvh;
+    max-height: 750px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+  #game-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    cursor: pointer;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+  }
+  #below-canvas {
+    width: 100%;
+    max-width: 420px;
+    padding: 8px 12px;
+    flex-shrink: 0;
+  }
+  details {
+    background: rgba(20,10,40,0.7);
+    border: 1px solid rgba(180,100,255,0.2);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 11px;
+    color: #a090c0;
+    line-height: 1.5;
+  }
+  details summary {
+    cursor: pointer;
+    font-size: 12px;
+    color: #c090ff;
+    outline: none;
+  }
+  details p { margin-top: 6px; }
+</style>
+</head>
+<body>
+<div id="game-wrap">
+  <canvas id="game-canvas"></canvas>
+</div>
+<div id="below-canvas">
+  <details>
+    <summary>How to Play / About</summary>
+    <p><strong>Synth Shots: Pulse Lanes</strong> — A vaporwave rhythm arcade game. Three neon lanes scroll upward. Tap or press Space/Enter to fire into the active (lit) lane. Hit targets only when the sweep line crosses their pulse ring. Chain combos to charge the Bass Drop for slow-motion bonus. 3 misses and it's game over. Aim for perfect timing for maximum points!</p>
+    <p>Controls: <strong>Tap/Click</strong> anywhere or press <strong>Space / Enter</strong>. No aiming required — fire into the active lane at the right moment.</p>
+  </details>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+const BEST_KEY = 'synthshots_best';
+const LANES = 3;
+const MAX_MISSES = 3;
+const BASS_MAX = 100;
+const BASS_DUR = 2000; // ms
+const DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+// ─── Canvas setup ────────────────────────────────────────────────────────────
+const canvas = document.getElementById('game-canvas');
+const ctx = canvas.getContext('2d');
+let W = 0, H = 0; // logical pixels
+let laneX = []; // center x of each lane
+let laneW = 0;
+
+function resize() {
+  const wrap = document.getElementById('game-wrap');
+  const rect = wrap.getBoundingClientRect();
+  W = rect.width;
+  H = rect.height;
+  canvas.width = Math.round(W * DPR);
+  canvas.height = Math.round(H * DPR);
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  laneW = W / LANES;
+  laneX = [0, 1, 2].map(i => laneW * i + laneW / 2);
+}
+resize();
+window.addEventListener('resize', () => { resize(); });
+
+// ─── URL params ──────────────────────────────────────────────────────────────
+const urlParams = new URLSearchParams(window.location.search);
+const challengeScore = urlParams.get('challenge') === '1' ? parseInt(urlParams.get('score') || '0') : 0;
+
+// ─── Game state ──────────────────────────────────────────────────────────────
+const G = {
+  state: 'start',
+  score: 0,
+  best: parseInt(localStorage.getItem(BEST_KEY) || '0'),
+  combo: 0,
+  maxCombo: 0,
+  multiplier: 1,
+  misses: 0,
+  hits: 0,
+  whiffs: 0,
+  leaks: 0,
+  perfects: 0,
+  bassCharge: 0,
+  bassActive: false,
+  bassTimer: 0,
+  bassDrops: 0,
+  timeScale: 1,
+  time: 0, // ms elapsed playing
+  hue: 200,
+  shakeAmt: 0,
+  shakeDur: 0,
+  missFlash: 0,
+  activeLane: 0,
+  beatInterval: 800,   // ms between beats
+  beatTimer: 0,
+  sweepY: 0,           // 0..1 position of sweep line
+  spawnAccum: 0,
+  spawnRate: 3000,     // ms per spawn
+  windowFrac: 0.18,    // fraction of H that counts as pulse window
+  targets: [],
+  particles: [],
+  shots: [],
+  lastTap: 0,
+};
+
+// ─── Reset ───────────────────────────────────────────────────────────────────
+function resetRun() {
+  G.state = 'playing';
+  G.score = 0;
+  G.combo = 0;
+  G.maxCombo = 0;
+  G.multiplier = 1;
+  G.misses = 0;
+  G.hits = 0;
+  G.whiffs = 0;
+  G.leaks = 0;
+  G.perfects = 0;
+  G.bassCharge = 0;
+  G.bassActive = false;
+  G.bassTimer = 0;
+  G.bassDrops = 0;
+  G.timeScale = 1;
+  G.time = 0;
+  G.shakeAmt = 0;
+  G.missFlash = 0;
+  G.activeLane = 0;
+  G.beatInterval = 800;
+  G.beatTimer = 0;
+  G.sweepY = 0.8;
+  G.spawnAccum = 0;
+  G.spawnRate = 2800;
+  G.windowFrac = 0.18;
+  G.targets = [];
+  G.particles = [];
+  G.shots = [];
+  G.hue = 200;
+  G.lastTap = 0;
+}
+
+// ─── Difficulty ───────────────────────────────────────────────────────────────
+function updateDifficulty() {
+  const t = G.time / 1000; // seconds
+  // spawn rate: start slow, ramp then oscillate a bit
+  G.spawnRate = Math.max(900, 2800 - t * 25 + Math.sin(t * 0.4) * 200);
+  // pulse window: tighter over time
+  G.windowFrac = Math.max(0.08, 0.18 - t * 0.001);
+  // beat interval: faster
+  G.beatInterval = Math.max(350, 800 - t * 4);
+  // target speed scalar stored in each target on spawn
+}
+
+function targetSpeed() {
+  const t = G.time / 1000;
+  return Math.min(0.35, 0.10 + t * 0.003 + Math.sin(t * 0.3) * 0.02);
+  // fraction of H per second
+}
+
+// ─── Spawn targets ────────────────────────────────────────────────────────────
+function spawnTarget() {
+  const r = Math.random();
+  let type;
+  // weighted: normal 60%, shielded 20%, decoy 20%
+  if (r < 0.60) type = 'normal';
+  else if (r < 0.80) type = 'shielded';
+  else type = 'decoy';
+
+  const lane = Math.floor(Math.random() * LANES);
+  const hp = type === 'shielded' ? 2 : 1;
+  G.targets.push({
+    lane,
+    y: H * 0.95, // start near bottom
+    vy: targetSpeed(),
+    type,
+    hp,
+    maxHp: hp,
+    radius: 22,
+    age: 0,
+    flashTimer: 0,
+    hitFlash: 0,
+  });
+}
+
+// ─── Particles ───────────────────────────────────────────────────────────────
+function spawnParticles(x, y, count, color, kind) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = kind === 'burst' ? (2 + Math.random() * 5) : (1 + Math.random() * 3);
+    G.particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 1,
+      decay: 0.025 + Math.random() * 0.03,
+      r: 2 + Math.random() * 3,
+      color,
+      kind,
+    });
+  }
+}
+
+function spawnShot(lane) {
+  G.shots.push({ lane, timer: 0.08 });
+}
+
+// ─── Handle tap ──────────────────────────────────────────────────────────────
+function handleTap() {
+  if (G.state === 'start') { resetRun(); return; }
+  if (G.state === 'gameover') {
+    // check share button hit via lastPointer
+    const now = performance.now();
+    if (now - G.lastTap < 300) return; // debounce double tap
+    G.lastTap = now;
+    // check share zone (set in drawGameOver)
+    if (G._shareZone) {
+      const p = G._lastPointerPos;
+      const z = G._shareZone;
+      if (p && p.x >= z.x && p.x <= z.x + z.w && p.y >= z.y && p.y <= z.y + z.h) {
+        doShare();
+        return;
+      }
+    }
+    resetRun();
+    return;
+  }
+  if (G.state !== 'playing') return;
+
+  const now = performance.now();
+  if (now - G.lastTap < 80) return; // debounce
+  G.lastTap = now;
+
+  spawnShot(G.activeLane);
+
+  // Find closest target in active lane within pulse window
+  const winH = H * G.windowFrac;
+  const sweepPx = G.sweepY * H;
+  let best = null, bestDist = Infinity;
+
+  for (const t of G.targets) {
+    if (t.lane !== G.activeLane) continue;
+    const dist = Math.abs(t.y - sweepPx);
+    if (dist <= winH && dist < bestDist) {
+      bestDist = dist;
+      best = t;
+    }
+  }
+
+  if (best) {
+    // Hit!
+    const perfect = bestDist < winH * 0.35;
+    hitTarget(best, perfect);
+  } else {
+    // Whiff
+    whiff();
+  }
+}
+
+function hitTarget(t, perfect) {
+  t.hp--;
+  t.hitFlash = 0.2;
+  G.hits++;
+
+  const x = laneX[t.lane];
+  const y = t.y;
+
+  if (t.hp <= 0) {
+    // Full kill
+    let pts = t.type === 'decoy' ? 10 : t.type === 'shielded' ? 30 : 20;
+    if (perfect) pts = Math.round(pts * 1.5);
+    const scored = pts * G.multiplier;
+    G.score += scored;
+
+    if (t.type === 'decoy' && !perfect) {
+      // Decoy non-perfect breaks combo
+      G.combo = 0;
+      G.multiplier = 1;
+    } else {
+      G.combo++;
+      if (perfect) { G.combo++; G.perfects++; }
+      G.multiplier = Math.min(8, 1 + Math.floor(G.combo / 5));
+      G.maxCombo = Math.max(G.maxCombo, G.combo);
+    }
+
+    // Bass charge
+    const chargeAmt = perfect ? 15 : 8;
+    G.bassCharge = Math.min(BASS_MAX, G.bassCharge + chargeAmt);
+    if (G.bassCharge >= BASS_MAX && !G.bassActive) triggerBassDrop();
+
+    // Particles
+    const col = perfect ? `hsl(60,100%,70%)` : `hsl(${G.hue},100%,65%)`;
+    spawnParticles(x, y, perfect ? 18 : 10, col, 'burst');
+    if (perfect) spawnParticles(x, y, 6, '#fff', 'streak');
+
+    // Remove target
+    G.targets.splice(G.targets.indexOf(t), 1);
+
+    G.shakeAmt = perfect ? 5 : 3;
+    G.shakeDur = 120;
+  } else {
+    // Partial hit (shielded)
+    spawnParticles(x, y, 6, `hsl(${G.hue},60%,70%)`, 'spark');
+    G.shakeAmt = 2; G.shakeDur = 80;
+  }
+
+  if (G.score > G.best) {
+    G.best = G.score;
+    localStorage.setItem(BEST_KEY, G.best);
+  }
+}
+
+function whiff() {
+  G.whiffs++;
+  addMiss();
+  G.combo = 0;
+  G.multiplier = 1;
+  G.missFlash = 0.4;
+  spawnParticles(laneX[G.activeLane], G.sweepY * H, 5, '#ff3366', 'spark');
+}
+
+function addMiss() {
+  G.misses++;
+  G.missFlash = 0.5;
+  G.shakeAmt = 8; G.shakeDur = 200;
+  if (G.misses >= MAX_MISSES) toGameOver();
+}
+
+function toGameOver() {
+  G.state = 'gameover';
+  if (G.score > G.best) {
+    G.best = G.score;
+    localStorage.setItem(BEST_KEY, G.best);
+  }
+  G.shakeAmt = 15; G.shakeDur = 500;
+  G.missFlash = 1.0;
+}
+
+// ─── Bass Drop ───────────────────────────────────────────────────────────────
+function triggerBassDrop() {
+  G.bassActive = true;
+  G.bassTimer = BASS_DUR;
+  G.bassCharge = 0;
+  G.bassDrops++;
+  G.timeScale = 0.35;
+  G.shakeAmt = 12; G.shakeDur = 300;
+}
+
+// ─── Share ───────────────────────────────────────────────────────────────────
+function doShare() {
+  const url = `https://balinti.github.io/synth-shots/?challenge=1&score=${G.score}`;
+  const text = `I scored ${G.score} in Synth Shots! Can you beat me?`;
+  if (navigator.share) {
+    navigator.share({ title: 'Synth Shots', text, url }).catch(() => {});
+  } else {
+    navigator.clipboard.writeText(url).catch(() => {});
+    G._shareMsg = 'Link copied!';
+    setTimeout(() => { G._shareMsg = null; }, 2000);
+  }
+}
+
+// ─── Input ────────────────────────────────────────────────────────────────────
+canvas.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  G._lastPointerPos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  handleTap();
+});
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    G._lastPointerPos = { x: W / 2, y: H / 2 };
+    handleTap();
+  }
+});
+document.body.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+
+// ─── Game loop ────────────────────────────────────────────────────────────────
+let lastTime = 0;
+function loop(ts) {
+  requestAnimationFrame(loop);
+  const rawDt = Math.min((ts - lastTime), 50); // clamp dt
+  lastTime = ts;
+  const dt = rawDt * G.timeScale;
+
+  if (G.state === 'playing') {
+    update(dt, rawDt);
+  }
+  draw(rawDt);
+}
+
+function update(dt, rawDt) {
+  G.time += rawDt;
+  G.hue = (G.hue + 0.05) % 360;
+
+  updateDifficulty();
+
+  // Bass drop countdown
+  if (G.bassActive) {
+    G.bassTimer -= rawDt;
+    if (G.bassTimer <= 0) {
+      G.bassActive = false;
+      G.timeScale = 1;
+    }
+  }
+
+  // Sweep line: moves upward 0..1, then resets
+  G.sweepY -= (dt / G.beatInterval) * 1.0;
+  if (G.sweepY < 0.05) {
+    G.sweepY = 0.95;
+    // on each beat cycle, switch active lane
+    G.activeLane = (G.activeLane + 1) % LANES;
+  }
+  // Beat timer for lane switching (independent)
+  G.beatTimer += dt;
+  if (G.beatTimer >= G.beatInterval) {
+    G.beatTimer = 0;
+    G.activeLane = (G.activeLane + 1) % LANES;
+  }
+
+  // Spawn targets
+  G.spawnAccum += dt;
+  if (G.spawnAccum >= G.spawnRate) {
+    G.spawnAccum = 0;
+    spawnTarget();
+  }
+
+  // Move targets upward
+  for (let i = G.targets.length - 1; i >= 0; i--) {
+    const t = G.targets[i];
+    t.y -= t.vy * H * (dt / 1000);
+    t.age += dt;
+    if (t.hitFlash > 0) t.hitFlash -= dt / 200;
+    if (t.flashTimer > 0) t.flashTimer -= dt / 200;
+
+    // Leak detection
+    if (t.y < -t.radius * 2) {
+      G.targets.splice(i, 1);
+      G.leaks++;
+      addMiss();
+    }
+  }
+
+  // Update particles
+  for (let i = G.particles.length - 1; i >= 0; i--) {
+    const p = G.particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 0.08; // slight gravity
+    p.life -= p.decay;
+    if (p.life <= 0) G.particles.splice(i, 1);
+  }
+
+  // Update shots
+  for (let i = G.shots.length - 1; i >= 0; i--) {
+    G.shots[i].timer -= dt / 1000;
+    if (G.shots[i].timer <= 0) G.shots.splice(i, 1);
+  }
+
+  // Shake decay
+  if (G.shakeDur > 0) {
+    G.shakeDur -= rawDt;
+    if (G.shakeDur <= 0) G.shakeAmt = 0;
+  }
+
+  // Miss flash decay
+  if (G.missFlash > 0) G.missFlash -= rawDt / 600;
+}
+
+// ─── Draw ─────────────────────────────────────────────────────────────────────
+function draw(rawDt) {
+  ctx.save();
+
+  // Screen shake
+  let shakeX = 0, shakeY = 0;
+  if (G.shakeAmt > 0) {
+    shakeX = (Math.random() - 0.5) * G.shakeAmt * 2;
+    shakeY = (Math.random() - 0.5) * G.shakeAmt * 2;
+    ctx.translate(shakeX, shakeY);
+  }
+
+  // Background
+  drawBackground();
+
+  if (G.state === 'start') drawStart();
+  else if (G.state === 'playing') drawGame(rawDt);
+  else if (G.state === 'gameover') drawGameOver();
+
+  // Miss flash overlay
+  if (G.missFlash > 0) {
+    ctx.fillStyle = `rgba(255,30,60,${G.missFlash * 0.35})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  ctx.restore();
+}
+
+function drawBackground() {
+  // Gradient
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, '#0a0020');
+  grad.addColorStop(0.5, '#0d0030');
+  grad.addColorStop(1, '#120040');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Moving grid
+  const t = performance.now() * 0.0003;
+  ctx.save();
+  ctx.strokeStyle = G.bassActive ? 'rgba(180,100,255,0.2)' : 'rgba(100,50,200,0.08)';
+  ctx.lineWidth = G.bassActive ? 1.5 : 0.5;
+  const gridSize = 40;
+  const offY = (t * 60) % gridSize;
+  for (let y = -gridSize + offY; y < H + gridSize; y += gridSize) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+  for (let x = 0; x < W + gridSize; x += gridSize) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawStart() {
+  ctx.save();
+
+  // Title
+  const titleY = H * 0.32;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  // Glow
+  ctx.shadowColor = `hsl(${G.hue},100%,70%)`;
+  ctx.shadowBlur = 30;
+  ctx.fillStyle = `hsl(${G.hue},100%,75%)`;
+  ctx.font = `bold ${Math.round(W * 0.12)}px 'Courier New', monospace`;
+  ctx.fillText('SYNTH', W / 2, titleY - 20);
+  ctx.fillText('SHOTS', W / 2, titleY + 26);
+
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = 'rgba(200,180,255,0.7)';
+  ctx.font = `${Math.round(W * 0.045)}px 'Courier New', monospace`;
+  ctx.fillText('PULSE LANES', W / 2, titleY + 62);
+
+  // Instruction
+  ctx.fillStyle = '#c0a0ff';
+  ctx.font = `${Math.round(W * 0.04)}px 'Courier New', monospace`;
+  ctx.fillText('Tap the active lane at the right beat', W / 2, H * 0.55);
+
+  // Tap to start pulsing
+  const pulse = 0.7 + 0.3 * Math.sin(performance.now() * 0.003);
+  ctx.fillStyle = `rgba(255,200,255,${pulse})`;
+  ctx.font = `bold ${Math.round(W * 0.055)}px 'Courier New', monospace`;
+  ctx.shadowColor = '#ff80ff';
+  ctx.shadowBlur = 15 * pulse;
+  ctx.fillText('TAP TO START', W / 2, H * 0.7);
+
+  // Challenge line
+  if (challengeScore > 0) {
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#ffcc00';
+    ctx.font = `${Math.round(W * 0.038)}px 'Courier New', monospace`;
+    ctx.fillText(`Beat ${challengeScore}!`, W / 2, H * 0.8);
+  }
+
+  // Best score
+  if (G.best > 0) {
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = 'rgba(180,160,220,0.7)';
+    ctx.font = `${Math.round(W * 0.035)}px 'Courier New', monospace`;
+    ctx.fillText(`Best: ${G.best}`, W / 2, H * 0.87);
+  }
+
+  ctx.restore();
+}
+
+function drawGame(rawDt) {
+  ctx.save();
+
+  // Draw lanes
+  drawLanes();
+
+  // Draw sweep line
+  drawSweep();
+
+  // Draw targets
+  for (const t of G.targets) drawTarget(t);
+
+  // Draw shots
+  for (const s of G.shots) drawShot(s);
+
+  // Draw particles
+  for (const p of G.particles) drawParticle(p);
+
+  // Draw HUD
+  drawHUD();
+
+  // Bass drop overlay
+  if (G.bassActive) drawBassOverlay();
+
+  ctx.restore();
+}
+
+function drawLanes() {
+  for (let i = 0; i < LANES; i++) {
+    const x = laneX[i];
+    const active = i === G.activeLane;
+    const alpha = active ? 0.5 : 0.12;
+    const glowSize = active ? 25 : 8;
+
+    // Lane glow
+    const grad = ctx.createLinearGradient(x - glowSize, 0, x + glowSize, 0);
+    grad.addColorStop(0, 'transparent');
+    grad.addColorStop(0.5, `hsla(${G.hue + i * 40},100%,70%,${alpha})`);
+    grad.addColorStop(1, 'transparent');
+    ctx.fillStyle = grad;
+    ctx.fillRect(x - glowSize, 0, glowSize * 2, H);
+
+    // Lane center line
+    ctx.strokeStyle = `hsla(${G.hue + i * 40},80%,60%,${active ? 0.6 : 0.15})`;
+    ctx.lineWidth = active ? 2 : 0.5;
+    ctx.setLineDash(active ? [] : [8, 12]);
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, H);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Lane dividers
+    if (i < LANES - 1) {
+      ctx.strokeStyle = 'rgba(100,60,180,0.15)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(laneW * (i + 1), 0);
+      ctx.lineTo(laneW * (i + 1), H);
+      ctx.stroke();
+    }
+
+    // Active lane label
+    if (active) {
+      ctx.fillStyle = `hsla(${G.hue + i * 40},100%,80%,0.5)`;
+      ctx.font = `10px 'Courier New'`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillText('▼', x, 8);
+    }
+  }
+}
+
+function drawSweep() {
+  const y = G.sweepY * H;
+  const bassGlow = G.bassActive ? 3 : 1;
+
+  ctx.save();
+  ctx.shadowColor = `hsl(${G.hue},100%,70%)`;
+  ctx.shadowBlur = 20 * bassGlow;
+
+  // Main sweep line
+  const grad = ctx.createLinearGradient(0, y, W, y);
+  grad.addColorStop(0, 'transparent');
+  grad.addColorStop(0.15, `hsl(${G.hue},100%,80%)`);
+  grad.addColorStop(0.5, '#fff');
+  grad.addColorStop(0.85, `hsl(${G.hue},100%,80%)`);
+  grad.addColorStop(1, 'transparent');
+  ctx.strokeStyle = grad;
+  ctx.lineWidth = G.bassActive ? 3 : 1.5;
+  ctx.beginPath();
+  ctx.moveTo(0, y);
+  ctx.lineTo(W, y);
+  ctx.stroke();
+
+  // Pulse window indicators per lane
+  const winH = H * G.windowFrac;
+  for (let i = 0; i < LANES; i++) {
+    const x = laneX[i];
+    ctx.strokeStyle = `hsla(${G.hue + i * 40},80%,70%,0.15)`;
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(x - laneW / 2 + 4, y - winH);
+    ctx.lineTo(x + laneW / 2 - 4, y - winH);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x - laneW / 2 + 4, y + winH);
+    ctx.lineTo(x + laneW / 2 - 4, y + winH);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+function drawTarget(t) {
+  const x = laneX[t.lane];
+  const y = t.y;
+  const r = t.radius;
+  const sweepPx = G.sweepY * H;
+  const dist = Math.abs(y - sweepPx);
+  const winH = H * G.windowFrac;
+  const inWindow = dist <= winH;
+  const nearCenter = dist < winH * 0.35;
+  const baseHue = G.hue + t.lane * 40;
+
+  ctx.save();
+
+  // Hit flash
+  const flashAlpha = t.hitFlash > 0 ? t.hitFlash : 0;
+
+  // Glow
+  const glowIntensity = inWindow ? (nearCenter ? 1.0 : 0.7) : 0.2;
+  ctx.shadowColor = t.type === 'decoy' ? `hsl(30,100%,60%)` : `hsl(${baseHue},100%,70%)`;
+  ctx.shadowBlur = r * glowIntensity * 2.5 * (G.bassActive ? 1.5 : 1);
+
+  // Type-specific drawing
+  if (t.type === 'decoy') {
+    // Decoy: orange/amber, dashed ring
+    ctx.strokeStyle = inWindow ? `hsla(30,100%,70%,0.9)` : `hsla(30,60%,50%,0.5)`;
+    ctx.lineWidth = inWindow ? 2 : 1.5;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // Inner X
+    ctx.strokeStyle = `hsla(30,100%,60%,${inWindow ? 0.8 : 0.3})`;
+    ctx.lineWidth = 1.5;
+    const s = r * 0.5;
+    ctx.beginPath();
+    ctx.moveTo(x - s, y - s); ctx.lineTo(x + s, y + s);
+    ctx.moveTo(x + s, y - s); ctx.lineTo(x - s, y + s);
+    ctx.stroke();
+  } else if (t.type === 'shielded') {
+    // Shielded: double ring, cyan-ish
+    const shieldHue = baseHue + 40;
+    ctx.strokeStyle = inWindow ? `hsla(${shieldHue},100%,75%,0.9)` : `hsla(${shieldHue},60%,55%,0.4)`;
+    ctx.lineWidth = inWindow ? 2.5 : 1.5;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.stroke();
+    // Second ring (hp remaining)
+    if (t.hp >= 2) {
+      ctx.strokeStyle = inWindow ? `hsla(${shieldHue},80%,65%,0.5)` : `hsla(${shieldHue},50%,45%,0.25)`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(x, y, r * 1.45, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    // Shield indicator dots
+    for (let s = 0; s < t.maxHp; s++) {
+      const angle = (s / t.maxHp) * Math.PI * 2 - Math.PI / 2;
+      const dr = r * 0.55;
+      const filled = s < t.hp;
+      ctx.fillStyle = filled ? `hsl(${shieldHue},100%,70%)` : 'rgba(100,100,100,0.3)';
+      ctx.shadowBlur = 0;
+      ctx.beginPath();
+      ctx.arc(x + Math.cos(angle) * dr, y + Math.sin(angle) * dr, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.shadowColor = `hsl(${shieldHue},100%,70%)`;
+    ctx.shadowBlur = r * glowIntensity * 2;
+  } else {
+    // Normal: solid ring
+    ctx.strokeStyle = inWindow ? `hsla(${baseHue},100%,75%,0.95)` : `hsla(${baseHue},70%,55%,0.45)`;
+    ctx.lineWidth = inWindow ? 2.5 : 1.5;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.stroke();
+    // Inner dot if near center (perfect indicator)
+    if (nearCenter) {
+      ctx.fillStyle = `hsl(${baseHue},100%,90%)`;
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.arc(x, y, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // Pulse ring animation when in window
+  if (inWindow) {
+    const pulse = 0.5 + 0.5 * Math.sin(performance.now() * 0.008);
+    ctx.strokeStyle = `hsla(${baseHue},100%,80%,${0.25 * pulse})`;
+    ctx.lineWidth = 1;
+    ctx.shadowBlur = 0;
+    ctx.beginPath();
+    ctx.arc(x, y, r + 6 + pulse * 4, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  // Hit flash overlay
+  if (flashAlpha > 0) {
+    ctx.fillStyle = `rgba(255,255,255,${flashAlpha})`;
+    ctx.shadowBlur = 0;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+function drawShot(s) {
+  const x = laneX[s.lane];
+  const alpha = s.timer / 0.08;
+  const sweepY = G.sweepY * H;
+
+  ctx.save();
+  ctx.strokeStyle = `rgba(255,255,180,${alpha * 0.9})`;
+  ctx.lineWidth = 3 * alpha;
+  ctx.shadowColor = '#ffffaa';
+  ctx.shadowBlur = 15 * alpha;
+
+  ctx.beginPath();
+  ctx.moveTo(x, sweepY + 30);
+  ctx.lineTo(x, sweepY - 80);
+  ctx.stroke();
+
+  // Flash at sweep
+  ctx.fillStyle = `rgba(255,255,200,${alpha * 0.8})`;
+  ctx.beginPath();
+  ctx.arc(x, sweepY, 8 * alpha, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawParticle(p) {
+  ctx.save();
+  ctx.globalAlpha = p.life;
+  ctx.fillStyle = p.color;
+  ctx.shadowColor = p.color;
+  ctx.shadowBlur = p.kind === 'burst' ? 8 : 4;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, p.r * p.life, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawHUD() {
+  const pad = 10;
+
+  // Score
+  ctx.save();
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.shadowColor = `hsl(${G.hue},100%,70%)`;
+  ctx.shadowBlur = 10;
+  ctx.fillStyle = '#fff';
+  ctx.font = `bold ${Math.round(W * 0.07)}px 'Courier New'`;
+  ctx.fillText(G.score, pad, pad);
+
+  // Best
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = 'rgba(180,160,220,0.7)';
+  ctx.font = `${Math.round(W * 0.035)}px 'Courier New'`;
+  ctx.fillText(`Best: ${G.best}`, pad, pad + Math.round(W * 0.09));
+
+  // Combo + multiplier
+  if (G.combo > 0) {
+    ctx.textAlign = 'center';
+    ctx.shadowColor = G.combo > 10 ? '#ffff00' : `hsl(${G.hue},100%,70%)`;
+    ctx.shadowBlur = G.combo > 10 ? 15 : 8;
+    ctx.fillStyle = G.combo > 10 ? '#ffe066' : `hsl(${G.hue},100%,80%)`;
+    ctx.font = `bold ${Math.round(W * 0.06)}px 'Courier New'`;
+    ctx.fillText(`x${G.combo}`, W / 2, pad);
+    ctx.font = `${Math.round(W * 0.032)}px 'Courier New'`;
+    ctx.fillStyle = 'rgba(255,220,100,0.7)';
+    ctx.shadowBlur = 0;
+    ctx.fillText(`${G.multiplier}× pts`, W / 2, pad + Math.round(W * 0.075));
+  }
+
+  // Misses (hearts/skulls)
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'top';
+  ctx.shadowBlur = 0;
+  for (let i = 0; i < MAX_MISSES; i++) {
+    const missed = i < G.misses;
+    ctx.fillStyle = missed ? 'rgba(100,30,30,0.5)' : '#ff4488';
+    ctx.shadowColor = missed ? 'none' : '#ff2266';
+    ctx.shadowBlur = missed ? 0 : 6;
+    ctx.font = `${Math.round(W * 0.045)}px serif`;
+    ctx.fillText('♥', W - pad - (MAX_MISSES - 1 - i) * (Math.round(W * 0.05) + 4), pad);
+  }
+
+  // Bass charge bar
+  const barW = W * 0.55;
+  const barH = 6;
+  const barX = (W - barW) / 2;
+  const barY = H - pad - barH;
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = 'rgba(80,40,120,0.5)';
+  ctx.fillRect(barX, barY, barW, barH);
+
+  const fillW = (G.bassCharge / BASS_MAX) * barW;
+  if (fillW > 0) {
+    const bassGrad = ctx.createLinearGradient(barX, 0, barX + barW, 0);
+    bassGrad.addColorStop(0, '#ff00cc');
+    bassGrad.addColorStop(0.5, '#8800ff');
+    bassGrad.addColorStop(1, '#00ccff');
+    ctx.fillStyle = bassGrad;
+    ctx.shadowColor = '#cc00ff';
+    ctx.shadowBlur = G.bassActive ? 12 : 4;
+    ctx.fillRect(barX, barY, fillW, barH);
+  }
+
+  // Bass label
+  ctx.shadowBlur = 0;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'bottom';
+  ctx.fillStyle = G.bassActive ? '#ff80ff' : 'rgba(180,120,220,0.6)';
+  ctx.font = `${Math.round(W * 0.028)}px 'Courier New'`;
+  ctx.fillText(G.bassActive ? '⚡ BASS DROP ⚡' : 'BASS CHARGE', W / 2, H - pad - barH - 3);
+
+  ctx.restore();
+}
+
+function drawBassOverlay() {
+  // Waveform line during bass drop
+  const progress = 1 - G.bassTimer / BASS_DUR;
+  ctx.save();
+  ctx.strokeStyle = `hsla(${G.hue},100%,70%,0.4)`;
+  ctx.lineWidth = 2;
+  ctx.shadowColor = `hsl(${G.hue},100%,70%)`;
+  ctx.shadowBlur = 10;
+  ctx.beginPath();
+  const segments = 40;
+  for (let i = 0; i <= segments; i++) {
+    const x = (i / segments) * W;
+    const t = performance.now() * 0.003;
+    const wave = Math.sin(i * 0.4 + t * 3) * 20 + Math.sin(i * 0.8 + t * 2) * 10;
+    const y = H * 0.5 + wave;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Overlay vignette
+  ctx.fillStyle = `rgba(80,0,120,0.12)`;
+  ctx.fillRect(0, 0, W, H);
+
+  // BASS DROP text
+  const alpha = 0.8 - progress * 0.6;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = '#ff00cc';
+  ctx.shadowBlur = 30;
+  ctx.fillStyle = `rgba(255,0,200,${alpha})`;
+  ctx.font = `bold ${Math.round(W * 0.11)}px 'Courier New'`;
+  ctx.fillText('BASS', W / 2, H * 0.42);
+  ctx.fillText('DROP', W / 2, H * 0.52);
+
+  ctx.restore();
+}
+
+function drawGameOver() {
+  ctx.save();
+
+  // Overlay
+  ctx.fillStyle = 'rgba(5,0,20,0.82)';
+  ctx.fillRect(0, 0, W, H);
+
+  const cx = W / 2;
+  ctx.textAlign = 'center';
+
+  // Title
+  ctx.shadowColor = '#ff2266';
+  ctx.shadowBlur = 25;
+  ctx.fillStyle = '#ff4488';
+  ctx.font = `bold ${Math.round(W * 0.1)}px 'Courier New'`;
+  ctx.textBaseline = 'middle';
+  ctx.fillText('GAME', cx, H * 0.15);
+  ctx.fillText('OVER', cx, H * 0.15 + Math.round(W * 0.12));
+
+  // Score
+  ctx.shadowColor = `hsl(${G.hue},100%,70%)`;
+  ctx.shadowBlur = 18;
+  ctx.fillStyle = '#fff';
+  ctx.font = `bold ${Math.round(W * 0.13)}px 'Courier New'`;
+  ctx.fillText(G.score, cx, H * 0.38);
+
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = 'rgba(200,160,255,0.8)';
+  ctx.font = `${Math.round(W * 0.038)}px 'Courier New'`;
+  ctx.fillText(`Best: ${G.best}`, cx, H * 0.38 + Math.round(W * 0.17));
+
+  // Stats
+  const statY = H * 0.52;
+  const statLineH = Math.round(W * 0.048);
+  ctx.font = `${Math.round(W * 0.037)}px 'Courier New'`;
+  ctx.textBaseline = 'top';
+
+  const perfectPct = G.hits > 0 ? Math.round((G.perfects / G.hits) * 100) : 0;
+  const stats = [
+    [`Max Combo`, G.maxCombo],
+    [`Perfect %`, `${perfectPct}%`],
+    [`Hits / Whiffs`, `${G.hits} / ${G.whiffs}`],
+    [`Leaks`, G.leaks],
+    [`Bass Drops`, G.bassDrops],
+  ];
+
+  for (let i = 0; i < stats.length; i++) {
+    const [label, val] = stats[i];
+    const y = statY + i * statLineH;
+    ctx.fillStyle = 'rgba(160,130,200,0.7)';
+    ctx.textAlign = 'left';
+    ctx.fillText(label, cx - W * 0.35, y);
+    ctx.fillStyle = 'rgba(220,200,255,0.9)';
+    ctx.textAlign = 'right';
+    ctx.fillText(val, cx + W * 0.35, y);
+  }
+
+  // Tap to retry
+  const pulse = 0.7 + 0.3 * Math.sin(performance.now() * 0.003);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = `rgba(255,180,255,${pulse})`;
+  ctx.shadowColor = '#ff88ff';
+  ctx.shadowBlur = 12 * pulse;
+  ctx.font = `bold ${Math.round(W * 0.05)}px 'Courier New'`;
+  ctx.fillText('TAP TO RETRY', cx, H * 0.84);
+
+  // Share button
+  const sbW = W * 0.5, sbH = 36;
+  const sbX = cx - sbW / 2, sbY = H * 0.9 - sbH / 2;
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = 'rgba(100,50,180,0.8)';
+  ctx.strokeStyle = `hsl(${G.hue},100%,60%)`;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.roundRect(sbX, sbY, sbW, sbH, 8);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = '#e0c0ff';
+  ctx.font = `${Math.round(W * 0.038)}px 'Courier New'`;
+  ctx.fillText(G._shareMsg || '📤 Share Score', cx, H * 0.9);
+
+  // Store share zone for hit detection
+  G._shareZone = { x: sbX, y: sbY, w: sbW, h: sbH };
+
+  ctx.restore();
+}
+
+// ─── Start loop ───────────────────────────────────────────────────────────────
+requestAnimationFrame(ts => { lastTime = ts; requestAnimationFrame(loop); });
+
+})();
+</script>
+</body>
+</html>

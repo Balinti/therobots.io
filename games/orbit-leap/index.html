@@ -1,0 +1,951 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Orbit Leap - Free HTML5 Game</title>
+  <meta name="description" content="Play Orbit Leap - Tap to jump between floating asteroid platforms while controls randomly reverse in a cosmic race.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Orbit Leap - Free HTML5 Game">
+  <meta property="og:description" content="Tap to slingshot your astronaut between asteroids. Time your launch perfectly to chain combos in this addictive hyper-casual space game.">
+  <meta property="og:url" content="https://balinti.github.io/orbit-leap/">
+  <meta property="og:image" content="https://balinti.github.io/orbit-leap/preview.png">
+  <meta name="theme-color" content="#0a0a1a">
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #050510;
+      display: flex; flex-direction: column;
+      align-items: center;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      overflow-x: hidden;
+      color: #e0e0ff;
+    }
+    #game-wrap {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      height: 100vh;
+      max-height: 750px;
+      flex-shrink: 0;
+    }
+    #gameCanvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+      cursor: pointer;
+    }
+    #ui {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      pointer-events: none;
+      display: flex; flex-direction: column;
+    }
+    #score-bar {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 12px 18px 6px;
+      z-index: 10;
+    }
+    #score-display {
+      font-size: 28px; font-weight: 700;
+      color: #fff; text-shadow: 0 0 12px rgba(120,180,255,0.8);
+      letter-spacing: 1px;
+    }
+    #best-display {
+      font-size: 14px; color: rgba(180,200,255,0.7);
+      text-align: right;
+    }
+    #best-display span { display: block; font-size: 18px; font-weight: 600; color: rgba(200,220,255,0.9); }
+    #combo-display {
+      position: absolute;
+      top: 60px; left: 50%;
+      transform: translateX(-50%);
+      font-size: 20px; font-weight: 700;
+      color: #ffdd44; text-shadow: 0 0 16px #ffaa00;
+      opacity: 0; transition: opacity 0.3s;
+      white-space: nowrap; pointer-events: none;
+      z-index: 10;
+    }
+    #overlay {
+      position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      pointer-events: none; z-index: 20;
+    }
+    #screen-start, #screen-gameover {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 12px; text-align: center;
+      padding: 24px;
+    }
+    .game-title {
+      font-size: 42px; font-weight: 900;
+      letter-spacing: 3px;
+      background: linear-gradient(135deg, #80c8ff, #c080ff, #80ffcc);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+      text-shadow: none;
+      filter: drop-shadow(0 0 20px rgba(120,160,255,0.5));
+    }
+    .game-subtitle {
+      font-size: 14px; color: rgba(180,200,255,0.6);
+      letter-spacing: 1px; text-transform: uppercase;
+    }
+    .tap-prompt {
+      margin-top: 20px;
+      font-size: 18px; font-weight: 600;
+      color: rgba(200,230,255,0.85);
+      animation: pulse-prompt 1.4s ease-in-out infinite;
+    }
+    @keyframes pulse-prompt {
+      0%,100%{ opacity:0.5; transform:scale(1); }
+      50%{ opacity:1; transform:scale(1.05); }
+    }
+    .fail-reason {
+      font-size: 22px; font-weight: 800; letter-spacing: 2px;
+      color: #ff6666; text-shadow: 0 0 20px #ff4444;
+      margin-bottom: 8px;
+    }
+    .score-big {
+      font-size: 72px; font-weight: 900; color: #fff;
+      line-height: 1; text-shadow: 0 0 30px rgba(120,180,255,0.7);
+    }
+    .score-label { font-size: 13px; color: rgba(180,200,255,0.5); letter-spacing: 2px; text-transform: uppercase; }
+    .best-line { font-size: 16px; color: rgba(200,220,255,0.7); margin-top: 4px; }
+    .best-line b { color: #ffdd88; }
+    .new-best {
+      font-size: 14px; font-weight: 700; letter-spacing: 2px;
+      color: #ffdd44; text-shadow: 0 0 12px #ffaa00;
+      animation: pulse-prompt 1s ease-in-out infinite;
+    }
+    #pop-text {
+      position: absolute; top: 40%; left: 50%;
+      transform: translate(-50%, -50%) scale(0);
+      font-size: 26px; font-weight: 900; letter-spacing: 3px;
+      pointer-events: none; z-index: 30; white-space: nowrap;
+      text-shadow: 0 0 20px currentColor;
+    }
+    #info-section {
+      width: 100%; max-width: 420px;
+      padding: 16px 20px 40px;
+      color: rgba(180,200,255,0.6);
+      font-size: 13px; line-height: 1.6;
+    }
+    #info-section details { margin-top: 8px; }
+    #info-section summary {
+      cursor: pointer; font-size: 12px; letter-spacing: 1px;
+      text-transform: uppercase; color: rgba(180,200,255,0.4);
+      padding: 6px 0; user-select: none;
+    }
+    #info-section summary:hover { color: rgba(180,200,255,0.7); }
+    #info-section h3 { font-size: 13px; color: rgba(200,220,255,0.7); margin: 10px 0 4px; }
+    #info-section p { margin-bottom: 6px; }
+    #info-section ul { padding-left: 16px; }
+  </style>
+</head>
+<body>
+<div id="game-wrap">
+  <canvas id="gameCanvas"></canvas>
+  <div id="ui">
+    <div id="score-bar">
+      <div id="score-display">0</div>
+      <div id="best-display">BEST<span id="best-val">0</span></div>
+    </div>
+    <div id="combo-display"></div>
+    <div id="overlay">
+      <div id="screen-start">
+        <div class="game-title">ORBIT LEAP</div>
+        <div class="game-subtitle">Slingshot through the cosmos</div>
+        <div class="tap-prompt">Tap to Start</div>
+      </div>
+      <div id="screen-gameover" style="display:none">
+        <div class="fail-reason" id="fail-text">DRIFTED</div>
+        <div class="score-label">SCORE</div>
+        <div class="score-big" id="go-score">0</div>
+        <div class="best-line">Best: <b id="go-best">0</b></div>
+        <div class="new-best" id="new-best-label" style="display:none">NEW BEST!</div>
+        <div class="tap-prompt" style="margin-top:24px">Tap to Retry</div>
+      </div>
+    </div>
+  </div>
+  <div id="pop-text"></div>
+</div>
+
+<div id="info-section">
+  <details>
+    <summary>How to Play / Controls / What is Perfect?</summary>
+    <h3>How to Play</h3>
+    <p>You orbit each asteroid automatically. A glowing arc (the launch window) rotates around the asteroid. Tap or press Space/Enter when your astronaut is inside the window to slingshot to the next asteroid. Time it right to chain combos and rack up a high score!</p>
+    <p>Miss the window (too early or too late), crash into a rock, or drift off-screen and it's game over.</p>
+    <h3>Controls</h3>
+    <ul>
+      <li>Tap / Click — Launch</li>
+      <li>Space / Enter — Launch</li>
+    </ul>
+    <h3>What is "Perfect"?</h3>
+    <p>Launching from the very center of the window earns a <strong>PERFECT</strong> bonus — you get extra points, a shockwave effect, and your combo grows faster. Near-perfect timing earns a <strong>NEAR!</strong> bonus. Chain 5 or 10 in a row for milestone rewards!</p>
+  </details>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+const W = 420, H = 750;
+const LS_KEY = 'orbitLeap_best';
+const TAU = Math.PI * 2;
+
+// ─── DOM ─────────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const scoreDisplay = document.getElementById('score-display');
+const bestVal = document.getElementById('best-val');
+const comboDisplay = document.getElementById('combo-display');
+const screenStart = document.getElementById('screen-start');
+const screenGameover = document.getElementById('screen-gameover');
+const failText = document.getElementById('fail-text');
+const goScore = document.getElementById('go-score');
+const goBest = document.getElementById('go-best');
+const newBestLabel = document.getElementById('new-best-label');
+const popTextEl = document.getElementById('pop-text');
+const overlay = document.getElementById('overlay');
+
+// ─── Canvas scaling ──────────────────────────────────────────────────────────
+let DPR = 1;
+let canvasW = W, canvasH = H;
+
+function resizeCanvas() {
+  const wrap = document.getElementById('game-wrap');
+  const rect = wrap.getBoundingClientRect();
+  DPR = window.devicePixelRatio || 1;
+  canvasW = rect.width;
+  canvasH = rect.height;
+  canvas.width = canvasW * DPR;
+  canvas.height = canvasH * DPR;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+// ─── State ───────────────────────────────────────────────────────────────────
+let state = 'start'; // 'start' | 'playing' | 'gameover'
+let score = 0;
+let best = parseInt(localStorage.getItem(LS_KEY) || '0', 10);
+let combo = 0;
+let hue = 220;
+let shakeTimer = 0;
+let shakeAmt = 0;
+let hitStopFrames = 0;
+
+// Camera
+let camY = 0;
+let camTargetY = 0;
+
+// Particles
+let particles = [];
+let popAnims = []; // {text, x, y, t, maxT, color}
+let shockwaves = []; // {x, y, r, maxR, t, maxT}
+
+// Asteroids + player
+let asteroids = [];
+let player = { x: 0, y: 0, vx: 0, vy: 0, angle: 0, orbitR: 0, orbitSpeed: 0, state: 'orbiting', curAsteroidIdx: 0, trail: [] };
+let failReason = '';
+
+bestVal.textContent = best;
+
+// ─── Difficulty ───────────────────────────────────────────────────────────────
+function getDifficulty(sc) {
+  if (sc < 10)  return { orbitSpeed: 1.2, windowSize: 0.55, asteroidR: 28, minGap: 180, maxGap: 280, moving: false, forks: false, pulse: false };
+  if (sc < 25)  return { orbitSpeed: 1.6, windowSize: 0.42, asteroidR: 24, minGap: 200, maxGap: 320, moving: false, forks: false, pulse: false };
+  if (sc < 50)  return { orbitSpeed: 2.0, windowSize: 0.34, asteroidR: 22, minGap: 220, maxGap: 360, moving: true,  forks: false, pulse: false };
+  if (sc < 80)  return { orbitSpeed: 2.4, windowSize: 0.28, asteroidR: 20, minGap: 240, maxGap: 380, moving: true,  forks: true,  pulse: false };
+  return              { orbitSpeed: 2.8, windowSize: 0.22, asteroidR: 18, minGap: 250, maxGap: 400, moving: true,  forks: true,  pulse: true  };
+}
+
+// ─── Asteroid generation ──────────────────────────────────────────────────────
+let nextAsteroidY = 0;
+let nextAsteroidIdx = 0;
+
+function makeAsteroid(y, sc) {
+  const diff = getDifficulty(sc);
+  const x = W * 0.2 + Math.random() * W * 0.6;
+  const r = diff.asteroidR + (Math.random() - 0.5) * 6;
+  const orbitR = r + 36 + Math.random() * 16;
+  const winSize = diff.windowSize + (Math.random() - 0.5) * 0.08;
+  const winAngle = Math.random() * TAU;
+  const rotDir = Math.random() < 0.5 ? 1 : -1;
+  const rot = (diff.orbitSpeed * 0.8 + Math.random() * diff.orbitSpeed * 0.4) * rotDir;
+  const moveX = diff.moving ? (Math.random() - 0.5) * 60 : 0;
+  const moveSpeed = diff.moving ? (0.3 + Math.random() * 0.4) * (Math.random() < 0.5 ? 1 : -1) : 0;
+  const isPulse = diff.pulse && Math.random() < 0.4;
+  const isFork = diff.forks && Math.random() < 0.35 && sc > 50;
+  const hue = (220 + nextAsteroidIdx * 37) % 360;
+
+  const a = {
+    id: nextAsteroidIdx++,
+    x, y, r, orbitR, winAngle, winSize, rot,
+    baseX: x, moveX, moveSpeed, moveT: Math.random() * TAU,
+    isPulse, pulseT: 0, pulseAmt: 0,
+    isFork,
+    hue,
+    // For polygon shape
+    verts: genVerts(r),
+    catchR: orbitR + 10,
+    catchable: false,
+    isNext: false,
+    forkChild: null,
+  };
+  return a;
+}
+
+function genVerts(r) {
+  const n = 8 + Math.floor(Math.random() * 4);
+  const verts = [];
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * TAU;
+    const rr = r * (0.72 + Math.random() * 0.28);
+    verts.push({ x: Math.cos(a) * rr, y: Math.sin(a) * rr });
+  }
+  return verts;
+}
+
+function spawnInitialAsteroids() {
+  asteroids = [];
+  nextAsteroidY = H * 0.6;
+  nextAsteroidIdx = 0;
+  // Spawn starting asteroid at fixed spot
+  const start = {
+    id: nextAsteroidIdx++,
+    x: W * 0.5, y: H * 0.62,
+    r: 30, orbitR: 66,
+    winAngle: 0, winSize: 0.7, rot: 1.0,
+    baseX: W * 0.5, moveX: 0, moveSpeed: 0, moveT: 0,
+    isPulse: false, pulseT: 0, pulseAmt: 0,
+    isFork: false,
+    hue: 220,
+    verts: genVerts(30),
+    catchR: 80,
+    catchable: false,
+    isNext: false,
+    forkChild: null,
+  };
+  asteroids.push(start);
+  nextAsteroidY = start.y - 220;
+  for (let i = 0; i < 8; i++) {
+    addAsteroid();
+  }
+}
+
+function addAsteroid() {
+  const diff = getDifficulty(score);
+  const gap = diff.minGap + Math.random() * (diff.maxGap - diff.minGap);
+  const y = nextAsteroidY;
+  nextAsteroidY -= gap;
+  const a = makeAsteroid(y, score);
+  asteroids.push(a);
+}
+
+// ─── Player init ──────────────────────────────────────────────────────────────
+function initPlayer() {
+  const a = asteroids[0];
+  player.curAsteroidIdx = 0;
+  player.angle = -Math.PI / 2;
+  player.orbitR = a.orbitR;
+  player.orbitSpeed = a.rot;
+  player.x = a.x + Math.cos(player.angle) * player.orbitR;
+  player.y = a.y + Math.sin(player.angle) * player.orbitR;
+  player.vx = 0; player.vy = 0;
+  player.state = 'orbiting';
+  player.trail = [];
+  asteroids[1].isNext = true;
+  asteroids[1].catchable = true;
+}
+
+// ─── Game start/reset ─────────────────────────────────────────────────────────
+function startGame() {
+  score = 0;
+  combo = 0;
+  hue = 220;
+  camY = 0;
+  camTargetY = 0;
+  particles = [];
+  popAnims = [];
+  shockwaves = [];
+  shakeTimer = 0;
+  hitStopFrames = 0;
+  scoreDisplay.textContent = '0';
+  comboDisplay.style.opacity = '0';
+  screenStart.style.display = 'none';
+  screenGameover.style.display = 'none';
+  spawnInitialAsteroids();
+  initPlayer();
+  state = 'playing';
+}
+
+// ─── Input ───────────────────────────────────────────────────────────────────
+function handleInput() {
+  if (state === 'start') { startGame(); return; }
+  if (state === 'gameover') { startGame(); return; }
+  if (state === 'playing' && player.state === 'orbiting') {
+    tryLaunch();
+  }
+}
+
+canvas.addEventListener('pointerdown', handleInput);
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); handleInput(); }
+});
+
+// ─── Launch logic ─────────────────────────────────────────────────────────────
+function tryLaunch() {
+  const ast = asteroids[player.curAsteroidIdx];
+  // Normalize angle diff
+  let rawAngle = player.angle;
+  let winCenter = ast.winAngle;
+  let halfWin = ast.winSize / 2;
+
+  // Compute angular distance
+  let diff = angleDiff(rawAngle, winCenter);
+  let absDiff = Math.abs(diff);
+
+  if (absDiff > halfWin) {
+    // Miss
+    if (diff < 0) triggerGameOver('EARLY!');
+    else triggerGameOver('LATE!');
+    return;
+  }
+
+  // Success — quality
+  let quality = 1 - absDiff / halfWin; // 0..1
+  let isPerfect = quality > 0.75;
+  let isNear = quality > 0.35 && !isPerfect;
+
+  // Launch velocity: tangent + bias toward next asteroid
+  const tangX = -Math.sin(player.angle) * player.orbitSpeed;
+  const tangY =  Math.cos(player.angle) * player.orbitSpeed;
+  const nextAst = getNextAsteroid();
+  let toNextX = 0, toNextY = -1;
+  if (nextAst) {
+    toNextX = nextAst.x - player.x;
+    toNextY = nextAst.y - player.y;
+    const d = Math.sqrt(toNextX * toNextX + toNextY * toNextY) || 1;
+    toNextX /= d; toNextY /= d;
+  }
+
+  const speed = 4.5 + quality * 1.5;
+  const blend = 0.55;
+  player.vx = (tangX * (1 - blend) + toNextX * blend) * speed;
+  player.vy = (tangY * (1 - blend) + toNextY * blend) * speed;
+  player.state = 'flying';
+
+  // Particles
+  spawnLaunchBurst(player.x, player.y, isPerfect);
+
+  // Score
+  let pts = 1;
+  if (isPerfect) { pts = 3; combo++; hitStopFrames = 2; }
+  else if (isNear) { pts = 2; combo++; }
+  else { combo++; }
+  score += pts;
+  scoreDisplay.textContent = score;
+  hue = (220 + score * 3.5) % 360;
+
+  // Popup
+  if (isPerfect) {
+    showPop('PERFECT!', player.x, player.y - player.orbitR - 10, `hsl(${hue},100%,70%)`);
+    spawnShockwave(player.x, player.y);
+    shakeTimer = 6; shakeAmt = 3;
+  } else if (isNear) {
+    showPop('NEAR!', player.x, player.y - player.orbitR - 10, `hsl(${(hue+60)%360},90%,70%)`);
+  }
+
+  // Combo milestones
+  if (combo === 5) { showPop('x5 COMBO!', W/2, H*0.35, '#ffdd44'); shakeTimer = 4; shakeAmt = 2; }
+  if (combo === 10) { showPop('x10 COMBO!!', W/2, H*0.35, '#ff88ff'); shakeTimer = 6; shakeAmt = 4; }
+
+  // Update best
+  if (score > best) {
+    best = score;
+    localStorage.setItem(LS_KEY, best);
+    bestVal.textContent = best;
+  }
+  updateComboUI();
+}
+
+function getNextAsteroid() {
+  const cur = player.curAsteroidIdx;
+  for (let i = cur + 1; i < asteroids.length; i++) {
+    if (asteroids[i].isNext) return asteroids[i];
+  }
+  return asteroids[cur + 1] || null;
+}
+
+function angleDiff(a, b) {
+  let d = ((a - b) + Math.PI) % TAU - Math.PI;
+  return d;
+}
+
+function updateComboUI() {
+  if (combo >= 3) {
+    comboDisplay.textContent = `x${combo} COMBO`;
+    comboDisplay.style.opacity = '1';
+  } else {
+    comboDisplay.style.opacity = '0';
+  }
+}
+
+// ─── Game over ───────────────────────────────────────────────────────────────
+function triggerGameOver(reason) {
+  failReason = reason;
+  player.state = 'dead';
+  state = 'gameover';
+  shakeTimer = 22; shakeAmt = 10;
+  spawnDeathBurst(player.x, player.y);
+
+  failText.textContent = reason;
+  goScore.textContent = score;
+  goBest.textContent = best;
+  newBestLabel.style.display = (score >= best && score > 0) ? 'block' : 'none';
+  screenGameover.style.display = 'flex';
+  comboDisplay.style.opacity = '0';
+}
+
+// ─── Particles ───────────────────────────────────────────────────────────────
+function spawnLaunchBurst(x, y, perfect) {
+  const count = perfect ? 22 : 12;
+  for (let i = 0; i < count; i++) {
+    const a = Math.random() * TAU;
+    const spd = 1.5 + Math.random() * (perfect ? 4 : 2.5);
+    particles.push({
+      x, y,
+      vx: Math.cos(a) * spd,
+      vy: Math.sin(a) * spd,
+      life: 1, decay: 0.03 + Math.random() * 0.04,
+      r: perfect ? 3 + Math.random() * 3 : 2 + Math.random() * 2,
+      hue: hue + (Math.random() - 0.5) * 60,
+      type: 'burst',
+    });
+  }
+}
+
+function spawnDeathBurst(x, y) {
+  for (let i = 0; i < 30; i++) {
+    const a = Math.random() * TAU;
+    const spd = 2 + Math.random() * 5;
+    particles.push({
+      x, y,
+      vx: Math.cos(a) * spd,
+      vy: Math.sin(a) * spd,
+      life: 1, decay: 0.018 + Math.random() * 0.03,
+      r: 2 + Math.random() * 4,
+      hue: 0 + Math.random() * 40,
+      type: 'burst',
+    });
+  }
+}
+
+function spawnTrail(x, y) {
+  particles.push({
+    x, y,
+    vx: (Math.random() - 0.5) * 0.4,
+    vy: (Math.random() - 0.5) * 0.4,
+    life: 1, decay: 0.06 + Math.random() * 0.04,
+    r: 2 + Math.random() * 2,
+    hue: hue + (Math.random() - 0.5) * 30,
+    type: 'trail',
+  });
+}
+
+function spawnShockwave(x, y) {
+  shockwaves.push({ x, y, r: 10, maxR: 80, t: 0, maxT: 30 });
+}
+
+// ─── Pop text ─────────────────────────────────────────────────────────────────
+let popAnim = null;
+function showPop(text, x, y, color) {
+  popAnims.push({ text, x, y, color, t: 0, maxT: 55 });
+}
+
+// ─── Main loop ───────────────────────────────────────────────────────────────
+let lastTime = 0;
+function loop(ts) {
+  requestAnimationFrame(loop);
+  const dt = Math.min((ts - lastTime) / 16.67, 3);
+  lastTime = ts;
+
+  if (hitStopFrames > 0) { hitStopFrames--; return; }
+
+  update(dt);
+  render();
+}
+
+// ─── Update ───────────────────────────────────────────────────────────────────
+function update(dt) {
+  if (state === 'start') return;
+
+  // Asteroids update
+  for (const a of asteroids) {
+    a.winAngle = (a.winAngle + a.rot * 0.025 * dt) % TAU;
+    // Moving asteroids
+    if (a.moveSpeed !== 0) {
+      a.moveT += 0.015 * dt;
+      a.x = a.baseX + Math.sin(a.moveT) * a.moveX;
+    }
+    // Pulse
+    if (a.isPulse) {
+      a.pulseT += 0.08 * dt;
+      a.pulseAmt = Math.sin(a.pulseT) * 0.3;
+    }
+  }
+
+  if (state === 'gameover') {
+    updateParticles(dt);
+    updatePopAnims(dt);
+    updateShockwaves(dt);
+    updateShake(dt);
+    return;
+  }
+
+  // Player update
+  if (player.state === 'orbiting') {
+    const a = asteroids[player.curAsteroidIdx];
+    player.orbitSpeed = a.rot * 0.025;
+    player.angle += player.orbitSpeed * dt;
+    player.x = a.x + Math.cos(player.angle) * player.orbitR;
+    player.y = a.y + Math.sin(player.angle) * player.orbitR;
+    spawnTrail(player.x, player.y);
+  } else if (player.state === 'flying') {
+    player.x += player.vx * dt;
+    player.y += player.vy * dt;
+    player.vy += 0.04 * dt; // slight gravity pull
+    spawnTrail(player.x, player.y);
+
+    // Check capture with next asteroid(s)
+    let captured = false;
+    for (let i = player.curAsteroidIdx + 1; i < Math.min(player.curAsteroidIdx + 4, asteroids.length); i++) {
+      const a = asteroids[i];
+      const dx = player.x - a.x;
+      const dy = player.y - a.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < a.catchR) {
+        // Captured!
+        player.curAsteroidIdx = i;
+        player.orbitR = a.orbitR;
+        // Orbit angle = where we are relative to asteroid
+        player.angle = Math.atan2(player.y - a.y, player.x - a.x);
+        player.state = 'orbiting';
+        a.isNext = false;
+        a.catchable = false;
+        // Mark next
+        if (i + 1 < asteroids.length) {
+          asteroids[i + 1].isNext = true;
+          asteroids[i + 1].catchable = true;
+        }
+        // Spawn more asteroids ahead
+        while (asteroids[asteroids.length - 1].y > camTargetY - H * 1.5) {
+          addAsteroid();
+        }
+        captured = true;
+        break;
+      }
+      // Crash into asteroid body
+      if (dist < a.r && i > player.curAsteroidIdx) {
+        triggerGameOver('HIT ROCK');
+        return;
+      }
+    }
+
+    // Off-screen check
+    const screenPlayerY = player.y - camY;
+    if (!captured && (screenPlayerY > H + 80 || player.x < -60 || player.x > W + 60)) {
+      triggerGameOver('DRIFTED');
+      return;
+    }
+
+    // Also check if went too far back
+    if (player.y > asteroids[player.curAsteroidIdx].y + 300 && player.state === 'flying') {
+      triggerGameOver('DRIFTED');
+      return;
+    }
+  }
+
+  // Camera follow player upward
+  const targetCam = player.y - H * 0.62;
+  camTargetY += (targetCam - camTargetY) * 0.06 * dt;
+  camY += (camTargetY - camY) * 0.12 * dt;
+
+  updateParticles(dt);
+  updatePopAnims(dt);
+  updateShockwaves(dt);
+  updateShake(dt);
+
+  // Cull old asteroids
+  asteroids = asteroids.filter(a => a.y - camY < H + 200 || a.id === asteroids[player.curAsteroidIdx]?.id);
+}
+
+function updateParticles(dt) {
+  for (const p of particles) {
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vx *= 0.95;
+    p.vy *= 0.95;
+    p.life -= p.decay * dt;
+  }
+  particles = particles.filter(p => p.life > 0);
+}
+
+function updatePopAnims(dt) {
+  for (const p of popAnims) p.t += dt;
+  popAnims = popAnims.filter(p => p.t < p.maxT);
+}
+
+function updateShockwaves(dt) {
+  for (const s of shockwaves) {
+    s.t += dt;
+    s.r = 10 + (s.maxR - 10) * (s.t / s.maxT);
+  }
+  shockwaves = shockwaves.filter(s => s.t < s.maxT);
+}
+
+function updateShake(dt) {
+  if (shakeTimer > 0) shakeTimer -= dt;
+}
+
+// ─── Render ───────────────────────────────────────────────────────────────────
+function render() {
+  const sw = canvasW, sh = canvasH;
+
+  // Shake offset
+  let sx = 0, sy = 0;
+  if (shakeTimer > 0) {
+    const intensity = (shakeTimer / 22) * shakeAmt;
+    sx = (Math.random() - 0.5) * intensity * 2;
+    sy = (Math.random() - 0.5) * intensity * 2;
+  }
+
+  ctx.save();
+  ctx.translate(sx, sy);
+
+  // Background gradient cycling hue
+  const bg = ctx.createLinearGradient(0, 0, 0, sh);
+  bg.addColorStop(0, `hsl(${hue},35%,6%)`);
+  bg.addColorStop(1, `hsl(${(hue + 40) % 360},30%,10%)`);
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, sw, sh);
+
+  // Stars (static based on camY)
+  drawStars(sw, sh);
+
+  // Camera transform: world-to-screen
+  const scaleX = sw / W;
+  const scaleY = sh / H;
+  const scale = Math.min(scaleX, scaleY);
+  const offX = (sw - W * scale) / 2;
+  const offY = (sh - H * scale) / 2;
+
+  ctx.save();
+  ctx.translate(offX, offY);
+  ctx.scale(scale, scale);
+  ctx.translate(0, -camY);
+
+  // Shockwaves
+  for (const s of shockwaves) {
+    const prog = s.t / s.maxT;
+    ctx.save();
+    ctx.globalAlpha = (1 - prog) * 0.7;
+    ctx.strokeStyle = `hsl(${hue},100%,80%)`;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r, 0, TAU);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Particles
+  for (const p of particles) {
+    ctx.save();
+    if (p.type === 'trail') {
+      ctx.globalAlpha = p.life * 0.5;
+      ctx.fillStyle = `hsl(${p.hue},${70 + combo * 2}%,65%)`;
+    } else {
+      ctx.globalAlpha = p.life * 0.85;
+      ctx.fillStyle = `hsl(${p.hue},100%,70%)`;
+    }
+    ctx.shadowColor = `hsl(${p.hue},100%,70%)`;
+    ctx.shadowBlur = p.type === 'trail' ? 4 : 8;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r * p.life, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Asteroids
+  for (const a of asteroids) {
+    const screenY = a.y - camY;
+    if (screenY < -200 || screenY > H + 200) continue;
+    drawAsteroid(a);
+  }
+
+  // Player
+  if (state !== 'start') drawPlayer();
+
+  // Pop text (in world space)
+  for (const p of popAnims) {
+    const prog = p.t / p.maxT;
+    const scale2 = prog < 0.15 ? prog / 0.15 : 1 - (prog - 0.15) * 0.3;
+    const alpha = prog < 0.7 ? 1 : 1 - (prog - 0.7) / 0.3;
+    const yOff = -prog * 50;
+    ctx.save();
+    ctx.globalAlpha = alpha * 0.95;
+    ctx.font = `800 ${Math.round(24 * scale2)}px 'Segoe UI', sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = p.color;
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur = 15;
+    ctx.fillText(p.text, p.x, p.y + yOff);
+    ctx.restore();
+  }
+
+  ctx.restore(); // camera
+  ctx.restore(); // shake
+}
+
+// ─── Draw Asteroid ────────────────────────────────────────────────────────────
+function drawAsteroid(a) {
+  const { x, y, r, orbitR, winAngle, winSize, hue: ah, isPulse, pulseAmt, isNext } = a;
+  const effectiveWin = winSize + (isPulse ? winSize * pulseAmt : 0);
+
+  // Orbit ring
+  ctx.save();
+  ctx.globalAlpha = isNext ? 0.35 : 0.15;
+  ctx.strokeStyle = `hsl(${ah},60%,60%)`;
+  ctx.lineWidth = isNext ? 1.5 : 1;
+  ctx.setLineDash([6, 5]);
+  ctx.beginPath();
+  ctx.arc(x, y, orbitR, 0, TAU);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+
+  // Launch window arc
+  if (isNext || player.curAsteroidIdx < a.id) {
+    const winStart = winAngle - effectiveWin / 2;
+    const winEnd = winAngle + effectiveWin / 2;
+    const winAlpha = isNext ? 0.9 : 0.5;
+    ctx.save();
+    ctx.globalAlpha = winAlpha;
+    ctx.strokeStyle = `hsl(${(ah + 30) % 360},100%,70%)`;
+    ctx.lineWidth = isNext ? 5 : 3;
+    ctx.shadowColor = `hsl(${(ah + 30) % 360},100%,70%)`;
+    ctx.shadowBlur = 10;
+    ctx.beginPath();
+    ctx.arc(x, y, orbitR, winStart, winEnd);
+    ctx.stroke();
+    ctx.restore();
+
+    // Window center dot
+    ctx.save();
+    ctx.globalAlpha = winAlpha * 0.7;
+    ctx.fillStyle = `hsl(${(ah + 30) % 360},100%,85%)`;
+    ctx.beginPath();
+    ctx.arc(x + Math.cos(winAngle) * orbitR, y + Math.sin(winAngle) * orbitR, isNext ? 4 : 2.5, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Asteroid body
+  ctx.save();
+  ctx.translate(x, y);
+  // Glow
+  ctx.shadowColor = `hsl(${ah},70%,55%)`;
+  ctx.shadowBlur = 16;
+  // Gradient fill
+  const grad = ctx.createRadialGradient(-r * 0.3, -r * 0.3, r * 0.1, 0, 0, r * 1.1);
+  grad.addColorStop(0, `hsl(${ah},50%,45%)`);
+  grad.addColorStop(1, `hsl(${ah},30%,18%)`);
+  ctx.fillStyle = grad;
+  ctx.strokeStyle = `hsl(${ah},60%,50%)`;
+  ctx.lineWidth = 1.5;
+  // Draw polygon
+  ctx.beginPath();
+  const verts = a.verts;
+  ctx.moveTo(verts[0].x, verts[0].y);
+  for (let i = 1; i < verts.length; i++) ctx.lineTo(verts[i].x, verts[i].y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+// ─── Draw Player ──────────────────────────────────────────────────────────────
+function drawPlayer() {
+  const { x, y, angle, state: pstate } = player;
+
+  ctx.save();
+  ctx.translate(x, y);
+
+  const faceAngle = pstate === 'flying' ? Math.atan2(player.vy, player.vx) : angle + Math.PI / 2;
+  ctx.rotate(faceAngle);
+
+  // Glow
+  ctx.shadowColor = `hsl(${hue},100%,70%)`;
+  ctx.shadowBlur = 18;
+
+  // Body
+  const bodyGrad = ctx.createRadialGradient(-2, -3, 1, 0, 0, 9);
+  bodyGrad.addColorStop(0, `hsl(${hue},90%,80%)`);
+  bodyGrad.addColorStop(1, `hsl(${hue},70%,45%)`);
+  ctx.fillStyle = bodyGrad;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 7, 9, 0, 0, TAU);
+  ctx.fill();
+
+  // Helmet
+  ctx.fillStyle = `rgba(180,220,255,0.85)`;
+  ctx.beginPath();
+  ctx.arc(0, -4, 5, 0, TAU);
+  ctx.fill();
+
+  // Visor gleam
+  ctx.fillStyle = `rgba(255,255,255,0.5)`;
+  ctx.beginPath();
+  ctx.ellipse(-1.5, -5.5, 2, 1.2, -0.5, 0, TAU);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+// ─── Draw Stars ──────────────────────────────────────────────────────────────
+function drawStars(sw, sh) {
+  // Use deterministic pseudo-random based on camY bucket
+  const seed = Math.floor(camY / 200);
+  for (let layer = 0; layer < 3; layer++) {
+    const parallax = 0.1 + layer * 0.1;
+    const offsetY = (camY * parallax) % sh;
+    let r = 1234 + seed * 17 + layer * 53;
+    for (let i = 0; i < 25; i++) {
+      r = (r * 1664525 + 1013904223) & 0xffffffff;
+      const sx = ((r >>> 16) % 1000) / 1000 * sw;
+      r = (r * 1664525 + 1013904223) & 0xffffffff;
+      const sy = (((r >>> 16) % 1000) / 1000 * sh * 2 - offsetY + sh * 2) % (sh * 2) - offsetY % sh;
+      const alpha = 0.2 + (layer * 0.2);
+      const sr = 0.5 + layer * 0.5;
+      ctx.fillStyle = `rgba(200,220,255,${alpha})`;
+      ctx.beginPath();
+      ctx.arc(sx, sy, sr, 0, TAU);
+      ctx.fill();
+    }
+  }
+}
+
+// ─── Start loop ───────────────────────────────────────────────────────────────
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

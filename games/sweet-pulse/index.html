@@ -1,0 +1,1015 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Sweet Pulse - Free HTML5 Game</title>
+  <meta name="description" content="Play Sweet Pulse - Tap in sync with pulsing candy icons to keep your combo multiplier alive.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="robots" content="index, follow">
+  <meta name="theme-color" content="#1a0a2e">
+  <link rel="canonical" href="https://balinti.github.io/sweet-pulse/">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Sweet Pulse - Free HTML5 Game">
+  <meta property="og:description" content="Tap in sync with pulsing candy icons to keep your combo multiplier alive. How high can you score?">
+  <meta property="og:url" content="https://balinti.github.io/sweet-pulse/">
+  <meta property="og:image" content="https://balinti.github.io/sweet-pulse/og-image.png">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Sweet Pulse - Free HTML5 Game">
+  <meta name="twitter:description" content="Tap in sync with pulsing candy icons to keep your combo multiplier alive. How high can you score?">
+  <meta name="twitter:image" content="https://balinti.github.io/sweet-pulse/og-image.png">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #0d0618;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: flex-start;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      overflow: hidden;
+    }
+    #game-wrap {
+      position: relative;
+      width: 100%; max-width: 420px;
+      height: 100vh; max-height: 750px;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      touch-action: manipulation;
+      flex-shrink: 0;
+    }
+    #gameCanvas {
+      display: block;
+      width: 100%; height: 100%;
+      cursor: pointer;
+    }
+    #seo-block {
+      max-width: 420px;
+      width: 100%;
+      padding: 10px 16px 16px;
+      color: #a088c0;
+      font-size: 12px;
+      line-height: 1.5;
+      text-align: center;
+      flex-shrink: 0;
+    }
+    #seo-block h1 { font-size: 14px; font-weight: 700; color: #cc88ff; margin-bottom: 4px; }
+    #seo-block p { color: #8877aa; }
+    #share-btn {
+      display: none;
+      position: absolute;
+      bottom: 120px;
+      left: 50%; transform: translateX(-50%);
+      background: linear-gradient(135deg, #ff69b4, #9966ff);
+      color: #fff;
+      border: none; border-radius: 24px;
+      padding: 10px 28px;
+      font-size: 15px; font-weight: 700;
+      cursor: pointer;
+      z-index: 10;
+      box-shadow: 0 4px 18px #ff69b440;
+      white-space: nowrap;
+    }
+    #share-btn:active { transform: translateX(-50%) scale(0.95); }
+    #copy-notice {
+      display: none;
+      position: absolute;
+      bottom: 95px;
+      left: 50%; transform: translateX(-50%);
+      background: #22113366;
+      color: #ffddff;
+      border-radius: 12px;
+      padding: 4px 16px;
+      font-size: 12px;
+      pointer-events: none;
+      z-index: 11;
+    }
+  </style>
+</head>
+<body>
+<div id="game-wrap">
+  <canvas id="gameCanvas"></canvas>
+  <button id="share-btn">🍬 Share Score</button>
+  <div id="copy-notice">Link copied!</div>
+</div>
+<div id="seo-block">
+  <h1>Sweet Pulse – Free Candy Tap Game</h1>
+  <p>Flip your catcher between Pink and Blue lanes, catch matching candies, build combos, and survive as long as possible. Play free in your browser – no download needed!</p>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+// ── Canvas setup ──────────────────────────────────────────────────────────────
+const canvas = document.getElementById('gameCanvas');
+const ctx    = canvas.getContext('2d');
+const wrap   = document.getElementById('game-wrap');
+const shareBtn  = document.getElementById('share-btn');
+const copyNotice = document.getElementById('copy-notice');
+
+let W = 420, H = 750;
+let dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+function resize() {
+  const rect = wrap.getBoundingClientRect();
+  W = rect.width;
+  H = rect.height;
+  canvas.width  = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+resize();
+window.addEventListener('resize', () => { resize(); });
+
+// ── Challenge param ───────────────────────────────────────────────────────────
+const urlParams   = new URLSearchParams(location.search);
+const CHALLENGE   = parseInt(urlParams.get('challenge') || '0', 10) || 0;
+
+// ── High score ────────────────────────────────────────────────────────────────
+const LS_KEY = 'sweetpulse_best';
+let bestScore = parseInt(localStorage.getItem(LS_KEY) || '0', 10);
+
+// ── Colors ────────────────────────────────────────────────────────────────────
+const COL_PINK  = { h: 335, s: '85%', l: '62%', hex: '#ff5bae' };
+const COL_BLUE  = { h: 210, s: '85%', l: '62%', hex: '#5bbeff' };
+const BG_TOP    = '#1a0a2e';
+const BG_BOT    = '#0d0618';
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let state = 'start'; // 'start' | 'playing' | 'gameover'
+let score, combo, mult, hearts, shards;
+let elapsed, phaseTime, frenzyTimer, frenzyActive, frenzyCountdown;
+let catcherColor; // 'pink' | 'blue'
+let candies, particles, speedLines;
+let shakeX, shakeY, shakeDecay;
+let vignetteAlpha, vignetteRed;
+let comboFlash, comboFlashTimer;
+let ringPulse;       // 0..1 driven by spawn cadence
+let hueShift;
+let lastFrameTime;
+let milestoneFlash, milestoneTimer;
+let spawnTimer, spawnInterval;
+let dangerFlash;
+
+const MAX_HEARTS = 3;
+const SHARD_MAX  = 3;
+const RING_Y_FRAC = 0.82;   // ring centre as fraction of H
+const RING_OUTER  = 44;
+const RING_INNER  = 28;
+const CANDY_R     = 16;
+const LANE_FRAC   = [0.30, 0.70]; // left/right lane x fractions
+const CATCHER_W   = 70;
+const CATCHER_H   = 22;
+
+// Particle pool
+const POOL_SIZE = 300;
+const pool = [];
+for (let i = 0; i < POOL_SIZE; i++) pool.push({active:false});
+
+function getParticle() {
+  for (let i = 0; i < POOL_SIZE; i++) {
+    if (!pool[i].active) return pool[i];
+  }
+  return pool[0];
+}
+
+function initGame() {
+  score  = 0;
+  combo  = 0;
+  mult   = 1;
+  hearts = 3;
+  shards = 0;
+  elapsed       = 0;
+  phaseTime     = 0;
+  frenzyTimer   = 0;
+  frenzyActive  = false;
+  frenzyCountdown = 0;
+  catcherColor  = 'pink';
+  candies       = [];
+  particles     = [];
+  speedLines    = [];
+  shakeX = shakeY = 0;
+  shakeDecay    = 0.8;
+  vignetteAlpha = 0;
+  vignetteRed   = 0;
+  comboFlash    = false;
+  comboFlashTimer = 0;
+  ringPulse     = 0;
+  hueShift      = 0;
+  lastFrameTime = null;
+  milestoneFlash = false;
+  milestoneTimer = 0;
+  spawnTimer    = 0;
+  spawnInterval = 1.6;
+  dangerFlash   = 0;
+  pool.forEach(p => p.active = false);
+  // seed first speed lines
+  for (let i = 0; i < 12; i++) speedLines.push(makeSpeedLine(true));
+  state = 'playing';
+}
+
+// ── Speed lines (frenzy) ──────────────────────────────────────────────────────
+function makeSpeedLine(rand) {
+  return {
+    x: Math.random() * W,
+    y: rand ? Math.random() * H : -20,
+    len: 40 + Math.random() * 60,
+    speed: 6 + Math.random() * 5,
+    alpha: 0.15 + Math.random() * 0.25
+  };
+}
+
+// ── Candy factory ─────────────────────────────────────────────────────────────
+function spawnCandy(lane, wrapped) {
+  const lx = W * LANE_FRAC[lane];
+  const baseSpeed = getBaseSpeed();
+  return {
+    lane, x: lx, y: -CANDY_R,
+    color: lane === 0 ? 'pink' : 'blue',
+    speed: baseSpeed * (0.9 + Math.random() * 0.2),
+    wrapped: wrapped || false,
+    flipDone: false,
+    r: CANDY_R,
+    wobble: Math.random() * Math.PI * 2,
+    alive: true
+  };
+}
+
+function getBaseSpeed() {
+  const t = phaseTime;
+  let s;
+  if (t < 10)       s = 180;
+  else if (t < 25)  s = 220;
+  else if (t < 40)  s = 260;
+  else              s = 290 + (t - 40) * 1.2;
+  if (frenzyActive) s *= 1.25;
+  return s;
+}
+
+function getSpawnInterval() {
+  const t = phaseTime;
+  let iv;
+  if (t < 10)       iv = 1.6;
+  else if (t < 25)  iv = 1.1;
+  else if (t < 40)  iv = 0.85;
+  else              iv = Math.max(0.55, 0.85 - (t - 40) * 0.005);
+  if (frenzyActive) iv *= 0.55;
+  return iv;
+}
+
+function doSpawn() {
+  const t = phaseTime;
+  const doDouble = t > 40 && Math.random() < 0.2;
+  const doWrapped = t > 25 && Math.random() < (t > 40 ? 0.22 : 0.12);
+
+  if (doDouble) {
+    candies.push(spawnCandy(0, false));
+    candies.push(spawnCandy(1, false));
+  } else {
+    const lane = Math.random() < 0.5 ? 0 : 1;
+    candies.push(spawnCandy(lane, doWrapped));
+  }
+  ringPulse = 1;
+}
+
+// ── Particles ─────────────────────────────────────────────────────────────────
+function emitConfetti(x, y, color, count) {
+  for (let i = 0; i < count; i++) {
+    const p = getParticle();
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 120 + Math.random() * 200;
+    p.active = true;
+    p.x = x; p.y = y;
+    p.vx = Math.cos(angle) * speed;
+    p.vy = Math.sin(angle) * speed - 80;
+    p.life = 1; p.decay = 1.4 + Math.random() * 0.8;
+    p.r = 3 + Math.random() * 4;
+    p.type = 'confetti';
+    const hue = color === 'pink' ? 335 : 210;
+    p.color = `hsl(${hue + (Math.random()-0.5)*30},85%,${55+Math.random()*20}%)`;
+    p.rot = Math.random() * Math.PI * 2;
+    p.rotV = (Math.random()-0.5) * 8;
+  }
+}
+
+function emitSparkle(x, y, count) {
+  for (let i = 0; i < count; i++) {
+    const p = getParticle();
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 60 + Math.random() * 100;
+    p.active = true;
+    p.x = x; p.y = y;
+    p.vx = Math.cos(angle) * speed;
+    p.vy = Math.sin(angle) * speed;
+    p.life = 1; p.decay = 2.5 + Math.random();
+    p.r = 1.5 + Math.random() * 2.5;
+    p.type = 'sparkle';
+    p.color = `hsl(${40 + Math.random()*40},100%,90%)`;
+  }
+}
+
+function emitMilestoneBurst(x, y) {
+  for (let i = 0; i < 60; i++) {
+    const p = getParticle();
+    const angle = (i / 60) * Math.PI * 2;
+    const speed = 150 + Math.random() * 250;
+    p.active = true;
+    p.x = x; p.y = y;
+    p.vx = Math.cos(angle) * speed;
+    p.vy = Math.sin(angle) * speed - 60;
+    p.life = 1; p.decay = 0.9 + Math.random() * 0.5;
+    p.r = 4 + Math.random() * 6;
+    p.type = 'confetti';
+    p.color = `hsl(${Math.random()*360},90%,65%)`;
+    p.rot = Math.random() * Math.PI * 2;
+    p.rotV = (Math.random()-0.5) * 10;
+  }
+}
+
+// ── Input ─────────────────────────────────────────────────────────────────────
+function onInput() {
+  if (state === 'playing') {
+    catcherColor = catcherColor === 'pink' ? 'blue' : 'pink';
+  } else if (state === 'start') {
+    initGame();
+  } else if (state === 'gameover') {
+    initGame();
+  }
+}
+
+canvas.addEventListener('pointerdown', e => { e.preventDefault(); onInput(); });
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); onInput(); }
+});
+
+// ── Share ─────────────────────────────────────────────────────────────────────
+shareBtn.addEventListener('click', async e => {
+  e.stopPropagation();
+  const url = `https://balinti.github.io/sweet-pulse/?challenge=${score}`;
+  const text = `I scored ${score} in Sweet Pulse! Can you beat me? 🍬`;
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: 'Sweet Pulse', text, url });
+    } catch(_) {}
+  } else {
+    try { await navigator.clipboard.writeText(url + '\n' + text); } catch(_) {}
+    copyNotice.style.display = 'block';
+    setTimeout(() => { copyNotice.style.display = 'none'; }, 2000);
+  }
+});
+
+// ── Game loop ─────────────────────────────────────────────────────────────────
+function loop(ts) {
+  requestAnimationFrame(loop);
+  if (!lastFrameTime) { lastFrameTime = ts; }
+  const dt = Math.min((ts - lastFrameTime) / 1000, 0.05);
+  lastFrameTime = ts;
+
+  if (state === 'playing') {
+    update(dt);
+  }
+  render();
+}
+
+function update(dt) {
+  elapsed   += dt;
+  phaseTime += dt;
+  hueShift   = (hueShift + dt * 30) % 360;
+
+  // Frenzy
+  if (!frenzyActive) {
+    frenzyTimer += dt;
+    if (frenzyTimer >= 20) {
+      frenzyActive = true;
+      frenzyTimer  = 0;
+      frenzyCountdown = 3;
+    }
+  } else {
+    frenzyCountdown -= dt;
+    if (frenzyCountdown <= 0) {
+      frenzyActive = false;
+    }
+  }
+
+  // Speed lines during frenzy
+  if (frenzyActive) {
+    speedLines.forEach(sl => {
+      sl.y += sl.speed * (1 + frenzyCountdown * 2) * dt * 60;
+      if (sl.y > H + 30) { Object.assign(sl, makeSpeedLine(false)); }
+    });
+  }
+
+  // Spawning
+  spawnTimer += dt;
+  spawnInterval = getSpawnInterval();
+  if (spawnTimer >= spawnInterval) {
+    spawnTimer -= spawnInterval;
+    doSpawn();
+  }
+
+  // Ring pulse decay
+  ringPulse = Math.max(0, ringPulse - dt * 3);
+
+  // Wrapped candy flip
+  const ringY = H * RING_Y_FRAC;
+  candies.forEach(c => {
+    if (!c.alive) return;
+    c.wobble += dt * 3;
+    c.y += c.speed * dt;
+
+    // Wrapped: flip color at half-height
+    if (c.wrapped && !c.flipDone && c.y > H * 0.5) {
+      c.color = c.color === 'pink' ? 'blue' : 'pink';
+      c.flipDone = true;
+    }
+
+    // Hit detection
+    const distToRing = Math.abs(c.y - ringY);
+    if (distToRing < RING_OUTER + c.r && distToRing > RING_INNER - c.r) {
+      // in the ring band
+      const laneX = W * LANE_FRAC[c.lane];
+      if (Math.abs(c.x - laneX) < CATCHER_W * 0.5 + c.r) {
+        // catch!
+        const isLate = distToRing > (RING_OUTER + RING_INNER) * 0.5;
+        if (c.color === catcherColor) {
+          // correct catch
+          combo++;
+          const newMult = Math.floor(combo / 5) + 1;
+          mult = newMult;
+          const pts = mult + (frenzyActive ? 1 : 0);
+          score += pts;
+          if (score > bestScore) { bestScore = score; localStorage.setItem(LS_KEY, bestScore); }
+          comboFlash = true; comboFlashTimer = 0.3;
+          emitConfetti(c.x, c.y, c.color, frenzyActive ? 24 : 14);
+          emitSparkle(c.x, c.y, 8);
+
+          // Shards on danger
+          if (hearts === 1 && isLate) {
+            shards++;
+            emitSparkle(c.x, c.y, 12);
+            if (shards >= SHARD_MAX) {
+              shards = 0;
+              hearts = Math.min(MAX_HEARTS, hearts + 1);
+            }
+          }
+
+          // Milestone
+          if (combo % 10 === 0) {
+            milestoneFlash = true; milestoneTimer = 1.2;
+            emitMilestoneBurst(W * 0.5, ringY);
+          }
+        } else {
+          // wrong color
+          damage(c.x, c.y);
+        }
+        c.alive = false;
+      }
+    }
+
+    // Miss (passed ring)
+    if (c.y > ringY + RING_OUTER + c.r + 10) {
+      if (c.alive) { damage(c.x, ringY); }
+      c.alive = false;
+    }
+  });
+
+  // Remove dead candies
+  candies = candies.filter(c => c.alive);
+
+  // Particles
+  particles = particles.filter(p => {
+    p.x += p.vx * dt; p.y += p.vy * dt;
+    p.vy += 200 * dt; // gravity
+    p.life -= p.decay * dt;
+    if (p.type === 'confetti') { p.rot += p.rotV * dt; }
+    return p.life > 0;
+  });
+  // Sync with pool
+  pool.forEach((p, i) => { if (p.life !== undefined && p.life <= 0) p.active = false; });
+
+  // Timers
+  if (comboFlashTimer > 0) { comboFlashTimer -= dt; if (comboFlashTimer <= 0) comboFlash = false; }
+  if (milestoneTimer > 0)  { milestoneTimer  -= dt; if (milestoneTimer  <= 0) milestoneFlash = false; }
+  if (vignetteAlpha > 0)   { vignetteAlpha   -= dt * 2; }
+  if (vignetteRed > 0)     { vignetteRed     -= dt * 3; }
+  if (dangerFlash > 0)     { dangerFlash      -= dt * 2; }
+
+  // Shake
+  if (Math.abs(shakeX) > 0.3 || Math.abs(shakeY) > 0.3) {
+    shakeX *= shakeDecay;
+    shakeY *= shakeDecay;
+  } else { shakeX = shakeY = 0; }
+}
+
+function damage(x, y) {
+  hearts--;
+  combo = 0; mult = 1;
+  vignetteAlpha = 0.7;
+  vignetteRed   = 1;
+  dangerFlash   = hearts === 1 ? 1 : 0;
+  const mag = hearts === 0 ? 18 : 10;
+  shakeX = (Math.random()-0.5) * mag * 2;
+  shakeY = (Math.random()-0.5) * mag * 2;
+
+  if (hearts <= 0) {
+    endGame();
+  }
+}
+
+function endGame() {
+  state = 'gameover';
+  shareBtn.style.display = 'block';
+}
+
+// ── Rendering ─────────────────────────────────────────────────────────────────
+function render() {
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
+
+  // Background gradient
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, BG_TOP);
+  bg.addColorStop(1, BG_BOT);
+  ctx.fillStyle = bg;
+  ctx.fillRect(-10, -10, W+20, H+20);
+
+  if (state === 'start')    { drawStart(); }
+  if (state === 'playing')  { drawGame(); }
+  if (state === 'gameover') { drawGameOver(); }
+
+  // Vignette
+  if (vignetteAlpha > 0) {
+    const vig = ctx.createRadialGradient(W/2, H/2, H*0.25, W/2, H/2, H*0.75);
+    const col = vignetteRed > 0.3 ? `rgba(200,30,60,${vignetteAlpha*0.7})` : `rgba(0,0,0,${vignetteAlpha*0.5})`;
+    vig.addColorStop(0, 'transparent');
+    vig.addColorStop(1, col);
+    ctx.fillStyle = vig;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // Danger flash overlay
+  if (dangerFlash > 0) {
+    ctx.fillStyle = `rgba(255,30,30,${dangerFlash * 0.12})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  ctx.restore();
+}
+
+function drawGame() {
+  // Frenzy speed lines
+  if (frenzyActive) {
+    ctx.save();
+    speedLines.forEach(sl => {
+      ctx.strokeStyle = `rgba(255,200,255,${sl.alpha})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(sl.x, sl.y);
+      ctx.lineTo(sl.x, sl.y + sl.len);
+      ctx.stroke();
+    });
+    ctx.restore();
+  }
+
+  // Lane separators
+  const midX = W * 0.5;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([8, 12]);
+  ctx.beginPath();
+  ctx.moveTo(midX, 60);
+  ctx.lineTo(midX, H * 0.88);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+
+  // Draw candies
+  candies.forEach(drawCandy);
+
+  // Catch ring
+  drawRing();
+
+  // Catcher
+  drawCatcher();
+
+  // Particles
+  drawParticles();
+
+  // HUD
+  drawHUD();
+
+  // Frenzy banner
+  if (frenzyActive) drawFrenzyBanner();
+
+  // Milestone flash
+  if (milestoneFlash && milestoneTimer > 0) {
+    const alpha = Math.min(milestoneTimer, 0.8);
+    ctx.save();
+    ctx.globalAlpha = Math.min(alpha * 1.2, 1);
+    ctx.fillStyle = '#fff';
+    ctx.font = `bold ${40 + (1.2 - milestoneTimer) * 20}px 'Segoe UI', sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = '#ff88ff';
+    ctx.shadowBlur = 30;
+    ctx.fillText(`${combo} COMBO!`, W/2, H * 0.45);
+    ctx.restore();
+  }
+}
+
+function drawCandy(c) {
+  const hue = c.color === 'pink' ? COL_PINK.h : COL_BLUE.h;
+  const col = `hsl(${hue},85%,62%)`;
+  const colDark = `hsl(${hue},85%,42%)`;
+  ctx.save();
+  ctx.translate(c.x, c.y);
+  // Wobble
+  ctx.translate(Math.sin(c.wobble) * 2, 0);
+
+  // Wrapped indicator: crack lines
+  if (c.wrapped && !c.flipDone) {
+    ctx.strokeStyle = 'rgba(255,255,180,0.7)';
+    ctx.lineWidth = 1.5;
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2 + c.wobble * 0.5;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a)*4, Math.sin(a)*4);
+      ctx.lineTo(Math.cos(a)*c.r, Math.sin(a)*c.r);
+      ctx.stroke();
+    }
+  }
+
+  // Body
+  ctx.beginPath();
+  ctx.arc(0, 0, c.r, 0, Math.PI*2);
+  ctx.fillStyle = col;
+  ctx.fill();
+
+  // Shine
+  ctx.beginPath();
+  ctx.arc(-c.r*0.3, -c.r*0.3, c.r*0.35, 0, Math.PI*2);
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.fill();
+
+  // Stripe
+  ctx.save();
+  ctx.clip();
+  ctx.strokeStyle = colDark;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(-c.r, c.r*0.3);
+  ctx.lineTo(c.r, -c.r*0.3);
+  ctx.stroke();
+  ctx.restore();
+
+  // Border
+  ctx.beginPath();
+  ctx.arc(0, 0, c.r, 0, Math.PI*2);
+  ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function drawRing() {
+  const ringY = H * RING_Y_FRAC;
+  const pulse  = ringPulse * 8;
+
+  LANE_FRAC.forEach((frac, i) => {
+    const x = W * frac;
+    const col = i === 0 ? COL_PINK : COL_BLUE;
+    const hsl = `hsl(${col.h},${col.s},${col.l})`;
+
+    // Outer glow
+    const grd = ctx.createRadialGradient(x, ringY, RING_INNER, x, ringY, RING_OUTER + pulse + 12);
+    grd.addColorStop(0, `hsla(${col.h},85%,62%,0.15)`);
+    grd.addColorStop(1, 'transparent');
+    ctx.fillStyle = grd;
+    ctx.beginPath();
+    ctx.arc(x, ringY, RING_OUTER + pulse + 12, 0, Math.PI*2);
+    ctx.fill();
+
+    // Ring band
+    ctx.beginPath();
+    ctx.arc(x, ringY, RING_OUTER + pulse, 0, Math.PI*2);
+    ctx.arc(x, ringY, RING_INNER, 0, Math.PI*2, true);
+    ctx.fillStyle = `hsla(${col.h},85%,62%,0.18)`;
+    ctx.fill();
+
+    // Ring outline outer
+    ctx.beginPath();
+    ctx.arc(x, ringY, RING_OUTER + pulse, 0, Math.PI*2);
+    ctx.strokeStyle = hsl;
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+
+    // Ring outline inner
+    ctx.beginPath();
+    ctx.arc(x, ringY, RING_INNER, 0, Math.PI*2);
+    ctx.strokeStyle = `hsla(${col.h},85%,62%,0.5)`;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  });
+}
+
+function drawCatcher() {
+  const ringY = H * RING_Y_FRAC;
+  const col = catcherColor === 'pink' ? COL_PINK : COL_BLUE;
+  const lane = catcherColor === 'pink' ? 0 : 1;
+  const x = W * LANE_FRAC[lane];
+
+  ctx.save();
+  ctx.shadowColor = `hsl(${col.h},85%,62%)`;
+  ctx.shadowBlur = 18;
+
+  // Catcher pill
+  const ry = ringY;
+  const hw = CATCHER_W/2, hh = CATCHER_H/2;
+  roundRect(ctx, x - hw, ry - hh, CATCHER_W, CATCHER_H, hh);
+  const grd = ctx.createLinearGradient(x-hw, ry-hh, x-hw, ry+hh);
+  grd.addColorStop(0, `hsl(${col.h},85%,72%)`);
+  grd.addColorStop(1, `hsl(${col.h},85%,50%)`);
+  ctx.fillStyle = grd;
+  ctx.fill();
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.restore();
+
+  // Arrow indicator on inactive lane
+  const inactiveLane = 1 - lane;
+  const ix = W * LANE_FRAC[inactiveLane];
+  ctx.save();
+  ctx.globalAlpha = 0.25;
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(ix - 10, ringY - 3);
+  ctx.lineTo(ix, ringY + 5);
+  ctx.lineTo(ix + 10, ringY - 3);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawHUD() {
+  // Score
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  const scoreCol = comboFlash ? `hsl(${hueShift},90%,70%)` : '#ffffff';
+  ctx.fillStyle = scoreCol;
+  ctx.font = `bold 38px 'Segoe UI', sans-serif`;
+  ctx.shadowColor = comboFlash ? `hsl(${hueShift},90%,50%)` : 'transparent';
+  ctx.shadowBlur = comboFlash ? 20 : 0;
+  ctx.fillText(score, W/2, 18);
+
+  // Multiplier
+  if (mult > 1) {
+    ctx.font = `bold 18px 'Segoe UI', sans-serif`;
+    ctx.fillStyle = `hsl(${hueShift},90%,65%)`;
+    ctx.shadowColor = `hsl(${hueShift},90%,65%)`;
+    ctx.shadowBlur = 12;
+    ctx.fillText(`×${mult}`, W/2, 60);
+  }
+
+  // Combo
+  if (combo > 0) {
+    ctx.font = `14px 'Segoe UI', sans-serif`;
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.shadowBlur = 0;
+    ctx.fillText(`combo ${combo}`, W/2, 82);
+  }
+  ctx.restore();
+
+  // Hearts
+  const hx = 16, hy = 20;
+  for (let i = 0; i < MAX_HEARTS; i++) {
+    ctx.save();
+    ctx.font = '22px serif';
+    ctx.textBaseline = 'top';
+    ctx.globalAlpha = i < hearts ? 1 : 0.25;
+    ctx.fillText('❤', hx + i * 28, hy);
+    ctx.restore();
+  }
+
+  // Shards (only visible when at 1 heart)
+  if (hearts === 1) {
+    for (let i = 0; i < SHARD_MAX; i++) {
+      ctx.save();
+      ctx.font = '16px serif';
+      ctx.textBaseline = 'top';
+      ctx.globalAlpha = i < shards ? 1 : 0.22;
+      ctx.fillText('💎', hx + i * 22, hy + 26);
+      ctx.restore();
+    }
+  }
+
+  // Best score
+  ctx.save();
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.font = '13px "Segoe UI", sans-serif';
+  ctx.fillText(`Best: ${bestScore}`, W - 14, 24);
+  ctx.restore();
+
+  // Challenge banner
+  if (CHALLENGE > 0) {
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = score >= CHALLENGE ? '#88ffbb' : '#ffdd66';
+    ctx.font = `bold 13px 'Segoe UI', sans-serif`;
+    ctx.fillText(score >= CHALLENGE ? `✓ Beat challenge: ${CHALLENGE}` : `Challenge: Beat ${CHALLENGE}`, W/2, 105);
+    ctx.restore();
+  }
+}
+
+function drawFrenzyBanner() {
+  const alpha = Math.min(frenzyCountdown, 1);
+  ctx.save();
+  ctx.globalAlpha = alpha * 0.9;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = `bold 28px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = `hsl(${hueShift},90%,70%)`;
+  ctx.shadowColor = `hsl(${hueShift},90%,50%)`;
+  ctx.shadowBlur = 20;
+  ctx.fillText('⚡ FRENZY ⚡', W/2, H * 0.15);
+  ctx.restore();
+}
+
+function drawParticles() {
+  pool.forEach(p => {
+    if (!p.active || p.life === undefined || p.life <= 0) return;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, p.life);
+    if (p.type === 'confetti') {
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.r, -p.r*0.5, p.r*2, p.r);
+    } else {
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.restore();
+  });
+}
+
+function drawStart() {
+  // Title card
+  ctx.save();
+  ctx.textAlign = 'center';
+
+  // Candy icons
+  const icons = ['🍬', '🍭', '🍫'];
+  icons.forEach((ic, i) => {
+    const a = elapsed * 1.5 + (i / icons.length) * Math.PI * 2;
+    const ix = W/2 + Math.cos(a) * 70;
+    const iy = H * 0.35 + Math.sin(a) * 18;
+    ctx.font = '32px serif';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(ic, ix, iy);
+  });
+
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#fff';
+  ctx.font = `bold 48px 'Segoe UI', sans-serif`;
+  ctx.shadowColor = '#ff88ff';
+  ctx.shadowBlur = 30;
+  ctx.fillText('Sweet Pulse', W/2, H * 0.45);
+
+  ctx.font = `18px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = 'rgba(255,255,255,0.75)';
+  ctx.shadowBlur = 0;
+  ctx.fillText('Flip & Catch', W/2, H * 0.45 + 48);
+
+  // Instructions
+  ctx.font = `14px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = 'rgba(200,160,255,0.85)';
+  const lines = [
+    'Tap to flip Pink ↔ Blue',
+    'Catch candies that match your color',
+    '3 hearts – wrong catch = damage'
+  ];
+  lines.forEach((l, i) => ctx.fillText(l, W/2, H * 0.62 + i * 24));
+
+  // Tap prompt
+  const pulse = 0.7 + 0.3 * Math.sin(elapsed * 4);
+  ctx.globalAlpha = pulse;
+  ctx.fillStyle = '#fff';
+  ctx.font = `bold 20px 'Segoe UI', sans-serif`;
+  ctx.fillText('Tap to Start', W/2, H * 0.78);
+  ctx.globalAlpha = 1;
+
+  if (CHALLENGE > 0) {
+    ctx.fillStyle = '#ffdd66';
+    ctx.font = `bold 14px 'Segoe UI', sans-serif`;
+    ctx.fillText(`Challenge: Beat ${CHALLENGE} points!`, W/2, H * 0.84);
+  }
+
+  if (bestScore > 0) {
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.font = `13px 'Segoe UI', sans-serif`;
+    ctx.fillText(`Best: ${bestScore}`, W/2, H * 0.89);
+  }
+  ctx.restore();
+}
+
+function drawGameOver() {
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  // Dark overlay
+  ctx.fillStyle = 'rgba(10,5,20,0.7)';
+  ctx.fillRect(0, 0, W, H);
+
+  // Panel
+  const panW = W * 0.82, panH = 280;
+  const panX = (W - panW) / 2, panY = H * 0.28;
+  roundRect(ctx, panX, panY, panW, panH, 24);
+  ctx.fillStyle = 'rgba(30,10,60,0.92)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,100,200,0.4)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  ctx.fillStyle = '#ff88cc';
+  ctx.font = `bold 32px 'Segoe UI', sans-serif`;
+  ctx.shadowColor = '#ff44aa';
+  ctx.shadowBlur = 18;
+  ctx.fillText('Game Over', W/2, panY + 50);
+
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#fff';
+  ctx.font = `bold 52px 'Segoe UI', sans-serif`;
+  ctx.fillText(score, W/2, panY + 120);
+
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.font = `16px 'Segoe UI', sans-serif`;
+  ctx.fillText(`Best: ${bestScore}`, W/2, panY + 162);
+
+  if (CHALLENGE > 0) {
+    ctx.fillStyle = score >= CHALLENGE ? '#88ffbb' : '#ff8888';
+    ctx.font = `bold 15px 'Segoe UI', sans-serif`;
+    ctx.fillText(score >= CHALLENGE ? `✓ You beat the challenge!` : `Challenge ${CHALLENGE} – try again!`, W/2, panY + 192);
+  }
+
+  // Tap to retry
+  const pulse = 0.7 + 0.3 * Math.sin((elapsed||0) * 4);
+  ctx.globalAlpha = pulse;
+  ctx.fillStyle = '#fff';
+  ctx.font = `bold 18px 'Segoe UI', sans-serif`;
+  ctx.fillText('Tap to Retry', W/2, panY + 240);
+  ctx.globalAlpha = 1;
+
+  ctx.restore();
+
+  // Floating particles still draw
+  drawParticles();
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.lineTo(x+w-r, y);
+  ctx.quadraticCurveTo(x+w, y, x+w, y+r);
+  ctx.lineTo(x+w, y+h-r);
+  ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+  ctx.lineTo(x+r, y+h);
+  ctx.quadraticCurveTo(x, y+h, x, y+h-r);
+  ctx.lineTo(x, y+r);
+  ctx.quadraticCurveTo(x, y, x+r, y);
+  ctx.closePath();
+}
+
+// Also add particles to active pool tracking
+const origEmitConfetti = emitConfetti;
+pool.forEach(p => { p.active = false; p.life = 0; });
+
+// Start
+requestAnimationFrame(loop);
+
+// Share button init hidden
+shareBtn.style.display = 'none';
+
+})();
+</script>
+</body>
+</html>

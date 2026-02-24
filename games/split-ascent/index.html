@@ -1,0 +1,890 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Split Ascent - Free HTML5 Game</title>
+  <meta name="description" content="Play Split Ascent - Tap to split your astronaut into two as you climb a never-ending space tower.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a0a1a">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Split Ascent - Free HTML5 Game">
+  <meta property="og:description" content="Tap to split your astronaut into two as you climb a never-ending space tower. How high can you go?">
+  <meta property="og:url" content="https://balinti.github.io/split-ascent/">
+  <meta property="og:image" content="https://balinti.github.io/split-ascent/preview.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Split Ascent - Free HTML5 Game">
+  <meta name="twitter:description" content="Tap to split your astronaut into two as you climb a never-ending space tower.">
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #04040f;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: flex-start;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      overflow: hidden;
+      color: #ccc;
+    }
+    #seo-header {
+      width: 100%; max-width: 420px;
+      padding: 6px 12px 2px;
+      font-size: 11px; color: #555;
+      text-align: center; line-height: 1.4;
+      flex-shrink: 0;
+      pointer-events: none;
+      user-select: none;
+    }
+    #seo-header h1 { font-size: 13px; color: #444; font-weight: 600; display: inline; }
+    #game-wrap {
+      position: relative;
+      width: 100%; max-width: 420px;
+      flex: 1 1 auto;
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+      touch-action: none;
+      cursor: pointer;
+    }
+    #seo-footer {
+      width: 100%; max-width: 420px;
+      padding: 4px 12px 6px;
+      font-size: 10px; color: #333;
+      text-align: center;
+      flex-shrink: 0;
+      pointer-events: none;
+      user-select: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="seo-header">
+    <h1>Split Ascent</h1> &mdash; Toggle between merged and split forms to pass through gates in this free HTML5 hyper-casual space game.
+  </div>
+  <div id="game-wrap">
+    <canvas id="c"></canvas>
+  </div>
+  <div id="seo-footer">
+    Free browser game &bull; No download &bull; Mobile &amp; Desktop &bull; Tap or Space to play
+  </div>
+<script>
+(function(){
+'use strict';
+
+// ─── SEEDED RNG ───────────────────────────────────────────────────────────────
+function mulberry32(seed){
+  return function(){
+    seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+const urlParams = new URLSearchParams(location.search);
+const seedParam = urlParams.get('seed');
+let rngSeed = seedParam ? parseInt(seedParam, 36) : (Math.random() * 0xFFFFFFFF | 0);
+let rng = mulberry32(rngSeed);
+
+// ─── CANVAS SETUP ─────────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const wrap = document.getElementById('game-wrap');
+
+const MAX_DPR = 2;
+let DPR = Math.min(window.devicePixelRatio || 1, MAX_DPR);
+let CW, CH; // logical pixels
+
+function resize(){
+  const rect = wrap.getBoundingClientRect();
+  CW = Math.min(rect.width, 420);
+  CH = Math.min(rect.height, 750);
+  canvas.width = CW * DPR;
+  canvas.height = CH * DPR;
+  canvas.style.width = CW + 'px';
+  canvas.style.height = CH + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+resize();
+window.addEventListener('resize', ()=>{ resize(); });
+
+// ─── CONSTANTS ────────────────────────────────────────────────────────────────
+const LANE_L = 0.27; // fraction of CW for left lane center
+const LANE_R = 0.73; // fraction of CW for right lane center
+const LANE_C = 0.50;
+const PLAYER_Y_FRAC = 0.72; // player sits here vertically
+const PLAYER_R = 13;       // radius
+const GATE_H = 18;
+const GATE_WALL = 12;       // wall thickness for gate sides
+const SINGLE_SLOT = 56;     // width of single slot
+const TWIN_SLOT = 46;       // width of each twin slot
+const BASE_SPEED = 90;      // px/s
+const MAX_SPEED = 340;
+const SPEED_RAMP = 8;       // px/s per second of play
+const MIN_GAP_TIME = 0.90;  // seconds between gates
+const MAX_GAP_TIME = 2.2;
+const PERFECT_WINDOW = 90;  // px distance to gate center when player toggles = perfect
+const STREAK_BONUS_AT = 5;
+
+// ─── STATE ────────────────────────────────────────────────────────────────────
+let state = 'start'; // 'start' | 'playing' | 'gameover'
+let gameOverAt = 0;
+let score = 0, bestScore = 0;
+let perfectCount = 0, orbCount = 0, streak = 0, streakBonus = 0;
+let split = false; // false=MERGED, true=SPLIT
+let hue = 200;
+let scrollSpeed = BASE_SPEED;
+let playTime = 0;
+let shakeAmt = 0, shakeDur = 0;
+let flashAmt = 0;
+
+// ─── PARTICLES ────────────────────────────────────────────────────────────────
+let particles = [];
+
+function spawnParticles(x, y, n, color, speed, life, size){
+  for(let i=0;i<n;i++){
+    const a = rng()*Math.PI*2;
+    const s = (0.4+rng()*0.6)*speed;
+    particles.push({ x, y, vx: Math.cos(a)*s, vy: Math.sin(a)*s, life, maxLife: life, color, size: size*(0.5+rng()*0.8) });
+  }
+}
+function spawnBurst(x, y, isSplit){
+  const col = isSplit ? '#ff44ff' : '#44ffff';
+  spawnParticles(x, y, 22, col, 160, 0.55, 6);
+}
+function spawnWhoosh(x, y){
+  spawnParticles(x, y, 8, '#ffffff', 80, 0.35, 4);
+}
+function spawnShatter(x, y){
+  spawnParticles(x, y, 35, '#ff6644', 220, 0.8, 7);
+  spawnParticles(x, y, 20, '#ffaa44', 140, 0.6, 5);
+}
+function spawnPerfect(x, y){
+  spawnParticles(x, y, 16, '#ffffaa', 100, 0.7, 5);
+}
+function spawnOrbCollect(x, y){
+  spawnParticles(x, y, 14, '#aaffaa', 120, 0.6, 5);
+}
+function updateParticles(dt){
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    p.x+=p.vx*dt; p.y+=p.vy*dt;
+    p.vy+=80*dt; // gravity
+    p.life-=dt;
+    if(p.life<=0) particles.splice(i,1);
+  }
+}
+function drawParticles(){
+  for(const p of particles){
+    const a = Math.max(0, p.life/p.maxLife);
+    ctx.globalAlpha = a;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size*a, 0, Math.PI*2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ─── FLOATERS (score text) ─────────────────────────────────────────────────────
+let floaters = [];
+function spawnFloater(x, y, text, color){
+  floaters.push({ x, y, text, color, life: 1.2, maxLife: 1.2 });
+}
+function updateFloaters(dt){
+  for(let i=floaters.length-1;i>=0;i--){
+    const f=floaters[i];
+    f.y -= 40*dt;
+    f.life -= dt;
+    if(f.life<=0) floaters.splice(i,1);
+  }
+}
+function drawFloaters(){
+  for(const f of floaters){
+    const a = Math.min(1, f.life/f.maxLife * 2);
+    ctx.globalAlpha = a;
+    ctx.fillStyle = f.color;
+    ctx.font = 'bold 18px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(f.text, f.x, f.y);
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ─── STARFIELD ────────────────────────────────────────────────────────────────
+let stars = [];
+function initStars(){
+  stars = [];
+  for(let i=0;i<90;i++){
+    stars.push({
+      x: rng()*420, y: rng()*750,
+      r: 0.5 + rng()*1.8,
+      speed: 0.15 + rng()*0.6,
+      a: 0.3+rng()*0.7
+    });
+  }
+}
+initStars();
+function updateStars(dt){
+  const sp = scrollSpeed;
+  for(const s of stars){
+    s.y += s.speed * sp * dt;
+    if(s.y > CH + 5) s.y = -5;
+  }
+}
+function drawStars(){
+  for(const s of stars){
+    ctx.globalAlpha = s.a;
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(s.x * (CW/420), s.y * (CH/750), s.r, 0, Math.PI*2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ─── GATES ────────────────────────────────────────────────────────────────────
+// type: 'single' | 'twin' | 'pulse'
+// pulseState: open/closed cycle for pulse gates
+// form: 'merged' | 'split' (required player form)
+let gates = [];
+let nextGateTimer = 0;
+let pendingCombo = null; // for offset combos
+
+function gateGapTime(){
+  const t = Math.max(MIN_GAP_TIME, MAX_GAP_TIME - playTime * 0.025);
+  return t * (0.7 + rng()*0.6);
+}
+
+function makeGate(y, type, form){
+  const pulseOpen = (rng() > 0.5);
+  const pulsePeriod = 1.1 + rng()*0.7;
+  return {
+    y, type, form,
+    passed: false, scored: false,
+    // pulse
+    pulseOpen, pulsePhase: rng()*Math.PI*2, pulsePeriod,
+    // orb slots (only in twin)
+    orbL: false, orbR: false, orbLCollected: false, orbRCollected: false
+  };
+}
+
+function spawnNextGate(){
+  const y = -GATE_H - 10;
+  let type, form;
+
+  // difficulty tiers
+  const tier = Math.min(4, Math.floor(playTime / 10));
+
+  if(tier === 0){
+    // only single and twin
+    type = rng() < 0.5 ? 'single' : 'twin';
+    form = type === 'single' ? 'merged' : 'split';
+  } else if(tier === 1){
+    const r = rng();
+    if(r < 0.45) { type='single'; form='merged'; }
+    else if(r < 0.9) { type='twin'; form='split'; }
+    else { type='pulse'; form = rng()<0.5?'merged':'split'; }
+  } else {
+    const r = rng();
+    if(r < 0.35) { type='single'; form='merged'; }
+    else if(r < 0.7) { type='twin'; form='split'; }
+    else { type='pulse'; form = rng()<0.5?'merged':'split'; }
+  }
+
+  const g = makeGate(y, type, form);
+
+  // add orbs to twin gates occasionally
+  if(type === 'twin' && tier >= 1 && rng() < 0.35){
+    if(rng() < 0.6) g.orbL = true;
+    if(rng() < 0.6) g.orbR = true;
+  }
+
+  gates.push(g);
+
+  // maybe queue a combo (second gate close behind)
+  if(tier >= 2 && rng() < 0.3 && !pendingCombo){
+    pendingCombo = {
+      type: type === 'single' ? 'twin' : 'single',
+      form: type === 'single' ? 'split' : 'merged',
+      delay: 0.30 + rng()*0.15
+    };
+  }
+}
+
+function updateGates(dt){
+  nextGateTimer -= dt;
+  if(pendingCombo){
+    pendingCombo.delay -= dt;
+    if(pendingCombo.delay <= 0){
+      const g = makeGate(-GATE_H - 10, pendingCombo.type, pendingCombo.form);
+      gates.push(g);
+      pendingCombo = null;
+      // don't reset nextGateTimer after combo
+    }
+  } else if(nextGateTimer <= 0){
+    spawnNextGate();
+    nextGateTimer = gateGapTime();
+  }
+  for(const g of gates){
+    g.y += scrollSpeed * dt;
+    // update pulse phase
+    if(g.type === 'pulse'){
+      g.pulsePhase += dt * (Math.PI*2) / g.pulsePeriod;
+      g.pulseOpen = Math.sin(g.pulsePhase) > 0;
+    }
+  }
+  // remove off-screen
+  for(let i=gates.length-1;i>=0;i--){
+    if(gates[i].y > CH + 60) gates.splice(i,1);
+  }
+}
+
+function isGateOpen(g){
+  if(g.type === 'pulse') return g.pulseOpen;
+  return true;
+}
+
+function getSlotRects(g){
+  // returns array of {x, w} slot openings
+  const cx = CW / 2;
+  if(g.type === 'single' || (g.type === 'pulse' && g.form === 'merged')){
+    return [{ x: cx - SINGLE_SLOT/2, w: SINGLE_SLOT }];
+  } else {
+    // twin
+    const lx = CW * LANE_L;
+    const rx = CW * LANE_R;
+    return [
+      { x: lx - TWIN_SLOT/2, w: TWIN_SLOT },
+      { x: rx - TWIN_SLOT/2, w: TWIN_SLOT }
+    ];
+  }
+}
+
+function drawGate(g){
+  const slots = getSlotRects(g);
+  const isMergedForm = (g.form === 'merged');
+  const isOpen = isGateOpen(g);
+
+  let baseColor;
+  if(g.type === 'pulse'){
+    baseColor = isOpen ? '#ffdd44' : '#664400';
+  } else if(isMergedForm){
+    baseColor = '#44ddff';
+  } else {
+    baseColor = '#ff44ff';
+  }
+
+  ctx.save();
+
+  // Draw wall segments (everything not a slot)
+  ctx.fillStyle = baseColor;
+  ctx.shadowColor = baseColor;
+  ctx.shadowBlur = 10;
+
+  const y = g.y;
+  const h = GATE_H;
+
+  if(!isOpen && g.type==='pulse'){
+    // closed pulse gate: full bar
+    ctx.fillRect(0, y - h/2, CW, h);
+  } else {
+    // build wall by drawing everything except slots
+    let regions = [{x:0, w:CW}];
+    for(const slot of slots){
+      const newRegions = [];
+      for(const r of regions){
+        // cut slot out of region
+        if(slot.x > r.x) newRegions.push({x:r.x, w: slot.x - r.x});
+        const slotEnd = slot.x + slot.w;
+        const rEnd = r.x + r.w;
+        if(slotEnd < rEnd) newRegions.push({x: slotEnd, w: rEnd - slotEnd});
+      }
+      regions = newRegions;
+    }
+    for(const r of regions){
+      ctx.fillRect(r.x, y - h/2, r.w, h);
+    }
+  }
+
+  // Draw orbs inside twin slots
+  if(g.type === 'twin'){
+    const lx = CW * LANE_L;
+    const rx = CW * LANE_R;
+    if(g.orbL && !g.orbLCollected){
+      ctx.shadowColor = '#aaffaa'; ctx.shadowBlur = 8;
+      ctx.fillStyle = '#aaffaa';
+      ctx.beginPath(); ctx.arc(lx, y, 6, 0, Math.PI*2); ctx.fill();
+    }
+    if(g.orbR && !g.orbRCollected){
+      ctx.shadowColor = '#aaffaa'; ctx.shadowBlur = 8;
+      ctx.fillStyle = '#aaffaa';
+      ctx.beginPath(); ctx.arc(rx, y, 6, 0, Math.PI*2); ctx.fill();
+    }
+  }
+
+  ctx.restore();
+}
+
+// ─── PLAYER ───────────────────────────────────────────────────────────────────
+let playerX = 0; // only relevant in merged mode; in split it's both lanes
+let playerToggleGlow = 0; // brief glow after toggle
+
+function getPlayerPositions(){
+  if(!split){
+    return [{ x: CW * LANE_C, y: CW > 0 ? CH * PLAYER_Y_FRAC : 0 }];
+  } else {
+    return [
+      { x: CW * LANE_L, y: CH * PLAYER_Y_FRAC },
+      { x: CW * LANE_R, y: CH * PLAYER_Y_FRAC }
+    ];
+  }
+}
+
+function drawPlayer(){
+  const positions = getPlayerPositions();
+  const baseHue = split ? 300 : 180; // magenta or cyan
+  const glowColor = split ? '#ff44ff' : '#44ffff';
+
+  ctx.save();
+  if(playerToggleGlow > 0){
+    ctx.shadowColor = glowColor;
+    ctx.shadowBlur = 20 * playerToggleGlow;
+  }
+
+  for(const p of positions){
+    // outer ring
+    const grad = ctx.createRadialGradient(p.x, p.y, 2, p.x, p.y, PLAYER_R);
+    grad.addColorStop(0, `hsl(${baseHue},100%,80%)`);
+    grad.addColorStop(0.6, `hsl(${baseHue},90%,55%)`);
+    grad.addColorStop(1, `hsla(${baseHue},80%,30%,0.3)`);
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, PLAYER_R, 0, Math.PI*2);
+    ctx.fill();
+
+    // core
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 4, 0, Math.PI*2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+// ─── COLLISION ────────────────────────────────────────────────────────────────
+function checkCollisions(){
+  const py = CH * PLAYER_Y_FRAC;
+  const positions = getPlayerPositions();
+
+  for(const g of gates){
+    if(g.passed) continue;
+    const gy = g.y;
+    // vertical overlap check
+    if(Math.abs(gy - py) > GATE_H/2 + PLAYER_R) continue;
+
+    const isOpen = isGateOpen(g);
+    if(!isOpen){
+      // closed pulse gate collision with any player pos
+      for(const p of positions){
+        if(Math.abs(gy - py) < GATE_H/2 + PLAYER_R - 2){
+          return true; // hit
+        }
+      }
+    }
+
+    // check each player circle passes through a valid slot
+    const slots = getSlotRects(g);
+    for(const p of positions){
+      // is this player in a valid slot?
+      let inSlot = false;
+      for(const slot of slots){
+        if(p.x - PLAYER_R + 4 >= slot.x && p.x + PLAYER_R - 4 <= slot.x + slot.w){
+          inSlot = true; break;
+        }
+      }
+      if(!inSlot){
+        return true; // collision
+      }
+    }
+
+    // also check form mismatch: player circles must match gate form
+    const gateNeedsSplit = (g.form === 'split');
+    if(gateNeedsSplit && !split) return true;
+    if(!gateNeedsSplit && split) return true;
+
+    // check orb collection
+    if(g.type === 'twin' && split){
+      const lx = CW * LANE_L;
+      const rx = CW * LANE_R;
+      if(g.orbL && !g.orbLCollected && Math.abs(positions[0].x - lx) < 20){
+        g.orbLCollected = true;
+        orbCount++; score++;
+        spawnOrbCollect(lx, py);
+        spawnFloater(lx, py - 20, '+1 ORB', '#aaffaa');
+      }
+      if(g.orbR && !g.orbRCollected && Math.abs(positions[1].x - rx) < 20){
+        g.orbRCollected = true;
+        orbCount++; score++;
+        spawnOrbCollect(rx, py);
+        spawnFloater(rx, py - 20, '+1 ORB', '#aaffaa');
+      }
+    }
+
+    // gate cleared
+    if(!g.scored && gy > py - PLAYER_R){
+      g.scored = true;
+      score++;
+      streak++;
+      // streak bonus
+      if(streak > 0 && streak % STREAK_BONUS_AT === 0){
+        streakBonus++;
+        score++;
+        spawnFloater(CW/2, py - 30, `STREAK x${streak/STREAK_BONUS_AT} +1`, '#ffcc44');
+      }
+      spawnWhoosh(CW/2, gy);
+    }
+
+    if(gy > py + PLAYER_R + 10) g.passed = true;
+  }
+  return false;
+}
+
+// ─── PERFECT TOGGLE ──────────────────────────────────────────────────────────
+function checkPerfectToggle(){
+  const py = CH * PLAYER_Y_FRAC;
+  for(const g of gates){
+    if(g.passed || g.scored) continue;
+    const dist = Math.abs(g.y - py);
+    if(dist < PERFECT_WINDOW && dist > 10){
+      perfectCount++;
+      score += 2;
+      const cx = CW / 2;
+      spawnFloater(cx, py - 40, 'PERFECT +2', '#ffffaa');
+      spawnPerfect(cx, py - 20);
+      // shimmer ring
+      particles.push({ x: cx, y: py, vx:0, vy:0, life:0.5, maxLife:0.5, color:'#ffffaa', size:40, ring:true });
+      return;
+    }
+  }
+}
+
+// ─── INPUT ────────────────────────────────────────────────────────────────────
+function handleInput(){
+  if(state === 'start'){
+    startGame(); return;
+  }
+  if(state === 'gameover'){
+    if(Date.now() - gameOverAt < 650) return;
+    restartGame(); return;
+  }
+  if(state === 'playing'){
+    checkPerfectToggle();
+    split = !split;
+    playerToggleGlow = 1;
+    // burst
+    const py = CH * PLAYER_Y_FRAC;
+    if(split){
+      spawnBurst(CW*LANE_L, py, true);
+      spawnBurst(CW*LANE_R, py, true);
+    } else {
+      spawnBurst(CW*LANE_C, py, false);
+    }
+  }
+}
+
+canvas.addEventListener('pointerdown', e=>{ e.preventDefault(); handleInput(); });
+window.addEventListener('keydown', e=>{
+  if(e.code==='Space'||e.code==='Enter') handleInput();
+});
+
+// ─── GAME FLOW ────────────────────────────────────────────────────────────────
+function startGame(){
+  state = 'playing';
+  score = 0; perfectCount = 0; orbCount = 0; streak = 0; streakBonus = 0;
+  split = false; playTime = 0; scrollSpeed = BASE_SPEED;
+  gates = []; particles = []; floaters = [];
+  nextGateTimer = 1.5;
+  pendingCombo = null;
+  shakeAmt = 0; shakeDur = 0; flashAmt = 0;
+  playerToggleGlow = 0;
+  hue = 200;
+  // rng reset for seeded runs
+  if(seedParam) rng = mulberry32(rngSeed);
+}
+
+function restartGame(){
+  rngSeed = seedParam ? parseInt(seedParam, 36) : (Math.random() * 0xFFFFFFFF | 0);
+  rng = mulberry32(rngSeed);
+  startGame();
+}
+
+function triggerGameOver(){
+  state = 'gameover';
+  gameOverAt = Date.now();
+  if(score > bestScore){
+    bestScore = score;
+    localStorage.setItem('splitAscent_best', bestScore);
+  }
+  const py = CH * PLAYER_Y_FRAC;
+  const positions = getPlayerPositions();
+  for(const p of positions) spawnShatter(p.x, py);
+  shakeAmt = 12; shakeDur = 0.5;
+  flashAmt = 1;
+}
+
+// ─── SHARE ────────────────────────────────────────────────────────────────────
+function shareScore(){
+  const url = `https://balinti.github.io/split-ascent/?seed=${rngSeed.toString(36)}`;
+  const text = `I scored ${score} in Split Ascent! Can you beat me? ${url}`;
+  if(navigator.share){
+    navigator.share({ title:'Split Ascent', text, url }).catch(()=>{});
+  } else {
+    navigator.clipboard.writeText(text).then(()=>{
+      shareBtn_flash = 1;
+    }).catch(()=>{});
+  }
+}
+let shareBtn = { x:0, y:0, w:0, h:0 };
+let shareBtn_flash = 0;
+
+// ─── HUD ──────────────────────────────────────────────────────────────────────
+function drawHUD(){
+  // score
+  ctx.save();
+  ctx.font = 'bold 28px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#fff';
+  ctx.shadowColor = '#fff'; ctx.shadowBlur = 4;
+  ctx.fillText(score, CW/2, 40);
+  ctx.shadowBlur = 0;
+
+  // mode indicator
+  const modeText = split ? 'SPLIT' : 'MERGED';
+  const modeColor = split ? '#ff88ff' : '#88ffff';
+  ctx.font = 'bold 13px system-ui';
+  ctx.fillStyle = modeColor;
+  ctx.shadowColor = modeColor; ctx.shadowBlur = 6;
+  ctx.fillText(modeText, CW/2, 58);
+  ctx.shadowBlur = 0;
+
+  // streak
+  if(streak > 0){
+    ctx.font = '12px system-ui';
+    ctx.fillStyle = streak >= STREAK_BONUS_AT ? '#ffcc44' : '#aaa';
+    ctx.textAlign = 'right';
+    ctx.fillText(`STREAK ${streak}`, CW - 12, 36);
+  }
+
+  ctx.restore();
+}
+
+// ─── START SCREEN ─────────────────────────────────────────────────────────────
+let titlePulse = 0;
+function drawStartScreen(dt){
+  titlePulse += dt;
+  // bg gradient
+  const bg = ctx.createLinearGradient(0, 0, 0, CH);
+  bg.addColorStop(0, '#04040f');
+  bg.addColorStop(1, '#0a0a2a');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, CW, CH);
+
+  drawStars();
+
+  ctx.save();
+  // title
+  ctx.textAlign = 'center';
+  const pScale = 1 + Math.sin(titlePulse*2)*0.015;
+  ctx.setTransform(DPR*pScale, 0, 0, DPR*pScale, CW*DPR*(1-pScale)/2, CH*DPR*(1-pScale)/2);
+
+  ctx.font = 'bold 42px system-ui';
+  ctx.fillStyle = `hsl(${180+Math.sin(titlePulse)*20},100%,70%)`;
+  ctx.shadowColor = '#44ffff'; ctx.shadowBlur = 20;
+  ctx.fillText('SPLIT', CW/2, CH/2 - 60);
+  ctx.font = 'bold 42px system-ui';
+  ctx.fillStyle = `hsl(${300+Math.sin(titlePulse+1)*20},100%,70%)`;
+  ctx.shadowColor = '#ff44ff'; ctx.shadowBlur = 20;
+  ctx.fillText('ASCENT', CW/2, CH/2 - 14);
+
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.shadowBlur = 0;
+
+  // subtitle
+  ctx.font = '15px system-ui';
+  ctx.fillStyle = '#888';
+  ctx.fillText('Toggle between MERGED & SPLIT', CW/2, CH/2 + 22);
+  ctx.fillText('to pass through matching gates', CW/2, CH/2 + 42);
+
+  // tap to start
+  const tapAlpha = 0.5 + Math.sin(titlePulse*3)*0.5;
+  ctx.globalAlpha = tapAlpha;
+  ctx.font = 'bold 20px system-ui';
+  ctx.fillStyle = '#fff';
+  ctx.fillText('TAP TO START', CW/2, CH/2 + 100);
+  ctx.globalAlpha = 1;
+
+  // legend
+  ctx.font = '12px system-ui';
+  ctx.fillStyle = '#44ddff'; ctx.textAlign = 'left';
+  ctx.fillText('CYAN gate = MERGED form', 20, CH - 90);
+  ctx.fillStyle = '#ff44ff';
+  ctx.fillText('MAGENTA gate = SPLIT form', 20, CH - 72);
+  ctx.fillStyle = '#ffdd44';
+  ctx.fillText('YELLOW gate = PULSE (timing!)', 20, CH - 54);
+  ctx.fillStyle = '#aaffaa';
+  ctx.fillText('GREEN orbs = collect in SPLIT (+1)', 20, CH - 36);
+
+  ctx.restore();
+}
+
+// ─── GAMEOVER SCREEN ──────────────────────────────────────────────────────────
+function drawGameOverScreen(dt){
+  titlePulse += dt;
+  ctx.save();
+  ctx.textAlign = 'center';
+
+  ctx.font = 'bold 34px system-ui';
+  ctx.fillStyle = '#ff6644';
+  ctx.shadowColor = '#ff4422'; ctx.shadowBlur = 16;
+  ctx.fillText('GAME OVER', CW/2, CH/2 - 120);
+  ctx.shadowBlur = 0;
+
+  ctx.font = 'bold 52px system-ui';
+  ctx.fillStyle = '#fff';
+  ctx.fillText(score, CW/2, CH/2 - 56);
+
+  ctx.font = '16px system-ui';
+  ctx.fillStyle = '#aaa';
+  ctx.fillText(`Best: ${bestScore}`, CW/2, CH/2 - 20);
+
+  // breakdown
+  ctx.font = '13px system-ui';
+  ctx.fillStyle = '#ffffaa';
+  ctx.fillText(`Perfect toggles: ${perfectCount}  |  Orbs: ${orbCount}  |  Streak bonuses: ${streakBonus}`, CW/2, CH/2 + 12);
+
+  // tap to retry
+  const tapAlpha = 0.5 + Math.sin(titlePulse*3)*0.5;
+  ctx.globalAlpha = tapAlpha;
+  ctx.font = 'bold 20px system-ui';
+  ctx.fillStyle = '#fff';
+  ctx.fillText('TAP TO RETRY', CW/2, CH/2 + 55);
+  ctx.globalAlpha = 1;
+
+  // share button
+  const sbw = 140, sbh = 38;
+  const sbx = CW/2 - sbw/2;
+  const sby = CH/2 + 90;
+  shareBtn = {x:sbx, y:sby, w:sbw, h:sbh};
+  const flashCol = shareBtn_flash > 0 ? '#aaffaa' : '#334466';
+  ctx.strokeStyle = '#5588aa'; ctx.lineWidth = 1.5;
+  ctx.fillStyle = flashCol;
+  ctx.beginPath();
+  ctx.roundRect(sbx, sby, sbw, sbh, 8);
+  ctx.fill(); ctx.stroke();
+  ctx.font = 'bold 14px system-ui';
+  ctx.fillStyle = '#cce'; ctx.globalAlpha = 1;
+  ctx.fillText(shareBtn_flash > 0 ? 'COPIED!' : 'SHARE / CHALLENGE', CW/2, sby + 24);
+
+  ctx.restore();
+}
+
+canvas.addEventListener('click', e=>{
+  if(state !== 'gameover') return;
+  const rect = canvas.getBoundingClientRect();
+  const mx = (e.clientX - rect.left);
+  const my = (e.clientY - rect.top);
+  if(mx>=shareBtn.x && mx<=shareBtn.x+shareBtn.w && my>=shareBtn.y && my<=shareBtn.y+shareBtn.h){
+    shareScore();
+  }
+});
+
+// ─── MAIN LOOP ────────────────────────────────────────────────────────────────
+let lastTime = 0;
+bestScore = parseInt(localStorage.getItem('splitAscent_best') || '0', 10);
+
+function loop(ts){
+  requestAnimationFrame(loop);
+  const dt = Math.min((ts - lastTime) / 1000, 0.05);
+  lastTime = ts;
+
+  if(shareBtn_flash > 0) shareBtn_flash = Math.max(0, shareBtn_flash - dt*1.5);
+
+  // screen shake
+  let sx = 0, sy = 0;
+  if(shakeDur > 0){
+    shakeDur -= dt;
+    const s = shakeAmt * (shakeDur / 0.5);
+    sx = (rng()-0.5)*s*2;
+    sy = (rng()-0.5)*s*2;
+    ctx.save();
+    ctx.translate(sx, sy);
+  }
+
+  // flash
+  if(flashAmt > 0) flashAmt = Math.max(0, flashAmt - dt*4);
+
+  // bg
+  const bg = ctx.createLinearGradient(0, 0, 0, CH);
+  bg.addColorStop(0, '#04040f');
+  bg.addColorStop(1, '#060618');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, CW, CH);
+
+  if(state === 'start'){
+    drawStartScreen(dt);
+    if(shakeDur > 0) ctx.restore();
+    return;
+  }
+
+  updateStars(dt);
+  drawStars();
+
+  if(state === 'playing'){
+    playTime += dt;
+    scrollSpeed = Math.min(MAX_SPEED, BASE_SPEED + playTime * SPEED_RAMP);
+    hue = (hue + dt * 20) % 360;
+    playerToggleGlow = Math.max(0, playerToggleGlow - dt*3);
+
+    updateGates(dt);
+    updateParticles(dt);
+    updateFloaters(dt);
+
+    // draw gates
+    for(const g of gates) drawGate(g);
+
+    // check collisions
+    if(checkCollisions()){
+      triggerGameOver();
+    }
+
+    drawPlayer();
+    drawParticles();
+    drawFloaters();
+    drawHUD();
+  } else {
+    // gameover
+    updateParticles(dt);
+    updateFloaters(dt);
+    for(const g of gates) drawGate(g);
+    drawParticles();
+    drawFloaters();
+    drawGameOverScreen(dt);
+  }
+
+  // flash overlay
+  if(flashAmt > 0){
+    ctx.fillStyle = `rgba(255,80,30,${flashAmt * 0.4})`;
+    ctx.fillRect(0, 0, CW, CH);
+  }
+
+  if(shakeDur > 0) ctx.restore();
+}
+
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

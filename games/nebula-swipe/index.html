@@ -1,0 +1,891 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Nebula Swipe - Free HTML5 Game</title>
+  <meta name="description" content="Play Nebula Swipe - Swipe to match nebula colors while collecting random powerups that change gameplay speed.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0b1020">
+
+  <link rel="canonical" href="https://balinti.github.io/nebula-swipe/">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Nebula Swipe - Prism Ring" />
+  <meta property="og:description" content="One tap rotates the prism ring. Match incoming comet colors. Miss once and explode. Endless high-score challenge." />
+  <meta property="og:url" content="https://balinti.github.io/nebula-swipe/" />
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Nebula Swipe - Prism Ring" />
+  <meta name="twitter:description" content="One-tap reflex color match. Beat my score." />
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    :root{
+      --bg0:#060814;
+      --bg1:#0b1020;
+      --ink:#eaf0ff;
+      --muted:rgba(234,240,255,.72);
+      --muted2:rgba(234,240,255,.55);
+      --card:rgba(255,255,255,.06);
+      --card2:rgba(255,255,255,.09);
+      --stroke:rgba(255,255,255,.12);
+    }
+    *{margin:0;padding:0;box-sizing:border-box;}
+    html,body{height:100%;background:radial-gradient(1200px 900px at 50% 20%,#101a3a 0%,var(--bg1) 45%,var(--bg0) 100%);color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial,"Apple Color Emoji","Segoe UI Emoji";}
+    body{display:flex;align-items:center;justify-content:center;flex-direction:column;padding:12px;}
+    #shell{
+      width:min(420px,100vw);
+      height:min(750px,100vh);
+      max-width:420px;
+      max-height:750px;
+      position:relative;
+      border-radius:18px;
+      background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.02));
+      box-shadow:0 18px 60px rgba(0,0,0,.55);
+      overflow:hidden;
+      border:1px solid rgba(255,255,255,.10);
+    }
+    canvas{
+      width:100%;
+      height:100%;
+      display:block;
+      touch-action:manipulation;
+      user-select:none;
+      -webkit-user-select:none;
+      -webkit-tap-highlight-color:transparent;
+    }
+    #below{
+      width:min(420px,100vw);
+      margin-top:10px;
+      color:var(--muted);
+      font-size:12.5px;
+      line-height:1.35;
+    }
+    details{
+      background:rgba(255,255,255,.04);
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:12px;
+      padding:10px 12px;
+    }
+    summary{cursor:pointer;color:var(--ink);font-weight:650;}
+    a{color:#b9d6ff}
+    .sr{position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden;}
+  </style>
+</head>
+<body>
+  <div>
+    <div id="shell" aria-label="Nebula Swipe game container">
+      <canvas id="c" aria-label="Nebula Swipe canvas game" role="img"></canvas>
+      <div class="sr">
+        Nebula Swipe: Prism Ring. Tap or press Space/Enter to rotate the ring. Match the incoming comet's head color with the wedge it hits. Miss once and explode.
+      </div>
+    </div>
+
+    <div id="below" aria-label="Game description and FAQ">
+      <details>
+        <summary>About Nebula Swipe (How to Play + FAQ)</summary>
+        <p><strong>Nebula Swipe: Prism Ring</strong> is a free, one-tap HTML5 reflex game. Tap/click (or press Space/Enter) to rotate a 3-color ring. Incoming comets fly toward the center &mdash; match the comet's <em>head color</em> to the wedge it hits. One mismatch ends the run.</p>
+        <p><strong>Controls:</strong> Tap/click = rotate 120&deg; clockwise. Space/Enter works too.</p>
+        <p><strong>Tip:</strong> Rotation is instant &mdash; tap a beat earlier than you think.</p>
+        <p><strong>Split Comets:</strong> After score 25, some comets have a deceptive body color. Only the head color matters!</p>
+        <p><strong>Privacy:</strong> Best score is stored locally in your browser via <code>localStorage</code>. No data is sent anywhere.</p>
+      </details>
+    </div>
+  </div>
+
+  <script>
+  (() => {
+    'use strict';
+
+    const canvas = document.getElementById('c');
+    const ctx = canvas.getContext('2d', { alpha: false });
+
+    /* ---- Utilities ---- */
+    const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+    const rand = (a, b) => a + Math.random() * (b - a);
+    const randi = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
+    const TAU = Math.PI * 2;
+    const hsl = (h, s, l, a) => a < 1 ? `hsla(${h},${s}%,${l}%,${a})` : `hsl(${h},${s}%,${l}%)`;
+
+    /* ---- Layout / DPI ---- */
+    let cw = 0, ch = 0, dpr = 1;
+    let CX = 0, CY = 0;
+
+    function resize() {
+      const shell = document.getElementById('shell');
+      const rect = shell.getBoundingClientRect();
+      cw = Math.floor(rect.width);
+      ch = Math.floor(rect.height);
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.floor(cw * dpr);
+      canvas.height = Math.floor(ch * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      CX = cw * 0.5;
+      CY = ch * 0.5;
+      const minDim = Math.min(cw, ch);
+      ring.radius = minDim * 0.16;
+      ring.baseThick = Math.max(14, ring.radius * 0.28);
+      ring.thick = ring.baseThick;
+      cometBaseR = Math.max(10, ring.radius * 0.18);
+      buildStars();
+      buildFog();
+    }
+
+    /* ---- Palette ---- */
+    const baseHues = [190, 315, 55]; // cyan, magenta, yellow
+
+    /* ---- Persistence ---- */
+    const HS_KEY = 'prismRingHighScore';
+    let best = Number(localStorage.getItem(HS_KEY) || 0);
+
+    /* ---- Game state ---- */
+    const game = {
+      state: 'start',
+      t: 0,
+      score: 0,
+      combo: 0,
+      newBest: false,
+      deathAt: -999,
+      overlayAlpha: 0,
+    };
+
+    /* ---- Ring ---- */
+    const STEP = TAU / 3;
+    const ring = {
+      radius: 60,
+      baseThick: 18,
+      thick: 18,
+      rot: -Math.PI / 2,
+      targetRot: -Math.PI / 2,
+      pulse: 0,
+      aura: 0,
+    };
+
+    /* ---- Arrays ---- */
+    let comets = [];
+    let particles = [];
+    let cometBaseR = 12;
+    let spawnTimer = 0;
+    let queuedSpawns = [];
+
+    /* ---- Screen shake ---- */
+    const shake = { t: 0, dur: 0, amp: 0 };
+
+    /* ---- Background layers ---- */
+    let stars = [];
+    let fog = [];
+
+    function buildStars() {
+      stars = [];
+      const count = Math.floor((cw * ch) / 5200);
+      for (let i = 0; i < count; i++) {
+        stars.push({
+          x: Math.random() * cw,
+          y: Math.random() * ch,
+          z: rand(0.4, 1.0),
+          r: rand(0.6, 1.6),
+          tw: rand(0, TAU),
+        });
+      }
+    }
+
+    function buildFog() {
+      fog = [];
+      for (let i = 0; i < 6; i++) {
+        fog.push({
+          x: rand(-cw * 0.2, cw * 1.2),
+          y: rand(-ch * 0.2, ch * 1.2),
+          r: rand(Math.min(cw, ch) * 0.18, Math.min(cw, ch) * 0.42),
+          a: rand(0.03, 0.07),
+          h: 230 + rand(-18, 18),
+          vx: rand(-6, 6),
+          vy: rand(-4, 4),
+        });
+      }
+    }
+
+    /* ---- Reset / game over ---- */
+    function resetRun() {
+      game.state = 'playing';
+      game.t = 0;
+      game.score = 0;
+      game.combo = 0;
+      game.newBest = false;
+      game.deathAt = -999;
+      game.overlayAlpha = 0;
+      comets = [];
+      particles = [];
+      spawnTimer = 0.6;
+      queuedSpawns = [];
+      ring.rot = -Math.PI / 2;
+      ring.targetRot = ring.rot;
+      ring.pulse = 0;
+      ring.aura = 0;
+      shake.t = 0; shake.dur = 0; shake.amp = 0;
+    }
+
+    function setGameOver() {
+      game.state = 'gameover';
+      game.deathAt = game.t;
+      triggerShake(14, 0.35);
+      emitExplosion(CX, CY, 90);
+      if (game.score > best) {
+        best = game.score;
+        localStorage.setItem(HS_KEY, String(best));
+        game.newBest = true;
+      }
+    }
+
+    function triggerShake(amp, dur) {
+      shake.t = 0;
+      shake.amp = amp;
+      shake.dur = dur;
+    }
+
+    /* ---- Spawn system ---- */
+    function spawnComet(opts) {
+      opts = opts || {};
+      const s = game.score;
+      const m = 30;
+      const edge = randi(0, 3);
+      let x, y;
+      if (edge === 0) { x = rand(0, cw); y = -m; }
+      else if (edge === 1) { x = rand(0, cw); y = ch + m; }
+      else if (edge === 2) { x = -m; y = rand(0, ch); }
+      else { x = cw + m; y = rand(0, ch); }
+
+      const dx = CX - x, dy = CY - y;
+      const len = Math.hypot(dx, dy) || 1;
+      const ux = dx / len, uy = dy / len;
+
+      let v = 220 + 6 * s + 18 * Math.log2(1 + s);
+      v = Math.min(v, 520);
+
+      const colorIndex = opts.colorIndex !== undefined ? opts.colorIndex : randi(0, 2);
+      const splitEnabled = s >= 25;
+      const isSplit = !!opts.isSplit || (splitEnabled && Math.random() < (s < 50 ? 0.25 : 0.30));
+
+      let feintIndex = null;
+      if (isSplit) {
+        feintIndex = randi(0, 2);
+        if (feintIndex === colorIndex) feintIndex = (feintIndex + 1) % 3;
+      }
+
+      comets.push({
+        x, y,
+        vx: ux * v,
+        vy: uy * v,
+        r: cometBaseR,
+        colorIndex,
+        feintIndex,
+        isSplit,
+        trail: [],
+        alive: true,
+        hit: false,
+      });
+    }
+
+    function spawnInterval() {
+      return clamp(0.95 - 0.010 * game.score, 0.34, 0.95);
+    }
+
+    function schedulePatterns() {
+      const s = game.score;
+      spawnComet();
+      if (s < 10) return;
+      if (s < 25) {
+        if (Math.random() < 0.20) queuedSpawns.push(0.18);
+        return;
+      }
+      if (s < 50) {
+        if (Math.random() < 0.22) queuedSpawns.push(0.18);
+        return;
+      }
+      if (Math.random() < 0.18) {
+        const k = randi(3, 5);
+        for (let i = 1; i < k; i++) queuedSpawns.push(i * 0.14);
+      } else if (Math.random() < 0.22) {
+        queuedSpawns.push(0.18);
+      }
+    }
+
+    /* ---- Particles ---- */
+    function emitHit(x, y, hue, combo) {
+      const N = 26 + (combo >= 10 ? 10 : 0);
+      for (let i = 0; i < N; i++) {
+        const a = rand(0, TAU);
+        const spd = rand(80, 260);
+        particles.push({
+          x, y,
+          vx: Math.cos(a) * spd,
+          vy: Math.sin(a) * spd,
+          life: 0, ttl: 0.45,
+          size: rand(1.4, 2.6),
+          hue, alpha: 1, add: true,
+        });
+      }
+    }
+
+    function emitExplosion(x, y, N) {
+      for (let i = 0; i < N; i++) {
+        const a = rand(0, TAU);
+        const spd = rand(120, 520);
+        particles.push({
+          x, y,
+          vx: Math.cos(a) * spd,
+          vy: Math.sin(a) * spd,
+          life: 0, ttl: 0.9,
+          size: rand(1.6, 3.6),
+          hue: rand(0, 360), alpha: 1, add: false,
+        });
+      }
+      for (let i = 0; i < 24; i++) {
+        const a = rand(0, TAU);
+        const spd = rand(80, 420);
+        particles.push({
+          x, y,
+          vx: Math.cos(a) * spd,
+          vy: Math.sin(a) * spd,
+          life: 0, ttl: 0.55,
+          size: rand(2.0, 4.8),
+          hue: 0, alpha: 1, add: false, white: true,
+        });
+      }
+    }
+
+    /* ---- Collision check ---- */
+    function getWedgeAtAngle(angle) {
+      let a = ((angle - ring.rot) % TAU + TAU) % TAU;
+      return Math.floor(a / STEP) % 3;
+    }
+
+    function checkCometHit(c) {
+      const dx = c.x - CX, dy = c.y - CY;
+      const dist = Math.hypot(dx, dy);
+      if (dist > ring.radius + ring.thick * 0.5 + c.r) return 'none';
+      if (dist < ring.radius - ring.thick * 0.5 - c.r) return 'passed'; // shouldn't happen often
+      // hitting the ring
+      const angle = Math.atan2(dy, dx);
+      const wedge = getWedgeAtAngle(angle);
+      if (wedge === c.colorIndex) return 'match';
+      return 'mismatch';
+    }
+
+    /* ---- Input ---- */
+    function action() {
+      if (game.state === 'start') {
+        resetRun();
+        return;
+      }
+      if (game.state === 'playing') {
+        ring.targetRot += STEP;
+        return;
+      }
+      if (game.state === 'gameover') {
+        if (game.t - game.deathAt < 0.4) return;
+        resetRun();
+      }
+    }
+
+    canvas.addEventListener('pointerdown', (e) => { e.preventDefault(); action(); });
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Space' || e.code === 'Enter') {
+        e.preventDefault();
+        action();
+      }
+    });
+
+    /* ---- Share ---- */
+    let shareBtn = { x: 0, y: 0, w: 0, h: 0, visible: false };
+
+    function tryShare() {
+      const text = `I scored ${game.score} in Nebula Swipe: Prism Ring! Can you beat me?`;
+      const url = location.href.split('?')[0];
+      if (navigator.share) {
+        navigator.share({ title: 'Nebula Swipe', text, url }).catch(() => {});
+      } else {
+        navigator.clipboard.writeText(text + ' ' + url).then(() => {
+          game.copied = true;
+          setTimeout(() => game.copied = false, 2000);
+        }).catch(() => {});
+      }
+    }
+
+    canvas.addEventListener('pointerup', (e) => {
+      if (game.state !== 'gameover' || !shareBtn.visible) return;
+      const rect = canvas.getBoundingClientRect();
+      const sx = (e.clientX - rect.left) * (cw / rect.width);
+      const sy = (e.clientY - rect.top) * (ch / rect.height);
+      if (sx >= shareBtn.x && sx <= shareBtn.x + shareBtn.w &&
+          sy >= shareBtn.y && sy <= shareBtn.y + shareBtn.h) {
+        e.stopPropagation();
+        tryShare();
+      }
+    });
+
+    /* ---- Main loop ---- */
+    let lastTime = 0;
+
+    function tick(now) {
+      requestAnimationFrame(tick);
+      if (!lastTime) { lastTime = now; return; }
+      let dt = (now - lastTime) / 1000;
+      lastTime = now;
+      dt = Math.min(dt, 0.05);
+
+      update(dt);
+      draw(dt);
+    }
+
+    function update(dt) {
+      game.t += dt;
+
+      // Fog parallax
+      for (const f of fog) {
+        f.x += f.vx * dt;
+        f.y += f.vy * dt;
+        if (f.x < -f.r * 2) f.x = cw + f.r;
+        if (f.x > cw + f.r * 2) f.x = -f.r;
+        if (f.y < -f.r * 2) f.y = ch + f.r;
+        if (f.y > ch + f.r * 2) f.y = -f.r;
+      }
+
+      // Shake
+      if (shake.dur > 0) {
+        shake.t += dt;
+        if (shake.t >= shake.dur) {
+          shake.dur = 0;
+          shake.t = 0;
+        }
+      }
+
+      // Ring rotation lerp
+      const rotDiff = ring.targetRot - ring.rot;
+      if (Math.abs(rotDiff) > 0.001) {
+        ring.rot += rotDiff * Math.min(1, 18 * dt);
+        if (Math.abs(ring.targetRot - ring.rot) < 0.002) ring.rot = ring.targetRot;
+      }
+
+      // Ring pulse decay
+      ring.pulse *= Math.pow(0.04, dt);
+      ring.aura *= Math.pow(0.06, dt);
+      ring.thick = ring.baseThick + ring.pulse * 6;
+
+      if (game.state !== 'playing') return;
+
+      // Spawn timer
+      spawnTimer -= dt;
+      if (spawnTimer <= 0) {
+        schedulePatterns();
+        spawnTimer = spawnInterval();
+      }
+
+      // Queued spawns
+      for (let i = queuedSpawns.length - 1; i >= 0; i--) {
+        queuedSpawns[i] -= dt;
+        if (queuedSpawns[i] <= 0) {
+          spawnComet();
+          queuedSpawns.splice(i, 1);
+        }
+      }
+
+      // Update comets
+      for (const c of comets) {
+        if (!c.alive) continue;
+        c.x += c.vx * dt;
+        c.y += c.vy * dt;
+
+        // Trail
+        c.trail.push({ x: c.x, y: c.y, t: game.t });
+        if (c.trail.length > 12) c.trail.shift();
+
+        // Check collision
+        const result = checkCometHit(c);
+        if (result === 'match') {
+          c.alive = false;
+          c.hit = true;
+          game.score++;
+          game.combo++;
+          ring.pulse = 1;
+          ring.aura = 1;
+          emitHit(c.x, c.y, baseHues[c.colorIndex], game.combo);
+
+          // Combo milestones
+          if (game.combo > 0 && game.combo % 10 === 0) {
+            triggerShake(6, 0.18);
+          }
+        } else if (result === 'mismatch') {
+          c.alive = false;
+          setGameOver();
+          return;
+        }
+
+        // Off-screen (past center) kill
+        const dist = Math.hypot(c.x - CX, c.y - CY);
+        if (dist < ring.radius * 0.3) {
+          c.alive = false;
+          setGameOver();
+          return;
+        }
+      }
+
+      // Cleanup dead comets
+      comets = comets.filter(c => c.alive);
+
+      // Update particles
+      for (const p of particles) {
+        p.life += dt;
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.vx *= Math.pow(0.3, dt);
+        p.vy *= Math.pow(0.3, dt);
+        p.alpha = clamp(1 - p.life / p.ttl, 0, 1);
+      }
+      particles = particles.filter(p => p.life < p.ttl);
+    }
+
+    /* ---- Drawing ---- */
+    function draw() {
+      ctx.save();
+
+      // Shake offset
+      let sx = 0, sy = 0;
+      if (shake.dur > 0) {
+        const prog = 1 - shake.t / shake.dur;
+        const amp = shake.amp * prog;
+        sx = (Math.random() - 0.5) * amp * 2;
+        sy = (Math.random() - 0.5) * amp * 2;
+      }
+      ctx.translate(sx, sy);
+
+      // Background
+      ctx.fillStyle = '#060814';
+      ctx.fillRect(-20, -20, cw + 40, ch + 40);
+
+      // Stars with parallax
+      for (const s of stars) {
+        const twinkle = 0.5 + 0.5 * Math.sin(game.t * 2.2 + s.tw);
+        const a = 0.3 + 0.5 * s.z * twinkle;
+        ctx.globalAlpha = a;
+        ctx.fillStyle = '#cde';
+        // Subtle parallax based on shake
+        const px = s.x + sx * s.z * 0.15;
+        const py = s.y + sy * s.z * 0.15;
+        ctx.beginPath();
+        ctx.arc(px, py, s.r, 0, TAU);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+
+      // Fog layers
+      for (const f of fog) {
+        const grad = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, f.r);
+        grad.addColorStop(0, hsl(f.h, 40, 30, f.a));
+        grad.addColorStop(1, hsl(f.h, 40, 10, 0));
+        ctx.fillStyle = grad;
+        ctx.fillRect(f.x - f.r, f.y - f.r, f.r * 2, f.r * 2);
+      }
+
+      // Ring aura glow
+      if (ring.aura > 0.01) {
+        const ag = ctx.createRadialGradient(CX, CY, ring.radius * 0.5, CX, CY, ring.radius * 2.5);
+        ag.addColorStop(0, hsl(190, 80, 60, ring.aura * 0.15));
+        ag.addColorStop(1, hsl(190, 80, 60, 0));
+        ctx.fillStyle = ag;
+        ctx.beginPath();
+        ctx.arc(CX, CY, ring.radius * 2.5, 0, TAU);
+        ctx.fill();
+      }
+
+      // Draw ring wedges
+      drawRing();
+
+      // Comets
+      for (const c of comets) {
+        if (!c.alive) continue;
+        drawComet(c);
+      }
+
+      // Particles
+      for (const p of particles) {
+        if (p.alpha <= 0) continue;
+        ctx.globalAlpha = p.alpha;
+        if (p.white) {
+          ctx.fillStyle = `rgba(255,255,255,${p.alpha})`;
+        } else if (p.add) {
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.fillStyle = hsl(p.hue, 90, 60, p.alpha);
+        } else {
+          ctx.fillStyle = hsl(p.hue, 80, 55, p.alpha);
+        }
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size * p.alpha, 0, TAU);
+        ctx.fill();
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 1;
+      }
+
+      // HUD
+      drawHUD();
+
+      // Overlays
+      if (game.state === 'start') drawStartScreen();
+      if (game.state === 'gameover') drawGameOverScreen();
+
+      ctx.restore();
+    }
+
+    function drawRing() {
+      const r = ring.radius;
+      const t = ring.thick;
+
+      for (let i = 0; i < 3; i++) {
+        const startAngle = ring.rot + i * STEP;
+        const endAngle = startAngle + STEP;
+        const hue = baseHues[i];
+
+        // Wedge fill
+        ctx.beginPath();
+        ctx.arc(CX, CY, r + t * 0.5, startAngle, endAngle);
+        ctx.arc(CX, CY, r - t * 0.5, endAngle, startAngle, true);
+        ctx.closePath();
+
+        const grad = ctx.createRadialGradient(CX, CY, r - t, CX, CY, r + t);
+        grad.addColorStop(0, hsl(hue, 80, 45, 0.85));
+        grad.addColorStop(0.5, hsl(hue, 90, 55, 0.95));
+        grad.addColorStop(1, hsl(hue, 70, 40, 0.80));
+        ctx.fillStyle = grad;
+        ctx.fill();
+
+        // Outline
+        ctx.strokeStyle = hsl(hue, 60, 70, 0.6);
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // Color label dot at center of wedge arc
+        const midAngle = startAngle + STEP * 0.5;
+        const dotX = CX + Math.cos(midAngle) * r;
+        const dotY = CY + Math.sin(midAngle) * r;
+        ctx.beginPath();
+        ctx.arc(dotX, dotY, 4, 0, TAU);
+        ctx.fillStyle = hsl(hue, 95, 80, 0.9);
+        ctx.fill();
+      }
+
+      // Ring pulse glow
+      if (ring.pulse > 0.02) {
+        ctx.beginPath();
+        ctx.arc(CX, CY, r + t, 0, TAU);
+        ctx.strokeStyle = hsl(190, 80, 70, ring.pulse * 0.5);
+        ctx.lineWidth = 3 + ring.pulse * 4;
+        ctx.stroke();
+      }
+    }
+
+    function drawComet(c) {
+      const hue = baseHues[c.colorIndex];
+
+      // Trail
+      for (let i = 0; i < c.trail.length; i++) {
+        const tp = c.trail[i];
+        const frac = i / c.trail.length;
+        const trailHue = c.isSplit ? baseHues[c.feintIndex] : hue;
+        ctx.globalAlpha = frac * 0.4;
+        ctx.fillStyle = hsl(trailHue, 80, 55, 1);
+        ctx.beginPath();
+        ctx.arc(tp.x, tp.y, c.r * frac * 0.7, 0, TAU);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+
+      // Body (feint color for split comets)
+      if (c.isSplit) {
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, c.r * 1.1, 0, TAU);
+        ctx.fillStyle = hsl(baseHues[c.feintIndex], 70, 50, 0.5);
+        ctx.fill();
+      }
+
+      // Head glow
+      const glow = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, c.r * 2.5);
+      glow.addColorStop(0, hsl(hue, 90, 70, 0.4));
+      glow.addColorStop(1, hsl(hue, 90, 50, 0));
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, c.r * 2.5, 0, TAU);
+      ctx.fill();
+
+      // Head core
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, c.r, 0, TAU);
+      ctx.fillStyle = hsl(hue, 90, 65, 0.95);
+      ctx.fill();
+      ctx.strokeStyle = hsl(hue, 70, 80, 0.8);
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // Bright center
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, c.r * 0.4, 0, TAU);
+      ctx.fillStyle = hsl(hue, 60, 90, 0.9);
+      ctx.fill();
+    }
+
+    function drawHUD() {
+      if (game.state !== 'playing') return;
+
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+
+      // Score
+      ctx.font = 'bold 38px ui-sans-serif, system-ui, sans-serif';
+      ctx.fillStyle = 'rgba(255,255,255,0.95)';
+      ctx.fillText(game.score, CX, 28);
+
+      // Best
+      ctx.font = '13px ui-sans-serif, system-ui, sans-serif';
+      ctx.fillStyle = 'rgba(255,255,255,0.45)';
+      ctx.fillText('BEST ' + best, CX, 70);
+
+      // Combo
+      if (game.combo >= 3) {
+        ctx.font = 'bold 16px ui-sans-serif, system-ui, sans-serif';
+        const comboAlpha = Math.min(1, 0.5 + game.combo * 0.05);
+        const comboHue = (game.combo * 12) % 360;
+        ctx.fillStyle = hsl(comboHue, 80, 70, comboAlpha);
+        ctx.fillText(game.combo + 'x COMBO', CX, 90);
+      }
+    }
+
+    function drawStartScreen() {
+      // Dim overlay
+      ctx.fillStyle = 'rgba(6,8,20,0.55)';
+      ctx.fillRect(0, 0, cw, ch);
+
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      // Title
+      ctx.font = 'bold 32px ui-sans-serif, system-ui, sans-serif';
+      ctx.fillStyle = '#eaf0ff';
+      ctx.fillText('NEBULA SWIPE', CX, CY - 70);
+
+      ctx.font = '16px ui-sans-serif, system-ui, sans-serif';
+      ctx.fillStyle = hsl(190, 70, 70, 0.8);
+      ctx.fillText('Prism Ring', CX, CY - 38);
+
+      // Instructions
+      ctx.font = '14px ui-sans-serif, system-ui, sans-serif';
+      ctx.fillStyle = 'rgba(255,255,255,0.55)';
+      ctx.fillText('Tap to rotate the ring 120\u00B0', CX, CY + 10);
+      ctx.fillText('Match the comet\'s color to the wedge', CX, CY + 32);
+
+      // Tap to start - pulsing
+      const pulse = 0.6 + 0.4 * Math.sin(game.t * 3);
+      ctx.font = 'bold 20px ui-sans-serif, system-ui, sans-serif';
+      ctx.fillStyle = `rgba(255,255,255,${pulse})`;
+      ctx.fillText('TAP TO START', CX, CY + 90);
+
+      if (best > 0) {
+        ctx.font = '13px ui-sans-serif, system-ui, sans-serif';
+        ctx.fillStyle = 'rgba(255,255,255,0.4)';
+        ctx.fillText('Best: ' + best, CX, CY + 120);
+      }
+    }
+
+    function drawGameOverScreen() {
+      const elapsed = game.t - game.deathAt;
+      const fadeIn = clamp(elapsed / 0.5, 0, 1);
+
+      ctx.fillStyle = `rgba(6,8,20,${0.65 * fadeIn})`;
+      ctx.fillRect(0, 0, cw, ch);
+
+      if (fadeIn < 0.15) return;
+
+      ctx.globalAlpha = fadeIn;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      // Game Over
+      ctx.font = 'bold 30px ui-sans-serif, system-ui, sans-serif';
+      ctx.fillStyle = '#ff6b6b';
+      ctx.fillText('GAME OVER', CX, CY - 80);
+
+      // Score
+      ctx.font = 'bold 52px ui-sans-serif, system-ui, sans-serif';
+      ctx.fillStyle = '#eaf0ff';
+      ctx.fillText(game.score, CX, CY - 28);
+
+      ctx.font = '14px ui-sans-serif, system-ui, sans-serif';
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.fillText('SCORE', CX, CY + 8);
+
+      // Best
+      if (game.newBest) {
+        ctx.font = 'bold 16px ui-sans-serif, system-ui, sans-serif';
+        ctx.fillStyle = hsl(55, 90, 65, 1);
+        ctx.fillText('\u2605 NEW BEST! \u2605', CX, CY + 38);
+      } else {
+        ctx.font = '14px ui-sans-serif, system-ui, sans-serif';
+        ctx.fillStyle = 'rgba(255,255,255,0.45)';
+        ctx.fillText('Best: ' + best, CX, CY + 38);
+      }
+
+      // Share button
+      if (elapsed > 0.8) {
+        const btnW = 140, btnH = 38;
+        const btnX = CX - btnW / 2;
+        const btnY = CY + 65;
+        shareBtn = { x: btnX, y: btnY, w: btnW, h: btnH, visible: true };
+
+        ctx.fillStyle = 'rgba(255,255,255,0.1)';
+        ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+        ctx.lineWidth = 1.5;
+        roundRect(ctx, btnX, btnY, btnW, btnH, 10);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.font = 'bold 14px ui-sans-serif, system-ui, sans-serif';
+        ctx.fillStyle = '#eaf0ff';
+        ctx.fillText(game.copied ? 'Copied!' : '\u{1F4E4} Share Score', CX, btnY + btnH / 2);
+      } else {
+        shareBtn.visible = false;
+      }
+
+      // Tap to retry - pulsing
+      if (elapsed > 0.4) {
+        const pulse = 0.5 + 0.5 * Math.sin(game.t * 3);
+        ctx.font = '18px ui-sans-serif, system-ui, sans-serif';
+        ctx.fillStyle = `rgba(255,255,255,${pulse * fadeIn})`;
+        ctx.fillText('TAP TO RETRY', CX, CY + 130);
+      }
+
+      ctx.globalAlpha = 1;
+    }
+
+    function roundRect(c, x, y, w, h, r) {
+      c.beginPath();
+      c.moveTo(x + r, y);
+      c.lineTo(x + w - r, y);
+      c.quadraticCurveTo(x + w, y, x + w, y + r);
+      c.lineTo(x + w, y + h - r);
+      c.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      c.lineTo(x + r, y + h);
+      c.quadraticCurveTo(x, y + h, x, y + h - r);
+      c.lineTo(x, y + r);
+      c.quadraticCurveTo(x, y, x + r, y);
+      c.closePath();
+    }
+
+    /* ---- Init ---- */
+    window.addEventListener('resize', resize);
+    resize();
+    requestAnimationFrame(tick);
+  })();
+  </script>
+</body>
+</html>

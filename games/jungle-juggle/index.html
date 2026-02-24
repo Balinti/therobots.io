@@ -1,0 +1,1076 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Jungle Juggle - Free HTML5 Game</title>
+<meta name="description" content="Play Jungle Juggle - Balance on a narrow beam while catching random powerups to survive longer.">
+<meta name="theme-color" content="#1a2f1a">
+<link rel="canonical" href="https://balinti.github.io/jungle-juggle/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Jungle Juggle - Free HTML5 Game">
+<meta property="og:description" content="Play Jungle Juggle - Balance on a narrow beam while catching random powerups to survive longer.">
+<meta property="og:url" content="https://balinti.github.io/jungle-juggle/">
+<meta property="og:image" content="https://balinti.github.io/jungle-juggle/og-1200x630.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Jungle Juggle - Free HTML5 Game">
+<meta name="twitter:description" content="Play Jungle Juggle - Balance on a narrow beam while catching random powerups to survive longer.">
+<meta name="twitter:image" content="https://balinti.github.io/jungle-juggle/og-1200x630.png">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{width:100%;height:100%;overflow:hidden;background:#0a1a0a;font-family:'Segoe UI',system-ui,sans-serif;touch-action:none;user-select:none;-webkit-user-select:none;}
+#wrap{position:relative;width:100%;max-width:420px;height:100vh;height:100dvh;margin:0 auto;overflow:hidden;background:linear-gradient(180deg,#0d1f0d 0%,#1a2f1a 40%,#0a1a0a 100%);}
+canvas{display:block;width:100%;height:100%;}
+#seo-text{position:absolute;bottom:8px;left:8px;right:8px;font-size:10px;color:rgba(255,255,255,0.18);line-height:1.4;pointer-events:none;z-index:1;text-align:center;}
+#mute-btn{position:absolute;top:10px;right:10px;width:36px;height:36px;background:rgba(0,0,0,0.45);border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;font-size:16px;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center;line-height:1;}
+</style>
+</head>
+<body>
+<div id="wrap">
+<canvas id="c"></canvas>
+<button id="mute-btn" aria-label="Toggle sound">&#x1f50a;</button>
+<div id="seo-text">Jungle Juggle: Vine Swap is a free hyper-casual HTML5 game. Run along a narrow beam, swap between two overhead vines, dodge hazards, collect coins and powerups. How far can you go? Play now in your browser - no download required.</div>
+</div>
+<script>
+(function(){
+"use strict";
+
+/* ── Constants ── */
+const LS_KEY = "jungle_juggle_hs_v2";
+const W = 420, H = 750;
+const BEAM_Y = H * 0.72;
+const RUNNER_SIZE = 18;
+const VINE_TOP = 60;
+const VINE_ANCHOR_LEFT = W * 0.3;
+const VINE_ANCHOR_RIGHT = W * 0.7;
+const VINE_LEN = BEAM_Y - VINE_TOP - 60;
+const GRAVITY = 0.0012;
+const SWAP_IMPULSE = 0.045;
+const SPRING_K = 0.003;
+const SPRING_DAMP = 0.96;
+const BASE_SPEED = 2.2;
+const MAX_SPEED = 6.5;
+const SEG_W_MIN = 90;
+const SEG_W_MAX = 160;
+const GAP_W_MIN = 40;
+const GAP_W_MAX = 100;
+const COIN_R = 8;
+const HAZARD_R = 10;
+const NEAR_MISS_DIST = 12;
+const MONKEY_DURATION = 60;
+const MONKEY_TELEGRAPH = 40;
+
+/* ── Canvas setup ── */
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+let dpr = 1;
+function resize(){
+  const wrap = document.getElementById("wrap");
+  const rect = wrap.getBoundingClientRect();
+  dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.round(rect.width * dpr);
+  canvas.height = Math.round(rect.height * dpr);
+  canvas.style.width = rect.width + "px";
+  canvas.style.height = rect.height + "px";
+}
+window.addEventListener("resize", resize);
+resize();
+
+/* ── Audio ── */
+let audioCtx = null;
+let muted = false;
+const muteBtn = document.getElementById("mute-btn");
+muteBtn.addEventListener("click", function(e){
+  e.stopPropagation();
+  muted = !muted;
+  muteBtn.textContent = muted ? "\u{1f507}" : "\u{1f50a}";
+});
+function ensureAudio(){
+  if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if(audioCtx.state === "suspended") audioCtx.resume();
+}
+function playTone(freq, dur, vol, type){
+  if(muted || !audioCtx) return;
+  try{
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = type || "square";
+    o.frequency.value = freq;
+    g.gain.setValueAtTime((vol || 0.08), audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + (dur || 0.1));
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(); o.stop(audioCtx.currentTime + (dur || 0.1));
+  }catch(e){}
+}
+
+/* ── State ── */
+const ST = {START:0, PLAYING:1, GAMEOVER:2};
+let state = ST.START;
+let highScore = parseInt(localStorage.getItem(LS_KEY)) || 0;
+
+/* ── Game state ── */
+let camera, speed, score, combo, vineSide, vineAngle, vineVel;
+let runnerX, runnerY, alive;
+let segments, tokens, hazards, particles;
+let segGenX, sectionCount, hue;
+let shakeX, shakeY, shakeDur;
+let monkeyActive, monkeySide, monkeyTimer, monkeyTelegraphTimer;
+let nearMissFlash, milestoneText, milestoneTimer;
+let dt, lastTime, paused;
+let streakLines;
+let difficulty;
+
+function initGame(){
+  camera = 0;
+  speed = BASE_SPEED;
+  score = 0;
+  combo = 1;
+  vineSide = 0; // 0=left, 1=right
+  vineAngle = 0;
+  vineVel = 0;
+  runnerX = W / 2;
+  runnerY = BEAM_Y - RUNNER_SIZE;
+  alive = true;
+  segments = [];
+  tokens = [];
+  hazards = [];
+  particles = [];
+  streakLines = [];
+  segGenX = 0;
+  sectionCount = 0;
+  hue = 90;
+  shakeX = 0; shakeY = 0; shakeDur = 0;
+  monkeyActive = false; monkeySide = 0; monkeyTimer = 0; monkeyTelegraphTimer = 0;
+  nearMissFlash = 0;
+  milestoneText = ""; milestoneTimer = 0;
+  difficulty = 0;
+  generateInitialSegments();
+}
+
+/* ── Segment generation ── */
+function getDifficulty(){
+  return Math.min(sectionCount / 80, 1);
+}
+
+function generateInitialSegments(){
+  // Start with a wide platform
+  segments.push({x: -50, w: W + 100, hasGap: false});
+  segGenX = W + 50;
+  for(let i = 0; i < 12; i++) generateSegment();
+}
+
+function generateSegment(){
+  const d = getDifficulty();
+  // Gap
+  const gapChance = 0.15 + d * 0.35;
+  if(Math.random() < gapChance && sectionCount > 2){
+    const gw = GAP_W_MIN + Math.random() * (GAP_W_MAX - GAP_W_MIN) * (0.5 + d * 0.5);
+    segments.push({x: segGenX, w: gw, hasGap: true});
+    segGenX += gw;
+  }
+  // Solid segment
+  const sw = SEG_W_MAX - (SEG_W_MAX - SEG_W_MIN) * d * 0.5;
+  const segW = SEG_W_MIN + Math.random() * (sw - SEG_W_MIN);
+  const beamNarrow = 1 - d * 0.25; // beam narrows with difficulty
+  segments.push({x: segGenX, w: segW, hasGap: false, beamScale: beamNarrow});
+
+  // Place tokens on solid segments
+  const tokenCount = Math.random() < 0.6 ? Math.floor(1 + Math.random() * 3) : 0;
+  for(let i = 0; i < tokenCount; i++){
+    const tx = segGenX + 15 + Math.random() * (segW - 30);
+    // Readable pattern: safe side = current common side, risky = opposite
+    const safeSide = Math.random() < 0.5 ? 0 : 1;
+    const isGreedy = Math.random() < 0.3;
+    const baseX = safeSide === 0 ? W * 0.35 : W * 0.65;
+    const offsetX = isGreedy ? (safeSide === 0 ? 60 : -60) : (Math.random() - 0.5) * 30;
+    tokens.push({
+      x: tx, y: BEAM_Y - 30 - Math.random() * 40,
+      r: COIN_R, value: isGreedy ? 3 : 1,
+      collected: false, worldX: tx
+    });
+  }
+
+  // Hazards
+  if(sectionCount > 5 && Math.random() < 0.15 + d * 0.3){
+    const hx = segGenX + 20 + Math.random() * (segW - 40);
+    hazards.push({
+      x: hx, y: BEAM_Y - 25,
+      r: HAZARD_R, amp: 15 + d * 25, phase: Math.random() * Math.PI * 2,
+      baseY: BEAM_Y - 25, worldX: hx
+    });
+  }
+
+  segGenX += segW;
+  sectionCount++;
+
+  // Milestone
+  if(sectionCount > 0 && sectionCount % 10 === 0){
+    milestoneText = sectionCount + " SECTIONS!";
+    milestoneTimer = 90;
+    triggerShake(3, 3, 15);
+  }
+
+  // Monkey mischief
+  if(sectionCount > 8 && Math.random() < 0.08 + d * 0.12 && !monkeyActive){
+    monkeyTelegraphTimer = MONKEY_TELEGRAPH;
+    monkeySide = Math.random() < 0.5 ? 0 : 1;
+  }
+}
+
+/* ── Vine physics ── */
+function getVineAnchor(){
+  return vineSide === 0 ? VINE_ANCHOR_LEFT : VINE_ANCHOR_RIGHT;
+}
+
+function updateVine(dt){
+  const anchor = getVineAnchor();
+  const targetAngle = 0;
+  vineVel += -SPRING_K * vineAngle;
+  vineVel *= SPRING_DAMP;
+  vineAngle += vineVel;
+
+  const endX = anchor + Math.sin(vineAngle) * VINE_LEN;
+  const endY = VINE_TOP + Math.cos(vineAngle) * VINE_LEN;
+
+  runnerX += (endX - runnerX) * 0.15;
+  runnerY = BEAM_Y - RUNNER_SIZE;
+}
+
+function swapVine(){
+  if(monkeyActive){
+    const targetSide = 1 - vineSide;
+    if(targetSide === monkeySide) return; // blocked
+  }
+  vineSide = 1 - vineSide;
+  vineVel = (vineSide === 0 ? -1 : 1) * SWAP_IMPULSE;
+  triggerShake(2, 1, 6);
+  playTone(600, 0.06, 0.06, "sine");
+  // Swap particles
+  for(let i = 0; i < 6; i++){
+    particles.push(createParticle(runnerX, runnerY, "spark"));
+  }
+}
+
+/* ── Particles ── */
+function createParticle(x, y, type){
+  const ang = Math.random() * Math.PI * 2;
+  const spd = 1 + Math.random() * 3;
+  const colors = {
+    leaf: `hsl(${80 + Math.random()*60}, 70%, ${40+Math.random()*30}%)`,
+    dust: `hsla(40, 30%, 70%, 0.7)`,
+    spark: `hsl(${hue + Math.random()*40}, 90%, 70%)`,
+    death: `hsl(0, 80%, ${50+Math.random()*30}%)`
+  };
+  return {
+    x: x, y: y,
+    vx: Math.cos(ang) * spd * (type === "death" ? 2 : 1),
+    vy: Math.sin(ang) * spd * (type === "death" ? 2.5 : 1) - (type === "leaf" ? 2 : 0),
+    life: 1,
+    decay: 0.015 + Math.random() * 0.02,
+    size: type === "death" ? 3 + Math.random()*4 : 2 + Math.random() * 3,
+    color: colors[type] || colors.spark,
+    type: type
+  };
+}
+
+/* ── Screen shake ── */
+function triggerShake(sx, sy, dur){
+  shakeX = sx; shakeY = sy; shakeDur = dur;
+}
+
+/* ── Input ── */
+function handleInput(){
+  ensureAudio();
+  if(state === ST.START){
+    state = ST.PLAYING;
+    initGame();
+  } else if(state === ST.PLAYING){
+    swapVine();
+  } else if(state === ST.GAMEOVER){
+    state = ST.START;
+  }
+}
+
+canvas.addEventListener("pointerdown", function(e){
+  e.preventDefault();
+  // Ignore if clicking mute button area
+  const rect = canvas.getBoundingClientRect();
+  const cx = (e.clientX - rect.left) / rect.width * W;
+  const cy = (e.clientY - rect.top) / rect.height * H;
+  if(cx > W - 50 && cy < 50) return;
+  handleInput();
+});
+document.addEventListener("keydown", function(e){
+  if(e.code === "Space" || e.code === "Enter"){
+    e.preventDefault();
+    handleInput();
+  }
+});
+
+/* ── Visibility ── */
+document.addEventListener("visibilitychange", function(){
+  if(document.hidden) paused = true;
+  else { paused = false; lastTime = performance.now(); }
+});
+
+/* ── Update ── */
+function update(dtMs){
+  if(state !== ST.PLAYING || !alive) return;
+
+  const d = getDifficulty();
+  difficulty = d;
+  speed = BASE_SPEED + (MAX_SPEED - BASE_SPEED) * d;
+  hue = (hue + 0.3) % 360;
+
+  camera += speed;
+
+  // Vine physics
+  updateVine(dtMs);
+
+  // Monkey mischief
+  if(monkeyTelegraphTimer > 0){
+    monkeyTelegraphTimer--;
+    if(monkeyTelegraphTimer <= 0){
+      monkeyActive = true;
+      monkeyTimer = MONKEY_DURATION;
+    }
+  }
+  if(monkeyActive){
+    monkeyTimer--;
+    if(monkeyTimer <= 0) monkeyActive = false;
+  }
+
+  // Milestone timer
+  if(milestoneTimer > 0) milestoneTimer--;
+
+  // Near miss flash
+  if(nearMissFlash > 0) nearMissFlash--;
+
+  // Generate segments ahead
+  while(segGenX < camera + W + 200) generateSegment();
+
+  // Trim old segments
+  segments = segments.filter(s => s.x + s.w > camera - 100);
+  tokens = tokens.filter(t => !t.collected && t.worldX > camera - 100);
+  hazards = hazards.filter(h => h.worldX > camera - 100);
+
+  // Runner screen position
+  const screenRunnerX = runnerX;
+  const screenRunnerY = runnerY;
+  const worldRunnerX = camera + screenRunnerX;
+
+  // Check beam collision
+  let onBeam = false;
+  let beamEdgeDist = 999;
+  for(let i = 0; i < segments.length; i++){
+    const s = segments[i];
+    if(s.hasGap) continue;
+    const sx = s.x - camera;
+    const sw = s.w;
+    const bScale = s.beamScale || 1;
+    const beamW = 80 * bScale;
+    const beamCenterX = sx + sw / 2;
+    const beamLeft = W / 2 - beamW / 2;
+    const beamRight = W / 2 + beamW / 2;
+
+    if(worldRunnerX >= s.x && worldRunnerX <= s.x + s.w){
+      // Check if runner is within beam width
+      if(screenRunnerX >= beamLeft && screenRunnerX <= beamRight){
+        onBeam = true;
+        const distL = screenRunnerX - beamLeft;
+        const distR = beamRight - screenRunnerX;
+        beamEdgeDist = Math.min(distL, distR);
+      }
+      break;
+    }
+  }
+
+  // Check if over gap
+  let overGap = true;
+  for(let i = 0; i < segments.length; i++){
+    const s = segments[i];
+    if(s.hasGap) continue;
+    if(worldRunnerX >= s.x && worldRunnerX <= s.x + s.w){
+      overGap = false;
+      break;
+    }
+  }
+
+  if(overGap || !onBeam){
+    die();
+    return;
+  }
+
+  // Near-miss bonus
+  if(beamEdgeDist < NEAR_MISS_DIST && beamEdgeDist > 3){
+    nearMissFlash = 15;
+    score += 2 * combo;
+    for(let i = 0; i < 4; i++) particles.push(createParticle(screenRunnerX, screenRunnerY, "spark"));
+    playTone(880, 0.04, 0.04, "sine");
+  }
+
+  // Token collection
+  for(let i = 0; i < tokens.length; i++){
+    const t = tokens[i];
+    if(t.collected) continue;
+    const tx = t.worldX - camera;
+    const ty = t.y;
+    const dx = tx - screenRunnerX;
+    const dy = ty - screenRunnerY;
+    if(dx * dx + dy * dy < (RUNNER_SIZE + t.r) * (RUNNER_SIZE + t.r)){
+      t.collected = true;
+      score += t.value * combo;
+      combo = Math.min(combo + 1, 10);
+      for(let j = 0; j < 8; j++) particles.push(createParticle(tx, ty, "leaf"));
+      playTone(520 + combo * 40, 0.08, 0.06, "sine");
+      triggerShake(1, 1, 5);
+    }
+  }
+
+  // Hazard collision
+  for(let i = 0; i < hazards.length; i++){
+    const h = hazards[i];
+    h.y = h.baseY + Math.sin(h.phase + performance.now() * 0.003) * h.amp;
+    const hx = h.worldX - camera;
+    const dx = hx - screenRunnerX;
+    const dy = h.y - screenRunnerY;
+    if(dx * dx + dy * dy < (RUNNER_SIZE + h.r) * (RUNNER_SIZE + h.r)){
+      die();
+      return;
+    }
+  }
+
+  // Streak lines
+  if(speed > 4){
+    streakLines.push({x: screenRunnerX - 5 + Math.random()*10, y: screenRunnerY, life: 1});
+  }
+  streakLines = streakLines.filter(s => { s.life -= 0.05; s.y += 1; return s.life > 0; });
+
+  // Dust puffs periodically
+  if(Math.random() < 0.08){
+    particles.push(createParticle(screenRunnerX + (Math.random()-0.5)*10, BEAM_Y, "dust"));
+  }
+
+  // Update particles
+  for(let i = particles.length - 1; i >= 0; i--){
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 0.05;
+    p.life -= p.decay;
+    if(p.life <= 0) particles.splice(i, 1);
+  }
+
+  // Screen shake decay
+  if(shakeDur > 0){
+    shakeDur--;
+    shakeX *= 0.9;
+    shakeY *= 0.9;
+  } else {
+    shakeX = 0; shakeY = 0;
+  }
+
+  // Combo decay (reset if no pickup in a while - simplified: decay every 120 frames)
+  if(Math.random() < 0.008) combo = Math.max(1, combo - 1);
+}
+
+function die(){
+  alive = false;
+  state = ST.GAMEOVER;
+  if(score > highScore){
+    highScore = score;
+    localStorage.setItem(LS_KEY, highScore.toString());
+  }
+  triggerShake(12, 12, 30);
+  playTone(150, 0.3, 0.1, "sawtooth");
+  for(let i = 0; i < 30; i++) particles.push(createParticle(runnerX, runnerY, "death"));
+}
+
+/* ── Render ── */
+function render(){
+  const cw = canvas.width;
+  const ch = canvas.height;
+  const scaleX = cw / W;
+  const scaleY = ch / H;
+
+  ctx.setTransform(scaleX, 0, 0, scaleY, 0, 0);
+
+  // Apply shake
+  const sx = shakeDur > 0 ? (Math.random() - 0.5) * shakeX * 2 : 0;
+  const sy = shakeDur > 0 ? (Math.random() - 0.5) * shakeY * 2 : 0;
+  ctx.translate(sx, sy);
+
+  // Background
+  const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+  bgGrad.addColorStop(0, `hsl(${(hue + 180) % 360}, 15%, 8%)`);
+  bgGrad.addColorStop(0.5, `hsl(${(hue + 160) % 360}, 20%, 10%)`);
+  bgGrad.addColorStop(1, `hsl(${(hue + 140) % 360}, 15%, 5%)`);
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(-20, -20, W + 40, H + 40);
+
+  if(state === ST.START){
+    renderStartScreen();
+    return;
+  }
+
+  // Draw vines
+  renderVines();
+
+  // Draw beam segments
+  renderBeam();
+
+  // Draw tokens
+  renderTokens();
+
+  // Draw hazards
+  renderHazards();
+
+  // Draw streak lines
+  for(let i = 0; i < streakLines.length; i++){
+    const s = streakLines[i];
+    ctx.globalAlpha = s.life * 0.4;
+    ctx.strokeStyle = `hsl(${hue}, 70%, 60%)`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(s.x, s.y);
+    ctx.lineTo(s.x, s.y + 8);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  // Draw runner
+  renderRunner();
+
+  // Draw particles
+  renderParticles();
+
+  // Draw monkey warning
+  if(monkeyTelegraphTimer > 0 || monkeyActive){
+    renderMonkey();
+  }
+
+  // Near-miss flash
+  if(nearMissFlash > 0){
+    ctx.globalAlpha = nearMissFlash / 15 * 0.15;
+    ctx.fillStyle = `hsl(${hue}, 100%, 70%)`;
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = 1;
+  }
+
+  // HUD
+  renderHUD();
+
+  // Milestone popup
+  if(milestoneTimer > 0){
+    const alpha = milestoneTimer > 60 ? 1 : milestoneTimer / 60;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = `hsl(${hue}, 80%, 65%)`;
+    ctx.font = "bold 28px 'Segoe UI', system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(milestoneText, W/2, H * 0.35 - (90 - milestoneTimer) * 0.3);
+    ctx.globalAlpha = 1;
+  }
+
+  // Game over overlay
+  if(state === ST.GAMEOVER){
+    renderGameOver();
+  }
+}
+
+function renderStartScreen(){
+  // Title
+  ctx.fillStyle = `hsl(${hue}, 70%, 60%)`;
+  ctx.font = "bold 38px 'Segoe UI', system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("JUNGLE JUGGLE", W/2, H * 0.28);
+
+  ctx.fillStyle = `hsl(${(hue+40)%360}, 60%, 55%)`;
+  ctx.font = "18px 'Segoe UI', system-ui, sans-serif";
+  ctx.fillText("Vine Swap", W/2, H * 0.33);
+
+  // Decorative vines
+  ctx.strokeStyle = `hsl(100, 50%, 35%)`;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  const t = performance.now() * 0.001;
+  ctx.moveTo(W*0.3, 0);
+  ctx.quadraticCurveTo(W*0.3 + Math.sin(t)*20, H*0.15, W*0.35, H*0.4);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(W*0.7, 0);
+  ctx.quadraticCurveTo(W*0.7 + Math.sin(t+1)*20, H*0.15, W*0.65, H*0.4);
+  ctx.stroke();
+
+  // Runner preview
+  ctx.fillStyle = `hsl(${hue}, 70%, 55%)`;
+  ctx.beginPath();
+  ctx.arc(W/2, H*0.5, 16, 0, Math.PI*2);
+  ctx.fill();
+  ctx.fillStyle = "#fff";
+  ctx.beginPath();
+  ctx.arc(W/2-4, H*0.5-3, 3, 0, Math.PI*2);
+  ctx.arc(W/2+4, H*0.5-3, 3, 0, Math.PI*2);
+  ctx.fill();
+
+  // Instructions
+  ctx.fillStyle = "rgba(255,255,255,0.6)";
+  ctx.font = "14px 'Segoe UI', system-ui, sans-serif";
+  ctx.fillText("Tap / Space / Enter to swap vines", W/2, H*0.6);
+  ctx.fillText("Stay on the beam. Collect coins.", W/2, H*0.65);
+  ctx.fillText("Watch for monkey mischief!", W/2, H*0.7);
+
+  // Blink prompt
+  const blink = Math.sin(performance.now() * 0.005) > 0;
+  if(blink){
+    ctx.fillStyle = `hsl(${hue}, 80%, 65%)`;
+    ctx.font = "bold 20px 'Segoe UI', system-ui, sans-serif";
+    ctx.fillText("TAP TO START", W/2, H*0.82);
+  }
+
+  // High score
+  if(highScore > 0){
+    ctx.fillStyle = "rgba(255,255,255,0.4)";
+    ctx.font = "14px 'Segoe UI', system-ui, sans-serif";
+    ctx.fillText("Best: " + highScore, W/2, H*0.88);
+  }
+}
+
+function renderVines(){
+  const anchor = getVineAnchor();
+  const endX = anchor + Math.sin(vineAngle) * VINE_LEN;
+  const endY = VINE_TOP + Math.cos(vineAngle) * VINE_LEN;
+
+  // Left vine (always drawn)
+  ctx.strokeStyle = vineSide === 0 ? `hsl(100, 60%, 45%)` : `hsl(100, 30%, 30%)`;
+  ctx.lineWidth = vineSide === 0 ? 4 : 2;
+  ctx.beginPath();
+  ctx.moveTo(VINE_ANCHOR_LEFT, VINE_TOP);
+  const cpx1 = VINE_ANCHOR_LEFT + Math.sin(vineAngle * (vineSide===0?1:0.2)) * 20;
+  ctx.quadraticCurveTo(cpx1, VINE_TOP + VINE_LEN*0.4, vineSide===0 ? endX : VINE_ANCHOR_LEFT + Math.sin(vineAngle*0.2)*15, vineSide===0 ? endY : VINE_TOP + VINE_LEN);
+  ctx.stroke();
+
+  // Left vine leaves
+  if(vineSide === 0){
+    for(let i = 0; i < 3; i++){
+      const t = 0.25 + i * 0.25;
+      const lx = VINE_ANCHOR_LEFT + (endX - VINE_ANCHOR_LEFT) * t + Math.sin(performance.now()*0.002+i)*5;
+      const ly = VINE_TOP + (endY - VINE_TOP) * t;
+      ctx.fillStyle = `hsl(${100+i*15}, 60%, ${40+i*5}%)`;
+      ctx.beginPath();
+      ctx.ellipse(lx + 6, ly, 5, 3, 0.3, 0, Math.PI*2);
+      ctx.fill();
+    }
+  }
+
+  // Right vine
+  ctx.strokeStyle = vineSide === 1 ? `hsl(100, 60%, 45%)` : `hsl(100, 30%, 30%)`;
+  ctx.lineWidth = vineSide === 1 ? 4 : 2;
+  ctx.beginPath();
+  ctx.moveTo(VINE_ANCHOR_RIGHT, VINE_TOP);
+  const cpx2 = VINE_ANCHOR_RIGHT + Math.sin(vineAngle * (vineSide===1?1:0.2)) * 20;
+  ctx.quadraticCurveTo(cpx2, VINE_TOP + VINE_LEN*0.4, vineSide===1 ? endX : VINE_ANCHOR_RIGHT + Math.sin(vineAngle*0.2)*15, vineSide===1 ? endY : VINE_TOP + VINE_LEN);
+  ctx.stroke();
+
+  // Right vine leaves
+  if(vineSide === 1){
+    for(let i = 0; i < 3; i++){
+      const t = 0.25 + i * 0.25;
+      const lx = VINE_ANCHOR_RIGHT + (endX - VINE_ANCHOR_RIGHT) * t + Math.sin(performance.now()*0.002+i)*5;
+      const ly = VINE_TOP + (endY - VINE_TOP) * t;
+      ctx.fillStyle = `hsl(${100+i*15}, 60%, ${40+i*5}%)`;
+      ctx.beginPath();
+      ctx.ellipse(lx - 6, ly, 5, 3, -0.3, 0, Math.PI*2);
+      ctx.fill();
+    }
+  }
+
+  // Monkey on vine if active
+}
+
+function renderBeam(){
+  for(let i = 0; i < segments.length; i++){
+    const s = segments[i];
+    const sx = s.x - camera;
+    if(sx > W + 50 || sx + s.w < -50) continue;
+
+    if(s.hasGap){
+      // Draw danger zone below gap
+      ctx.fillStyle = `hsla(0, 60%, 30%, ${0.3 + Math.sin(performance.now()*0.005)*0.1})`;
+      ctx.fillRect(sx, BEAM_Y, s.w, 20);
+      continue;
+    }
+
+    const bScale = s.beamScale || 1;
+    const beamW = 80 * bScale;
+    const beamLeft = W / 2 - beamW / 2;
+
+    // Beam glow
+    const glowGrad = ctx.createLinearGradient(beamLeft - 10, 0, beamLeft + beamW + 10, 0);
+    glowGrad.addColorStop(0, "transparent");
+    glowGrad.addColorStop(0.1, `hsla(${hue}, 40%, 30%, 0.3)`);
+    glowGrad.addColorStop(0.5, `hsla(${hue}, 40%, 35%, 0.4)`);
+    glowGrad.addColorStop(0.9, `hsla(${hue}, 40%, 30%, 0.3)`);
+    glowGrad.addColorStop(1, "transparent");
+    ctx.fillStyle = glowGrad;
+    ctx.fillRect(sx, BEAM_Y - 2, s.w, 8);
+
+    // Beam surface
+    const beamGrad = ctx.createLinearGradient(0, BEAM_Y - 4, 0, BEAM_Y + 6);
+    beamGrad.addColorStop(0, `hsl(${hue+30}, 30%, 45%)`);
+    beamGrad.addColorStop(0.5, `hsl(${hue+30}, 25%, 35%)`);
+    beamGrad.addColorStop(1, `hsl(${hue+30}, 20%, 25%)`);
+    ctx.fillStyle = beamGrad;
+
+    // Clip beam to its segment bounds
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(sx, BEAM_Y - 4, s.w, 10);
+    ctx.clip();
+    ctx.fillRect(beamLeft, BEAM_Y - 4, beamW, 10);
+    ctx.restore();
+
+    // Beam edge highlights
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(sx, BEAM_Y - 4, s.w, 10);
+    ctx.clip();
+    ctx.strokeStyle = `hsla(${hue}, 50%, 60%, 0.5)`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(beamLeft, BEAM_Y - 4);
+    ctx.lineTo(beamLeft, BEAM_Y + 6);
+    ctx.moveTo(beamLeft + beamW, BEAM_Y - 4);
+    ctx.lineTo(beamLeft + beamW, BEAM_Y + 6);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function renderTokens(){
+  for(let i = 0; i < tokens.length; i++){
+    const t = tokens[i];
+    if(t.collected) continue;
+    const tx = t.worldX - camera;
+    if(tx < -20 || tx > W + 20) continue;
+
+    const bob = Math.sin(performance.now() * 0.004 + t.worldX * 0.01) * 3;
+    const isValuable = t.value > 1;
+
+    // Glow
+    ctx.globalAlpha = 0.3;
+    ctx.fillStyle = isValuable ? `hsl(45, 90%, 60%)` : `hsl(${hue}, 70%, 55%)`;
+    ctx.beginPath();
+    ctx.arc(tx, t.y + bob, t.r + 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // Coin
+    ctx.fillStyle = isValuable ? `hsl(45, 90%, 65%)` : `hsl(${hue}, 70%, 60%)`;
+    ctx.beginPath();
+    ctx.arc(tx, t.y + bob, t.r, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Shine
+    ctx.fillStyle = "rgba(255,255,255,0.4)";
+    ctx.beginPath();
+    ctx.arc(tx - 2, t.y + bob - 2, t.r * 0.4, 0, Math.PI * 2);
+    ctx.fill();
+
+    if(isValuable){
+      ctx.fillStyle = "#fff";
+      ctx.font = "bold 9px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("x3", tx, t.y + bob + 3);
+    }
+  }
+}
+
+function renderHazards(){
+  for(let i = 0; i < hazards.length; i++){
+    const h = hazards[i];
+    const hx = h.worldX - camera;
+    if(hx < -20 || hx > W + 20) continue;
+
+    const pulse = 1 + Math.sin(performance.now() * 0.008) * 0.15;
+
+    // Danger glow
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = `hsl(0, 80%, 50%)`;
+    ctx.beginPath();
+    ctx.arc(hx, h.y, h.r * pulse + 5, 0, Math.PI*2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // Hazard body - spiky
+    ctx.fillStyle = `hsl(0, 75%, 45%)`;
+    ctx.beginPath();
+    const spikes = 6;
+    for(let j = 0; j <= spikes * 2; j++){
+      const a = (j / (spikes * 2)) * Math.PI * 2;
+      const r = j % 2 === 0 ? h.r * pulse : h.r * pulse * 0.5;
+      const px = hx + Math.cos(a + performance.now()*0.003) * r;
+      const py = h.y + Math.sin(a + performance.now()*0.003) * r;
+      if(j === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.fill();
+
+    // Center
+    ctx.fillStyle = `hsl(0, 90%, 60%)`;
+    ctx.beginPath();
+    ctx.arc(hx, h.y, h.r * 0.35, 0, Math.PI*2);
+    ctx.fill();
+  }
+}
+
+function renderRunner(){
+  const x = runnerX;
+  const y = runnerY;
+
+  // Shadow
+  ctx.globalAlpha = 0.3;
+  ctx.fillStyle = "#000";
+  ctx.beginPath();
+  ctx.ellipse(x, BEAM_Y + 2, RUNNER_SIZE * 0.7, 4, 0, 0, Math.PI*2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+
+  // Body
+  const bodyHue = (hue + 200) % 360;
+  ctx.fillStyle = `hsl(${bodyHue}, 65%, 50%)`;
+  ctx.beginPath();
+  ctx.arc(x, y, RUNNER_SIZE, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Inner gradient
+  const innerGrad = ctx.createRadialGradient(x-3, y-4, 2, x, y, RUNNER_SIZE);
+  innerGrad.addColorStop(0, `hsla(${bodyHue}, 60%, 70%, 0.6)`);
+  innerGrad.addColorStop(1, "transparent");
+  ctx.fillStyle = innerGrad;
+  ctx.beginPath();
+  ctx.arc(x, y, RUNNER_SIZE, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Eyes
+  ctx.fillStyle = "#fff";
+  const eyeDir = vineSide === 0 ? -1 : 1;
+  ctx.beginPath();
+  ctx.arc(x + eyeDir * 5 - 3, y - 4, 4, 0, Math.PI*2);
+  ctx.arc(x + eyeDir * 5 + 3, y - 4, 4, 0, Math.PI*2);
+  ctx.fill();
+
+  ctx.fillStyle = "#222";
+  ctx.beginPath();
+  ctx.arc(x + eyeDir * 6 - 3, y - 4, 2, 0, Math.PI*2);
+  ctx.arc(x + eyeDir * 6 + 3, y - 4, 2, 0, Math.PI*2);
+  ctx.fill();
+
+  // Mouth
+  ctx.strokeStyle = "#fff";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(x + eyeDir * 3, y + 4, 4, 0.1, Math.PI - 0.1);
+  ctx.stroke();
+}
+
+function renderParticles(){
+  for(let i = 0; i < particles.length; i++){
+    const p = particles[i];
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function renderMonkey(){
+  const anchorX = monkeySide === 0 ? VINE_ANCHOR_LEFT : VINE_ANCHOR_RIGHT;
+  const my = VINE_TOP + 40;
+
+  if(monkeyTelegraphTimer > 0){
+    // Telegraph: flashing warning
+    const flash = Math.sin(performance.now() * 0.02) > 0;
+    if(flash){
+      ctx.fillStyle = "rgba(255, 100, 0, 0.3)";
+      ctx.beginPath();
+      ctx.arc(anchorX, my, 30, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.fillStyle = `hsl(30, 80%, 55%)`;
+    ctx.font = "bold 16px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("!", anchorX, my - 25);
+  }
+
+  if(monkeyActive){
+    // Monkey body
+    ctx.fillStyle = `hsl(30, 50%, 40%)`;
+    ctx.beginPath();
+    ctx.arc(anchorX, my, 14, 0, Math.PI*2);
+    ctx.fill();
+
+    // Monkey face
+    ctx.fillStyle = `hsl(30, 40%, 55%)`;
+    ctx.beginPath();
+    ctx.arc(anchorX, my + 2, 9, 0, Math.PI*2);
+    ctx.fill();
+
+    // Eyes
+    ctx.fillStyle = "#222";
+    ctx.beginPath();
+    ctx.arc(anchorX - 4, my - 1, 2, 0, Math.PI*2);
+    ctx.arc(anchorX + 4, my - 1, 2, 0, Math.PI*2);
+    ctx.fill();
+
+    // Blocked indicator
+    ctx.fillStyle = `hsla(0, 80%, 50%, ${0.5 + Math.sin(performance.now()*0.01)*0.3})`;
+    ctx.font = "bold 12px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("BLOCKED", anchorX, my + 30);
+
+    // X mark on vine
+    ctx.strokeStyle = `hsla(0, 80%, 50%, 0.7)`;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(anchorX - 10, my + 35);
+    ctx.lineTo(anchorX + 10, my + 50);
+    ctx.moveTo(anchorX + 10, my + 35);
+    ctx.lineTo(anchorX - 10, my + 50);
+    ctx.stroke();
+  }
+}
+
+function renderHUD(){
+  // Score
+  ctx.fillStyle = "rgba(255,255,255,0.9)";
+  ctx.font = "bold 22px 'Segoe UI', system-ui, sans-serif";
+  ctx.textAlign = "left";
+  ctx.fillText(score.toString(), 15, 35);
+
+  // Combo
+  if(combo > 1){
+    ctx.fillStyle = `hsl(${hue}, 80%, 65%)`;
+    ctx.font = "bold 14px 'Segoe UI', system-ui, sans-serif";
+    ctx.fillText("x" + combo, 15, 55);
+  }
+
+  // High score
+  ctx.fillStyle = "rgba(255,255,255,0.35)";
+  ctx.font = "12px 'Segoe UI', system-ui, sans-serif";
+  ctx.textAlign = "right";
+  ctx.fillText("BEST " + highScore, W - 50, 35);
+
+  // Vine indicator
+  const indX = W / 2;
+  const indY = 25;
+  ctx.fillStyle = "rgba(255,255,255,0.2)";
+  ctx.fillRect(indX - 25, indY - 8, 50, 16);
+  ctx.fillStyle = `hsl(100, 60%, 50%)`;
+  ctx.fillRect(vineSide === 0 ? indX - 25 : indX, indY - 8, 25, 16);
+  ctx.fillStyle = "#fff";
+  ctx.font = "bold 10px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("L", indX - 12, indY + 4);
+  ctx.fillText("R", indX + 12, indY + 4);
+
+  // Speed indicator
+  ctx.fillStyle = "rgba(255,255,255,0.2)";
+  const speedPct = (speed - BASE_SPEED) / (MAX_SPEED - BASE_SPEED);
+  ctx.fillRect(15, H - 30, 60, 4);
+  ctx.fillStyle = `hsl(${120 - speedPct * 120}, 70%, 50%)`;
+  ctx.fillRect(15, H - 30, 60 * speedPct, 4);
+}
+
+function renderGameOver(){
+  // Overlay
+  ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.textAlign = "center";
+
+  // Game over text
+  ctx.fillStyle = `hsl(0, 70%, 60%)`;
+  ctx.font = "bold 36px 'Segoe UI', system-ui, sans-serif";
+  ctx.fillText("GAME OVER", W/2, H * 0.32);
+
+  // Score
+  ctx.fillStyle = "#fff";
+  ctx.font = "bold 48px 'Segoe UI', system-ui, sans-serif";
+  ctx.fillText(score.toString(), W/2, H * 0.44);
+  ctx.fillStyle = "rgba(255,255,255,0.5)";
+  ctx.font = "16px 'Segoe UI', system-ui, sans-serif";
+  ctx.fillText("SCORE", W/2, H * 0.48);
+
+  // High score
+  if(score >= highScore && score > 0){
+    ctx.fillStyle = `hsl(45, 90%, 60%)`;
+    ctx.font = "bold 18px 'Segoe UI', system-ui, sans-serif";
+    ctx.fillText("NEW BEST!", W/2, H * 0.54);
+  } else {
+    ctx.fillStyle = "rgba(255,255,255,0.4)";
+    ctx.font = "14px 'Segoe UI', system-ui, sans-serif";
+    ctx.fillText("Best: " + highScore, W/2, H * 0.54);
+  }
+
+  // Sections
+  ctx.fillStyle = "rgba(255,255,255,0.4)";
+  ctx.font = "14px 'Segoe UI', system-ui, sans-serif";
+  ctx.fillText("Sections: " + sectionCount, W/2, H * 0.60);
+
+  // Restart prompt
+  const blink = Math.sin(performance.now() * 0.004) > 0;
+  if(blink){
+    ctx.fillStyle = "rgba(255,255,255,0.7)";
+    ctx.font = "18px 'Segoe UI', system-ui, sans-serif";
+    ctx.fillText("TAP TO RESTART", W/2, H * 0.72);
+  }
+}
+
+/* ── Main Loop ── */
+lastTime = performance.now();
+paused = false;
+
+function loop(now){
+  requestAnimationFrame(loop);
+  if(paused) { lastTime = now; return; }
+
+  dt = now - lastTime;
+  lastTime = now;
+  if(dt > 50) dt = 50; // cap
+
+  // HSL cycling in all states
+  if(state === ST.START) hue = (hue + 0.2) % 360;
+
+  // Update particles in all states (for death particles on game over)
+  if(state === ST.GAMEOVER){
+    for(let i = particles.length - 1; i >= 0; i--){
+      const p = particles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy += 0.05;
+      p.life -= p.decay;
+      if(p.life <= 0) particles.splice(i, 1);
+    }
+    if(shakeDur > 0){
+      shakeDur--;
+      shakeX *= 0.9;
+      shakeY *= 0.9;
+    } else { shakeX = 0; shakeY = 0; }
+  }
+
+  update(dt);
+  render();
+}
+
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

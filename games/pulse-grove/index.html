@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Pulse Grove - Free HTML5 Game</title>
+  <meta name="description" content="Play Pulse Grove - Tap to the forest beat while collecting random powerups to amplify your rhythm score.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0d1f0e">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Pulse Grove - Free HTML5 Game">
+  <meta property="og:description" content="Play Pulse Grove - Tap to the forest beat while collecting random powerups to amplify your rhythm score.">
+  <meta property="og:url" content="https://balinti.github.io/pulse-grove/">
+  <meta property="og:image" content="https://balinti.github.io/pulse-grove/og.png">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Pulse Grove - Free HTML5 Game">
+  <meta name="twitter:description" content="Play Pulse Grove - Tap to the forest beat while collecting random powerups to amplify your rhythm score.">
+  <meta name="twitter:image" content="https://balinti.github.io/pulse-grove/og.png">
+
+  <link rel="canonical" href="https://balinti.github.io/pulse-grove/">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: #06100a;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      color: #c8f5c0;
+      overscroll-behavior: none;
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+
+    #game-wrapper {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      flex-shrink: 0;
+    }
+
+    #gameCanvas {
+      display: block;
+      width: 100%;
+      aspect-ratio: 420 / 750;
+      touch-action: manipulation;
+      cursor: pointer;
+      border-radius: 0 0 16px 16px;
+    }
+
+    #seo-content {
+      width: 100%;
+      max-width: 420px;
+      padding: 24px 20px 40px;
+      color: #7aab74;
+      font-size: 14px;
+      line-height: 1.7;
+    }
+
+    #seo-content h2 {
+      font-size: 17px;
+      color: #a2d49a;
+      margin-bottom: 10px;
+    }
+
+    #seo-content h3 {
+      font-size: 14px;
+      color: #90c489;
+      margin: 14px 0 6px;
+    }
+
+    #seo-content ul {
+      padding-left: 18px;
+    }
+
+    #seo-content li {
+      margin-bottom: 4px;
+    }
+
+    #seo-content p {
+      margin-bottom: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div id="game-wrapper">
+    <canvas id="gameCanvas"></canvas>
+  </div>
+
+  <!-- SEO / AdSense context text -->
+  <section id="seo-content" aria-label="How to play Pulse Grove">
+    <h2>How to Play Pulse Grove</h2>
+    <p>Pulse Grove is a free browser rhythm game where you sync taps to a glowing pulse ring expanding from the center of a forest clearing. Time your taps perfectly to collect Grove Nodes and build your combo!</p>
+
+    <h3>Controls</h3>
+    <ul>
+      <li><strong>Tap / Click</strong> anywhere on the canvas to emit a sync pulse.</li>
+      <li><strong>Space or Enter</strong> on keyboard works too.</li>
+      <li>Tap when the expanding ring overlaps a glowing Node to score.</li>
+    </ul>
+
+    <h3>Node Types</h3>
+    <ul>
+      <li><strong>Normal Node (green)</strong> — Tap when it overlaps the ring.</li>
+      <li><strong>Thorn Node (red)</strong> — Do NOT tap! Tapping it costs a life.</li>
+      <li><strong>Echo Node (cyan)</strong> — Tap once; a second opportunity follows immediately.</li>
+      <li><strong>Twin Nodes (yellow)</strong> — Two nodes activate close together. React fast!</li>
+    </ul>
+
+    <h3>Tips</h3>
+    <ul>
+      <li>Watch the node glow-up animation — it signals when to tap.</li>
+      <li>Every 10-hit combo temporarily widens the hit window.</li>
+      <li>Thorn nodes pulse red — pause, don't tap!</li>
+      <li>The grove speeds up over time. Stay focused!</li>
+    </ul>
+  </section>
+
+  <script>
+  // ============================================================
+  //  PULSE GROVE — Ring Sync  |  Single-file HTML5 Canvas Game
+  // ============================================================
+
+  (function () {
+    'use strict';
+
+    // ── Canvas Setup ──────────────────────────────────────────
+    const canvas = document.getElementById('gameCanvas');
+    const ctx    = canvas.getContext('2d');
+
+    // Logical resolution
+    const LOGICAL_W = 420;
+    const LOGICAL_H = 750;
+
+    let DPR = 1;
+
+    function resizeCanvas() {
+      DPR = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      canvas.width  = rect.width  * DPR;
+      canvas.height = rect.height * DPR;
+      ctx.setTransform(DPR * (rect.width  / LOGICAL_W), 0,
+                       0, DPR * (rect.height / LOGICAL_H),
+                       0, 0);
+    }
+
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // ── Constants ─────────────────────────────────────────────
+    const CX = LOGICAL_W / 2;         // center x
+    const CY = LOGICAL_H / 2 - 30;   // center y (slight upward)
+    const NODE_RING_R = 170;          // distance from center to nodes
+    const BASE_RING_SPEED  = 80;      // px/s for ring expansion
+    const MAX_RING_R       = NODE_RING_R + 60;
+    const HIT_WINDOW_BASE  = 28;      // px tolerance for a hit
+    const LIVES_MAX        = 3;
+    const PARTICLE_COUNT   = 18;
+    const STREAK_BONUS_INTERVAL = 10; // every N hits → widen window briefly
+
+    // Node types
+    const TYPE_NORMAL = 'normal';
+    const TYPE_THORN  = 'thorn';
+    const TYPE_ECHO   = 'echo';
+    const TYPE_TWIN   = 'twin';
+
+    // ── State ──────────────────────────────────────────────────
+    let state = 'start'; // 'start' | 'playing' | 'gameover'
+    let score, lives, combo, bestCombo, elapsed;
+    let ringR, ringSpeed;
+    let hitWindowExtra;    // bonus hit-window px (from streak)
+    let hitWindowExtraT;   // timer for above
+    let nodes;
+    let particles;
+    let popTexts;
+    let shakeAmt, shakeDuration;
+    let hue;               // global HSL hue cycle
+    let lastTime;
+    let surgeTimer, surgeDuration, surgeActive;
+    let echoScheduled;     // { node, delay }
+
+    // localStorage best score
+    let bestScore = parseInt(localStorage.getItem('pg_best') || '0', 10);
+
+    // ── Init / Reset ───────────────────────────────────────────
+    function initGame() {
+      score         = 0;
+      lives         = LIVES_MAX;
+      combo         = 0;
+      bestCombo     = 0;
+      elapsed       = 0;
+      ringR         = 0;
+      ringSpeed     = BASE_RING_SPEED;
+      hitWindowExtra= 0;
+      hitWindowExtraT = 0;
+      nodes         = [];
+      particles     = [];
+      popTexts      = [];
+      shakeAmt      = 0;
+      shakeDuration = 0;
+      hue           = 100; // start green-ish
+      surgeTimer    = 0;
+      surgeDuration = 0;
+      surgeActive   = false;
+      echoScheduled = null;
+      lastTime      = null;
+
+      // Spawn initial 3 nodes
+      spawnNodeWave(3, false);
+    }
+
+    // ── Node Spawning ──────────────────────────────────────────
+    // Angles to place nodes on the ring circle
+    const SLOT_ANGLES = [0, 60, 120, 180, 240, 300].map(d => d * Math.PI / 180);
+
+    function getNodeCount() {
+      if (elapsed < 10)  return between(3, 4);
+      if (elapsed < 30)  return between(3, 5);
+      if (elapsed < 60)  return between(4, 6);
+      return between(4, 6);
+    }
+
+    function pickNodeType() {
+      if (elapsed < 30)  return TYPE_NORMAL;
+      const r = Math.random();
+      if (elapsed < 45) {
+        return r < 0.15 ? TYPE_THORN : (r < 0.25 ? TYPE_ECHO : TYPE_NORMAL);
+      }
+      if (elapsed < 60) {
+        return r < 0.20 ? TYPE_THORN : (r < 0.33 ? TYPE_ECHO : (r < 0.43 ? TYPE_TWIN : TYPE_NORMAL));
+      }
+      // 60s+
+      return r < 0.22 ? TYPE_THORN : (r < 0.36 ? TYPE_ECHO : (r < 0.50 ? TYPE_TWIN : TYPE_NORMAL));
+    }
+
+    function spawnNodeWave(count, allowThorns) {
+      // Shuffle slots
+      const slots = SLOT_ANGLES.slice().sort(() => Math.random() - 0.5).slice(0, count);
+      slots.forEach((angle, i) => {
+        const type = allowThorns ? pickNodeType() : TYPE_NORMAL;
+        const isTwin = (type === TYPE_TWIN);
+        const node = createNode(angle, type);
+        nodes.push(node);
+
+        // Twin: add a nearby sibling
+        if (isTwin && i === 0) {
+          const sibAngle = angle + 40 * Math.PI / 180;
+          const sibling = createNode(sibAngle, TYPE_TWIN);
+          nodes.push(sibling);
+        }
+      });
+    }
+
+    function createNode(angle, type) {
+      const blinkDelay = elapsed > 10 ? 0.5 + Math.random() * 0.5 : 0;
+      return {
+        angle,
+        type,
+        x: CX + Math.cos(angle) * NODE_RING_R,
+        y: CY + Math.sin(angle) * NODE_RING_R,
+        active: blinkDelay === 0,
+        blinkTimer: blinkDelay,
+        blinkPhase: 0,
+        hit: false,
+        missed: false,
+        fadeOut: 0,    // 0..1 alpha fade on hit/miss
+        pulseT: 0,     // local animation time
+        captured: false,
+      };
+    }
+
+    // ── Difficulty Curve ───────────────────────────────────────
+    function updateDifficulty(dt) {
+      elapsed += dt;
+
+      // Ring speed
+      if (elapsed < 10)  ringSpeed = 80;
+      else if (elapsed < 30) ringSpeed = lerp(80, 110, (elapsed - 10) / 20);
+      else if (elapsed < 60) ringSpeed = lerp(110, 145, (elapsed - 30) / 30);
+      else               ringSpeed = lerp(145, 180, Math.min((elapsed - 60) / 60, 1));
+
+      // Surge (60s+): brief speed spike
+      if (elapsed >= 60) {
+        surgeTimer -= dt;
+        if (surgeTimer <= 0) {
+          if (!surgeActive) {
+            surgeActive  = true;
+            surgeDuration = 0.8 + Math.random() * 0.6;
+            surgeTimer   = surgeDuration;
+          } else {
+            surgeActive = false;
+            surgeTimer  = 4 + Math.random() * 4;
+          }
+        }
+      }
+    }
+
+    function currentRingSpeed() {
+      return surgeActive ? ringSpeed * 1.7 : ringSpeed;
+    }
+
+    function hitWindow() {
+      let base = HIT_WINDOW_BASE;
+      if (elapsed < 10)  base = 36;
+      else if (elapsed < 30) base = lerp(36, 26, (elapsed - 10) / 20);
+      else if (elapsed < 60) base = lerp(26, 20, (elapsed - 30) / 30);
+      else               base = 18;
+      return base + hitWindowExtra;
+    }
+
+    // ── Update Loop ────────────────────────────────────────────
+    function update(dt) {
+      hue = (hue + 12 * dt) % 360;
+
+      updateDifficulty(dt);
+
+      // Streak bonus window
+      if (hitWindowExtra > 0) {
+        hitWindowExtraT -= dt;
+        if (hitWindowExtraT <= 0) hitWindowExtra = 0;
+      }
+
+      // Ring expansion
+      ringR += currentRingSpeed() * dt;
+      if (ringR > MAX_RING_R) {
+        ringR = 0; // reset ring
+        checkMissedNodes(); // any active un-hit nodes = missed
+        cycleNodes();       // spawn new wave
+      }
+
+      // Echo scheduling
+      if (echoScheduled) {
+        echoScheduled.timer -= dt;
+        if (echoScheduled.timer <= 0) {
+          const en = echoScheduled.node;
+          en.captured = false;
+          en.hit      = false;
+          en.missed   = false;
+          en.active   = true;
+          en.blinkTimer = 0;
+          en.pulseT   = 0;
+          en.fadeOut  = 0;
+          nodes.push(en);
+          echoScheduled = null;
+        }
+      }
+
+      // Update nodes
+      nodes.forEach(n => {
+        n.pulseT += dt;
+
+        if (n.blinkTimer > 0) {
+          n.blinkTimer -= dt;
+          n.blinkPhase  += dt * 8;
+          if (n.blinkTimer <= 0) n.active = true;
+        }
+
+        if ((n.hit || n.missed) && !n.captured) {
+          n.fadeOut += dt * 3;
+        }
+      });
+
+      // Remove fully faded nodes
+      nodes = nodes.filter(n => n.fadeOut < 1);
+
+      // Shake decay
+      if (shakeDuration > 0) {
+        shakeDuration -= dt;
+        shakeAmt = shakeDuration > 0 ? shakeAmt * 0.85 : 0;
+      }
+
+      // Particles
+      particles.forEach(p => {
+        p.x  += p.vx * dt;
+        p.y  += p.vy * dt;
+        p.vy += 200 * dt; // gravity
+        p.life -= dt;
+        p.alpha = Math.max(0, p.life / p.maxLife);
+      });
+      particles = particles.filter(p => p.life > 0);
+
+      // Pop texts
+      popTexts.forEach(t => {
+        t.y  -= 60 * dt;
+        t.life -= dt;
+        t.alpha = Math.max(0, t.life / t.maxLife);
+      });
+      popTexts = popTexts.filter(t => t.life > 0);
+    }
+
+    function checkMissedNodes() {
+      nodes.forEach(n => {
+        if (n.active && !n.hit && !n.missed && n.type !== TYPE_THORN) {
+          // Normal/echo/twin node not tapped in time = miss
+          n.missed = true;
+          // Only penalize once per wave if player didn't tap at all
+          // We won't auto-penalize missed nodes (no-tap = safe; tap during wrong time = penalty)
+        }
+      });
+    }
+
+    function cycleNodes() {
+      // Remove old spent nodes
+      nodes = nodes.filter(n => !n.hit && !n.missed && !n.captured);
+      // Clear any remaining non-active nodes too (cleanup)
+      nodes = nodes.filter(n => !n.hit && !n.missed);
+
+      const count = getNodeCount();
+      const allowThorns = elapsed >= 30;
+      spawnNodeWave(count, allowThorns);
+    }
+
+    // ── Input Handling ─────────────────────────────────────────
+    function onTap() {
+      if (state === 'start') {
+        state = 'playing';
+        initGame();
+        return;
+      }
+      if (state === 'gameover') {
+        state = 'playing';
+        initGame();
+        return;
+      }
+
+      // Playing state — check overlap
+      const hw = hitWindow();
+      const rMin = NODE_RING_R - hw;
+      const rMax = NODE_RING_R + hw;
+      const ringInWindow = ringR >= rMin && ringR <= rMax;
+
+      let hit = false;
+
+      nodes.forEach(n => {
+        if (n.captured || n.hit || n.missed || !n.active) return;
+
+        if (n.type === TYPE_THORN) {
+          if (ringInWindow) {
+            // Tapping thorn costs a life
+            n.hit = true;
+            hit = true;
+            loseLife(n.x, n.y, 'THORN!');
+          }
+          return;
+        }
+
+        if (ringInWindow) {
+          n.hit = true;
+          n.captured = true;
+          hit = true;
+          collectNode(n);
+        }
+      });
+
+      if (!hit) {
+        if (ringInWindow) {
+          // Tapped in window but no node — miss
+          penalty('MISS', CX, CY - 40);
+        } else {
+          // Tapped outside window — miss
+          penalty('MISS', CX, CY - 40);
+        }
+      }
+    }
+
+    function collectNode(n) {
+      score += 10 + combo;
+      combo++;
+      if (combo > bestCombo) bestCombo = combo;
+
+      const perfect = isPerfect(n);
+      const label   = perfect ? 'PERFECT!' : 'SYNC!';
+      const col     = n.type === TYPE_ECHO ? '#00ffee' :
+                      n.type === TYPE_TWIN ? '#ffe866' : `hsl(${hue},90%,65%)`;
+
+      spawnParticles(n.x, n.y, col, PARTICLE_COUNT, perfect);
+      addPopText(label, n.x, n.y - 20, col, perfect ? 26 : 20);
+
+      // Streak bonus
+      if (combo % STREAK_BONUS_INTERVAL === 0) {
+        hitWindowExtra  = 12;
+        hitWindowExtraT = 3;
+        addPopText('GROOVE BOOST!', CX, CY - 80, '#ffea00', 18);
+      }
+
+      // Echo node: schedule second opportunity
+      if (n.type === TYPE_ECHO) {
+        const echoNode = createNode(n.angle, TYPE_ECHO);
+        echoScheduled  = { node: echoNode, timer: 0.45 };
+      }
+
+      // Perfect: slight shake (nice feel)
+      if (perfect) triggerShake(4, 0.2);
+    }
+
+    function isPerfect(n) {
+      // Perfect if ring is very close to NODE_RING_R center
+      return Math.abs(ringR - NODE_RING_R) < HIT_WINDOW_BASE * 0.35;
+    }
+
+    function loseLife(x, y, label) {
+      lives--;
+      combo = 0;
+      triggerShake(10, 0.35);
+      spawnParticles(x, y, '#ff4040', 10, false);
+      addPopText(label, x, y - 20, '#ff6666', 22);
+      addPopText(`♥ ${lives}`, CX, CY + 60, '#ff4040', 18);
+      if (lives <= 0) endGame();
+    }
+
+    function penalty(label, x, y) {
+      lives--;
+      combo = 0;
+      triggerShake(8, 0.3);
+      addPopText(label, x, y, '#ff5555', 22);
+      if (lives <= 0) endGame();
+    }
+
+    function endGame() {
+      state = 'gameover';
+      triggerShake(18, 0.6);
+      if (score > bestScore) {
+        bestScore = score;
+        localStorage.setItem('pg_best', bestScore);
+      }
+      spawnParticles(CX, CY, '#ff6600', 40, true);
+    }
+
+    // ── Shake ──────────────────────────────────────────────────
+    function triggerShake(amt, duration) {
+      shakeAmt     = Math.max(shakeAmt, amt);
+      shakeDuration= Math.max(shakeDuration, duration);
+    }
+
+    // ── Particles ──────────────────────────────────────────────
+    function spawnParticles(x, y, color, count, big) {
+      for (let i = 0; i < count; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = big ? (80 + Math.random() * 160) : (40 + Math.random() * 100);
+        particles.push({
+          x, y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed - (big ? 60 : 30),
+          color,
+          radius: big ? (2 + Math.random() * 4) : (1.5 + Math.random() * 3),
+          life: 0.5 + Math.random() * 0.5,
+          maxLife: 0.5 + Math.random() * 0.5,
+          alpha: 1,
+        });
+      }
+    }
+
+    // ── Pop Texts ──────────────────────────────────────────────
+    function addPopText(text, x, y, color, size) {
+      popTexts.push({
+        text, x, y, color,
+        size: size || 20,
+        life: 0.9,
+        maxLife: 0.9,
+        alpha: 1,
+      });
+    }
+
+    // ── Draw ───────────────────────────────────────────────────
+    function draw() {
+      // Shake offset
+      const sx = shakeDuration > 0 ? (Math.random() - 0.5) * shakeAmt * 2 : 0;
+      const sy = shakeDuration > 0 ? (Math.random() - 0.5) * shakeAmt * 2 : 0;
+
+      ctx.save();
+      ctx.translate(sx, sy);
+
+      // Background
+      drawBackground();
+
+      if (state === 'start')    drawStartScreen();
+      if (state === 'playing')  drawGame();
+      if (state === 'gameover') drawGameOver();
+
+      ctx.restore();
+    }
+
+    function drawBackground() {
+      // Deep forest gradient
+      const bg = ctx.createRadialGradient(CX, CY, 0, CX, CY, 400);
+      bg.addColorStop(0,   '#0d2010');
+      bg.addColorStop(0.6, '#071409');
+      bg.addColorStop(1,   '#030a04');
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
+
+      // Subtle ambient glow at center
+      const glow = ctx.createRadialGradient(CX, CY, 0, CX, CY, NODE_RING_R * 0.7);
+      glow.addColorStop(0, `hsla(${hue},60%,20%,0.12)`);
+      glow.addColorStop(1, 'transparent');
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
+    }
+
+    function drawGame() {
+      drawNodeRingGuide();
+      drawPulseRing();
+      drawNodes();
+      drawParticles();
+      drawPopTexts();
+      drawHUD();
+    }
+
+    // Faint guide ring showing where nodes sit
+    function drawNodeRingGuide() {
+      ctx.beginPath();
+      ctx.arc(CX, CY, NODE_RING_R, 0, Math.PI * 2);
+      ctx.strokeStyle = `hsla(${hue},40%,30%,0.18)`;
+      ctx.lineWidth   = 1;
+      ctx.stroke();
+    }
+
+    function drawPulseRing() {
+      if (ringR <= 0) return;
+
+      // Outer glow
+      const grad = ctx.createRadialGradient(CX, CY, ringR - 8, CX, CY, ringR + 8);
+      grad.addColorStop(0,   `hsla(${hue},90%,60%,0)`);
+      grad.addColorStop(0.5, `hsla(${hue},90%,70%,0.7)`);
+      grad.addColorStop(1,   `hsla(${hue},90%,60%,0)`);
+
+      ctx.beginPath();
+      ctx.arc(CX, CY, ringR, 0, Math.PI * 2);
+      ctx.strokeStyle = `hsla(${hue},90%,70%,0.85)`;
+      ctx.lineWidth   = surgeActive ? 5 : 3;
+      ctx.shadowColor = `hsl(${hue},100%,60%)`;
+      ctx.shadowBlur  = 18;
+      ctx.stroke();
+      ctx.shadowBlur  = 0;
+
+      // Inner fill hint
+      ctx.beginPath();
+      ctx.arc(CX, CY, ringR - 3, 0, Math.PI * 2);
+      ctx.strokeStyle = `hsla(${hue},70%,50%,0.18)`;
+      ctx.lineWidth   = 2;
+      ctx.stroke();
+    }
+
+    function drawNodes() {
+      nodes.forEach(n => {
+        if (n.fadeOut >= 1) return;
+
+        const alpha = n.hit ? (1 - n.fadeOut) :
+                      n.missed ? (1 - n.fadeOut) :
+                      (n.blinkTimer > 0 ? Math.abs(Math.sin(n.blinkPhase)) * 0.6 + 0.2 : 1);
+
+        ctx.globalAlpha = alpha;
+
+        const pulse = 1 + 0.12 * Math.sin(n.pulseT * 4);
+        const r     = 18 * pulse;
+
+        // Color by type
+        let nodeHue, glow;
+        if (n.type === TYPE_THORN) {
+          nodeHue = 0;   glow = '#ff3030';
+        } else if (n.type === TYPE_ECHO) {
+          nodeHue = 185; glow = '#00ffee';
+        } else if (n.type === TYPE_TWIN) {
+          nodeHue = 55;  glow = '#ffe866';
+        } else {
+          nodeHue = hue; glow = `hsl(${hue},100%,65%)`;
+        }
+
+        // Outer glow
+        ctx.shadowColor = glow;
+        ctx.shadowBlur  = 24;
+
+        // Node body
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+        const ng = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, r);
+        ng.addColorStop(0, `hsla(${nodeHue},85%,80%,0.95)`);
+        ng.addColorStop(1, `hsla(${nodeHue},90%,50%,0.6)`);
+        ctx.fillStyle = ng;
+        ctx.fill();
+
+        // Thorn node: cross overlay
+        if (n.type === TYPE_THORN) {
+          ctx.strokeStyle = '#ff0000';
+          ctx.lineWidth   = 2.5;
+          ctx.beginPath();
+          ctx.moveTo(n.x - 8, n.y - 8); ctx.lineTo(n.x + 8, n.y + 8);
+          ctx.moveTo(n.x + 8, n.y - 8); ctx.lineTo(n.x - 8, n.y + 8);
+          ctx.stroke();
+        }
+
+        // Echo node: double ring
+        if (n.type === TYPE_ECHO) {
+          ctx.strokeStyle = 'rgba(0,255,238,0.5)';
+          ctx.lineWidth   = 1.5;
+          ctx.beginPath();
+          ctx.arc(n.x, n.y, r + 7, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+
+        ctx.shadowBlur  = 0;
+        ctx.globalAlpha = 1;
+      });
+    }
+
+    function drawParticles() {
+      particles.forEach(p => {
+        ctx.globalAlpha = p.alpha;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+        ctx.fillStyle = p.color;
+        ctx.shadowColor = p.color;
+        ctx.shadowBlur  = 6;
+        ctx.fill();
+        ctx.shadowBlur  = 0;
+      });
+      ctx.globalAlpha = 1;
+    }
+
+    function drawPopTexts() {
+      popTexts.forEach(t => {
+        ctx.save();
+        ctx.globalAlpha = t.alpha;
+        ctx.font        = `bold ${t.size}px 'Segoe UI', sans-serif`;
+        ctx.fillStyle   = t.color;
+        ctx.textAlign   = 'center';
+        ctx.shadowColor = t.color;
+        ctx.shadowBlur  = 10;
+        ctx.fillText(t.text, t.x, t.y);
+        ctx.restore();
+      });
+    }
+
+    function drawHUD() {
+      // Score
+      ctx.font      = 'bold 32px Segoe UI, sans-serif';
+      ctx.fillStyle = `hsl(${hue},80%,80%)`;
+      ctx.textAlign = 'center';
+      ctx.shadowColor = `hsl(${hue},100%,60%)`;
+      ctx.shadowBlur  = 10;
+      ctx.fillText(score, CX, 56);
+      ctx.shadowBlur  = 0;
+
+      // Best score
+      ctx.font      = '14px Segoe UI, sans-serif';
+      ctx.fillStyle = '#4a7a44';
+      ctx.fillText(`Best: ${bestScore}`, CX, 76);
+
+      // Combo
+      if (combo >= 2) {
+        ctx.font      = `bold ${14 + Math.min(combo, 20)}px Segoe UI, sans-serif`;
+        ctx.fillStyle = `hsl(${hue+40},90%,70%)`;
+        ctx.shadowColor = `hsl(${hue+40},100%,60%)`;
+        ctx.shadowBlur  = 8;
+        ctx.fillText(`x${combo} COMBO`, CX, 100);
+        ctx.shadowBlur  = 0;
+      }
+
+      // Lives (leaf icons)
+      drawLives();
+
+      // Surge indicator
+      if (surgeActive) {
+        ctx.font      = 'bold 13px Segoe UI, sans-serif';
+        ctx.fillStyle = '#ff9900';
+        ctx.textAlign = 'center';
+        ctx.fillText('⚡ SURGE ⚡', CX, LOGICAL_H - 24);
+      }
+
+      // Streak boost indicator
+      if (hitWindowExtra > 0) {
+        ctx.font      = '12px Segoe UI, sans-serif';
+        ctx.fillStyle = '#ffea00';
+        ctx.textAlign = 'right';
+        ctx.fillText('GROOVE+', LOGICAL_W - 16, 30);
+      }
+    }
+
+    function drawLives() {
+      const startX = CX - (LIVES_MAX - 1) * 22;
+      for (let i = 0; i < LIVES_MAX; i++) {
+        const x = startX + i * 22;
+        const y = 120;
+        const alive = i < lives;
+        drawLeaf(x, y, alive ? '#3dc940' : '#1f3320', alive ? '#80ff60' : '#1f3320');
+      }
+    }
+
+    // Simple stylized leaf shape
+    function drawLeaf(x, y, fill, stroke) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.beginPath();
+      ctx.moveTo(0, -10);
+      ctx.bezierCurveTo(8, -10, 12, 0, 0, 10);
+      ctx.bezierCurveTo(-12, 0, -8, -10, 0, -10);
+      ctx.fillStyle   = fill;
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth   = 1.5;
+      ctx.shadowColor = stroke;
+      ctx.shadowBlur  = alive ? 8 : 0;
+      ctx.fill();
+      ctx.stroke();
+      ctx.shadowBlur  = 0;
+
+      // Midrib
+      ctx.beginPath();
+      ctx.moveTo(0, -8);
+      ctx.lineTo(0, 8);
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth   = 1;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // ── Start Screen ───────────────────────────────────────────
+    function drawStartScreen() {
+      // Animated rings in background
+      const t = Date.now() / 1000;
+      for (let i = 0; i < 4; i++) {
+        const r = ((t * 60 + i * 60) % MAX_RING_R);
+        const a = 1 - r / MAX_RING_R;
+        ctx.beginPath();
+        ctx.arc(CX, CY, r, 0, Math.PI * 2);
+        ctx.strokeStyle = `hsla(${hue},80%,60%,${a * 0.35})`;
+        ctx.lineWidth   = 2;
+        ctx.stroke();
+      }
+
+      // Title
+      ctx.save();
+      ctx.textAlign   = 'center';
+      ctx.font        = 'bold 48px Segoe UI, sans-serif';
+      ctx.fillStyle   = `hsl(${hue},80%,75%)`;
+      ctx.shadowColor = `hsl(${hue},100%,55%)`;
+      ctx.shadowBlur  = 24;
+      ctx.fillText('PULSE', CX, CY - 70);
+      ctx.fillText('GROVE', CX, CY - 20);
+      ctx.shadowBlur  = 0;
+
+      ctx.font        = '18px Segoe UI, sans-serif';
+      ctx.fillStyle   = '#4db847';
+      ctx.fillText('Ring Sync', CX, CY + 14);
+
+      // Instructions
+      ctx.font        = '15px Segoe UI, sans-serif';
+      ctx.fillStyle   = '#3a6e35';
+      ctx.fillText('Time your taps to the pulse ring', CX, CY + 56);
+      ctx.fillText('to collect Grove Nodes', CX, CY + 78);
+
+      // Tap prompt
+      const blink = Math.sin(Date.now() / 400) > 0;
+      if (blink) {
+        ctx.font        = 'bold 20px Segoe UI, sans-serif';
+        ctx.fillStyle   = `hsl(${hue},90%,72%)`;
+        ctx.shadowColor = `hsl(${hue},100%,55%)`;
+        ctx.shadowBlur  = 12;
+        ctx.fillText('TAP TO START', CX, CY + 130);
+        ctx.shadowBlur  = 0;
+      }
+
+      // Best score
+      if (bestScore > 0) {
+        ctx.font      = '14px Segoe UI, sans-serif';
+        ctx.fillStyle = '#4a7a44';
+        ctx.fillText(`Best: ${bestScore}`, CX, CY + 165);
+      }
+
+      ctx.restore();
+    }
+
+    // ── Game Over Screen ───────────────────────────────────────
+    function drawGameOver() {
+      drawNodeRingGuide();
+      drawParticles();
+      drawPopTexts();
+
+      // Overlay
+      ctx.fillStyle = 'rgba(3,10,4,0.65)';
+      ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
+
+      ctx.save();
+      ctx.textAlign = 'center';
+
+      ctx.font        = 'bold 42px Segoe UI, sans-serif';
+      ctx.fillStyle   = '#ff5544';
+      ctx.shadowColor = '#ff0000';
+      ctx.shadowBlur  = 20;
+      ctx.fillText('GAME OVER', CX, CY - 80);
+      ctx.shadowBlur  = 0;
+
+      ctx.font      = '26px Segoe UI, sans-serif';
+      ctx.fillStyle = `hsl(${hue},80%,75%)`;
+      ctx.fillText(`Score: ${score}`, CX, CY - 28);
+
+      ctx.font      = '18px Segoe UI, sans-serif';
+      ctx.fillStyle = '#4a9444';
+      ctx.fillText(`Best: ${bestScore}`, CX, CY + 6);
+
+      ctx.font      = '16px Segoe UI, sans-serif';
+      ctx.fillStyle = '#3d7e38';
+      ctx.fillText(`Best Combo: x${bestCombo}`, CX, CY + 34);
+
+      // Tap to Retry
+      const blink = Math.sin(Date.now() / 400) > 0;
+      if (blink) {
+        ctx.font        = 'bold 20px Segoe UI, sans-serif';
+        ctx.fillStyle   = `hsl(${hue},90%,72%)`;
+        ctx.shadowColor = `hsl(${hue},100%,55%)`;
+        ctx.shadowBlur  = 12;
+        ctx.fillText('TAP TO RETRY', CX, CY + 90);
+        ctx.shadowBlur  = 0;
+      }
+
+      ctx.restore();
+    }
+
+    // ── RAF Loop ───────────────────────────────────────────────
+    function loop(ts) {
+      requestAnimationFrame(loop);
+
+      if (!lastTime) lastTime = ts;
+      let dt = Math.min((ts - lastTime) / 1000, 0.05); // cap to avoid spiral
+      lastTime = ts;
+
+      // Always update hue on start/gameover for animation
+      if (state !== 'playing') {
+        hue = (hue + 12 * dt) % 360;
+      }
+
+      if (state === 'playing') update(dt);
+
+      draw();
+    }
+
+    // ── Input Binding ──────────────────────────────────────────
+    canvas.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      onTap();
+    }, { passive: false });
+
+    document.addEventListener('keydown', e => {
+      if (e.code === 'Space' || e.code === 'Enter') {
+        e.preventDefault();
+        onTap();
+      }
+    });
+
+    // ── Helpers ────────────────────────────────────────────────
+    function lerp(a, b, t) { return a + (b - a) * Math.clamp01(t); }
+    Math.clamp01 = v => Math.max(0, Math.min(1, v));
+    function between(lo, hi) { return lo + Math.floor(Math.random() * (hi - lo + 1)); }
+
+    // ── Boot ───────────────────────────────────────────────────
+    hue = 100;
+
+    // Initial game state for start screen animations
+    nodes = []; particles = []; popTexts = []; shakeAmt = 0; shakeDuration = 0;
+    ringR = 0; elapsed = 0; score = 0; lives = LIVES_MAX; combo = 0; bestCombo = 0;
+    surgeActive = false; hitWindowExtra = 0;
+
+    requestAnimationFrame(loop);
+
+  })();
+  </script>
+</body>
+</html>

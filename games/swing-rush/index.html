@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Swing Rush - Free HTML5 Game</title>
+<meta name="description" content="Play Swing Rush - Tap to swing between ropes and beat the countdown before time runs out.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0a0a1a">
+
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="Swing Rush - Free HTML5 Game">
+<meta property="og:description" content="Play Swing Rush - Tap to swing between ropes and beat the countdown before time runs out.">
+<meta property="og:url" content="https://balinti.github.io/swing-rush/">
+<meta property="og:image" content="https://balinti.github.io/swing-rush/preview.png">
+
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Swing Rush - Free HTML5 Game">
+<meta name="twitter:description" content="Play Swing Rush - Tap to swing between ropes and beat the countdown before time runs out.">
+<meta name="twitter:image" content="https://balinti.github.io/swing-rush/preview.png">
+
+<!-- AdSense -->
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 100%; height: 100%;
+    background: #0a0a1a;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    overflow: hidden;
+    touch-action: none;
+  }
+  #game-wrap {
+    position: relative;
+    width: min(420px, 100vw);
+    height: min(750px, 100vh);
+    display: flex; flex-direction: column;
+    background: radial-gradient(ellipse at 50% 20%, #1a1a3e 0%, #0a0a1a 100%);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 0 60px rgba(80,60,255,0.25);
+  }
+  #game-canvas {
+    display: block;
+    width: 100%; height: 100%;
+    touch-action: none;
+    cursor: pointer;
+  }
+  #game-info {
+    position: absolute;
+    bottom: -1px;
+    left: 0; right: 0;
+    padding: 8px 16px;
+    background: linear-gradient(0deg, rgba(10,10,26,0.95) 0%, transparent 100%);
+    color: #aaa;
+    font-size: 11px;
+    text-align: center;
+    line-height: 1.5;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<div id="game-wrap">
+  <canvas id="game-canvas"></canvas>
+  <!-- Crawlable accessibility text -->
+  <div id="game-info" aria-label="Game instructions">
+    <strong>Swing Rush</strong> &mdash; Tap or press Space to latch onto anchors. Swing to the apex for Perfect hits!
+    Chain combos to boost your score. Don&#39;t let your energy run out.
+  </div>
+</div>
+
+<script>
+(function() {
+'use strict';
+
+// ── Constants ──────────────────────────────────────────────────────────────
+const LS_KEY = 'swingrush_highscore';
+const PHYSICS_STEP = 1 / 120;
+const MAX_DT = 0.05;
+const DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+// Colors
+const PALETTE = {
+  bg1: '#0a0a1a',
+  bg2: '#1a1a3e',
+  runner: '#fff',
+  anchor: (h) => `hsl(${h},90%,65%)`,
+  perfect: '#ffd700',
+  great: '#00e5ff',
+  ok: '#a0ff80',
+  miss: '#ff4455',
+  energy: '#00e5ff',
+  energyLow: '#ff4455',
+};
+
+// ── Canvas Setup ────────────────────────────────────────────────────────────
+const wrap = document.getElementById('game-wrap');
+const canvas = document.getElementById('game-canvas');
+const ctx = canvas.getContext('2d');
+
+function resizeCanvas() {
+  const w = wrap.clientWidth;
+  const h = wrap.clientHeight;
+  canvas.width = w * DPR;
+  canvas.height = h * DPR;
+  canvas.style.width = w + 'px';
+  canvas.style.height = h + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+resizeCanvas();
+window.addEventListener('resize', () => { resizeCanvas(); if (state !== 'playing') drawStatic(); });
+
+// ── State ───────────────────────────────────────────────────────────────────
+let state = 'start'; // 'start' | 'playing' | 'gameover'
+let highScore = parseInt(localStorage.getItem(LS_KEY) || '0', 10);
+
+// Game world
+let W, H; // logical dims
+let score, bestCombo, combo, multiplier;
+let energy; // 0..1
+let distance;
+let hueShift;
+let gameoverTimer;
+let canRetry;
+let slowMoTimer; // ms remaining
+let shakeTimer, shakeAmt;
+
+// Runner
+let runner;
+// Anchors
+let anchors;
+let nextAnchorIdx;
+// Current swing
+let swinging;
+let swingAnchor;
+let swingAngle, swingOmega, swingLen;
+// Particles
+let particles;
+// Trail
+let trail;
+// Hazards
+let hazards;
+// Scroll speed
+let scrollSpeed;
+// Difficulty
+let diffTimer;
+
+// ── Init / Reset ────────────────────────────────────────────────────────────
+function getLogicalSize() {
+  return { w: wrap.clientWidth, h: wrap.clientHeight };
+}
+
+function initGame() {
+  const sz = getLogicalSize();
+  W = sz.w; H = sz.h;
+
+  score = 0;
+  combo = 0;
+  bestCombo = 0;
+  multiplier = 1;
+  energy = 1;
+  distance = 0;
+  hueShift = 0;
+  gameoverTimer = 0;
+  canRetry = false;
+  slowMoTimer = 0;
+  shakeTimer = 0;
+  shakeAmt = 0;
+  diffTimer = 0;
+  scrollSpeed = 80; // px/s base
+
+  runner = {
+    x: W * 0.25,
+    y: H * 0.5,
+    vx: 0,
+    vy: 0,
+    r: 10,
+    trail: [],
+    dead: false,
+  };
+
+  particles = [];
+  trail = [];
+  hazards = [];
+  swinging = false;
+  swingAnchor = null;
+
+  anchors = [];
+  nextAnchorIdx = 0;
+  // Seed initial anchors
+  for (let i = 0; i < 5; i++) spawnAnchor(i === 0);
+
+  state = 'playing';
+}
+
+function spawnAnchor(immediate) {
+  const sz = getLogicalSize();
+  W = sz.w; H = sz.h;
+  const lastX = anchors.length > 0
+    ? anchors[anchors.length - 1].x
+    : W * 0.6;
+  const spacing = 160 + Math.random() * 80 - Math.min(diffTimer * 0.5, 40);
+  const minSpacing = 120;
+  const x = lastX + Math.max(minSpacing, spacing);
+  const y = H * 0.15 + Math.random() * H * 0.55;
+  anchors.push({
+    x,
+    y,
+    r: 20,
+    catchR: 80, // generous catch radius
+    pulse: 0,
+    hue: (hueShift + anchors.length * 40) % 360,
+    hit: false,
+    quality: null,
+    flashTimer: 0,
+  });
+}
+
+// ── Input ────────────────────────────────────────────────────────────────────
+function onInput() {
+  if (state === 'start') {
+    initGame();
+    return;
+  }
+  if (state === 'gameover') {
+    if (canRetry) { initGame(); }
+    return;
+  }
+  if (state === 'playing') {
+    handleTap();
+  }
+}
+
+canvas.addEventListener('pointerdown', (e) => { e.preventDefault(); onInput(); });
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); onInput(); }
+});
+
+// ── Tap logic ────────────────────────────────────────────────────────────────
+function handleTap() {
+  if (swinging) return; // already swinging – release handled auto
+
+  // Find the highlighted (next) anchor
+  const anchor = anchors[nextAnchorIdx];
+  if (!anchor) return;
+
+  const dx = anchor.x - runner.x;
+  const dy = anchor.y - runner.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+
+  if (dist <= anchor.catchR) {
+    latchToAnchor(anchor, dist);
+  } else {
+    // Miss
+    triggerMiss();
+  }
+}
+
+function latchToAnchor(anchor, dist) {
+  swinging = true;
+  swingAnchor = anchor;
+  swingLen = dist;
+  // Angle from anchor down to runner
+  swingAngle = Math.atan2(runner.y - anchor.y, runner.x - anchor.x);
+  // Angular velocity from runner's current velocity projected onto tangent
+  const tx = -Math.sin(swingAngle);
+  const ty = Math.cos(swingAngle);
+  swingOmega = (runner.vx * tx + runner.vy * ty) / swingLen;
+  if (Math.abs(swingOmega) < 0.5) swingOmega = 0.5; // ensure forward motion
+
+  anchor.hit = true;
+  spawnParticles(runner.x, runner.y, PALETTE.ok, 6);
+  triggerShake(2, 0.08);
+}
+
+function releaseSwing(quality) {
+  if (!swinging) return;
+  swinging = false;
+
+  const anchor = swingAnchor;
+  swingAnchor = null;
+
+  let color, energyGain, scoreGain, multGain;
+  if (quality === 'perfect') {
+    color = PALETTE.perfect;
+    energyGain = 0.18;
+    scoreGain = 100 * multiplier;
+    multGain = 0.3;
+    slowMoTimer = 100; // ms
+    triggerShake(1.5, 0.06);
+    spawnParticles(runner.x, runner.y, color, 20);
+    combo++;
+    if (combo > bestCombo) bestCombo = combo;
+  } else if (quality === 'great') {
+    color = PALETTE.great;
+    energyGain = 0.10;
+    scoreGain = 60 * multiplier;
+    multGain = 0.1;
+    spawnParticles(runner.x, runner.y, color, 10);
+    combo++;
+    if (combo > bestCombo) bestCombo = combo;
+  } else {
+    color = PALETTE.ok;
+    energyGain = 0.04;
+    scoreGain = 30 * multiplier;
+    multGain = 0;
+    spawnParticles(runner.x, runner.y, color, 5);
+    combo = 0;
+  }
+
+  anchor.quality = quality;
+  anchor.flashTimer = 0.6;
+  energy = Math.min(1, energy + energyGain);
+  score += scoreGain | 0;
+  multiplier = Math.min(8, multiplier + multGain);
+
+  // Show quality label
+  spawnLabel(runner.x, runner.y - 20, quality.toUpperCase(), color);
+
+  // Advance to next anchor
+  nextAnchorIdx++;
+  if (nextAnchorIdx >= anchors.length - 2) {
+    spawnAnchor();
+    // Occasionally spawn hazard
+    if (Math.random() < 0.3 + diffTimer * 0.002) spawnHazard();
+  }
+}
+
+function triggerMiss() {
+  energy -= 0.25;
+  combo = 0;
+  multiplier = Math.max(1, multiplier - 0.5);
+  spawnParticles(runner.x, runner.y, PALETTE.miss, 15);
+  triggerShake(5, 0.2);
+  spawnLabel(runner.x, runner.y - 20, 'MISS!', PALETTE.miss);
+  runner.vx += 40;
+  runner.vy += 20;
+  if (energy <= 0) triggerDeath();
+}
+
+function triggerDeath() {
+  runner.dead = true;
+  state = 'gameover';
+  gameoverTimer = 0;
+  canRetry = false;
+  triggerShake(12, 0.5);
+  spawnParticles(runner.x, runner.y, '#ff4455', 40);
+  if (score > highScore) {
+    highScore = score;
+    localStorage.setItem(LS_KEY, highScore);
+  }
+  setTimeout(() => { canRetry = true; }, 1200);
+}
+
+function triggerShake(amount, duration) {
+  shakeAmt = Math.max(shakeAmt, amount);
+  shakeTimer = Math.max(shakeTimer, duration);
+}
+
+// ── Hazards ──────────────────────────────────────────────────────────────────
+function spawnHazard() {
+  const sz = getLogicalSize();
+  const lastAnchor = anchors[anchors.length - 1];
+  const x = lastAnchor ? lastAnchor.x + 60 + Math.random() * 80 : W + 200;
+  const y = H * 0.3 + Math.random() * H * 0.4;
+  hazards.push({
+    x, y,
+    w: 16 + Math.random() * 10,
+    h: 40 + Math.random() * 30,
+    hue: 0,
+    type: Math.random() < 0.5 ? 'spike' : 'laser',
+  });
+}
+
+// ── Particles ─────────────────────────────────────────────────────────────────
+function spawnParticles(x, y, color, count) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 50 + Math.random() * 150;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 0.4 + Math.random() * 0.4,
+      maxLife: 0.6,
+      r: 2 + Math.random() * 4,
+      color,
+    });
+  }
+}
+
+// Floating score labels
+let labels = [];
+function spawnLabel(x, y, text, color) {
+  labels.push({ x, y, text, color, life: 1.0, vy: -60 });
+}
+
+// ── Physics Update ────────────────────────────────────────────────────────────
+let lastTime = 0;
+let accumulator = 0;
+
+function update(dt) {
+  if (state !== 'playing') return;
+
+  const sz = getLogicalSize();
+  W = sz.w; H = sz.h;
+
+  // Slow-mo
+  let timeScale = 1;
+  if (slowMoTimer > 0) {
+    timeScale = 0.3;
+    slowMoTimer -= dt * 1000;
+    if (slowMoTimer < 0) slowMoTimer = 0;
+  }
+
+  const scaledDt = dt * timeScale;
+
+  // Scroll
+  scrollSpeed = 80 + diffTimer * 0.8;
+  distance += scrollSpeed * scaledDt;
+  diffTimer += dt;
+
+  // Hue cycling
+  hueShift = (hueShift + dt * 20) % 360;
+
+  // Update anchors (scroll them left)
+  for (const a of anchors) {
+    a.x -= scrollSpeed * scaledDt;
+    a.pulse = (a.pulse + scaledDt * 3) % (Math.PI * 2);
+    a.flashTimer = Math.max(0, a.flashTimer - scaledDt);
+  }
+
+  // Update hazards
+  for (const h of hazards) {
+    h.x -= scrollSpeed * scaledDt;
+  }
+  // Remove off-screen hazards
+  hazards = hazards.filter(h => h.x > -100);
+
+  // Remove off-screen anchors and adjust nextAnchorIdx
+  while (anchors.length > 0 && anchors[0].x < -60) {
+    anchors.shift();
+    nextAnchorIdx = Math.max(0, nextAnchorIdx - 1);
+  }
+  // Refill anchors
+  while (anchors.length < 6) spawnAnchor();
+
+  // Runner physics
+  if (!swinging) {
+    // Free flight
+    runner.vy += 500 * scaledDt; // gravity
+    runner.vx = Math.max(runner.vx - 200 * scaledDt, 0);
+    runner.x += runner.vx * scaledDt;
+    runner.y += runner.vy * scaledDt;
+
+    // Gentle forward nudge to keep runner on screen
+    runner.x = Math.max(W * 0.1, Math.min(W * 0.5, runner.x));
+
+    // Floor/ceiling death
+    if (runner.y > H + 50 || runner.y < -100) {
+      if (!runner.dead) triggerDeath();
+    }
+  } else {
+    // Pendulum physics
+    const anchor = swingAnchor;
+    // Scroll anchor also scrolled above, so runner follows
+    const g = 600 * scaledDt;
+    const dAngle = -g / swingLen * Math.cos(swingAngle); // pendulum torque
+    swingOmega += dAngle;
+    swingAngle += swingOmega * scaledDt;
+
+    runner.x = anchor.x + Math.cos(swingAngle) * swingLen;
+    runner.y = anchor.y + Math.sin(swingAngle) * swingLen;
+    runner.vx = -Math.sin(swingAngle) * swingOmega * swingLen;
+    runner.vy = Math.cos(swingAngle) * swingOmega * swingLen;
+
+    // Auto-release at forward apex: when omega crosses zero going forward
+    // (angle approaching top-forward = runner above anchor and moving right)
+    if (swingOmega > 0) {
+      // Check if we passed the apex (angle near -PI/2 = straight up, or forward peak)
+      // Release when velocity direction is mostly rightward and vy near zero (apex)
+      if (runner.vy > -50 && runner.vx > 0 && swingAngle < 0) {
+        // Determine quality by angle at release
+        const ang = Math.abs(swingAngle + Math.PI / 2); // 0 = perfect apex
+        let quality;
+        if (ang < 0.25) quality = 'perfect';
+        else if (ang < 0.55) quality = 'great';
+        else quality = 'ok';
+        releaseSwing(quality);
+      }
+    }
+
+    // Check hazard collision during swing
+    checkHazardCollision();
+  }
+
+  // Energy drain
+  energy -= scaledDt * (0.04 + diffTimer * 0.0003);
+  if (energy <= 0 && !runner.dead) {
+    energy = 0;
+    triggerDeath();
+  }
+
+  // Trail
+  trail.push({ x: runner.x, y: runner.y, life: 1 });
+  if (trail.length > 25) trail.shift();
+  for (const t of trail) t.life -= scaledDt * 4;
+
+  // Particles
+  for (const p of particles) {
+    p.x += p.vx * scaledDt;
+    p.y += p.vy * scaledDt;
+    p.vy += 200 * scaledDt;
+    p.life -= scaledDt;
+  }
+  particles = particles.filter(p => p.life > 0);
+
+  // Labels
+  for (const l of labels) {
+    l.y += l.vy * scaledDt;
+    l.life -= scaledDt * 1.5;
+  }
+  labels = labels.filter(l => l.life > 0);
+
+  // Shake decay
+  shakeTimer = Math.max(0, shakeTimer - dt);
+  if (shakeTimer <= 0) shakeAmt = 0;
+  else shakeAmt *= 0.85;
+
+  // Score from distance
+  score = Math.max(score, (distance / 10) | 0);
+}
+
+function checkHazardCollision() {
+  for (const h of hazards) {
+    const hw = h.w / 2, hh = h.h / 2;
+    if (
+      runner.x + runner.r > h.x - hw &&
+      runner.x - runner.r < h.x + hw &&
+      runner.y + runner.r > h.y - hh &&
+      runner.y - runner.r < h.y + hh
+    ) {
+      if (!runner.dead) triggerDeath();
+    }
+  }
+}
+
+// ── Draw ──────────────────────────────────────────────────────────────────────
+function draw() {
+  const sz = getLogicalSize();
+  W = sz.w; H = sz.h;
+
+  ctx.save();
+
+  // Screen shake
+  if (shakeTimer > 0) {
+    const sx = (Math.random() - 0.5) * shakeAmt * 2;
+    const sy = (Math.random() - 0.5) * shakeAmt * 2;
+    ctx.translate(sx, sy);
+  }
+
+  // Background
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, `hsl(${(hueShift + 220) % 360},40%,8%)`);
+  grad.addColorStop(1, `hsl(${(hueShift + 260) % 360},30%,4%)`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Stars
+  drawStars();
+
+  if (state === 'start') {
+    drawStart();
+  } else if (state === 'playing' || state === 'gameover') {
+    drawGame();
+    drawHUD();
+    if (state === 'gameover') drawGameOver();
+  }
+
+  ctx.restore();
+}
+
+let starSeed = Array.from({ length: 60 }, () => ({
+  x: Math.random(), y: Math.random(), r: Math.random(), blink: Math.random() * Math.PI * 2
+}));
+
+function drawStars() {
+  for (const s of starSeed) {
+    const blink = 0.5 + 0.5 * Math.sin(s.blink + performance.now() * 0.001);
+    ctx.globalAlpha = blink * 0.6;
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(s.x * W, s.y * H, s.r + 0.5, 0, Math.PI * 2);
+    ctx.fill();
+    s.blink += 0.01;
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawGame() {
+  // Draw tether
+  if (swinging && swingAnchor) {
+    const anchor = swingAnchor;
+    const qual = anchor.quality;
+    let tetherColor;
+    if (qual === 'perfect') tetherColor = PALETTE.perfect;
+    else if (qual === 'great') tetherColor = PALETTE.great;
+    else tetherColor = `hsl(${hueShift},90%,65%)`;
+
+    ctx.save();
+    ctx.strokeStyle = tetherColor;
+    ctx.lineWidth = 2.5;
+    ctx.globalAlpha = 0.8;
+    ctx.setLineDash([8, 4]);
+    ctx.beginPath();
+    ctx.moveTo(runner.x, runner.y);
+    ctx.lineTo(anchor.x, anchor.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
+  // Draw hazards
+  for (const h of hazards) {
+    const hw = h.w / 2, hh = h.h / 2;
+    ctx.save();
+    if (h.type === 'spike') {
+      ctx.fillStyle = `hsl(${(hueShift + 180) % 360},90%,55%)`;
+      ctx.shadowColor = ctx.fillStyle;
+      ctx.shadowBlur = 10;
+      // Draw spike triangle pattern
+      const rows = 3;
+      const rowH = h.h / rows;
+      for (let r = 0; r < rows; r++) {
+        ctx.beginPath();
+        ctx.moveTo(h.x - hw, h.y - hh + r * rowH + rowH);
+        ctx.lineTo(h.x, h.y - hh + r * rowH);
+        ctx.lineTo(h.x + hw, h.y - hh + r * rowH + rowH);
+        ctx.closePath();
+        ctx.fill();
+      }
+    } else {
+      // Laser
+      ctx.fillStyle = `hsl(0,100%,60%)`;
+      ctx.shadowColor = '#ff0';
+      ctx.shadowBlur = 15;
+      ctx.fillRect(h.x - hw, h.y - hh, h.w, h.h);
+      // Animated beam
+      ctx.fillStyle = `rgba(255,255,100,${0.4 + 0.3 * Math.sin(performance.now() * 0.01)})`;
+      ctx.fillRect(h.x - hw * 0.4, h.y - hh, hw * 0.8, h.h);
+    }
+    ctx.restore();
+  }
+
+  // Draw anchors
+  for (let i = 0; i < anchors.length; i++) {
+    const a = anchors[i];
+    if (a.x < -60 || a.x > W + 60) continue;
+    const isNext = i === nextAnchorIdx;
+    drawAnchor(a, isNext);
+  }
+
+  // Trail
+  for (let i = 0; i < trail.length; i++) {
+    const t = trail[i];
+    const alpha = Math.max(0, t.life) * 0.6;
+    const size = runner.r * (0.3 + 0.7 * (i / trail.length));
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = `hsl(${hueShift},80%,70%)`;
+    ctx.beginPath();
+    ctx.arc(t.x, t.y, size, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // Runner
+  if (!runner.dead) {
+    ctx.save();
+    ctx.shadowColor = `hsl(${hueShift},90%,70%)`;
+    ctx.shadowBlur = 15;
+    // Glow
+    const rg = ctx.createRadialGradient(runner.x, runner.y, 0, runner.x, runner.y, runner.r * 2);
+    rg.addColorStop(0, `hsl(${hueShift},90%,90%)`);
+    rg.addColorStop(1, `hsla(${hueShift},90%,60%,0)`);
+    ctx.fillStyle = rg;
+    ctx.beginPath();
+    ctx.arc(runner.x, runner.y, runner.r * 2, 0, Math.PI * 2);
+    ctx.fill();
+    // Core
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(runner.x, runner.y, runner.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Particles
+  for (const p of particles) {
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, p.life / (p.maxLife || 0.6));
+    ctx.fillStyle = p.color;
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Labels
+  for (const l of labels) {
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, l.life);
+    ctx.fillStyle = l.color;
+    ctx.font = `bold ${18}px 'Segoe UI', sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.shadowColor = l.color;
+    ctx.shadowBlur = 12;
+    ctx.fillText(l.text, l.x, l.y);
+    ctx.restore();
+  }
+}
+
+function drawAnchor(a, isNext) {
+  ctx.save();
+  const baseR = a.r;
+  const pulseR = isNext ? baseR + 6 * Math.sin(a.pulse) : baseR;
+  const hue = (a.hue + hueShift) % 360;
+  const color = `hsl(${hue},90%,65%)`;
+
+  // Outer ring
+  if (isNext) {
+    ctx.beginPath();
+    ctx.arc(a.x, a.y, pulseR + 12, 0, Math.PI * 2);
+    ctx.strokeStyle = `hsla(${hue},90%,65%,0.3)`;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(a.x, a.y, pulseR + 6, 0, Math.PI * 2);
+    ctx.strokeStyle = `hsla(${hue},90%,65%,0.5)`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  // Main ring
+  ctx.beginPath();
+  ctx.arc(a.x, a.y, pulseR, 0, Math.PI * 2);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = isNext ? 3 : 1.5;
+  ctx.globalAlpha = isNext ? 1 : 0.4;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = isNext ? 20 : 5;
+  ctx.stroke();
+
+  // Center dot
+  if (isNext) {
+    ctx.beginPath();
+    ctx.arc(a.x, a.y, 4, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+  }
+
+  // Quality flash
+  if (a.flashTimer > 0) {
+    const qColors = { perfect: PALETTE.perfect, great: PALETTE.great, ok: PALETTE.ok };
+    ctx.globalAlpha = a.flashTimer * 1.5;
+    ctx.beginPath();
+    ctx.arc(a.x, a.y, pulseR + 25 * (1 - a.flashTimer), 0, Math.PI * 2);
+    ctx.strokeStyle = qColors[a.quality] || color;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+function drawHUD() {
+  const pad = 12;
+
+  // Score
+  ctx.save();
+  ctx.fillStyle = '#fff';
+  ctx.font = `bold 28px 'Segoe UI', sans-serif`;
+  ctx.textAlign = 'left';
+  ctx.shadowColor = `hsl(${hueShift},90%,70%)`;
+  ctx.shadowBlur = 10;
+  ctx.fillText(score, pad, pad + 28);
+  ctx.restore();
+
+  // High score
+  ctx.save();
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.font = `12px 'Segoe UI', sans-serif`;
+  ctx.textAlign = 'left';
+  ctx.fillText(`BEST: ${highScore}`, pad, pad + 48);
+  ctx.restore();
+
+  // Multiplier
+  if (multiplier > 1.05) {
+    ctx.save();
+    ctx.fillStyle = PALETTE.perfect;
+    ctx.font = `bold 16px 'Segoe UI', sans-serif`;
+    ctx.textAlign = 'right';
+    ctx.shadowColor = PALETTE.perfect;
+    ctx.shadowBlur = 10;
+    ctx.fillText(`×${multiplier.toFixed(1)}`, W - pad, pad + 28);
+    ctx.restore();
+  }
+
+  // Combo
+  if (combo >= 2) {
+    ctx.save();
+    ctx.fillStyle = PALETTE.great;
+    ctx.font = `bold 14px 'Segoe UI', sans-serif`;
+    ctx.textAlign = 'right';
+    ctx.fillText(`${combo} COMBO`, W - pad, pad + 48);
+    ctx.restore();
+  }
+
+  // Energy bar
+  const barW = W - pad * 2;
+  const barH = 6;
+  const barX = pad;
+  const barY = H - 50;
+
+  ctx.save();
+  ctx.fillStyle = 'rgba(255,255,255,0.15)';
+  ctx.beginPath();
+  ctx.roundRect(barX, barY, barW, barH, 3);
+  ctx.fill();
+
+  const eColor = energy < 0.25 ? PALETTE.energyLow : PALETTE.energy;
+  const grad = ctx.createLinearGradient(barX, 0, barX + barW, 0);
+  grad.addColorStop(0, eColor);
+  grad.addColorStop(1, `hsl(${(hueShift + 120) % 360},90%,60%)`);
+  ctx.fillStyle = grad;
+  ctx.shadowColor = eColor;
+  ctx.shadowBlur = energy < 0.25 ? 12 : 5;
+  ctx.beginPath();
+  ctx.roundRect(barX, barY, barW * Math.max(0, energy), barH, 3);
+  ctx.fill();
+
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.font = `10px 'Segoe UI', sans-serif`;
+  ctx.textAlign = 'left';
+  ctx.fillText('ENERGY', barX, barY - 4);
+  ctx.restore();
+}
+
+function drawStart() {
+  ctx.save();
+  // Title
+  ctx.textAlign = 'center';
+  ctx.shadowBlur = 30;
+
+  ctx.shadowColor = `hsl(${hueShift},90%,60%)`;
+  ctx.fillStyle = `hsl(${hueShift},90%,80%)`;
+  ctx.font = `bold 42px 'Segoe UI', sans-serif`;
+  ctx.fillText('SWING RUSH', W / 2, H * 0.35);
+
+  ctx.shadowColor = '#fff';
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.font = `18px 'Segoe UI', sans-serif`;
+  ctx.fillText('Apex Chain Runner', W / 2, H * 0.35 + 36);
+
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  ctx.font = `14px 'Segoe UI', sans-serif`;
+  ctx.fillText('Tap anchors at the apex for PERFECT hits', W / 2, H * 0.52);
+  ctx.fillText('Chain combos to boost your multiplier!', W / 2, H * 0.52 + 24);
+
+  // Tap prompt
+  const pulse = 0.7 + 0.3 * Math.sin(performance.now() * 0.003);
+  ctx.globalAlpha = pulse;
+  ctx.fillStyle = `hsl(${hueShift},90%,70%)`;
+  ctx.font = `bold 20px 'Segoe UI', sans-serif`;
+  ctx.shadowColor = `hsl(${hueShift},90%,70%)`;
+  ctx.shadowBlur = 20;
+  ctx.fillText('TAP TO PLAY', W / 2, H * 0.68);
+
+  if (highScore > 0) {
+    ctx.globalAlpha = 0.7;
+    ctx.fillStyle = '#fff';
+    ctx.font = `14px 'Segoe UI', sans-serif`;
+    ctx.shadowBlur = 0;
+    ctx.fillText(`Best: ${highScore}`, W / 2, H * 0.75);
+  }
+  ctx.restore();
+}
+
+function drawGameOver() {
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.65)';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.textAlign = 'center';
+
+  ctx.fillStyle = PALETTE.miss;
+  ctx.font = `bold 38px 'Segoe UI', sans-serif`;
+  ctx.shadowColor = PALETTE.miss;
+  ctx.shadowBlur = 25;
+  ctx.fillText('GAME OVER', W / 2, H * 0.32);
+
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#fff';
+  ctx.font = `bold 24px 'Segoe UI', sans-serif`;
+  ctx.fillText(`Score: ${score}`, W / 2, H * 0.44);
+
+  ctx.fillStyle = PALETTE.perfect;
+  ctx.font = `16px 'Segoe UI', sans-serif`;
+  ctx.fillText(`Best: ${highScore}`, W / 2, H * 0.44 + 32);
+
+  if (bestCombo >= 2) {
+    ctx.fillStyle = PALETTE.great;
+    ctx.font = `14px 'Segoe UI', sans-serif`;
+    ctx.fillText(`Best Combo: ${bestCombo}`, W / 2, H * 0.44 + 58);
+  }
+
+  if (canRetry) {
+    const pulse = 0.7 + 0.3 * Math.sin(performance.now() * 0.004);
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = `hsl(${hueShift},90%,70%)`;
+    ctx.font = `bold 18px 'Segoe UI', sans-serif`;
+    ctx.shadowColor = `hsl(${hueShift},90%,70%)`;
+    ctx.shadowBlur = 20;
+    ctx.fillText('TAP TO RETRY', W / 2, H * 0.65);
+  } else {
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.font = `14px 'Segoe UI', sans-serif`;
+    ctx.fillText('...', W / 2, H * 0.65);
+  }
+  ctx.restore();
+}
+
+function drawStatic() {
+  draw();
+}
+
+// ── Loop ──────────────────────────────────────────────────────────────────────
+function loop(timestamp) {
+  requestAnimationFrame(loop);
+
+  const dt = Math.min((timestamp - lastTime) / 1000, MAX_DT);
+  lastTime = timestamp;
+
+  // Semi-fixed step
+  accumulator += dt;
+  while (accumulator >= PHYSICS_STEP) {
+    update(PHYSICS_STEP);
+    accumulator -= PHYSICS_STEP;
+  }
+
+  // Hue cycling on non-playing states
+  if (state !== 'playing') {
+    hueShift = (hueShift + dt * 15) % 360;
+  }
+
+  draw();
+}
+
+// Start
+requestAnimationFrame((ts) => {
+  lastTime = ts;
+  requestAnimationFrame(loop);
+});
+
+})();
+</script>
+</body>
+</html>

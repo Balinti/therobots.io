@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Trap Trek - Free HTML5 Game</title>
+<meta name="description" content="Play Trap Trek - Slide tiles to clear a path through jungle traps that multiply with every move.">
+<meta name="theme-color" content="#0b1020">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Trap Trek - Free HTML5 Game">
+<meta property="og:description" content="Slide tiles to clear a path through jungle traps that multiply with every move.">
+<meta property="og:url" content="https://balinti.github.io/trap-trek/">
+<meta property="og:image" content="https://balinti.github.io/trap-trek/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Trap Trek - Free HTML5 Game">
+<meta name="twitter:description" content="Slide tiles to clear a path through jungle traps that multiply with every move.">
+<meta name="twitter:image" content="https://balinti.github.io/trap-trek/og.png">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow-x:hidden;background:#0b1020;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;color:#e0e8f0}
+body{display:flex;flex-direction:column;align-items:center;min-height:100vh;min-height:100dvh}
+.wrap{width:100%;max-width:420px;display:flex;flex-direction:column;align-items:center;flex:1;padding:8px 8px 0}
+.hdr{text-align:center;padding:6px 0 4px;width:100%}
+.hdr h1{font-size:1.3rem;letter-spacing:2px;background:linear-gradient(90deg,#6ff7a0,#4de8e0,#6fa0ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.score-bar{display:flex;justify-content:space-between;width:100%;padding:2px 4px;font-size:.85rem;opacity:.85}
+.cw{width:100%;aspect-ratio:6/8;max-height:calc(100dvh - 160px);position:relative}
+canvas{display:block;width:100%;height:100%;touch-action:none;border-radius:8px}
+.ftr{text-align:center;padding:8px 4px 12px;font-size:.72rem;opacity:.55;line-height:1.5;max-width:420px;width:100%}
+.ftr p{margin:2px 0}
+@media(min-height:700px){.cw{max-height:600px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="hdr"><h1>TRAP TREK</h1></div>
+<div class="score-bar"><span id="sc">Score: 0</span><span id="bs">Best: 0</span></div>
+<div class="cw"><canvas id="gc"></canvas></div>
+</div>
+<div class="ftr">
+<p><strong>Controls:</strong> Tap/click direction or use Arrow keys / WASD. Space/Enter to start.</p>
+<p>Slide your explorer through the jungle. Collect coins &amp; idols for points. Every move spawns a new trap &mdash; plan ahead or get boxed in!</p>
+<p>&copy; 2026 Trap Trek. A free HTML5 hyper-casual game.</p>
+</div>
+<script>
+'use strict';
+(()=>{
+/* ========== SEEDED RNG ========== */
+function mulberry32(a){return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t^=t+Math.imul(t^t>>>7,61|t);return((t^t>>>14)>>>0)/4294967296}}
+const params=new URLSearchParams(location.search);
+const seedParam=params.get('seed');
+const goalParam=params.get('goal');
+let seed=seedParam?parseInt(seedParam,36):0;
+let rng=seed?mulberry32(seed):Math.random;
+function resetRng(){rng=seed?mulberry32(seed):Math.random}
+function ri(n){return(rng()*n)|0}
+function rf(){return rng()}
+
+/* ========== CANVAS SETUP ========== */
+const canvas=document.getElementById('gc');
+const ctx=canvas.getContext('2d');
+const scEl=document.getElementById('sc');
+const bsEl=document.getElementById('bs');
+let dpr=Math.min(window.devicePixelRatio||1,3);
+let W,H,cw,ch;
+function resize(){
+const r=canvas.parentElement.getBoundingClientRect();
+cw=r.width;ch=r.height;
+dpr=Math.min(window.devicePixelRatio||1,3);
+canvas.width=cw*dpr;canvas.height=ch*dpr;
+W=cw;H=ch;
+ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+window.addEventListener('resize',resize);
+resize();
+
+/* ========== CONSTANTS ========== */
+const COLS=6,ROWS=8;
+let tileW,tileH,padX,padY;
+function calcTile(){
+const usable=Math.min(W,H*6/8);
+tileW=usable/COLS;tileH=(H-4)/ROWS;
+if(tileW*ROWS>H){tileH=(H-4)/ROWS;tileW=tileH}
+else{tileH=tileW}
+padX=(W-tileW*COLS)/2;padY=(H-tileH*ROWS)/2;
+}
+
+/* ========== GAME STATE ========== */
+const EMPTY=0,WALL=1,TRAP=2,ROCK=3;
+let grid=[];// COLS*ROWS
+let loot=[];// 0=none,1=coin,2=idol
+let state='start';// start,playing,gameover
+let score=0,best=parseInt(localStorage.getItem('tt_best'))||0;
+let moves=0,streak=0;
+let px=0,py=0;// player grid pos
+let dashAnim=null;// {fx,fy,tx,ty,t,dur}
+let hue=120,hueSpeed=0.3;
+let difficulty=1;
+let telegraphs=[];// [{x,y,t}] pulsing tiles
+let vineHighlights=[];// [{x,y,ttl}]
+let gameTime=0;
+
+/* ========== PARTICLES ========== */
+const particles=[];
+const MAX_PARTICLES=300;
+function spawnP(x,y,count,color,speed,life,size){
+for(let i=0;i<count&&particles.length<MAX_PARTICLES;i++){
+const a=rf()*Math.PI*2;const s=rf()*speed+speed*0.3;
+particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life,maxLife:life,
+color,size:size*(0.5+rf()*0.5),alpha:1});
+}}
+function updateParticles(dt){
+for(let i=particles.length-1;i>=0;i--){
+const p=particles[i];
+p.x+=p.vx*dt;p.y+=p.vy*dt;
+p.vx*=0.96;p.vy*=0.96;
+p.vy+=30*dt;
+p.life-=dt;
+p.alpha=Math.max(0,p.life/p.maxLife);
+if(p.life<=0)particles.splice(i,1);
+}}
+function drawParticles(){
+for(const p of particles){
+ctx.globalAlpha=p.alpha*0.9;
+ctx.fillStyle=p.color;
+ctx.beginPath();
+ctx.arc(p.x,p.y,p.size,0,Math.PI*2);
+ctx.fill();
+}
+ctx.globalAlpha=1;
+}
+
+/* ========== SHAKE ========== */
+let shakeX=0,shakeY=0,shakeMag=0,shakeDecay=0;
+function triggerShake(mag,decay){shakeMag=mag;shakeDecay=decay}
+function updateShake(dt){
+if(shakeMag>0.1){
+shakeX=(rf()-0.5)*shakeMag*2;
+shakeY=(rf()-0.5)*shakeMag*2;
+shakeMag*=shakeDecay;
+}else{shakeX=0;shakeY=0;shakeMag=0}
+}
+
+/* ========== GRID HELPERS ========== */
+function idx(x,y){return y*COLS+x}
+function inBounds(x,y){return x>=0&&x<COLS&&y>=0&&y<ROWS}
+function cellSolid(x,y){if(!inBounds(x,y))return true;const c=grid[idx(x,y)];return c===WALL||c===TRAP||c===ROCK}
+function cellScreen(gx,gy){return{x:padX+gx*tileW,y:padY+gy*tileH}}
+
+function legalMoves(gx,gy){
+const dirs=[[0,-1],[0,1],[-1,0],[1,0]];
+const moves=[];
+for(const[dx,dy]of dirs){
+const nx=gx+dx,ny=gy+dy;
+if(inBounds(nx,ny)&&!cellSolid(nx,ny))moves.push({dx,dy});
+}
+return moves;
+}
+
+function dashEnd(gx,gy,dx,dy){
+let cx=gx,cy=gy;
+while(true){
+const nx=cx+dx,ny=cy+dy;
+if(!inBounds(nx,ny)||cellSolid(nx,ny))break;
+cx=nx;cy=ny;
+}
+return{x:cx,y:cy};
+}
+
+/* ========== INIT BOARD ========== */
+function initBoard(){
+grid=new Array(COLS*ROWS).fill(EMPTY);
+loot=new Array(COLS*ROWS).fill(0);
+// border walls
+for(let x=0;x<COLS;x++){grid[idx(x,0)]=WALL;grid[idx(x,ROWS-1)]=WALL}
+for(let y=0;y<ROWS;y++){grid[idx(0,y)]=WALL;grid[idx(COLS-1,y)]=WALL}
+// place player
+px=1+ri(COLS-2);py=1+ri(ROWS-2);
+// place some rocks
+const rockCount=2+ri(2);
+for(let i=0;i<rockCount;i++){
+let rx,ry,tries=0;
+do{rx=1+ri(COLS-2);ry=1+ri(ROWS-2);tries++}
+while((rx===px&&ry===py||grid[idx(rx,ry)]!==EMPTY)&&tries<50);
+if(tries<50)grid[idx(rx,ry)]=ROCK;
+}
+// ensure player has moves
+if(legalMoves(px,py).length===0){
+// clear a neighbor
+const dirs=[[0,-1],[0,1],[-1,0],[1,0]];
+for(const[dx,dy]of dirs){
+const nx=px+dx,ny=py+dy;
+if(inBounds(nx,ny)&&grid[idx(nx,ny)]===ROCK){grid[idx(nx,ny)]=EMPTY;break}
+}
+}
+// place coins
+spawnLoot(4+ri(3));
+// telegraph first trap
+telegraphs=[];
+pickTelegraph();
+}
+
+function spawnLoot(count){
+for(let i=0;i<count;i++){
+let lx,ly,tries=0;
+do{lx=1+ri(COLS-2);ly=1+ri(ROWS-2);tries++}
+while((lx===px&&ly===py||grid[idx(lx,ly)]!==EMPTY||loot[idx(lx,ly)]!==0)&&tries<50);
+if(tries<50)loot[idx(lx,ly)]=rf()<0.15?2:1;
+}
+}
+
+/* ========== TELEGRAPH / TRAP SPAWN ========== */
+function pickTelegraph(){
+telegraphs=[];
+const empties=[];
+for(let y=1;y<ROWS-1;y++)for(let x=1;x<COLS-1;x++){
+if(grid[idx(x,y)]===EMPTY&&!(x===px&&y===py))empties.push({x,y});
+}
+if(empties.length===0)return;
+// anti-unfairness: if player has only 1 legal move, don't telegraph that tile
+const legal=legalMoves(px,py);
+const safe=empties.filter(e=>{
+if(legal.length<=1){
+// check if removing this tile would remove the only legal first-step
+for(const m of legal){
+const nx=px+m.dx,ny=py+m.dy;
+if(e.x===nx&&e.y===ny)return false;
+}
+}
+return true;
+});
+const pool=safe.length>0?safe:empties;
+// late game: two telegraph tiles
+const isLate=moves>15&&rf()<Math.min(0.5,(moves-15)*0.03);
+const t1=pool[ri(pool.length)];
+telegraphs.push({x:t1.x,y:t1.y,t:0});
+if(isLate&&pool.length>1){
+let t2;
+do{t2=pool[ri(pool.length)]}while(t2.x===t1.x&&t2.y===t1.y);
+telegraphs.push({x:t2.x,y:t2.y,t:0});
+}
+}
+
+function resolveTrap(){
+if(telegraphs.length===0)return;
+// pick one telegraph
+const chosen=telegraphs.length===1?telegraphs[0]:telegraphs[ri(telegraphs.length)];
+// never on player
+if(chosen.x===px&&chosen.y===py){pickTelegraph();return}
+grid[idx(chosen.x,chosen.y)]=TRAP;
+loot[idx(chosen.x,chosen.y)]=0;
+// vine event
+const isVine=rf()<0.1+moves*0.005;
+if(isVine){
+vineHighlights.push({x:chosen.x,y:chosen.y,ttl:1.5});
+}
+// particles: leaf puff
+const sc=cellScreen(chosen.x,chosen.y);
+spawnP(sc.x+tileW/2,sc.y+tileH/2,8,`hsl(${(hue+60)%360},80%,55%)`,40,0.8,3);
+triggerShake(2,0.9);
+// check death
+if(legalMoves(px,py).length===0){
+state='gameover';
+triggerShake(12,0.88);
+const psc=cellScreen(px,py);
+spawnP(psc.x+tileW/2,psc.y+tileH/2,40,`hsl(0,90%,60%)`,80,1.2,4);
+spawnP(psc.x+tileW/2,psc.y+tileH/2,20,`hsl(40,90%,70%)`,60,1,3);
+if(score>best){best=score;localStorage.setItem('tt_best',best)}
+return;
+}
+pickTelegraph();
+}
+
+/* ========== PLAYER MOVEMENT ========== */
+let playerTrail=[];
+let squash=0;// -1..1 for squash/stretch
+
+function startDash(dx,dy){
+if(dashAnim||state!=='playing')return;
+const nx=px+dx,ny=py+dy;
+if(!inBounds(nx,ny)||cellSolid(nx,ny))return;
+const end=dashEnd(px,py,dx,dy);
+if(end.x===px&&end.y===py)return;
+const dist=Math.abs(end.x-px)+Math.abs(end.y-py);
+const speed=Math.max(0.08,0.2-moves*0.002);
+dashAnim={fx:px,fy:py,tx:end.x,ty:end.y,t:0,dur:dist*speed,dx,dy};
+playerTrail=[];
+}
+
+function updateDash(dt){
+if(!dashAnim)return;
+dashAnim.t+=dt;
+const p=Math.min(1,dashAnim.t/dashAnim.dur);
+const ep=1-(1-p)*(1-p);// ease out quad
+const cx=dashAnim.fx+(dashAnim.tx-dashAnim.fx)*ep;
+const cy=dashAnim.fy+(dashAnim.ty-dashAnim.fy)*ep;
+// trail
+const sc=cellScreen(cx,cy);
+playerTrail.push({x:sc.x+tileW/2,y:sc.y+tileH/2,alpha:1});
+if(playerTrail.length>20)playerTrail.shift();
+// collect loot along path
+const curGX=Math.round(cx),curGY=Math.round(cy);
+if(inBounds(curGX,curGY)&&loot[idx(curGX,curGY)]>0){
+const lv=loot[idx(curGX,curGY)];
+loot[idx(curGX,curGY)]=0;
+const pts=lv===2?25:5;
+streak++;
+const mult=Math.min(streak,5);
+score+=pts*mult;
+const lsc=cellScreen(curGX,curGY);
+const col=lv===2?`hsl(50,95%,65%)`:`hsl(${hue},90%,65%)`;
+spawnP(lsc.x+tileW/2,lsc.y+tileH/2,12,col,50,0.6,3);
+}
+if(p>=1){
+px=dashAnim.tx;py=dashAnim.ty;
+dashAnim=null;
+squash=-0.3;
+triggerShake(1.5,0.85);
+moves++;
+difficulty=1+moves*0.05+score*0.002;
+// resolve trap
+resolveTrap();
+// maybe spawn more loot
+const lootLeft=loot.reduce((a,v)=>a+(v>0?1:0),0);
+if(lootLeft<2)spawnLoot(2+ri(2));
+if(moves%5===0&&rf()<0.6)spawnLoot(1);
+}
+}
+
+/* ========== DRAWING ========== */
+function drawBg(){
+const grad=ctx.createLinearGradient(0,0,0,H);
+grad.addColorStop(0,`hsl(${(hue+200)%360},30%,8%)`);
+grad.addColorStop(0.5,`hsl(${(hue+220)%360},25%,6%)`);
+grad.addColorStop(1,`hsl(${(hue+240)%360},30%,5%)`);
+ctx.fillStyle=grad;
+ctx.fillRect(0,0,W,H);
+// subtle blobs
+ctx.globalAlpha=0.03;
+for(let i=0;i<5;i++){
+const bx=W*(0.2+0.6*Math.sin(gameTime*0.3+i*1.3));
+const by=H*(0.2+0.6*Math.cos(gameTime*0.2+i*1.7));
+const br=60+30*Math.sin(gameTime*0.5+i);
+const bg=ctx.createRadialGradient(bx,by,0,bx,by,br);
+bg.addColorStop(0,`hsl(${(hue+i*40)%360},60%,40%)`);
+bg.addColorStop(1,'transparent');
+ctx.fillStyle=bg;
+ctx.fillRect(bx-br,by-br,br*2,br*2);
+}
+ctx.globalAlpha=1;
+}
+
+function drawGrid(){
+calcTile();
+for(let y=0;y<ROWS;y++)for(let x=0;x<COLS;x++){
+const sc=cellScreen(x,y);
+const cell=grid[idx(x,y)];
+const tw=tileW-2,th=tileH-2;
+// base tile
+if(cell===WALL){
+ctx.fillStyle=`hsl(${(hue+180)%360},15%,15%)`;
+ctx.fillRect(sc.x+1,sc.y+1,tw,th);
+ctx.strokeStyle=`hsl(${(hue+180)%360},20%,25%)`;
+ctx.lineWidth=1;
+ctx.strokeRect(sc.x+1,sc.y+1,tw,th);
+}else if(cell===ROCK){
+ctx.fillStyle=`hsl(${(hue+160)%360},10%,25%)`;
+ctx.fillRect(sc.x+1,sc.y+1,tw,th);
+ctx.strokeStyle=`hsl(${(hue+160)%360},15%,35%)`;
+ctx.lineWidth=1;
+ctx.strokeRect(sc.x+1,sc.y+1,tw,th);
+// cross pattern
+ctx.strokeStyle=`hsl(${(hue+160)%360},10%,30%)`;
+ctx.beginPath();
+ctx.moveTo(sc.x+1,sc.y+1);ctx.lineTo(sc.x+1+tw,sc.y+1+th);
+ctx.moveTo(sc.x+1+tw,sc.y+1);ctx.lineTo(sc.x+1,sc.y+1+th);
+ctx.stroke();
+}else if(cell===TRAP){
+// check vine highlight
+let isVine=false;
+for(const v of vineHighlights){if(v.x===x&&v.y===y)isVine=true}
+const th2=`hsl(${(hue+30)%360},70%,${isVine?35:20}%)`;
+ctx.fillStyle=th2;
+ctx.fillRect(sc.x+1,sc.y+1,tw,th);
+ctx.strokeStyle=`hsl(${(hue+30)%360},80%,${isVine?55:40}%)`;
+ctx.lineWidth=isVine?2:1;
+ctx.strokeRect(sc.x+1,sc.y+1,tw,th);
+// thorn pattern
+if(isVine){
+ctx.strokeStyle=`hsl(${(hue+20)%360},90%,50%)`;
+ctx.lineWidth=1;
+const cx2=sc.x+1+tw/2,cy2=sc.y+1+th/2;
+for(let a=0;a<4;a++){
+const ang=a*Math.PI/2+gameTime*2;
+ctx.beginPath();
+ctx.moveTo(cx2,cy2);
+ctx.lineTo(cx2+Math.cos(ang)*tw*0.35,cy2+Math.sin(ang)*th*0.35);
+ctx.stroke();
+}
+}
+}else{
+// empty tile
+ctx.fillStyle=`hsl(${(hue+200)%360},20%,10%)`;
+ctx.fillRect(sc.x+1,sc.y+1,tw,th);
+ctx.strokeStyle=`hsl(${(hue+200)%360},30%,18%)`;
+ctx.lineWidth=0.5;
+ctx.strokeRect(sc.x+1,sc.y+1,tw,th);
+}
+// draw loot
+const lv=loot[idx(x,y)];
+if(lv>0&&cell===EMPTY){
+const lcx=sc.x+tileW/2,lcy=sc.y+tileH/2;
+const bob=Math.sin(gameTime*3+x+y)*2;
+if(lv===1){
+// coin
+ctx.fillStyle=`hsl(${hue},90%,60%)`;
+ctx.beginPath();
+ctx.arc(lcx,lcy+bob,tileW*0.15,0,Math.PI*2);
+ctx.fill();
+ctx.strokeStyle=`hsl(${hue},95%,75%)`;
+ctx.lineWidth=1.5;
+ctx.stroke();
+}else{
+// idol
+ctx.fillStyle=`hsl(50,95%,60%)`;
+ctx.beginPath();
+const s=tileW*0.18;
+ctx.moveTo(lcx,lcy+bob-s);
+ctx.lineTo(lcx+s*0.8,lcy+bob+s*0.5);
+ctx.lineTo(lcx-s*0.8,lcy+bob+s*0.5);
+ctx.closePath();
+ctx.fill();
+ctx.strokeStyle=`hsl(45,95%,75%)`;
+ctx.lineWidth=1.5;
+ctx.stroke();
+}
+}
+}
+}
+
+function drawTelegraphs(){
+for(const t of telegraphs){
+t.t+=1/60;
+const sc=cellScreen(t.x,t.y);
+const pulse=0.3+0.3*Math.sin(t.t*6);
+ctx.globalAlpha=pulse;
+ctx.fillStyle=`hsl(${(hue+30)%360},90%,50%)`;
+ctx.fillRect(sc.x+1,sc.y+1,tileW-2,tileH-2);
+// glow ring
+ctx.strokeStyle=`hsl(${(hue+30)%360},95%,65%)`;
+ctx.lineWidth=2;
+ctx.strokeRect(sc.x-1,sc.y-1,tileW+2,tileH+2);
+ctx.globalAlpha=1;
+}
+}
+
+function drawPlayer(){
+calcTile();
+let gx=px,gy=py;
+if(dashAnim){
+const p=Math.min(1,dashAnim.t/dashAnim.dur);
+const ep=1-(1-p)*(1-p);
+gx=dashAnim.fx+(dashAnim.tx-dashAnim.fx)*ep;
+gy=dashAnim.fy+(dashAnim.ty-dashAnim.fy)*ep;
+}
+const sc=cellScreen(gx,gy);
+const cx2=sc.x+tileW/2,cy2=sc.y+tileH/2;
+// trail
+for(let i=0;i<playerTrail.length;i++){
+const t=playerTrail[i];
+const a=(i/playerTrail.length)*0.4;
+ctx.globalAlpha=a;
+ctx.fillStyle=`hsl(${hue},90%,70%)`;
+ctx.beginPath();
+ctx.arc(t.x,t.y,tileW*0.12*(i/playerTrail.length),0,Math.PI*2);
+ctx.fill();
+}
+ctx.globalAlpha=1;
+// squash/stretch
+const sq=1+squash*0.3;
+const st=1-squash*0.3;
+ctx.save();
+ctx.translate(cx2,cy2);
+ctx.scale(sq,st);
+// glow
+ctx.shadowColor=`hsl(${hue},90%,60%)`;
+ctx.shadowBlur=12;
+// body
+ctx.fillStyle=`hsl(${hue},85%,65%)`;
+ctx.beginPath();
+ctx.arc(0,0,tileW*0.28,0,Math.PI*2);
+ctx.fill();
+// inner
+ctx.fillStyle=`hsl(${hue},95%,80%)`;
+ctx.beginPath();
+ctx.arc(0,0,tileW*0.14,0,Math.PI*2);
+ctx.fill();
+ctx.shadowBlur=0;
+ctx.restore();
+}
+
+function drawStartScreen(){
+ctx.fillStyle='rgba(0,0,0,0.7)';
+ctx.fillRect(0,0,W,H);
+ctx.textAlign='center';
+ctx.textBaseline='middle';
+ctx.fillStyle=`hsl(${hue},80%,70%)`;
+ctx.font='bold 28px "Segoe UI",system-ui,sans-serif';
+ctx.fillText('TRAP TREK',W/2,H*0.3);
+ctx.fillStyle=`hsl(${hue},40%,75%)`;
+ctx.font='16px "Segoe UI",system-ui,sans-serif';
+ctx.fillText('One-Tap Dash',W/2,H*0.38);
+ctx.fillStyle='#c0d0e0';
+ctx.font='13px "Segoe UI",system-ui,sans-serif';
+ctx.fillText('Tap direction or use Arrow/WASD',W/2,H*0.52);
+ctx.fillText('Slide until blocked. Collect coins.',W/2,H*0.57);
+ctx.fillText('Every move spawns a new trap!',W/2,H*0.62);
+if(goalParam){
+ctx.fillStyle=`hsl(40,90%,65%)`;
+ctx.font='bold 14px "Segoe UI",system-ui,sans-serif';
+ctx.fillText(`Challenge goal: ${goalParam} pts`,W/2,H*0.70);
+}
+ctx.fillStyle=`hsl(${hue},70%,65%)`;
+ctx.font='bold 15px "Segoe UI",system-ui,sans-serif';
+const pulse=0.7+0.3*Math.sin(gameTime*3);
+ctx.globalAlpha=pulse;
+ctx.fillText('TAP or SPACE to start',W/2,H*0.80);
+ctx.globalAlpha=1;
+}
+
+function drawGameOver(){
+ctx.fillStyle='rgba(0,0,0,0.65)';
+ctx.fillRect(0,0,W,H);
+ctx.textAlign='center';
+ctx.textBaseline='middle';
+ctx.fillStyle=`hsl(0,80%,65%)`;
+ctx.font='bold 26px "Segoe UI",system-ui,sans-serif';
+ctx.fillText('TRAPPED!',W/2,H*0.25);
+ctx.fillStyle='#e0e8f0';
+ctx.font='bold 32px "Segoe UI",system-ui,sans-serif';
+ctx.fillText(`Score: ${score}`,W/2,H*0.35);
+if(score>=best){
+ctx.fillStyle=`hsl(50,90%,65%)`;
+ctx.font='bold 14px "Segoe UI",system-ui,sans-serif';
+ctx.fillText('NEW BEST!',W/2,H*0.42);
+}
+if(goalParam){
+const met=score>=parseInt(goalParam);
+ctx.fillStyle=met?`hsl(120,80%,60%)`:`hsl(0,80%,60%)`;
+ctx.font='bold 14px "Segoe UI",system-ui,sans-serif';
+ctx.fillText(met?`Challenge beaten! (${goalParam})`:`Challenge: ${goalParam} - Try again!`,W/2,H*0.48);
+}
+ctx.fillStyle=`hsl(${hue},50%,65%)`;
+ctx.font='13px "Segoe UI",system-ui,sans-serif';
+ctx.fillText(`Moves: ${moves} | Streak: ${streak}`,W/2,H*0.55);
+// buttons
+drawButton('Share Score',W/2-65,H*0.63,120,32);
+drawButton('Challenge',W/2+65,H*0.63,120,32);
+ctx.fillStyle=`hsl(${hue},60%,65%)`;
+ctx.font='bold 14px "Segoe UI",system-ui,sans-serif';
+const pulse2=0.7+0.3*Math.sin(gameTime*3);
+ctx.globalAlpha=pulse2;
+ctx.fillText('TAP or SPACE to retry',W/2,H*0.80);
+ctx.globalAlpha=1;
+}
+
+const buttons=[];
+function drawButton(text,cx2,cy2,w,h){
+const bx=cx2-w/2,by=cy2-h/2;
+ctx.fillStyle=`hsl(${hue},40%,20%)`;
+ctx.strokeStyle=`hsl(${hue},50%,45%)`;
+ctx.lineWidth=1.5;
+ctx.beginPath();
+ctx.roundRect(bx,by,w,h,6);
+ctx.fill();ctx.stroke();
+ctx.fillStyle=`hsl(${hue},50%,75%)`;
+ctx.font='bold 11px "Segoe UI",system-ui,sans-serif';
+ctx.textAlign='center';ctx.textBaseline='middle';
+ctx.fillText(text,cx2,cy2);
+buttons.push({text,x:bx,y:by,w,h});
+}
+
+function drawUI(){
+scEl.textContent=`Score: ${score}`;
+bsEl.textContent=`Best: ${best}`;
+}
+
+/* ========== MAIN LOOP ========== */
+let lastTime=0;
+const FIXED_DT=1/60;
+let accumulator=0;
+
+function frame(ts){
+const dt=Math.min((ts-lastTime)/1000,0.1);
+lastTime=ts;
+accumulator+=dt;
+gameTime+=dt;
+hue=(hue+hueSpeed*dt*60)%360;
+
+while(accumulator>=FIXED_DT){
+updateParticles(FIXED_DT);
+updateShake(FIXED_DT);
+updateDash(FIXED_DT);
+// decay squash
+if(Math.abs(squash)>0.01)squash*=0.85;else squash=0;
+// decay vine highlights
+for(let i=vineHighlights.length-1;i>=0;i--){
+vineHighlights[i].ttl-=FIXED_DT;
+if(vineHighlights[i].ttl<=0)vineHighlights.splice(i,1);
+}
+accumulator-=FIXED_DT;
+}
+
+// draw
+ctx.save();
+ctx.translate(shakeX,shakeY);
+drawBg();
+drawGrid();
+drawTelegraphs();
+drawPlayer();
+drawParticles();
+if(state==='start')drawStartScreen();
+if(state==='gameover'){buttons.length=0;drawGameOver()}
+ctx.restore();
+drawUI();
+requestAnimationFrame(frame);
+}
+
+/* ========== INPUT ========== */
+function handleDir(dx,dy){
+if(state==='playing'){startDash(dx,dy)}
+}
+function handleStart(){
+if(state==='start'){
+state='playing';
+resetRng();
+score=0;moves=0;streak=0;
+particles.length=0;
+playerTrail=[];
+vineHighlights=[];
+dashAnim=null;
+initBoard();
+}else if(state==='gameover'){
+state='playing';
+seed=0;// new random game
+resetRng();
+score=0;moves=0;streak=0;
+particles.length=0;
+playerTrail=[];
+vineHighlights=[];
+dashAnim=null;
+initBoard();
+}
+}
+
+// keyboard
+window.addEventListener('keydown',e=>{
+if(e.code==='Space'||e.code==='Enter'){e.preventDefault();handleStart();return}
+if(state!=='playing'||dashAnim)return;
+if(e.code==='ArrowUp'||e.code==='KeyW'){e.preventDefault();handleDir(0,-1)}
+else if(e.code==='ArrowDown'||e.code==='KeyS'){e.preventDefault();handleDir(0,1)}
+else if(e.code==='ArrowLeft'||e.code==='KeyA'){e.preventDefault();handleDir(-1,0)}
+else if(e.code==='ArrowRight'||e.code==='KeyD'){e.preventDefault();handleDir(1,0)}
+});
+
+// pointer
+canvas.addEventListener('pointerdown',e=>{
+e.preventDefault();
+const rect=canvas.getBoundingClientRect();
+const px2=(e.clientX-rect.left);
+const py2=(e.clientY-rect.top);
+if(state==='gameover'){
+// check buttons
+for(const b of buttons){
+if(px2>=b.x&&px2<=b.x+b.w&&py2>=b.y&&py2<=b.y+b.h){
+if(b.text==='Share Score')shareScore();
+else if(b.text==='Challenge')challengeFriend();
+return;
+}
+}
+handleStart();return;
+}
+if(state==='start'){handleStart();return}
+if(dashAnim)return;
+// direction from tap position relative to player
+calcTile();
+const psc=cellScreen(px,py);
+const pcx=psc.x+tileW/2,pcy=psc.y+tileH/2;
+const dx2=px2-pcx,dy2=py2-pcy;
+if(Math.abs(dx2)>Math.abs(dy2)){
+handleDir(dx2>0?1:-1,0);
+}else{
+handleDir(0,dy2>0?1:-1);
+}
+});
+
+/* ========== SHARE ========== */
+function shareScore(){
+const text=`I scored ${score} in Trap Trek! Can you beat me?\n${location.origin}${location.pathname}`;
+if(navigator.share){
+navigator.share({title:'Trap Trek Score',text}).catch(()=>{});
+}else{
+navigator.clipboard.writeText(text).then(()=>alert('Score copied to clipboard!')).catch(()=>{});
+}
+}
+function challengeFriend(){
+const s=(Date.now()%1000000).toString(36);
+const url=`${location.origin}${location.pathname}?seed=${s}&goal=${score}`;
+const text=`I challenge you to beat ${score} in Trap Trek!\n${url}`;
+if(navigator.share){
+navigator.share({title:'Trap Trek Challenge',text}).catch(()=>{});
+}else{
+navigator.clipboard.writeText(text).then(()=>alert('Challenge link copied!')).catch(()=>{});
+}
+}
+
+/* ========== BOOT ========== */
+resize();
+initBoard();
+bsEl.textContent=`Best: ${best}`;
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

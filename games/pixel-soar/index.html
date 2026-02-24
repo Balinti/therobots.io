@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Pixel Soar - Free HTML5 Game</title>
+  <meta name="description" content="Play Pixel Soar - Tap to keep your pixel bird alive as obstacles multiply and swarm in retro style.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0b1020">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Pixel Soar - Free HTML5 Game">
+  <meta property="og:description" content="Play Pixel Soar - Tap to keep your pixel bird alive as obstacles multiply and swarm in retro style.">
+  <meta property="og:url" content="https://balinti.github.io/pixel-soar/">
+  <meta property="og:image" content="https://balinti.github.io/pixel-soar/preview.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Pixel Soar - Free HTML5 Game">
+  <meta name="twitter:description" content="Play Pixel Soar - Tap to keep your pixel bird alive as obstacles multiply and swarm in retro style.">
+  <meta name="twitter:image" content="https://balinti.github.io/pixel-soar/preview.png">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #0b1020;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: flex-start;
+      font-family: 'Courier New', monospace;
+      overflow-x: hidden;
+    }
+    #stage {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      max-height: 750px;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+      cursor: pointer;
+    }
+    #seo-text {
+      max-width: 420px;
+      width: 100%;
+      padding: 12px 16px 24px;
+      color: #4a5568;
+      font-size: 11px;
+      line-height: 1.5;
+      text-align: center;
+    }
+    #seo-text h2 { font-size: 13px; color: #6b7280; margin-bottom: 4px; }
+    #seo-text p { margin-bottom: 4px; }
+  </style>
+</head>
+<body>
+  <div id="stage">
+    <canvas id="c"></canvas>
+  </div>
+
+  <section id="seo-text" aria-label="Game description">
+    <h2>Pixel Soar – Gravity Flip Runner</h2>
+    <p>Fly through a retro pixel tunnel and flip gravity to dodge synchronized obstacle waves.</p>
+    <p><strong>Controls:</strong> Tap / Click / Space / Enter to flip gravity.</p>
+    <p>Score points by passing gates. Take the tight gap for near-miss bonuses and combo multipliers up to x5!</p>
+  </section>
+
+<script>
+(function(){
+'use strict';
+
+// ── Canvas / DPR setup ────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+const STAGE  = document.getElementById('stage');
+
+let W = 0, H = 0, DPR = 1;
+
+function resize(){
+  const r = STAGE.getBoundingClientRect();
+  W = r.width; H = r.height;
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width  = W * DPR;
+  canvas.height = H * DPR;
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+const TUNNEL_PAD   = 60;   // px from top/bottom to tunnel wall
+const PLAYER_W     = 18;
+const PLAYER_H     = 12;
+const G            = 2200;
+const DRAG         = 0.985;
+const FLIP_VY      = 420;
+const FLIP_CD      = 0.10;
+const GATE_W       = 26;
+const NEAR_MISS_PX = 6;
+const MAX_COMBO    = 5;
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let state = 'start'; // 'start' | 'playing' | 'gameover'
+let score, best, combo, maxCombo, multiplier, hue, scrollX;
+let player, gates, particles, trauma, shakeDecay;
+let lastTime, dt;
+let flipCooldown;
+let colorT = 0;
+
+function getSpeed(s){ return Math.min(420, 190 + 2.2*s); }
+function getAmp(s)  { return Math.min(120, 34 + 0.55*s); }
+function getOmega(s){ return Math.min(3.2, 1.6 + 0.018*s); }
+function getSafeGap(s){ return Math.max(92, Math.min(132, 132 - 0.55*s)); }
+function getTightGap(s){ return Math.max(46, Math.min(70, 70 - 0.22*s)); }
+function getTelegraphT(s){ return Math.max(0.42, Math.min(0.78, 0.78 - 0.004*s)); }
+
+function clamp(v,lo,hi){ return v<lo?lo:v>hi?hi:v; }
+function lerp(a,b,t){ return a+(b-a)*t; }
+function rand(lo,hi){ return lo + Math.random()*(hi-lo); }
+
+// ── Player ────────────────────────────────────────────────────────────────────
+function makePlayer(){
+  return {
+    x: 80,
+    y: H/2,
+    vy: 0,
+    gravitySign: 1,   // +1 = fall down
+    trail: [],
+    invincible: 0
+  };
+}
+
+// ── Gate generation ───────────────────────────────────────────────────────────
+let gatePhase   = 0;
+let gateIndex   = 0;
+
+function makeTunnelBounds(){
+  return { top: TUNNEL_PAD, bot: H - TUNNEL_PAD };
+}
+
+function makeGate(x){
+  const tunnel = makeTunnelBounds();
+  const tunnelH = tunnel.bot - tunnel.top;
+  const midY = tunnel.top + tunnelH/2;
+
+  const amp   = getAmp(score);
+  const omega = getOmega(score);
+  // phase increments per gate
+  gatePhase += 0.45;
+  let phaseOffset = 0;
+  if(score >= 25 && score < 50 && gateIndex % 3 === 0) phaseOffset = Math.PI/2;
+
+  let tightSide = (gateIndex % 2 === 0) ? 1 : -1;
+  if(score >= 10 && gateIndex % 4 === 0) tightSide *= -1;
+
+  let isFakeout = (score >= 50 && gateIndex % 8 === 0);
+
+  const baseY = midY;
+
+  let pattern = 'single';
+  if(score >= 10) pattern = (gateIndex % 5 === 0) ? 'double' : 'single';
+
+  gateIndex++;
+  return {
+    x, w: GATE_W,
+    baseY, amp, omega,
+    phase: gatePhase + phaseOffset,
+    tightSide,
+    isFakeout,
+    pattern,
+    passed: false,
+    passedTight: false,
+    fakeoutFlipped: false,
+    spawnTime: 0    // set when gate added
+  };
+}
+
+function gateWaveY(g, t){
+  return g.baseY + Math.sin(g.phase + g.omega * t) * g.amp;
+}
+
+function gateOpenings(g, t){
+  const waveY    = gateWaveY(g, t);
+  const sg       = getSafeGap(score);
+  const tg       = getTightGap(score);
+  const ts       = g.isFakeout && !g.fakeoutFlipped ? -g.tightSide : g.tightSide;
+
+  const safeTop  = waveY - sg/2;
+  const safeBot  = waveY + sg/2;
+  const tightCY  = waveY + ts*(sg*0.42);
+  const tightTop = tightCY - tg/2;
+  const tightBot = tightCY + tg/2;
+
+  return { waveY, safeTop, safeBot, tightTop, tightBot };
+}
+
+// ── Particles ─────────────────────────────────────────────────────────────────
+function spawnFlipPuff(x, y, color){
+  for(let i=0;i<12;i++){
+    const a = Math.random()*Math.PI*2;
+    const sp = rand(30,120);
+    particles.push({
+      x, y,
+      vx: Math.cos(a)*sp, vy: Math.sin(a)*sp,
+      life: 1, maxLife: 1,
+      size: rand(3,7),
+      color, type:'square', alpha: 0.8
+    });
+  }
+}
+
+function spawnNearMissSparks(x, y, color){
+  for(let i=0;i<20;i++){
+    const a = Math.random()*Math.PI*2;
+    const sp = rand(60,200);
+    particles.push({
+      x, y,
+      vx: Math.cos(a)*sp, vy: Math.sin(a)*sp,
+      life: 1, maxLife: 0.6,
+      size: rand(2,5),
+      color, type:'square', alpha: 1
+    });
+  }
+  // ring
+  particles.push({
+    x, y, vx:0, vy:0,
+    life:1, maxLife:0.5,
+    size:0, color,
+    type:'ring', alpha:1,
+    ringR:0
+  });
+}
+
+function spawnDeathBurst(x, y){
+  for(let i=0;i<40;i++){
+    const a = Math.random()*Math.PI*2;
+    const sp = rand(40,280);
+    const h = Math.floor(Math.random()*360);
+    particles.push({
+      x, y,
+      vx: Math.cos(a)*sp, vy: Math.sin(a)*sp,
+      life:1, maxLife: rand(0.6,1.4),
+      size: rand(4,10),
+      color:`hsl(${h},90%,60%)`,
+      type:'square', alpha:1
+    });
+  }
+}
+
+// ── Screen shake ──────────────────────────────────────────────────────────────
+function addTrauma(t){ trauma = Math.min(1, (trauma||0)+t); }
+
+function getShake(){
+  if(!trauma || trauma<=0) return {x:0,y:0,r:0};
+  const s = trauma*trauma;
+  const x = rand(-1,1)*12*s;
+  const y = rand(-1,1)*12*s;
+  const r = rand(-1,1)*0.04*s;
+  return {x,y,r};
+}
+
+// ── Init / reset ──────────────────────────────────────────────────────────────
+function init(){
+  best = parseInt(localStorage.getItem('pixelSoar_best')||'0');
+  score      = 0;
+  combo      = 0;
+  maxCombo   = 0;
+  multiplier = 1;
+  hue        = 180;
+  scrollX    = 0;
+  trauma     = 0;
+  colorT     = 0;
+  gatePhase  = 0;
+  gateIndex  = 0;
+  player     = makePlayer();
+  gates      = [];
+  particles  = [];
+  flipCooldown = 0;
+
+  // Pre-populate gates
+  for(let i=0;i<8;i++){
+    const spacing = 240;
+    gates.push(makeGate(W + i*spacing + 300));
+  }
+}
+
+// ── Flip input ────────────────────────────────────────────────────────────────
+function doFlip(){
+  if(state === 'start'){
+    state = 'playing';
+    lastTime = null;
+    init();
+    return;
+  }
+  if(state === 'gameover'){
+    state = 'playing';
+    lastTime = null;
+    init();
+    return;
+  }
+  if(state !== 'playing') return;
+  if(flipCooldown > 0) return;
+
+  player.gravitySign *= -1;
+  player.vy = -player.gravitySign * FLIP_VY;
+  flipCooldown = FLIP_CD;
+  addTrauma(0.08);
+
+  const col = `hsl(${hue},100%,70%)`;
+  spawnFlipPuff(player.x, player.y, col);
+}
+
+// ── Input listeners ───────────────────────────────────────────────────────────
+canvas.addEventListener('pointerdown', e=>{ e.preventDefault(); doFlip(); });
+window.addEventListener('keydown', e=>{
+  if(e.code==='Space'||e.code==='Enter'){ e.preventDefault(); doFlip(); }
+});
+
+// ── Update ────────────────────────────────────────────────────────────────────
+function update(dt){
+  colorT += dt;
+  hue = (hue + dt*30)%360;
+
+  if(state!=='playing') return;
+
+  flipCooldown = Math.max(0, flipCooldown - dt);
+  trauma = Math.max(0, trauma - dt*1.8);
+
+  const speed = getSpeed(score);
+  scrollX += speed * dt;
+
+  // Player physics
+  const p = player;
+  p.vy += p.gravitySign * G * dt;
+  p.vy *= Math.pow(DRAG, dt*60);
+  p.y  += p.vy * dt;
+
+  // Trail
+  p.trail.unshift({x:p.x, y:p.y});
+  if(p.trail.length > 14) p.trail.pop();
+
+  // Tunnel collision
+  const tunnel = makeTunnelBounds();
+  if(p.y - PLAYER_H/2 < tunnel.top || p.y + PLAYER_H/2 > tunnel.bot){
+    die();
+    return;
+  }
+
+  // Update particles
+  for(let i=particles.length-1;i>=0;i--){
+    const pt = particles[i];
+    pt.life -= dt / pt.maxLife;
+    if(pt.life<=0){ particles.splice(i,1); continue; }
+    pt.x += pt.vx * dt;
+    pt.y += pt.vy * dt;
+    pt.vy += 80*dt;  // slight gravity
+    if(pt.type==='ring') pt.ringR += 120*dt;
+    pt.vx *= 0.97;
+  }
+
+  // Gate management
+  const spacing = clamp(290 - score*0.5, 200, 290);
+  const lastGate = gates[gates.length-1];
+  if(!lastGate || lastGate.x - scrollX < W + 100){
+    gates.push(makeGate((lastGate ? lastGate.x : W + scrollX) + spacing));
+  }
+
+  // Remove old gates
+  for(let i=gates.length-1;i>=0;i--){
+    if(gates[i].x - scrollX < -100) gates.splice(i,1);
+  }
+
+  // Gate collision + scoring
+  const t = scrollX / (getSpeed(score)||1); // time proxy for wave
+  const gameTime = lastTime ? (performance.now()/1000) : 0;
+
+  for(const g of gates){
+    const gx = g.x - scrollX;
+    const { safeTop, safeBot, tightTop, tightBot, waveY } = gateOpenings(g, scrollX/200);
+
+    // x-overlap check
+    const px1 = p.x - PLAYER_W/2, px2 = p.x + PLAYER_W/2;
+    const gx1 = gx - g.w/2, gx2 = gx + g.w/2;
+    const xOverlap = px1 < gx2 && px2 > gx1;
+
+    if(!xOverlap) continue;
+
+    const py1 = p.y - PLAYER_H/2, py2 = p.y + PLAYER_H/2;
+
+    // Is player inside safe opening?
+    const inSafe  = py1 >= safeTop  && py2 <= safeBot;
+    // Is player inside tight opening?
+    const inTight = py1 >= tightTop && py2 <= tightBot;
+
+    if(!inSafe && !inTight){
+      die();
+      return;
+    }
+
+    // Scoring (once per gate)
+    if(!g.passed && px2 > gx2){
+      g.passed = true;
+      score++;
+      if(inTight && !g.passedTight){
+        g.passedTight = true;
+        // near-miss check
+        const distTop = py1 - tightTop;
+        const distBot = tightBot - py2;
+        const nearMiss = distTop <= NEAR_MISS_PX || distBot <= NEAR_MISS_PX;
+        if(nearMiss){
+          combo++;
+          multiplier = Math.min(MAX_COMBO, 1 + Math.floor(combo/2));
+          maxCombo = Math.max(maxCombo, combo);
+          score += 2 * multiplier;
+          addTrauma(0.06);
+          const col2 = `hsl(${hue},100%,70%)`;
+          spawnNearMissSparks(p.x, p.y, col2);
+        } else {
+          combo++;
+          multiplier = Math.min(MAX_COMBO, 1 + Math.floor(combo/2));
+          maxCombo = Math.max(maxCombo, combo);
+        }
+      } else {
+        // safe pass resets combo
+        combo = 0;
+        multiplier = 1;
+      }
+      if(score > best){
+        best = score;
+        localStorage.setItem('pixelSoar_best', best);
+      }
+    }
+  }
+}
+
+function die(){
+  state = 'gameover';
+  addTrauma(1.0);
+  spawnDeathBurst(player.x, player.y);
+  if(score > best){
+    best = score;
+    localStorage.setItem('pixelSoar_best', best);
+  }
+}
+
+// ── Draw helpers ──────────────────────────────────────────────────────────────
+function drawRoundRect(x, y, w, h, r, fill, stroke){
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, r);
+  if(fill)  { ctx.fillStyle=fill; ctx.fill(); }
+  if(stroke){ ctx.strokeStyle=stroke; ctx.stroke(); }
+}
+
+function drawText(text, x, y, opts={}){
+  ctx.save();
+  ctx.font = (opts.weight||'bold') + ' ' + (opts.size||16) + 'px "Courier New",monospace';
+  ctx.fillStyle   = opts.color || '#fff';
+  ctx.textAlign   = opts.align || 'center';
+  ctx.textBaseline= opts.base  || 'middle';
+  if(opts.shadow){
+    ctx.shadowColor  = opts.shadow;
+    ctx.shadowBlur   = 12;
+  }
+  ctx.fillText(text, x, y);
+  ctx.restore();
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function render(){
+  // Background
+  const bg = ctx.createLinearGradient(0,0,0,H);
+  bg.addColorStop(0, `hsl(${(hue+200)%360},40%,8%)`);
+  bg.addColorStop(1, `hsl(${hue},35%,5%)`);
+  ctx.fillStyle = bg;
+  ctx.fillRect(0,0,W,H);
+
+  // Screen shake
+  const sh = getShake();
+  ctx.save();
+  ctx.translate(sh.x + W/2, sh.y + H/2);
+  ctx.rotate(sh.r);
+  ctx.translate(-W/2, -H/2);
+
+  // Tunnel walls
+  const tunnel = makeTunnelBounds();
+  // Top wall
+  const topGrad = ctx.createLinearGradient(0,0,0,tunnel.top);
+  topGrad.addColorStop(0, `hsl(${hue},60%,12%)`);
+  topGrad.addColorStop(1, `hsl(${hue},80%,22%)`);
+  ctx.fillStyle = topGrad;
+  ctx.fillRect(0, 0, W, tunnel.top);
+  // Bottom wall
+  const botGrad = ctx.createLinearGradient(0,tunnel.bot,0,H);
+  botGrad.addColorStop(0, `hsl(${hue},80%,22%)`);
+  botGrad.addColorStop(1, `hsl(${hue},60%,12%)`);
+  ctx.fillStyle = botGrad;
+  ctx.fillRect(0, tunnel.bot, W, H-tunnel.bot);
+
+  // Tunnel edge glow
+  ctx.strokeStyle = `hsla(${hue},100%,70%,0.7)`;
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0,tunnel.top); ctx.lineTo(W,tunnel.top); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0,tunnel.bot); ctx.lineTo(W,tunnel.bot); ctx.stroke();
+
+  // Grid lines (subtle)
+  ctx.strokeStyle = `hsla(${hue},50%,50%,0.06)`;
+  ctx.lineWidth = 1;
+  const gridSpacing = 60;
+  const gridOff = scrollX % gridSpacing;
+  for(let x=-gridSpacing; x<W+gridSpacing; x+=gridSpacing){
+    const gx = x - gridOff;
+    ctx.beginPath(); ctx.moveTo(gx, tunnel.top); ctx.lineTo(gx, tunnel.bot); ctx.stroke();
+  }
+  for(let y=tunnel.top; y<=tunnel.bot; y+=gridSpacing){
+    ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke();
+  }
+
+  const tg = getTelegraphT(score);
+
+  // Gates
+  for(const g of gates){
+    const gx = g.x - scrollX;
+    if(gx > W+100 || gx < -100) continue;
+
+    const openings = gateOpenings(g, scrollX/200);
+    const { safeTop, safeBot, tightTop, tightBot, waveY } = openings;
+
+    // Telegraph preview
+    if(gx > player.x && gx < player.x + getSpeed(score)*tg + 90){
+      const eta = (gx - player.x) / (getSpeed(score)||1);
+      if(eta < tg){
+        const alpha = 0.18 + 0.22*Math.sin(colorT*6);
+        // safe guide
+        ctx.strokeStyle = `hsla(120,90%,60%,${alpha+0.15})`;
+        ctx.setLineDash([4,4]);
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(player.x+90, safeTop); ctx.lineTo(gx, safeTop); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(player.x+90, safeBot); ctx.lineTo(gx, safeBot); ctx.stroke();
+        // tight guide
+        const fakeCol = g.isFakeout ? `hsla(0,100%,60%,${alpha+0.15})` : `hsla(50,100%,65%,${alpha+0.1})`;
+        ctx.strokeStyle = fakeCol;
+        ctx.beginPath(); ctx.moveTo(player.x+90, tightTop); ctx.lineTo(gx, tightTop); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(player.x+90, tightBot); ctx.lineTo(gx, tightBot); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+
+    // Gate blocks (solid regions)
+    const gateHue = g.isFakeout ? 0 : hue;
+    // Top block: tunnel.top → safeTop (and tightTop if tight is above safe center)
+    // Draw as solid rect from tunnel.top to min(safeTop, tightTop)
+    // Then safeBot to max(safeBot+, tightBot, tunnel.bot)
+    // Simple approach: draw the gate as full rect, cut out openings
+
+    // Full gate rect
+    ctx.fillStyle = `hsl(${gateHue},70%,18%)`;
+    ctx.fillRect(gx-g.w/2, tunnel.top, g.w, tunnel.bot-tunnel.top);
+
+    // Cut out safe opening (by drawing background color)
+    ctx.fillStyle = bg; // tunnel background
+    ctx.fillRect(gx-g.w/2, safeTop, g.w, safeBot-safeTop);
+
+    // Cut out tight opening
+    ctx.fillRect(gx-g.w/2, tightTop, g.w, tightBot-tightTop);
+
+    // Gate edge glow
+    const eAlpha = 0.7 + 0.3*Math.sin(colorT*4);
+    ctx.strokeStyle = `hsla(${gateHue},100%,70%,${eAlpha})`;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(gx-g.w/2, tunnel.top, g.w, tunnel.bot-tunnel.top);
+
+    // Opening indicators
+    // Safe = green bracket
+    ctx.strokeStyle = `hsla(120,90%,65%,0.9)`;
+    ctx.lineWidth = 2;
+    const bw = 6;
+    ctx.beginPath(); ctx.moveTo(gx-g.w/2-bw, safeTop); ctx.lineTo(gx-g.w/2, safeTop); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(gx-g.w/2-bw, safeBot); ctx.lineTo(gx-g.w/2, safeBot); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(gx+g.w/2+bw, safeTop); ctx.lineTo(gx+g.w/2, safeTop); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(gx+g.w/2+bw, safeBot); ctx.lineTo(gx+g.w/2, safeBot); ctx.stroke();
+
+    // Tight = yellow/red bracket
+    const tCol = g.isFakeout ? `hsla(0,100%,65%,0.9)` : `hsla(50,100%,65%,0.9)`;
+    ctx.strokeStyle = tCol;
+    ctx.beginPath(); ctx.moveTo(gx-g.w/2-bw, tightTop); ctx.lineTo(gx-g.w/2, tightTop); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(gx-g.w/2-bw, tightBot); ctx.lineTo(gx-g.w/2, tightBot); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(gx+g.w/2+bw, tightTop); ctx.lineTo(gx+g.w/2, tightTop); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(gx+g.w/2+bw, tightBot); ctx.lineTo(gx+g.w/2, tightBot); ctx.stroke();
+  }
+
+  // Particles
+  for(const pt of particles){
+    const a = pt.alpha * pt.life;
+    ctx.globalAlpha = Math.max(0, a);
+    if(pt.type==='ring'){
+      ctx.strokeStyle = pt.color;
+      ctx.lineWidth = 2*(pt.life);
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, pt.ringR, 0, Math.PI*2);
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = pt.color;
+      ctx.fillRect(pt.x-pt.size/2, pt.y-pt.size/2, pt.size, pt.size);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Player trail
+  for(let i=player.trail.length-1;i>=0;i--){
+    const t2 = i/player.trail.length;
+    const sz = PLAYER_W*(1-t2)*0.6;
+    ctx.globalAlpha = (1-t2)*0.4;
+    ctx.fillStyle = `hsl(${hue},100%,70%)`;
+    ctx.fillRect(player.trail[i].x-sz/2, player.trail[i].y-sz/2, sz, sz);
+  }
+  ctx.globalAlpha = 1;
+
+  // Player
+  if(state==='playing' || state==='gameover'){
+    const px = player.x, py = player.y;
+    // Glow
+    ctx.shadowColor = `hsl(${hue},100%,70%)`;
+    ctx.shadowBlur  = 16;
+    // Body
+    ctx.fillStyle = `hsl(${hue},100%,65%)`;
+    ctx.fillRect(px-PLAYER_W/2, py-PLAYER_H/2, PLAYER_W, PLAYER_H);
+    // Eye
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(px+4, py-3, 4, 4);
+    ctx.fillStyle = '#000';
+    ctx.fillRect(px+5, py-2, 2, 2);
+    ctx.shadowBlur = 0;
+  }
+
+  ctx.restore(); // end shake
+
+  // ── HUD ──
+  if(state==='playing'){
+    // Score
+    drawText(score+'', W/2, 28, {size:22, color:`hsl(${hue},100%,80%)`, shadow:`hsl(${hue},100%,50%)`});
+    // Multiplier
+    if(multiplier > 1){
+      const mc = `hsl(50,100%,65%)`;
+      drawText(`x${multiplier}`, W-30, 28, {size:16, color:mc, shadow:mc});
+    }
+    // Combo
+    if(combo > 0){
+      drawText(`${combo} COMBO`, W-30, 50, {size:11, color:`hsla(50,100%,70%,0.85)`, align:'right'});
+    }
+    // Best
+    drawText('BEST '+best, W/2, 52, {size:11, color:'rgba(255,255,255,0.35)', weight:'normal'});
+  }
+
+  if(state==='start'){
+    renderStart();
+  } else if(state==='gameover'){
+    renderGameOver();
+  }
+}
+
+function renderStart(){
+  // dim overlay
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(0,0,W,H);
+
+  const pulse = 0.7 + 0.3*Math.sin(colorT*2.5);
+
+  // Title
+  drawText('PIXEL', W/2, H/2-80, {size:42, color:`hsl(${hue},100%,75%)`, shadow:`hsl(${hue},100%,50%)`});
+  drawText('SOAR', W/2, H/2-32, {size:48, color:`hsl(${(hue+60)%360},100%,75%)`, shadow:`hsl(${(hue+60)%360},100%,50%)`});
+
+  ctx.globalAlpha = pulse;
+  drawText('TAP TO START', W/2, H/2+50, {size:16, color:'#fff'});
+  ctx.globalAlpha = 1;
+
+  drawText('SPACE / ENTER / TAP', W/2, H/2+80, {size:11, color:'rgba(255,255,255,0.45)', weight:'normal'});
+  drawText('Flip gravity • dodge gate walls', W/2, H/2+100, {size:10, color:'rgba(255,255,255,0.3)', weight:'normal'});
+  drawText('Take tight gaps for COMBO bonus!', W/2, H/2+118, {size:10, color:'rgba(255,200,50,0.5)', weight:'normal'});
+
+  if(best>0){
+    drawText('BEST: '+best, W/2, H/2+148, {size:13, color:`hsla(${hue},80%,70%,0.7)`});
+  }
+}
+
+function renderGameOver(){
+  // dim overlay
+  ctx.fillStyle = 'rgba(0,0,0,0.65)';
+  ctx.fillRect(0,0,W,H);
+
+  drawText('GAME OVER', W/2, H/2-110, {size:28, color:`hsl(0,100%,70%)`, shadow:'hsl(0,100%,40%)'});
+  drawText('SCORE', W/2, H/2-68, {size:13, color:'rgba(255,255,255,0.6)', weight:'normal'});
+  drawText(score+'', W/2, H/2-44, {size:36, color:`hsl(${hue},100%,75%)`, shadow:`hsl(${hue},100%,50%)`});
+  drawText('BEST: '+best, W/2, H/2+2, {size:15, color:`hsla(${hue},80%,70%,0.8)`});
+
+  if(maxCombo>0){
+    drawText(`MAX COMBO: ${maxCombo}  |  MAX MULT: x${Math.min(MAX_COMBO,1+Math.floor(maxCombo/2))}`, W/2, H/2+32, {
+      size:12, color:'rgba(255,200,50,0.8)', weight:'normal'
+    });
+  }
+
+  // Retry button
+  const bw=180, bh=44, bx=W/2-bw/2, by=H/2+62;
+  const rGrad = ctx.createLinearGradient(bx,by,bx,by+bh);
+  rGrad.addColorStop(0,`hsl(${hue},80%,35%)`);
+  rGrad.addColorStop(1,`hsl(${hue},80%,22%)`);
+  ctx.fillStyle = rGrad;
+  ctx.strokeStyle = `hsl(${hue},100%,65%)`;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(bx, by, bw, bh, 8);
+  ctx.fill(); ctx.stroke();
+  drawText('TAP TO RETRY', W/2, by+bh/2, {size:14, color:'#fff', shadow:`hsl(${hue},100%,60%)`});
+}
+
+// ── Main loop ─────────────────────────────────────────────────────────────────
+function loop(ts){
+  if(!lastTime) lastTime = ts;
+  dt = Math.min((ts - lastTime)/1000, 0.05);
+  lastTime = ts;
+
+  update(dt);
+  render();
+  requestAnimationFrame(loop);
+}
+
+// ── Kick off ──────────────────────────────────────────────────────────────────
+// Pre-load best
+best = parseInt(localStorage.getItem('pixelSoar_best')||'0');
+// init dummy state for start screen
+score=0; combo=0; maxCombo=0; multiplier=1; hue=180; scrollX=0; trauma=0;
+gatePhase=0; gateIndex=0; colorT=0;
+player = makePlayer();
+gates=[]; particles=[];
+flipCooldown=0;
+
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

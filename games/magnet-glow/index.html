@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Magnet Glow - Free HTML5 Game</title>
+<meta name="description" content="Play Magnet Glow - Tap to align colors under a glowing sunset magnetic field that pulls shapes together.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="robots" content="index,follow">
+<meta name="theme-color" content="#1a0a2e">
+
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="Magnet Glow - Free HTML5 Game">
+<meta property="og:description" content="Play Magnet Glow - Tap to align colors under a glowing sunset magnetic field that pulls shapes together.">
+<meta property="og:url" content="https://balinti.github.io/magnet-glow/">
+<meta property="og:image" content="https://balinti.github.io/magnet-glow/preview.png">
+
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Magnet Glow - Free HTML5 Game">
+<meta name="twitter:description" content="Play Magnet Glow - Tap to align colors under a glowing sunset magnetic field that pulls shapes together.">
+<meta name="twitter:image" content="https://balinti.github.io/magnet-glow/preview.png">
+
+<link rel="canonical" href="https://balinti.github.io/magnet-glow/">
+
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{
+  width:100%;height:100%;
+  background:#0d0618;
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:flex-start;
+  font-family:'Segoe UI',system-ui,sans-serif;
+  overflow-x:hidden;
+  color:#e0d0ff;
+}
+#game-wrap{
+  position:relative;
+  width:100%;max-width:420px;
+  height:100vh;max-height:750px;
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  flex-shrink:0;
+}
+canvas{
+  display:block;
+  touch-action:none;
+  cursor:pointer;
+}
+#seo-content{
+  width:100%;max-width:420px;
+  padding:16px 20px 32px;
+  font-size:13px;
+  color:#887799;
+  line-height:1.6;
+}
+#seo-content h2{font-size:15px;color:#aa88cc;margin-bottom:6px;}
+#seo-content h3{font-size:13px;color:#9977bb;margin-top:12px;margin-bottom:4px;}
+#seo-content p,#seo-content li{margin-bottom:4px;}
+#seo-content ul{padding-left:16px;}
+</style>
+</head>
+<body>
+<div id="game-wrap">
+  <canvas id="gc"></canvas>
+</div>
+
+<div id="seo-content">
+  <h2>How to Play Magnet Glow</h2>
+  <p>Tap or press Space/Enter to activate your magnet. Match the incoming orb color to score points. Build combos for multipliers. Three mismatches and it's game over!</p>
+  <ul>
+    <li><strong>PULL</strong> — attract matching orbs to score +10 × combo multiplier</li>
+    <li><strong>PUSH</strong> — blast the next orb away to skip it (ring tightens!)</li>
+    <li>Every 3 combos your multiplier increases</li>
+    <li>Watch the danger ring — it tightens as the game speeds up</li>
+  </ul>
+  <h2>FAQ</h2>
+  <h3>Is Magnet Glow free?</h3>
+  <p>Yes, completely free to play in your browser with no downloads required.</p>
+  <h3>How do combos work?</h3>
+  <p>Each match increases your combo. Every 3 consecutive matches raises your multiplier (2x, 3x…). A mismatch resets your combo and multiplier.</p>
+  <h3>What is PUSH mode?</h3>
+  <p>PUSH blasts the nearest incoming orb outward, skipping it. Useful to avoid a bad color, but it tightens the danger ring instantly.</p>
+  <h3>Can I play on mobile?</h3>
+  <p>Yes! Magnet Glow is fully touch-enabled and runs on any modern smartphone or tablet browser.</p>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+// ─── RNG ────────────────────────────────────────────────────────────
+function mulberry32(seed){
+  return function(){
+    seed|=0; seed=seed+0x6D2B79F5|0;
+    let t=Math.imul(seed^seed>>>15,1|seed);
+    t=t+Math.imul(t^t>>>7,61|t)^t;
+    return((t^t>>>14)>>>0)/4294967296;
+  };
+}
+
+// ─── Constants ──────────────────────────────────────────────────────
+const HS_KEY='mgpp_highscore_v1';
+const COLORS=[
+  {hue:0,   name:'Red'},
+  {hue:210, name:'Blue'},
+  {hue:120, name:'Green'},
+  {hue:50,  name:'Gold'},
+  {hue:280, name:'Violet'},
+];
+const NUM_COLORS=COLORS.length;
+const MAX_BAD=3;
+const BASE_SPAWN_INTERVAL=1.8;
+const MIN_SPAWN_INTERVAL=0.55;
+const BASE_SPEED=80;
+const MAX_SPEED=260;
+const BASE_RING_R_FRAC=0.42;
+const MIN_RING_R_FRAC=0.22;
+const PUSH_RING_TIGHTEN=0.018;
+const STACK_RADIUS_FRAC=0.12;
+const ORB_RADIUS_FRAC=0.055;
+const PARTICLE_COUNT=14;
+const SHAKE_FRAMES=18;
+const FLASH_DURATION=0.18;
+
+// ─── State ──────────────────────────────────────────────────────────
+const canvas=document.getElementById('gc');
+const ctx=canvas.getContext('2d');
+let dpr,CW,CH,CX,CY,ringBaseR,orbR,stackR;
+let state='start'; // start | playing | gameover
+let rng;
+
+// game vars
+let score,best,combo,mult,badCount,bestCombo;
+let orbs,stack,particles,shakeFrames,flashTimer,flashType;
+let spawnTimer,spawnInterval,speed,ringRFrac,hueShift,totalTime;
+let doubleOrbFlag;
+let lastTs=null;
+
+// challenge params
+let challengeScore=0,challengeCombo=0,isChallenge=false;
+
+// share overlay
+let shareOverlayActive=false;
+let shareMsg='';
+
+// ─── Load best ───────────────────────────────────────────────────────
+function loadBest(){
+  try{ best=parseInt(localStorage.getItem(HS_KEY))||0; }catch(e){ best=0; }
+}
+function saveBest(){
+  try{ localStorage.setItem(HS_KEY,best); }catch(e){}
+}
+
+// ─── Resize ─────────────────────────────────────────────────────────
+function resize(){
+  const wrap=document.getElementById('game-wrap');
+  const rect=wrap.getBoundingClientRect();
+  dpr=Math.min(window.devicePixelRatio||1,2);
+  CW=rect.width; CH=rect.height;
+  canvas.width=Math.round(CW*dpr);
+  canvas.height=Math.round(CH*dpr);
+  canvas.style.width=CW+'px';
+  canvas.style.height=CH+'px';
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  CX=CW/2; CY=CH/2;
+  ringBaseR=Math.min(CW,CH)*BASE_RING_R_FRAC;
+  orbR=Math.min(CW,CH)*ORB_RADIUS_FRAC;
+  stackR=Math.min(CW,CH)*STACK_RADIUS_FRAC;
+  if(state==='playing'){
+    // keep ringRFrac, recompute actual radii on draw
+  }
+}
+
+// ─── Orb factory ────────────────────────────────────────────────────
+function makeOrb(colorIdx, angle){
+  const r=Math.min(CW,CH)*ringRFrac*1.35+orbR*2;
+  return {
+    colorIdx,
+    angle: angle!==undefined ? angle : rng()*Math.PI*2,
+    dist: r,
+    speed: 0,
+    active: true,
+    isPush: false,
+  };
+}
+
+// ─── Color weighting ─────────────────────────────────────────────────
+function weightedColor(lastIdx){
+  // reduce chance of immediately repeating; anti-snowball: slightly reduce chance of current stack top
+  const weights=COLORS.map((_,i)=>{
+    let w=1;
+    if(i===lastIdx) w=0.45;
+    return w;
+  });
+  const total=weights.reduce((a,b)=>a+b,0);
+  let r=rng()*total;
+  for(let i=0;i<COLORS.length;i++){
+    r-=weights[i];
+    if(r<=0) return i;
+  }
+  return COLORS.length-1;
+}
+
+// ─── Spawn orb ───────────────────────────────────────────────────────
+function spawnOrb(extra){
+  const lastIdx=orbs.length>0?orbs[orbs.length-1].colorIdx:-1;
+  const ci=weightedColor(lastIdx);
+  const angle=rng()*Math.PI*2;
+  const orb=makeOrb(ci, angle);
+  orb.speed=(BASE_SPEED+(MAX_SPEED-BASE_SPEED)*Math.min(totalTime/90,1));
+  orbs.push(orb);
+  if(extra||doubleOrbFlag){
+    doubleOrbFlag=false;
+    const ci2=weightedColor(ci);
+    const angle2=angle+Math.PI*0.6+rng()*0.8;
+    const orb2=makeOrb(ci2, angle2);
+    orb2.dist=(Math.min(CW,CH)*ringRFrac*1.35+orbR*2)*1.25;
+    orb2.speed=orb.speed*0.92;
+    orbs.push(orb2);
+  }
+}
+
+// ─── Stack top color ────────────────────────────────────────────────
+function stackTopColor(){
+  if(stack.length===0) return 0;
+  return stack[stack.length-1].colorIdx;
+}
+
+// ─── Particles ───────────────────────────────────────────────────────
+function emitParticles(x,y,colorIdx,match){
+  const hue=COLORS[colorIdx].hue+hueShift;
+  for(let i=0;i<PARTICLE_COUNT;i++){
+    const angle=rng()*Math.PI*2;
+    const spd=40+rng()*90;
+    particles.push({
+      x,y,
+      vx:Math.cos(angle)*spd,
+      vy:Math.sin(angle)*spd,
+      life:1, decay:0.8+rng()*0.5,
+      r:2+rng()*4,
+      hue, match,
+      alpha:1,
+    });
+  }
+}
+
+// ─── Input handler ───────────────────────────────────────────────────
+function onTap(){
+  if(shareOverlayActive){ shareOverlayActive=false; return; }
+  if(state==='start'){ startGame(); return; }
+  if(state==='gameover'){ startGame(); return; }
+  if(state==='playing') handleAction();
+}
+
+function handleAction(){
+  // polarity: current stack top vs nearest inbound orb
+  // PULL: tap when top of stack matches nearest orb => score
+  // We do: tap => check nearest orb at/inside ring => resolve
+  const ringR=Math.min(CW,CH)*ringRFrac;
+  // find nearest orb (closest dist to center that is still inbound)
+  let nearest=null, nearestD=Infinity;
+  for(let o of orbs){
+    if(!o.active) continue;
+    if(o.dist<nearestD){ nearestD=o.dist; nearest=o; }
+  }
+
+  if(!nearest){
+    // PUSH with no orbs: just flash
+    flashTimer=FLASH_DURATION; flashType='push';
+    return;
+  }
+
+  const topColor=stackTopColor();
+  const match=(nearest.colorIdx===topColor)||(stack.length===0&&nearest.colorIdx===topColor);
+
+  // Is nearest inside or at ring? => forced resolution
+  if(nearest.dist<=ringR+orbR){
+    resolveOrb(nearest, true);
+    return;
+  }
+
+  // Tap while orb still inbound
+  if(nearest.colorIdx===topColor){
+    // PULL: attract it now
+    resolveOrb(nearest, true);
+  } else {
+    // PUSH: blast it outward
+    pushOrb(nearest);
+  }
+}
+
+function resolveOrb(orb, isPull){
+  orb.active=false;
+  const ringR=Math.min(CW,CH)*ringRFrac;
+  const orbX=CX+Math.cos(orb.angle)*ringR;
+  const orbY=CY+Math.sin(orb.angle)*ringR;
+  const topColor=stackTopColor();
+
+  if(orb.colorIdx===topColor || stack.length===0){
+    // match (PULL success)
+    score+=10*mult;
+    combo++;
+    mult=1+Math.floor(combo/3);
+    if(combo>bestCombo) bestCombo=combo;
+    if(score>best){ best=score; saveBest(); }
+    stack.push({colorIdx:orb.colorIdx, bad:false});
+    emitParticles(orbX,orbY,orb.colorIdx,true);
+    flashTimer=FLASH_DURATION; flashType='pull';
+  } else {
+    // mismatch
+    score+=5;
+    combo=0; mult=1;
+    badCount++;
+    stack.push({colorIdx:orb.colorIdx, bad:true});
+    emitParticles(orbX,orbY,orb.colorIdx,false);
+    shakeFrames=SHAKE_FRAMES;
+    flashTimer=FLASH_DURATION; flashType='push';
+    if(badCount>=MAX_BAD) endGame();
+  }
+  orbs=orbs.filter(o=>o!==orb);
+}
+
+function pushOrb(orb){
+  // blast outward
+  orb.speed=-Math.abs(orb.speed)*1.4;
+  orb.isPush=true;
+  flashTimer=FLASH_DURATION; flashType='push';
+  ringRFrac=Math.max(MIN_RING_R_FRAC, ringRFrac-PUSH_RING_TIGHTEN);
+  // remove after a moment (it'll fly away)
+  setTimeout(()=>{ orbs=orbs.filter(o=>o!==orb); },1200);
+}
+
+// ─── Auto-resolve orbs that reach ring ───────────────────────────────
+function autoResolveOrbs(){
+  const ringR=Math.min(CW,CH)*ringRFrac;
+  for(let o of orbs){
+    if(!o.active||o.isPush) continue;
+    if(o.dist<=ringR){
+      resolveOrb(o, false);
+      if(state==='gameover') return;
+    }
+  }
+}
+
+// ─── Game lifecycle ──────────────────────────────────────────────────
+function startGame(){
+  rng=mulberry32(Date.now()^(Math.random()*0xffffffff));
+  score=0; combo=0; mult=1; badCount=0; bestCombo=0;
+  orbs=[]; stack=[]; particles=[];
+  shakeFrames=0; flashTimer=0; flashType='pull';
+  spawnTimer=0; spawnInterval=BASE_SPAWN_INTERVAL;
+  speed=BASE_SPEED; ringRFrac=BASE_RING_R_FRAC;
+  hueShift=0; totalTime=0; doubleOrbFlag=false;
+  lastTs=null;
+  // seed stack with a first color
+  const ci=Math.floor(rng()*NUM_COLORS);
+  stack.push({colorIdx:ci, bad:false});
+  state='playing';
+}
+
+function endGame(){
+  state='gameover';
+  if(score>best){ best=score; saveBest(); }
+  shakeFrames=SHAKE_FRAMES*2;
+}
+
+// ─── Update ─────────────────────────────────────────────────────────
+function update(dt){
+  if(state!=='playing') return;
+  totalTime+=dt;
+  hueShift=(hueShift+15*dt)%360;
+
+  // difficulty ramp
+  const t=Math.min(totalTime/90,1);
+  spawnInterval=BASE_SPAWN_INTERVAL-(BASE_SPAWN_INTERVAL-MIN_SPAWN_INTERVAL)*Math.pow(t,0.7);
+  ringRFrac=Math.max(MIN_RING_R_FRAC, BASE_RING_R_FRAC-(BASE_RING_R_FRAC-MIN_RING_R_FRAC)*Math.pow(t,0.5)*0.6);
+
+  // double orb chance
+  if(totalTime>20 && rng()<dt*0.08) doubleOrbFlag=true;
+
+  // spawn
+  spawnTimer+=dt;
+  if(spawnTimer>=spawnInterval){
+    spawnTimer=0;
+    spawnOrb(false);
+  }
+
+  // update orbs
+  const ringR=Math.min(CW,CH)*ringRFrac;
+  for(let o of orbs){
+    if(!o.active) continue;
+    if(o.isPush){
+      o.dist+=o.speed*dt; // speed is negative -> moves outward
+    } else {
+      o.dist-=o.speed*dt;
+    }
+  }
+  // remove far-away push orbs
+  orbs=orbs.filter(o=>o.dist<Math.min(CW,CH)*2 && o.dist>-orbR*3);
+
+  autoResolveOrbs();
+
+  // particles
+  for(let p of particles){
+    p.x+=p.vx*dt; p.y+=p.vy*dt;
+    p.vy+=60*dt; // gravity
+    p.life-=p.decay*dt;
+    p.alpha=Math.max(0,p.life);
+  }
+  particles=particles.filter(p=>p.life>0);
+
+  if(shakeFrames>0) shakeFrames--;
+  if(flashTimer>0) flashTimer-=dt;
+}
+
+// ─── Draw helpers ────────────────────────────────────────────────────
+function drawBg(){
+  // deep space gradient
+  const grd=ctx.createRadialGradient(CX,CY*0.6,0,CX,CY,Math.max(CW,CH)*0.9);
+  grd.addColorStop(0,'#2a0e4a');
+  grd.addColorStop(0.5,'#15053a');
+  grd.addColorStop(1,'#0d0618');
+  ctx.fillStyle=grd;
+  ctx.fillRect(0,0,CW,CH);
+}
+
+function drawSun(){
+  // sun glow
+  const sy=CY*0.28;
+  const sr=Math.min(CW,CH)*0.11;
+  ctx.save();
+  ctx.shadowBlur=40; ctx.shadowColor='rgba(255,160,40,0.6)';
+  const g=ctx.createRadialGradient(CX,sy,sr*0.1,CX,sy,sr*2.2);
+  g.addColorStop(0,'rgba(255,220,80,0.95)');
+  g.addColorStop(0.35,'rgba(255,120,30,0.7)');
+  g.addColorStop(0.7,'rgba(200,50,120,0.3)');
+  g.addColorStop(1,'rgba(100,20,80,0)');
+  ctx.fillStyle=g;
+  ctx.beginPath(); ctx.arc(CX,sy,sr*2.2,0,Math.PI*2); ctx.fill();
+  ctx.shadowBlur=0;
+  ctx.restore();
+}
+
+function hslOrb(colorIdx, alpha){
+  const hue=(COLORS[colorIdx].hue+hueShift)%360;
+  return `hsla(${hue},90%,65%,${alpha})`;
+}
+
+function drawRing(){
+  const ringR=Math.min(CW,CH)*ringRFrac;
+  const tightenFrac=1-(ringRFrac-MIN_RING_R_FRAC)/(BASE_RING_R_FRAC-MIN_RING_R_FRAC);
+  // color: normal blue -> amber -> red as tightened
+  let rh=200-tightenFrac*200; // 200=blue, 0=red
+  let rs=80, rl=60;
+  const ringColor=`hsl(${rh},${rs}%,${rl}%)`;
+
+  ctx.save();
+  ctx.strokeStyle=ringColor;
+  ctx.lineWidth=2.5;
+  ctx.setLineDash([8,6]);
+  ctx.globalAlpha=0.55+0.3*tightenFrac;
+  ctx.beginPath(); ctx.arc(CX,CY,ringR,0,Math.PI*2); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+function drawStack(){
+  const layers=stack.slice(-8); // show last 8
+  const baseY=CY+stackR*0.5;
+  const layerH=stackR*0.38;
+  for(let i=0;i<layers.length;i++){
+    const l=layers[i];
+    const y=baseY-i*layerH;
+    const hue=(COLORS[l.colorIdx].hue+hueShift)%360;
+    const lightness=l.bad?30:58;
+    const sat=l.bad?40:88;
+    ctx.save();
+    if(l.bad){
+      // cracked look: darker + slight wobble
+      ctx.globalAlpha=0.75;
+      ctx.fillStyle=`hsl(${hue},${sat}%,${lightness}%)`;
+      ctx.beginPath();
+      ctx.ellipse(CX,y,stackR*0.9,layerH*0.5,0,0,Math.PI*2);
+      ctx.fill();
+      // crack lines
+      ctx.strokeStyle=`hsla(${hue},20%,20%,0.8)`;
+      ctx.lineWidth=1.5;
+      ctx.beginPath();
+      ctx.moveTo(CX-stackR*0.3,y-layerH*0.15);
+      ctx.lineTo(CX+stackR*0.15,y+layerH*0.15);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(CX+stackR*0.2,y-layerH*0.2);
+      ctx.lineTo(CX-stackR*0.05,y+layerH*0.18);
+      ctx.stroke();
+    } else {
+      ctx.fillStyle=`hsl(${hue},${sat}%,${lightness}%)`;
+      ctx.globalAlpha=0.85;
+      ctx.beginPath();
+      ctx.ellipse(CX,y,stackR*0.92,layerH*0.5,0,0,Math.PI*2);
+      ctx.fill();
+      // sheen
+      ctx.fillStyle=`hsla(${hue},90%,85%,0.25)`;
+      ctx.beginPath();
+      ctx.ellipse(CX,y-layerH*0.08,stackR*0.55,layerH*0.18,0,0,Math.PI*2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+  // center magnet icon
+  ctx.save();
+  ctx.fillStyle='rgba(255,255,255,0.12)';
+  ctx.beginPath(); ctx.arc(CX,CY,stackR*0.5,0,Math.PI*2); ctx.fill();
+  ctx.restore();
+}
+
+function drawOrbs(){
+  for(let o of orbs){
+    if(!o.active) continue;
+    const x=CX+Math.cos(o.angle)*o.dist;
+    const y=CY+Math.sin(o.angle)*o.dist;
+    const hue=(COLORS[o.colorIdx].hue+hueShift)%360;
+    ctx.save();
+    if(!o.isPush){
+      ctx.shadowBlur=18; ctx.shadowColor=`hsla(${hue},90%,65%,0.9)`;
+    }
+    const g=ctx.createRadialGradient(x-orbR*0.3,y-orbR*0.3,orbR*0.05,x,y,orbR);
+    g.addColorStop(0,`hsla(${hue},90%,85%,1)`);
+    g.addColorStop(0.5,`hsla(${hue},85%,60%,1)`);
+    g.addColorStop(1,`hsla(${hue},80%,35%,0.9)`);
+    ctx.fillStyle=g;
+    ctx.globalAlpha=o.isPush?0.45:1;
+    ctx.beginPath(); ctx.arc(x,y,orbR,0,Math.PI*2); ctx.fill();
+    ctx.shadowBlur=0;
+    ctx.restore();
+  }
+}
+
+function drawParticles(){
+  for(let p of particles){
+    ctx.save();
+    ctx.globalAlpha=p.alpha*0.9;
+    ctx.fillStyle=`hsl(${(p.hue+hueShift)%360},85%,65%)`;
+    ctx.beginPath(); ctx.arc(p.x,p.y,p.r*p.life,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawHUD(){
+  if(state!=='playing'&&state!=='gameover') return;
+  ctx.save();
+  ctx.textAlign='left';
+  ctx.font='bold 15px system-ui';
+  ctx.fillStyle='rgba(220,200,255,0.9)';
+  ctx.fillText('Score: '+score, 16, 28);
+  ctx.fillText('Best: '+best, 16, 48);
+
+  ctx.textAlign='right';
+  ctx.fillText('Combo x'+mult, CW-16, 28);
+
+  // bad pips
+  for(let i=0;i<MAX_BAD;i++){
+    const px=CW-16-(MAX_BAD-1-i)*22;
+    const py=48;
+    ctx.beginPath();
+    ctx.arc(px,py,7,0,Math.PI*2);
+    if(i<badCount){
+      ctx.fillStyle='#ff4444';
+      ctx.fill();
+    } else {
+      ctx.strokeStyle='rgba(200,150,255,0.5)';
+      ctx.lineWidth=1.5;
+      ctx.stroke();
+    }
+  }
+
+  // polarity label
+  const topColor=stackTopColor();
+  const hue=(COLORS[topColor].hue+hueShift)%360;
+  ctx.textAlign='center';
+  ctx.font='bold 13px system-ui';
+  ctx.fillStyle=`hsl(${hue},90%,70%)`;
+  ctx.fillText('PULL', CX, CH-20);
+  ctx.font='11px system-ui';
+  ctx.fillStyle='rgba(180,150,220,0.6)';
+  ctx.fillText('tap to attract matching orbs', CX, CH-6);
+  ctx.restore();
+}
+
+function drawFlash(){
+  if(flashTimer<=0) return;
+  const a=Math.min(flashTimer/FLASH_DURATION,1)*0.22;
+  ctx.save();
+  ctx.globalAlpha=a;
+  ctx.fillStyle=flashType==='pull'?'rgba(255,120,40,1)':'rgba(40,120,255,1)';
+  ctx.fillRect(0,0,CW,CH);
+  ctx.restore();
+}
+
+function drawStartScreen(){
+  ctx.save();
+  ctx.textAlign='center';
+  // title
+  ctx.font='bold 38px system-ui';
+  ctx.fillStyle='rgba(255,200,80,0.95)';
+  ctx.shadowBlur=30; ctx.shadowColor='rgba(255,160,40,0.8)';
+  ctx.fillText('Magnet Glow', CX, CY-60);
+  ctx.shadowBlur=0;
+  ctx.font='18px system-ui';
+  ctx.fillStyle='rgba(220,180,255,0.8)';
+  ctx.fillText('Polarity Pop', CX, CY-30);
+  // how to
+  ctx.font='13px system-ui';
+  ctx.fillStyle='rgba(180,160,220,0.7)';
+  ctx.fillText('Tap to attract matching orbs. 3 mismatches = over!', CX, CY+10);
+  // tap
+  const pulse=0.7+0.3*Math.sin(Date.now()/400);
+  ctx.globalAlpha=pulse;
+  ctx.font='bold 20px system-ui';
+  ctx.fillStyle='rgba(255,220,100,1)';
+  ctx.fillText('Tap to Start', CX, CY+55);
+  ctx.globalAlpha=1;
+
+  if(best>0){
+    ctx.font='14px system-ui';
+    ctx.fillStyle='rgba(200,170,255,0.7)';
+    ctx.fillText('Best: '+best, CX, CY+85);
+  }
+
+  if(isChallenge){
+    ctx.font='13px system-ui';
+    ctx.fillStyle='rgba(255,180,80,0.85)';
+    ctx.fillText('Challenge: beat '+challengeScore+' pts / combo x'+challengeCombo, CX, CY+112);
+  }
+  ctx.restore();
+}
+
+function drawGameOver(){
+  ctx.save();
+  ctx.fillStyle='rgba(10,3,20,0.7)';
+  ctx.fillRect(0,0,CW,CH);
+
+  ctx.textAlign='center';
+  ctx.font='bold 34px system-ui';
+  ctx.fillStyle='#ff6666';
+  ctx.shadowBlur=20; ctx.shadowColor='#ff2222';
+  ctx.fillText('Game Over', CX, CY-80);
+  ctx.shadowBlur=0;
+
+  ctx.font='22px system-ui';
+  ctx.fillStyle='rgba(255,220,100,0.95)';
+  ctx.fillText('Score: '+score, CX, CY-40);
+  ctx.font='16px system-ui';
+  ctx.fillStyle='rgba(200,170,255,0.85)';
+  ctx.fillText('Best: '+best, CX, CY-14);
+  ctx.fillText('Best Combo: x'+bestCombo, CX, CY+12);
+
+  const pulse=0.7+0.3*Math.sin(Date.now()/400);
+  ctx.globalAlpha=pulse;
+  ctx.font='bold 19px system-ui';
+  ctx.fillStyle='rgba(255,220,100,1)';
+  ctx.fillText('Tap to Retry', CX, CY+50);
+  ctx.globalAlpha=1;
+
+  // buttons
+  drawBtn(CX-90, CY+80, 160, 36, 'Share Score', '#553388');
+  drawBtn(CX+80, CY+80, 180, 36, 'Challenge a Friend', '#334488');
+
+  ctx.restore();
+}
+
+function drawBtn(x, y, w, h, label, color){
+  const bx=x-w/2, by=y-h/2;
+  ctx.save();
+  ctx.fillStyle=color;
+  ctx.strokeStyle='rgba(200,170,255,0.6)';
+  ctx.lineWidth=1.5;
+  ctx.beginPath();
+  ctx.roundRect(bx,by,w,h,8);
+  ctx.fill(); ctx.stroke();
+  ctx.textAlign='center';
+  ctx.font='bold 12px system-ui';
+  ctx.fillStyle='rgba(220,200,255,0.95)';
+  ctx.fillText(label, x, y+4);
+  ctx.restore();
+}
+
+function getShakeOffset(){
+  if(shakeFrames<=0) return {dx:0,dy:0};
+  const mag=Math.min(shakeFrames,8);
+  return {dx:(Math.random()-0.5)*mag*2, dy:(Math.random()-0.5)*mag*2};
+}
+
+// ─── Main draw ───────────────────────────────────────────────────────
+function draw(){
+  const {dx,dy}=getShakeOffset();
+  ctx.save();
+  ctx.translate(dx,dy);
+
+  drawBg();
+  drawSun();
+
+  if(state==='playing'||state==='gameover'){
+    drawRing();
+    drawStack();
+    drawOrbs();
+    drawParticles();
+    drawFlash();
+    drawHUD();
+  }
+
+  if(state==='start') drawStartScreen();
+  if(state==='gameover') drawGameOver();
+
+  ctx.restore();
+}
+
+// ─── Loop ────────────────────────────────────────────────────────────
+function loop(ts){
+  if(lastTs===null) lastTs=ts;
+  const dt=Math.min((ts-lastTs)/1000, 0.033);
+  lastTs=ts;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// ─── Click/tap routing ───────────────────────────────────────────────
+function handlePointer(e){
+  e.preventDefault();
+  const rect=canvas.getBoundingClientRect();
+  const cx=e.clientX||e.touches?.[0]?.clientX;
+  const cy=e.clientY||e.touches?.[0]?.clientY;
+  if(state==='gameover'){
+    // check buttons
+    const bx=cx-rect.left, by=cy-rect.top;
+    // Share Score button
+    if(hitBtn(bx,by,CX-90,CY+80,160,36)){ shareScore(); return; }
+    // Challenge button
+    if(hitBtn(bx,by,CX+80,CY+80,180,36)){ challengeFriend(); return; }
+  }
+  onTap();
+}
+
+function hitBtn(px,py,bx,by,w,h){
+  return px>=bx-w/2 && px<=bx+w/2 && py>=by-h/2 && py<=by+h/2;
+}
+
+function shareScore(){
+  const text=`I scored ${score} pts in Magnet Glow! Best combo: x${bestCombo}. Can you beat me? https://balinti.github.io/magnet-glow/`;
+  if(navigator.share){
+    navigator.share({title:'Magnet Glow Score',text,url:'https://balinti.github.io/magnet-glow/'}).catch(()=>{});
+  } else {
+    try{ navigator.clipboard.writeText(text); }catch(e){}
+    // show brief overlay msg
+    shareMsg='Score copied to clipboard!';
+    shareOverlayActive=true;
+    setTimeout(()=>{ shareOverlayActive=false; },2000);
+  }
+}
+
+function challengeFriend(){
+  const url=`https://balinti.github.io/magnet-glow/?challenge=1&score=${score}&combo=${bestCombo}`;
+  if(navigator.share){
+    navigator.share({title:'Magnet Glow Challenge',text:`Beat my score of ${score}!`,url}).catch(()=>{});
+  } else {
+    try{ navigator.clipboard.writeText(url); }catch(e){}
+    shareMsg='Challenge link copied!';
+    shareOverlayActive=true;
+    setTimeout(()=>{ shareOverlayActive=false; },2000);
+  }
+}
+
+// ─── Challenge param ──────────────────────────────────────────────────
+function parseChallenge(){
+  try{
+    const p=new URLSearchParams(window.location.search);
+    if(p.get('challenge')==='1'){
+      isChallenge=true;
+      challengeScore=parseInt(p.get('score'))||0;
+      challengeCombo=parseInt(p.get('combo'))||0;
+    }
+  }catch(e){}
+}
+
+// ─── Share overlay draw ──────────────────────────────────────────────
+function drawShareOverlay(){
+  if(!shareOverlayActive) return;
+  ctx.save();
+  ctx.fillStyle='rgba(10,5,25,0.85)';
+  ctx.beginPath(); ctx.roundRect(CX-120,CY-20,240,40,8); ctx.fill();
+  ctx.textAlign='center'; ctx.font='13px system-ui';
+  ctx.fillStyle='rgba(220,200,255,0.95)';
+  ctx.fillText(shareMsg, CX, CY+5);
+  ctx.restore();
+}
+
+// patch draw to include share overlay
+const _draw=draw;
+function drawAll(){
+  _draw();
+  drawShareOverlay();
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────
+loadBest();
+parseChallenge();
+resize();
+window.addEventListener('resize', ()=>{ resize(); });
+canvas.addEventListener('pointerdown', handlePointer, {passive:false});
+window.addEventListener('keydown', e=>{
+  if(e.code==='Space'||e.code==='Enter'){ e.preventDefault(); onTap(); }
+});
+
+// replace loop draw call
+requestAnimationFrame(function loopFn(ts){
+  if(lastTs===null) lastTs=ts;
+  const dt=Math.min((ts-lastTs)/1000, 0.033);
+  lastTs=ts;
+  update(dt);
+  drawAll();
+  requestAnimationFrame(loopFn);
+});
+
+})();
+</script>
+</body>
+</html>

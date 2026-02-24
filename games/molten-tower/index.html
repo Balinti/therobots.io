@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Molten Tower - Free HTML5 Game</title>
+  <meta name="description" content="Play Molten Tower - Stack molten rocks rapidly while controls randomly reverse to build the tallest tower.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#1a0a00">
+  <link rel="canonical" href="https://balinti.github.io/molten-tower/">
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Molten Tower - Free HTML5 Game">
+  <meta property="og:description" content="Play Molten Tower - Stack molten rocks rapidly while controls randomly reverse to build the tallest tower.">
+  <meta property="og:url" content="https://balinti.github.io/molten-tower/">
+  <meta property="og:image" content="https://balinti.github.io/molten-tower/og.png">
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Molten Tower - Free HTML5 Game">
+  <meta name="twitter:description" content="Play Molten Tower - Stack molten rocks rapidly while controls randomly reverse to build the tallest tower.">
+  <meta name="twitter:image" content="https://balinti.github.io/molten-tower/og.png">
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #0d0500;
+      display: flex; flex-direction: column;
+      align-items: center;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      overflow-x: hidden;
+      color: #f4c06a;
+    }
+    #wrapper {
+      width: 100%;
+      max-width: 420px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding-bottom: 80px;
+    }
+    #canvas-container {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      touch-action: none;
+      cursor: pointer;
+      border-radius: 0 0 12px 12px;
+    }
+    #seo-text {
+      width: 100%;
+      max-width: 420px;
+      padding: 18px 16px 12px;
+      font-size: 13px;
+      line-height: 1.6;
+      color: #7a4a20;
+      text-align: center;
+    }
+    #seo-text h2 { font-size: 15px; color: #b36820; margin-bottom: 6px; }
+    #seo-text p { margin-bottom: 6px; }
+  </style>
+</head>
+<body>
+<div id="wrapper">
+  <div id="canvas-container">
+    <canvas id="c"></canvas>
+  </div>
+  <div id="seo-text">
+    <h2>Molten Tower - Free HTML5 Stack Game</h2>
+    <p>Drop glowing molten slabs onto your tower. Master heat phases: <strong>Molten</strong> slabs slide, <strong>Cooling</strong> slabs settle normally, and <strong>Cooled</strong> slabs snap perfectly. Build the highest tower and beat your best score!</p>
+    <p>Works on desktop and mobile. No download required. Tap or press Space/Enter to drop.</p>
+  </div>
+</div>
+<script>
+(function(){
+'use strict';
+
+// ─── Canvas & DPR Setup ───────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+const LOGICAL_W = 420;
+const LOGICAL_H = 700;
+let DPR = window.devicePixelRatio || 1;
+
+function resizeCanvas() {
+  DPR = window.devicePixelRatio || 1;
+  const container = document.getElementById('canvas-container');
+  const cw = Math.min(container.clientWidth, LOGICAL_W);
+  const ch = Math.round(cw * LOGICAL_H / LOGICAL_W);
+  canvas.style.width  = cw + 'px';
+  canvas.style.height = ch + 'px';
+  canvas.width  = Math.round(cw * DPR);
+  canvas.height = Math.round(ch * DPR);
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.scale(DPR * cw / LOGICAL_W, DPR * ch / LOGICAL_H);
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+const TOWER_X        = LOGICAL_W / 2;
+const PLATFORM_Y_START = LOGICAL_H - 60;
+const SLAB_HEIGHT    = 24;
+const INITIAL_WIDTH  = 180;
+const MIN_WIDTH      = 30;
+const SWING_SPEED_BASE = 1.8;  // degrees per frame equivalent
+const SWING_AMP      = 140;    // half-swing px
+const SLAB_DROP_Y    = 80;
+const STACK_VISIBLE  = 8;      // how many platforms visible above base
+
+// Heat phases
+const PHASE = { MOLTEN: 0, COOLING: 1, COOLED: 2 };
+const PHASE_NAMES  = ['MOLTEN', 'COOLING', 'COOLED'];
+const PHASE_COLORS = [
+  ['#ff6a00','#ff9d00','#ffcc00'],
+  ['#ff3300','#cc2200','#991100'],
+  ['#884400','#663300','#442200'],
+];
+const PHASE_DURATION = [5, 5, 4]; // in slabs (roughly)
+const PHASE_SLIDE    = [0.7, 0, 0]; // slide factor for molten
+
+const GUST_START_BLOCK = 25;
+const GUST_INTERVAL    = 12;
+
+// ─── State ────────────────────────────────────────────────────────────────────
+let state = 'start';
+let score = 0;
+let bestScore = parseInt(localStorage.getItem('moltenTowerBest') || '0');
+let hue = 20;
+let particles = [];
+let shakeFrames = 0, shakeAmt = 0;
+let gustDir = 1;
+let showGustWarning = false;
+let gustWarningTimer = 0;
+let frameCount = 0;
+
+// Tower stack: array of { x, w, y, phase, color }
+let stack = [];
+// Falling slab
+let slab = null;
+// Swinger
+let swinger = { x: TOWER_X, dir: 1, speed: SWING_SPEED_BASE };
+let swingAngle = 0; // -1..1 normalized
+
+// Drop state
+let dropping = false;
+let dropY = 0;
+let dropX = 0;
+let dropW = 0;
+let dropPhase = 0;
+let dropVY = 0;
+let dropSlide = 0;
+
+// Scoring
+let perfectStreak = 0;
+let blockCount = 0;
+let nextGustAt = GUST_START_BLOCK;
+let phaseBlockCount = 0;
+let currentPhase = PHASE.COOLING;
+
+// ─── Init game ────────────────────────────────────────────────────────────────
+function initGame() {
+  score        = 0;
+  particles    = [];
+  shakeFrames  = 0;
+  shakeAmt     = 0;
+  perfectStreak = 0;
+  blockCount   = 0;
+  nextGustAt   = GUST_START_BLOCK;
+  gustDir      = 1;
+  showGustWarning = false;
+  gustWarningTimer = 0;
+  dropping     = false;
+  swingAngle   = 0;
+  phaseBlockCount = 0;
+  currentPhase = PHASE.COOLING;
+  frameCount   = 0;
+  hue          = 20;
+
+  // Base platform
+  stack = [{
+    x: TOWER_X,
+    w: INITIAL_WIDTH,
+    y: PLATFORM_Y_START,
+    phase: PHASE.COOLED,
+    color: '#553300'
+  }];
+
+  resetSwinger();
+}
+
+function resetSwinger() {
+  const top = stack[stack.length - 1];
+  swinger.speed = SWING_SPEED_BASE + Math.min(blockCount * 0.04, 2.5);
+  swinger.x = TOWER_X;
+  swinger.dir = Math.random() < 0.5 ? 1 : -1;
+}
+
+function currentTopY() {
+  return stack[stack.length - 1].y;
+}
+
+function currentTopW() {
+  return stack[stack.length - 1].w;
+}
+
+// ─── Particles ────────────────────────────────────────────────────────────────
+function spawnParticles(x, y, count, type) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 1.5 + Math.random() * 3.5;
+    const life  = 0.6 + Math.random() * 0.7;
+    let color;
+    if (type === 'ember') {
+      color = `hsl(${20 + Math.random()*40}, 100%, ${50 + Math.random()*30}%)`;
+    } else if (type === 'chip') {
+      color = `hsl(${hue}, 60%, 50%)`;
+    } else if (type === 'ring') {
+      color = `hsl(${hue + 40}, 100%, 70%)`;
+    } else {
+      color = `hsl(${Math.random()*360}, 80%, 60%)`;
+    }
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed * (type === 'ring' ? 0.5 : 1),
+      vy: Math.sin(angle) * speed - (type === 'ember' ? 2 : 0),
+      life, maxLife: life,
+      size: 2 + Math.random() * (type === 'ring' ? 6 : 3),
+      color,
+      type,
+      grav: type === 'ember' ? -0.06 : 0.12,
+    });
+  }
+}
+
+function spawnRing(x, y, w) {
+  // Ring burst on perfect
+  for (let i = 0; i < 20; i++) {
+    const a = (i / 20) * Math.PI * 2;
+    particles.push({
+      x: x + Math.cos(a) * w / 2,
+      y,
+      vx: Math.cos(a) * 3,
+      vy: Math.sin(a) * 3 - 1,
+      life: 0.5, maxLife: 0.5,
+      size: 4,
+      color: `hsl(${hue+60},100%,80%)`,
+      type: 'ring',
+      grav: 0,
+    });
+  }
+}
+
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x  += p.vx;
+    p.y  += p.vy;
+    p.vy += p.grav;
+    p.life -= dt;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    const alpha = Math.max(0, p.life / p.maxLife);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size * alpha, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ─── Screen shake ─────────────────────────────────────────────────────────────
+function triggerShake(frames, amt) {
+  shakeFrames = Math.max(shakeFrames, frames);
+  shakeAmt    = Math.max(shakeAmt, amt);
+}
+
+// ─── Phase helpers ────────────────────────────────────────────────────────────
+function advancePhase() {
+  phaseBlockCount++;
+  if (phaseBlockCount >= PHASE_DURATION[currentPhase]) {
+    phaseBlockCount = 0;
+    currentPhase = (currentPhase + 1) % 3;
+  }
+}
+
+function phaseColor(phase) {
+  const cols = PHASE_COLORS[phase];
+  const t = Date.now() / 600;
+  const idx = Math.floor(t % 3);
+  return cols[idx % cols.length];
+}
+
+// ─── Gust logic ───────────────────────────────────────────────────────────────
+function checkGust() {
+  if (blockCount >= nextGustAt) {
+    showGustWarning = true;
+    gustWarningTimer = 90; // frames
+    nextGustAt += GUST_INTERVAL;
+  }
+}
+
+// ─── Drop logic ───────────────────────────────────────────────────────────────
+function doAction() {
+  if (state === 'start') {
+    state = 'playing';
+    initGame();
+    return;
+  }
+  if (state === 'gameover') {
+    state = 'playing';
+    initGame();
+    return;
+  }
+  if (state === 'playing' && !dropping) {
+    // Drop!
+    dropping = true;
+    dropX    = swinger.x;
+    dropY    = SLAB_DROP_Y;
+    dropW    = currentTopW() <= MIN_WIDTH ? MIN_WIDTH : Math.max(MIN_WIDTH, currentTopW());
+    dropVY   = 5;
+    dropPhase = currentPhase;
+    dropSlide = 0;
+
+    // Check gust
+    if (showGustWarning && gustWarningTimer <= 0) {
+      // apply gust now: nudge dropX
+      dropX += gustDir * 28;
+      gustDir *= -1;
+      showGustWarning = false;
+    }
+  }
+}
+
+function landSlab() {
+  const top    = stack[stack.length - 1];
+  const topL   = top.x - top.w / 2;
+  const topR   = top.x + top.w / 2;
+  const slabL  = dropX - dropW / 2;
+  const slabR  = dropX + dropW / 2;
+
+  // Overlap
+  const overlapL = Math.max(topL, slabL);
+  const overlapR = Math.min(topR, slabR);
+  const overlap  = overlapR - overlapL;
+
+  if (overlap <= 0) {
+    // Missed entirely — game over
+    spawnParticles(dropX, dropY, 30, 'ember');
+    triggerShake(20, 10);
+    gameOver();
+    return;
+  }
+
+  const newW  = Math.max(MIN_WIDTH, overlap);
+  const newX  = (overlapL + overlapR) / 2;
+  const newY  = top.y - SLAB_HEIGHT;
+
+  // Determine perfect: overhang < 6px total
+  const overhang = dropW - overlap;
+  const perfect  = overhang < 6;
+
+  let actualX = newX;
+
+  // Molten slide
+  if (dropPhase === PHASE.MOLTEN) {
+    const slideAmt = (dropX - newX) * PHASE_SLIDE[PHASE.MOLTEN];
+    actualX = newX + slideAmt * 0.5;
+    // clamp slide so it stays on top platform
+    actualX = Math.max(top.x - top.w/2 + newW/2,
+              Math.min(top.x + top.w/2 - newW/2, actualX));
+  }
+
+  // Shear — determine final actual new width after slide (if slid off)
+  const finalL = actualX - newW / 2;
+  const finalR = actualX + newW / 2;
+  const fOverlapL = Math.max(topL, finalL);
+  const fOverlapR = Math.min(topR, finalR);
+  const fOverlap  = fOverlapR - fOverlapL;
+  const finalW    = Math.max(MIN_WIDTH, fOverlap > 0 ? fOverlap : newW);
+  const finalX    = fOverlap > 0 ? (fOverlapL + fOverlapR) / 2 : actualX;
+
+  // Spawn particles
+  if (perfect && dropPhase === PHASE.COOLED) {
+    spawnRing(finalX, newY, finalW);
+    spawnParticles(finalX, newY, 15, 'chip');
+    perfectStreak++;
+    triggerShake(4, 2);
+  } else {
+    const chipCount = Math.floor(overhang * 0.4);
+    spawnParticles(slabL < topL ? slabL + 5 : slabR - 5, newY, chipCount + 6, 'chip');
+    spawnParticles(finalX, newY, 10, 'ember');
+    perfectStreak = 0;
+    triggerShake(5, 3);
+  }
+
+  const multiplier = 1 + Math.min(perfectStreak, 5) * 0.2;
+  score += Math.round(10 * multiplier);
+
+  // Add to stack
+  stack.push({
+    x: finalX,
+    w: finalW,
+    y: newY,
+    phase: dropPhase,
+    color: phaseColor(dropPhase),
+  });
+
+  blockCount++;
+  advancePhase();
+  checkGust();
+
+  if (finalW <= MIN_WIDTH + 2) {
+    // Very narrow — let them keep going but warn
+  }
+
+  dropping = false;
+  resetSwinger();
+
+  // Scroll stack down: remove old ones from bottom
+  scrollStack();
+}
+
+function scrollStack() {
+  // Keep only relevant entries for drawing
+  // The "top" of the stack moves up; platforms below viewport are removed
+  const topY = stack[stack.length - 1].y;
+  const cutoff = topY + LOGICAL_H + 100;
+  while (stack.length > 1 && stack[0].y > cutoff) {
+    stack.shift();
+  }
+}
+
+function gameOver() {
+  state = 'gameover';
+  if (score > bestScore) {
+    bestScore = score;
+    localStorage.setItem('moltenTowerBest', bestScore);
+  }
+  triggerShake(30, 14);
+  spawnParticles(TOWER_X, LOGICAL_H/2, 60, 'ember');
+}
+
+// ─── Update ───────────────────────────────────────────────────────────────────
+let lastTime = 0;
+function update(ts) {
+  const rawDt = Math.min((ts - lastTime) / 1000, 0.05);
+  lastTime = ts;
+  const dt = rawDt * 60; // normalize to 60fps units
+
+  frameCount++;
+  hue = (hue + 0.3) % 360;
+
+  if (shakeFrames > 0) shakeFrames--;
+  else shakeAmt = 0;
+
+  if (gustWarningTimer > 0) {
+    gustWarningTimer -= dt;
+    if (gustWarningTimer <= 0 && showGustWarning) {
+      // gust fires on next drop
+      gustWarningTimer = 0;
+    }
+  }
+
+  updateParticles(dt);
+
+  if (state !== 'playing') return;
+
+  if (!dropping) {
+    // Swing slab
+    swingAngle += swinger.dir * swinger.speed * dt * 0.022;
+    if (swingAngle >  1) { swingAngle =  1; swinger.dir = -1; }
+    if (swingAngle < -1) { swingAngle = -1; swinger.dir =  1; }
+    swinger.x = TOWER_X + swingAngle * SWING_AMP;
+  } else {
+    // Drop slab
+    dropVY = Math.min(dropVY + 0.4 * dt, 18);
+    dropY += dropVY * dt / 3;
+
+    const top   = stack[stack.length - 1];
+    const landY = top.y - SLAB_HEIGHT;
+
+    if (dropY >= landY) {
+      dropY = landY;
+      // Molten slide animation: brief pause
+      if (dropPhase === PHASE.MOLTEN && dropSlide < 1) {
+        dropSlide += 0.08 * dt;
+        if (dropSlide >= 1) landSlab();
+        // drift dropX toward center slightly
+        const drift = (top.x - dropX) * 0.05 * dt;
+        dropX += drift;
+      } else {
+        landSlab();
+      }
+    }
+  }
+}
+
+// ─── Draw helpers ─────────────────────────────────────────────────────────────
+function drawRoundRect(x, y, w, h, r, fill, stroke) {
+  const hw = w / 2;
+  ctx.beginPath();
+  ctx.moveTo(x - hw + r, y);
+  ctx.lineTo(x + hw - r, y);
+  ctx.quadraticCurveTo(x + hw, y, x + hw, y + r);
+  ctx.lineTo(x + hw, y + h - r);
+  ctx.quadraticCurveTo(x + hw, y + h, x + hw - r, y + h);
+  ctx.lineTo(x - hw + r, y + h);
+  ctx.quadraticCurveTo(x - hw, y + h, x - hw, y + h - r);
+  ctx.lineTo(x - hw, y + r);
+  ctx.quadraticCurveTo(x - hw, y, x - hw + r, y);
+  ctx.closePath();
+  if (fill)   { ctx.fillStyle = fill;   ctx.fill(); }
+  if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = 2; ctx.stroke(); }
+}
+
+function getPlatformColors(phase, hot) {
+  if (phase === PHASE.MOLTEN) {
+    return { fill: '#cc4400', glow: '#ff8800', top: '#ff6600' };
+  } else if (phase === PHASE.COOLING) {
+    return { fill: '#882200', glow: '#cc4400', top: '#cc3300' };
+  } else {
+    return { fill: '#3a1a00', glow: '#664422', top: '#553322' };
+  }
+}
+
+function drawPlatform(plat, isTop) {
+  const { x, y, w, phase } = plat;
+  const { fill, glow, top } = getPlatformColors(phase, isTop);
+  const h = SLAB_HEIGHT;
+  const r = Math.min(5, w / 4);
+
+  // Glow
+  if (isTop && phase !== PHASE.COOLED) {
+    ctx.shadowColor = glow;
+    ctx.shadowBlur  = 12;
+  }
+
+  drawRoundRect(x, y, w, h, r, fill, null);
+  ctx.shadowBlur = 0;
+
+  // Top highlight
+  ctx.fillStyle = top;
+  ctx.globalAlpha = 0.5;
+  ctx.fillRect(x - w/2 + 4, y + 1, w - 8, 4);
+  ctx.globalAlpha = 1;
+
+  // Lava crack lines on molten
+  if (phase === PHASE.MOLTEN) {
+    ctx.strokeStyle = `hsl(40, 100%, 70%)`;
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.4 + 0.3 * Math.sin(frameCount * 0.1);
+    for (let i = 0; i < 3; i++) {
+      const cx = x - w/2 + (i+1) * w/4;
+      ctx.beginPath();
+      ctx.moveTo(cx - 6, y + 6);
+      ctx.lineTo(cx, y + 14);
+      ctx.lineTo(cx + 6, y + 18);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawSwinger() {
+  if (dropping) return;
+  const top = stack[stack.length - 1];
+  const w   = Math.max(MIN_WIDTH, top.w);
+  const x   = swinger.x;
+  const y   = SLAB_DROP_Y;
+  const phase = currentPhase;
+  const { fill, glow } = getPlatformColors(phase, true);
+
+  ctx.shadowColor = glow;
+  ctx.shadowBlur  = 16;
+  drawRoundRect(x, y, w, SLAB_HEIGHT, 5, fill, null);
+  ctx.shadowBlur = 0;
+
+  // Phase indicator glow
+  const phaseLabel = PHASE_NAMES[phase];
+  const pColors = ['#ff9900','#cc4400','#8a5535'];
+  ctx.fillStyle = pColors[phase];
+  ctx.globalAlpha = 0.7 + 0.3 * Math.sin(frameCount * 0.12);
+  ctx.font = 'bold 11px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(phaseLabel, x, y + SLAB_HEIGHT / 2);
+  ctx.globalAlpha = 1;
+}
+
+function drawDroppingSlice() {
+  if (!dropping) return;
+  const top = stack[stack.length - 1];
+  const w   = dropW;
+  const { fill, glow } = getPlatformColors(dropPhase, true);
+
+  ctx.shadowColor = glow;
+  ctx.shadowBlur  = 18;
+  drawRoundRect(dropX, dropY, w, SLAB_HEIGHT, 5, fill, null);
+  ctx.shadowBlur = 0;
+
+  // Ember trail
+  if (Math.random() < 0.5) {
+    spawnParticles(dropX + (Math.random()-0.5)*w*0.4, dropY + SLAB_HEIGHT, 1, 'ember');
+  }
+}
+
+function drawStack() {
+  // Compute scroll offset so top of tower is visible
+  const top = stack[stack.length - 1];
+  const scrollY = top.y - 160; // keep top 160px from top of canvas
+
+  ctx.save();
+  ctx.translate(0, -scrollY);
+
+  for (let i = 0; i < stack.length; i++) {
+    const isTop = i === stack.length - 1;
+    drawPlatform(stack[i], isTop);
+  }
+
+  ctx.restore();
+
+  // Return scroll offset for other draw calls
+  return scrollY;
+}
+
+function drawGustWarning() {
+  if (!showGustWarning) return;
+  const alpha = 0.4 + 0.4 * Math.abs(Math.sin(frameCount * 0.15));
+  ctx.fillStyle = `rgba(255, 120, 0, ${alpha})`;
+  const bandH = 30;
+  const bandY = SLAB_DROP_Y - 10;
+  ctx.fillRect(0, bandY, LOGICAL_W, bandH);
+
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 13px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(`⚡ ERUPTION GUST — ${gustDir > 0 ? '→' : '←'}`, LOGICAL_W/2, bandY + bandH/2);
+}
+
+function drawBackground() {
+  const grad = ctx.createLinearGradient(0, 0, 0, LOGICAL_H);
+  grad.addColorStop(0, '#0d0500');
+  grad.addColorStop(0.5, '#1a0800');
+  grad.addColorStop(1, '#2a1000');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
+
+  // Ambient lava glow at bottom
+  const radGrad = ctx.createRadialGradient(LOGICAL_W/2, LOGICAL_H, 20, LOGICAL_W/2, LOGICAL_H, 200);
+  radGrad.addColorStop(0, 'rgba(255,100,0,0.25)');
+  radGrad.addColorStop(1, 'rgba(255,100,0,0)');
+  ctx.fillStyle = radGrad;
+  ctx.fillRect(0, LOGICAL_H - 200, LOGICAL_W, 200);
+}
+
+function drawHUD() {
+  // Score
+  ctx.fillStyle = '#f4c06a';
+  ctx.font = 'bold 32px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillText(score, LOGICAL_W/2, 12);
+
+  // Best
+  ctx.fillStyle = '#7a4a20';
+  ctx.font = '13px monospace';
+  ctx.fillText('BEST ' + bestScore, LOGICAL_W/2, 52);
+
+  // Perfect streak
+  if (perfectStreak > 1) {
+    ctx.fillStyle = `hsl(${hue}, 100%, 70%)`;
+    ctx.font = 'bold 14px monospace';
+    ctx.fillText(`✦ PERFECT x${perfectStreak}`, LOGICAL_W/2, 70);
+  }
+
+  // Phase indicator top-right
+  const phaseColors = ['#ff8800','#cc3300','#664422'];
+  ctx.fillStyle = phaseColors[currentPhase];
+  ctx.font = '11px monospace';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'top';
+  ctx.fillText(PHASE_NAMES[currentPhase], LOGICAL_W - 10, 10);
+  ctx.textAlign = 'center';
+}
+
+function drawStartScreen() {
+  // Overlay
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
+
+  // Title
+  const t = frameCount * 0.03;
+  ctx.save();
+  ctx.translate(LOGICAL_W/2, 240);
+  ctx.rotate(Math.sin(t) * 0.02);
+
+  ctx.fillStyle = `hsl(${hue}, 100%, 60%)`;
+  ctx.font = 'bold 52px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = `hsl(${hue+20}, 100%, 40%)`;
+  ctx.shadowBlur = 20;
+  ctx.fillText('MOLTEN', 0, 0);
+  ctx.fillText('TOWER', 0, 58);
+  ctx.shadowBlur = 0;
+  ctx.restore();
+
+  // Subtitle
+  ctx.fillStyle = '#cc7733';
+  ctx.font = '16px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('Stack Slabs. Beat the Heat.', LOGICAL_W/2, 370);
+
+  // Tap to start
+  const pulse = 0.7 + 0.3 * Math.sin(frameCount * 0.07);
+  ctx.globalAlpha = pulse;
+  ctx.fillStyle = '#f4c06a';
+  ctx.font = 'bold 20px monospace';
+  ctx.fillText('TAP TO START', LOGICAL_W/2, 430);
+  ctx.globalAlpha = 1;
+
+  // Tutorial
+  ctx.fillStyle = '#5a3010';
+  ctx.font = '12px monospace';
+  ctx.fillText('MOLTEN = slides  •  COOLING = normal  •  COOLED = perfect', LOGICAL_W/2, 490);
+  ctx.fillText('⚡ Watch for eruption gusts!', LOGICAL_W/2, 512);
+
+  // Best score
+  if (bestScore > 0) {
+    ctx.fillStyle = '#8a5535';
+    ctx.font = '15px monospace';
+    ctx.fillText('BEST: ' + bestScore, LOGICAL_W/2, 550);
+  }
+}
+
+function drawGameOverScreen() {
+  ctx.fillStyle = 'rgba(0,0,0,0.65)';
+  ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
+
+  ctx.fillStyle = '#ff4400';
+  ctx.font = 'bold 38px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = '#ff0000';
+  ctx.shadowBlur = 20;
+  ctx.fillText('GAME OVER', LOGICAL_W/2, 240);
+  ctx.shadowBlur = 0;
+
+  ctx.fillStyle = '#f4c06a';
+  ctx.font = 'bold 28px monospace';
+  ctx.fillText('Score: ' + score, LOGICAL_W/2, 295);
+
+  const newBest = score >= bestScore && score > 0;
+  if (newBest) {
+    ctx.fillStyle = `hsl(${hue}, 100%, 65%)`;
+    ctx.font = 'bold 18px monospace';
+    ctx.fillText('★ NEW BEST! ★', LOGICAL_W/2, 330);
+  } else {
+    ctx.fillStyle = '#7a4a20';
+    ctx.font = '16px monospace';
+    ctx.fillText('Best: ' + bestScore, LOGICAL_W/2, 330);
+  }
+
+  // Tap to retry
+  const pulse = 0.7 + 0.3 * Math.sin(frameCount * 0.07);
+  ctx.globalAlpha = pulse;
+  ctx.fillStyle = '#f4c06a';
+  ctx.font = 'bold 20px monospace';
+  ctx.fillText('TAP TO RETRY', LOGICAL_W/2, 390);
+  ctx.globalAlpha = 1;
+
+  // Share button area
+  ctx.fillStyle = '#3a1a00';
+  drawRoundRect(LOGICAL_W/2, 445, 160, 42, 10, '#5a2a00', '#ff8800');
+  ctx.fillStyle = '#ff9944';
+  ctx.font = 'bold 15px monospace';
+  ctx.fillText('SHARE SCORE', LOGICAL_W/2, 445 + 12);
+
+  // Tutorial hint
+  ctx.fillStyle = '#5a3010';
+  ctx.font = '12px monospace';
+  ctx.fillText('Tip: COOLED phase = perfect stick!', LOGICAL_W/2, 510);
+  ctx.fillText('Avoid MOLTEN slides & gusts', LOGICAL_W/2, 528);
+}
+
+// Share button rect for hit testing
+const SHARE_BTN = { x: LOGICAL_W/2 - 80, y: 445 - 8, w: 160, h: 42 };
+
+function handleShareClick(cx, cy) {
+  if (cx >= SHARE_BTN.x && cx <= SHARE_BTN.x + SHARE_BTN.w &&
+      cy >= SHARE_BTN.y && cy <= SHARE_BTN.y + SHARE_BTN.h) {
+    const url = `https://balinti.github.io/molten-tower/?utm_source=share&utm_medium=game&utm_campaign=score${score}`;
+    const text = `I stacked ${score} points on Molten Tower! Can you beat me? 🔥`;
+    if (navigator.share) {
+      navigator.share({ title: 'Molten Tower', text, url }).catch(() => {});
+    } else {
+      navigator.clipboard.writeText(`${text} ${url}`).then(() => {
+        alert('Score link copied to clipboard!');
+      }).catch(() => {
+        prompt('Copy this link:', `${text} ${url}`);
+      });
+    }
+    return true;
+  }
+  return false;
+}
+
+// ─── Render ───────────────────────────────────────────────────────────────────
+function render() {
+  ctx.save();
+
+  // Screen shake
+  if (shakeFrames > 0) {
+    const sx = (Math.random() - 0.5) * shakeAmt * 2;
+    const sy = (Math.random() - 0.5) * shakeAmt * 2;
+    ctx.translate(sx, sy);
+  }
+
+  drawBackground();
+
+  if (state === 'start') {
+    // Draw a static demo tower
+    ctx.save();
+    ctx.translate(0, -50);
+    for (let i = 0; i < 4; i++) {
+      drawPlatform({
+        x: TOWER_X,
+        w: INITIAL_WIDTH - i * 20,
+        y: PLATFORM_Y_START - i * SLAB_HEIGHT,
+        phase: i === 3 ? PHASE.MOLTEN : i === 2 ? PHASE.COOLING : PHASE.COOLED,
+      }, i === 3);
+    }
+    ctx.restore();
+
+    drawParticles();
+    drawStartScreen();
+  } else if (state === 'playing') {
+    const scrollY = drawStack();
+
+    ctx.save();
+    ctx.translate(0, -scrollY);
+
+    // Draw swinger / dropping
+    const topForDraw = stack[stack.length - 1];
+
+    ctx.restore();
+
+    drawGustWarning();
+    drawSwinger();
+    drawDroppingSlice();
+    drawParticles();
+    drawHUD();
+
+  } else if (state === 'gameover') {
+    // Draw frozen stack
+    const scrollY = drawStack();
+    drawParticles();
+    drawGameOverScreen();
+  }
+
+  ctx.restore();
+}
+
+// ─── Main Loop ────────────────────────────────────────────────────────────────
+function loop(ts) {
+  update(ts);
+  render();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+// ─── Input ────────────────────────────────────────────────────────────────────
+canvas.addEventListener('pointerdown', function(e) {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = LOGICAL_W / rect.width;
+  const scaleY = LOGICAL_H / rect.height;
+  const cx = (e.clientX - rect.left) * scaleX;
+  const cy = (e.clientY - rect.top)  * scaleY;
+
+  if (state === 'gameover') {
+    if (handleShareClick(cx, cy)) return;
+    doAction();
+    return;
+  }
+  doAction();
+});
+
+document.addEventListener('keydown', function(e) {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    doAction();
+  }
+});
+
+// ─── Ambient embers on start ──────────────────────────────────────────────────
+setInterval(() => {
+  if (state === 'start') {
+    spawnParticles(LOGICAL_W * Math.random(), LOGICAL_H - 20, 2, 'ember');
+  }
+}, 200);
+
+})();
+</script>
+</body>
+</html>

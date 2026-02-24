@@ -1,0 +1,995 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Jelly Jam - Free HTML5 Game</title>
+  <meta name="description" content="Play Jelly Jam - Tap jelly candies in sync with the rhythm as the background color palette morphs.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#1a0a2e">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Jelly Jam - Free HTML5 Rhythm Game">
+  <meta property="og:description" content="Tap jelly candies in sync with the rhythm! Survive color phases and build combos in this hyper-casual HTML5 game.">
+  <meta property="og:url" content="https://balinti.github.io/jelly-jam/">
+  <meta property="og:image" content="https://balinti.github.io/jelly-jam/og-image.png">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Jelly Jam - Free HTML5 Rhythm Game">
+  <meta name="twitter:description" content="Tap jelly candies in sync with the rhythm! Survive color phases and build combos.">
+  <meta name="twitter:image" content="https://balinti.github.io/jelly-jam/og-image.png">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #0d0818;
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      overflow: hidden;
+      touch-action: none;
+    }
+    #game-wrap {
+      position: relative;
+      width: min(420px, 100vw);
+      height: min(750px, 100vh);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+    }
+    #gameCanvas {
+      display: block;
+      width: 100%; height: 100%;
+      cursor: pointer;
+      border-radius: 0px;
+    }
+    #share-btn {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(255,255,255,0.15);
+      border: 2px solid rgba(255,255,255,0.4);
+      color: #fff;
+      font-size: 15px;
+      font-weight: 700;
+      padding: 10px 28px;
+      border-radius: 50px;
+      cursor: pointer;
+      letter-spacing: 1px;
+      backdrop-filter: blur(6px);
+      display: none;
+      z-index: 10;
+      transition: background 0.2s;
+    }
+    #share-btn:hover { background: rgba(255,255,255,0.28); }
+
+    /* SEO section - visually hidden but crawlable */
+    #seo-content {
+      position: absolute;
+      left: -9999px;
+      top: auto;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+    }
+  </style>
+</head>
+<body>
+
+<div id="game-wrap">
+  <canvas id="gameCanvas"></canvas>
+  <button id="share-btn" aria-label="Share your score">&#127381; Share Score</button>
+</div>
+
+<!-- SEO crawlable content -->
+<section id="seo-content" aria-hidden="true">
+  <h1>Jelly Jam - Free HTML5 Rhythm Game</h1>
+  <h2>How to Play Jelly Jam</h2>
+  <p>Jelly Jam is a free hyper-casual HTML5 rhythm game. One jelly sits in the center of the screen, breathing and pulsing to a beat. Tap or press Space/Enter at the exact moment of maximum squish on Sweet Beats to score points and build combos. Avoid tapping on Bitter Beats or your run ends instantly. Rest Beats require you to hold still or risk breaking your combo.</p>
+  <h2>Color Phases</h2>
+  <ul>
+    <li><strong>Neon Phase:</strong> Tighter timing window, 2x score multiplier, intense glow effects. High risk, high reward.</li>
+    <li><strong>Sorbet Phase:</strong> Generous timing window, normal score. A recovery phase to rebuild your combo.</li>
+    <li><strong>Midnight Phase:</strong> Normal timing window but Bitter Beats appear more frequently. Darker vignette overlay.</li>
+  </ul>
+  <h2>Accuracy Tiers</h2>
+  <ul>
+    <li><strong>PERFECT:</strong> Tap exactly at max-squish. Maximum points, screen micro-shake, big gummy particle burst.</li>
+    <li><strong>GOOD:</strong> Tap within the Sweet Beat window. Normal points awarded.</li>
+    <li><strong>EARLY / LATE:</strong> Tap slightly outside window. Smaller reward.</li>
+    <li><strong>MISS:</strong> Miss a Sweet Beat entirely. Combo broken.</li>
+  </ul>
+  <h2>Controls</h2>
+  <p>Tap the screen, click the mouse, or press Space / Enter to interact with the jelly. Works on mobile and desktop.</p>
+</section>
+
+<script>
+(function() {
+'use strict';
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+const LS_KEY = 'jellyjam_highscore';
+const MAX_DPR = 2;
+const BASE_BPM = 72;
+const MAX_BPM = 132;
+const BPM_RAMP_SEC = 45;
+const BASE_WINDOW_MS = 220;
+const MIN_WINDOW_MS = 80;
+const WINDOW_SHRINK_SEC = 40;
+const PHASE_NAMES = ['Neon', 'Sorbet', 'Midnight'];
+const PHASE_DUR_MIN = 3000;
+const PHASE_DUR_MAX = 6000;
+const PHASE_CONFIG = {
+  Neon:     { windowMul: 0.6,  scoreMul: 2,   bitterMul: 0.8,  saturation: 90,  luminance: 55, label: '⚡ NEON',     color: '#f0f' },
+  Sorbet:   { windowMul: 1.5,  scoreMul: 1,   bitterMul: 0.5,  saturation: 65,  luminance: 62, label: '🍭 SORBET',   color: '#ff88cc' },
+  Midnight: { windowMul: 1.0,  scoreMul: 1.2, bitterMul: 2.2,  saturation: 40,  luminance: 28, label: '🌑 MIDNIGHT', color: '#88aaff' },
+};
+
+// Beat types
+const SWEET  = 'sweet';
+const BITTER = 'bitter';
+const REST   = 'rest';
+
+// ─── Canvas setup ─────────────────────────────────────────────────────────────
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const wrap = document.getElementById('game-wrap');
+const shareBtn = document.getElementById('share-btn');
+
+let W = 0, H = 0, DPR = 1;
+
+function resize() {
+  const r = wrap.getBoundingClientRect();
+  W = r.width;
+  H = r.height;
+  DPR = Math.min(window.devicePixelRatio || 1, MAX_DPR);
+  canvas.width  = Math.round(W * DPR);
+  canvas.height = Math.round(H * DPR);
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ─── Audio ────────────────────────────────────────────────────────────────────
+let audioCtx = null;
+let audioReady = false;
+
+function initAudio() {
+  if (audioReady) return;
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    audioReady = true;
+  } catch(e) {}
+}
+
+function playTone(freq, type, duration, gain, when) {
+  if (!audioCtx) return;
+  const t = when || audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t);
+  osc.frequency.exponentialRampToValueAtTime(freq * 0.5, t + duration);
+  g.gain.setValueAtTime(gain, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + duration);
+  osc.connect(g);
+  g.connect(audioCtx.destination);
+  osc.start(t);
+  osc.stop(t + duration + 0.01);
+}
+
+function playNoise(duration, gain) {
+  if (!audioCtx) return;
+  const bufLen = audioCtx.sampleRate * duration;
+  const buf = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < bufLen; i++) d[i] = (Math.random() * 2 - 1) * 0.4;
+  const src = audioCtx.createBufferSource();
+  src.buffer = buf;
+  const g = audioCtx.createGain();
+  g.gain.setValueAtTime(gain, audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+  const flt = audioCtx.createBiquadFilter();
+  flt.type = 'lowpass';
+  flt.frequency.value = 300;
+  src.connect(flt);
+  flt.connect(g);
+  g.connect(audioCtx.destination);
+  src.start();
+  src.stop(audioCtx.currentTime + duration + 0.01);
+}
+
+function sfxSweet(perfect) {
+  if (!audioCtx) return;
+  playTone(perfect ? 880 : 660, 'sine', 0.18, 0.25);
+  playTone(perfect ? 1320 : 990, 'sine', 0.12, 0.1);
+}
+function sfxBitter() {
+  if (!audioCtx) return;
+  playNoise(0.22, 0.35);
+  playTone(80, 'sawtooth', 0.25, 0.2);
+}
+function sfxBeat() {
+  if (!audioCtx) return;
+  playTone(110, 'sine', 0.08, 0.08);
+}
+
+// ─── Particles ────────────────────────────────────────────────────────────────
+const particles = [];
+
+function spawnParticles(x, y, count, hue, bitter) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 2 + Math.random() * (bitter ? 5 : 8);
+    const size  = 3 + Math.random() * (bitter ? 5 : 10);
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - (bitter ? 0 : 2),
+      size,
+      alpha: 1,
+      hue: hue + (Math.random() - 0.5) * 60,
+      sat: bitter ? 20 : 80 + Math.random() * 20,
+      lum: bitter ? 30 : 55 + Math.random() * 20,
+      decay: 0.02 + Math.random() * 0.03,
+      gravity: bitter ? 0.12 : 0.05,
+      drag: 0.96,
+      shape: bitter ? 'drop' : (Math.random() < 0.5 ? 'shard' : 'drop'),
+    });
+  }
+}
+
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.vy += p.gravity;
+    p.vx *= p.drag;
+    p.vy *= p.drag;
+    p.x  += p.vx * dt * 60;
+    p.y  += p.vy * dt * 60;
+    p.alpha -= p.decay * dt * 60;
+    if (p.alpha <= 0) particles.splice(i, 1);
+  }
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, p.alpha);
+    ctx.fillStyle = `hsl(${p.hue},${p.sat}%,${p.lum}%)`;
+    ctx.translate(p.x, p.y);
+    if (p.shape === 'shard') {
+      ctx.beginPath();
+      ctx.moveTo(0, -p.size);
+      ctx.lineTo(p.size * 0.5, p.size);
+      ctx.lineTo(-p.size * 0.5, p.size);
+      ctx.closePath();
+      ctx.fill();
+    } else {
+      ctx.beginPath();
+      ctx.arc(0, 0, p.size * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
+// ─── Screen shake ─────────────────────────────────────────────────────────────
+let shakeAmp  = 0;
+let shakeDec  = 0.85;
+let shakeX    = 0;
+let shakeY    = 0;
+
+function addShake(amp) {
+  shakeAmp = Math.min(shakeAmp + amp, 30);
+}
+
+function updateShake() {
+  if (shakeAmp > 0.1) {
+    shakeX = (Math.random() * 2 - 1) * shakeAmp;
+    shakeY = (Math.random() * 2 - 1) * shakeAmp;
+    shakeAmp *= shakeDec;
+  } else {
+    shakeAmp = 0; shakeX = 0; shakeY = 0;
+  }
+}
+
+// ─── Game State ───────────────────────────────────────────────────────────────
+let state  = 'start'; // 'start' | 'playing' | 'gameover'
+let score  = 0;
+let best   = parseInt(localStorage.getItem(LS_KEY) || '0', 10);
+let combo  = 0;
+let maxCombo = 0;
+let runTime = 0;  // seconds elapsed
+let bgHue  = 260; // slowly cycling hue
+
+// Phase
+let phase     = 'Sorbet';
+let phaseTimer = 0;
+let phaseDur   = 4000;
+let phaseAlpha = 0;
+let phaseFlash = 0;
+let phaseHue   = 260;
+
+// Beat engine
+let beatInterval = 0;  // ms between beats
+let beatTimer    = 0;  // ms until next beat
+let currentBeat  = null; // { type, startTime, windowMs, triggered }
+let beatPhase    = 0;    // 0..1 within a beat cycle
+
+// Jelly visual
+let jellyScale  = 1;
+let jellySquash = 1; // < 1 = squashed, stretch along Y shrinks
+let jellyStretch = 1;
+let jellyGlow   = 0;
+
+// Feedback
+let feedback     = ''; // 'PERFECT', 'GOOD', 'EARLY', 'LATE', 'MISS', 'BITTER!'
+let feedbackAlpha = 0;
+let feedbackColor = '#fff';
+let feedbackY    = 0;
+
+// Pulse ring
+let pulseRings = []; // { radius, alpha, color }
+
+// URL params
+let challengeScore = 0;
+let challengeCombo = 0;
+(function parseChallenge() {
+  try {
+    const p = new URLSearchParams(window.location.search);
+    if (p.has('score')) challengeScore = parseInt(p.get('score'), 10) || 0;
+    if (p.has('combo')) challengeCombo = parseInt(p.get('combo'), 10) || 0;
+  } catch(e) {}
+})();
+
+// ─── Difficulty helpers ────────────────────────────────────────────────────────
+function currentBPM() {
+  const t = Math.min(runTime, BPM_RAMP_SEC);
+  return BASE_BPM + (MAX_BPM - BASE_BPM) * (t / BPM_RAMP_SEC);
+}
+
+function currentWindowMs() {
+  const t = Math.min(runTime, WINDOW_SHRINK_SEC);
+  const base = BASE_WINDOW_MS - (BASE_WINDOW_MS - MIN_WINDOW_MS) * (t / WINDOW_SHRINK_SEC);
+  return base * PHASE_CONFIG[phase].windowMul;
+}
+
+function currentBitterProb() {
+  const t = Math.min(runTime, 30);
+  const base = 0.12 + 0.25 * (t / 30);
+  return Math.min(base * PHASE_CONFIG[phase].bitterMul, 0.5);
+}
+
+function currentRestProb() {
+  const t = Math.min(runTime, 30);
+  return 0.05 + 0.08 * (t / 30);
+}
+
+function pickBeatType() {
+  const r = Math.random();
+  const bp = currentBitterProb();
+  const rp = currentRestProb();
+  if (r < bp) return BITTER;
+  if (r < bp + rp) return REST;
+  return SWEET;
+}
+
+// ─── Phase management ─────────────────────────────────────────────────────────
+function pickNextPhase() {
+  const others = PHASE_NAMES.filter(p => p !== phase);
+  return others[Math.floor(Math.random() * others.length)];
+}
+
+function startPhase(name) {
+  phase = name;
+  phaseDur = PHASE_DUR_MIN + Math.random() * (PHASE_DUR_MAX - PHASE_DUR_MIN);
+  phaseTimer = 0;
+  phaseFlash = 1;
+}
+
+// ─── Beat scheduling ──────────────────────────────────────────────────────────
+function scheduleBeat() {
+  const bpm = currentBPM();
+  beatInterval = (60 / bpm) * 1000;
+  beatTimer = beatInterval;
+  const type = pickBeatType();
+  const windowMs = currentWindowMs();
+  currentBeat = { type, windowMs, triggered: false, startTime: performance.now() };
+  sfxBeat();
+
+  // spawn pulse ring on every beat
+  pulseRings.push({ radius: 0, alpha: 0.7, maxR: 80, color: beatTypeColor(type), type });
+}
+
+function beatTypeColor(type) {
+  if (type === SWEET)  return `hsl(${bgHue + 40},90%,70%)`;
+  if (type === BITTER) return '#ff4040';
+  return '#aaaaaa';
+}
+
+// ─── Input handling ───────────────────────────────────────────────────────────
+function handleInput() {
+  initAudio();
+  if (state === 'start')    { startGame(); return; }
+  if (state === 'gameover') { startGame(); return; }
+  if (state === 'playing')  { handleTap(); }
+}
+
+function handleTap() {
+  if (!currentBeat || currentBeat.triggered) return;
+
+  const now = performance.now();
+  const beatAge = now - currentBeat.startTime;  // ms since beat began
+  const halfBeat = beatInterval * 0.5;
+  // The "perfect" moment is at ~50% of beat interval (max squish)
+  const targetMs = halfBeat;
+  const diff = Math.abs(beatAge - targetMs);
+
+  if (currentBeat.type === SWEET) {
+    currentBeat.triggered = true;
+    const window = currentBeat.windowMs;
+    const perfectWindow = window * 0.3;
+    const goodWindow    = window * 0.7;
+    const lateEarlyWindow = window;
+
+    const scoreMul = PHASE_CONFIG[phase].scoreMul;
+    let pts = 0;
+    let fb = '';
+    let perfect = false;
+
+    if (diff <= perfectWindow) {
+      pts = Math.round(150 * scoreMul * (1 + combo * 0.05));
+      fb = 'PERFECT'; feedbackColor = '#ffe066'; perfect = true;
+    } else if (diff <= goodWindow) {
+      pts = Math.round(80 * scoreMul * (1 + combo * 0.03));
+      fb = 'GOOD'; feedbackColor = '#aaffaa';
+    } else if (diff <= lateEarlyWindow) {
+      pts = Math.round(30 * scoreMul);
+      fb = beatAge < targetMs ? 'EARLY' : 'LATE';
+      feedbackColor = '#88ccff';
+    } else {
+      fb = 'MISS'; feedbackColor = '#ff8888';
+      combo = 0;
+    }
+
+    if (pts > 0) {
+      score += pts;
+      combo++;
+      maxCombo = Math.max(maxCombo, combo);
+      spawnParticles(W * 0.5, H * 0.5, perfect ? 22 : 12, bgHue, false);
+      sfxSweet(perfect);
+      if (perfect) addShake(3);
+      jellyGlow = perfect ? 1.0 : 0.5;
+    }
+
+    showFeedback(fb, feedbackColor);
+
+  } else if (currentBeat.type === BITTER) {
+    currentBeat.triggered = true;
+    sfxBitter();
+    spawnParticles(W * 0.5, H * 0.5, 20, 0, true);
+    addShake(18);
+    showFeedback('BITTER!', '#ff4444');
+    endGame();
+
+  } else if (currentBeat.type === REST) {
+    currentBeat.triggered = true;
+    combo = Math.max(0, combo - 1);
+    showFeedback('REST!', '#ffaa44');
+  }
+}
+
+function showFeedback(text, color) {
+  feedback = text;
+  feedbackColor = color;
+  feedbackAlpha = 1;
+  feedbackY = H * 0.38;
+}
+
+// ─── Game flow ────────────────────────────────────────────────────────────────
+function startGame() {
+  state = 'playing';
+  score = 0;
+  combo = 0;
+  maxCombo = 0;
+  runTime = 0;
+  particles.length = 0;
+  pulseRings.length = 0;
+  shakeAmp = 0;
+  feedbackAlpha = 0;
+  phaseFlash = 0;
+  phase = 'Sorbet';
+  phaseTimer = 0;
+  phaseDur = 4500;
+  beatTimer = 500; // short warmup
+  currentBeat = null;
+  shareBtn.style.display = 'none';
+}
+
+function endGame() {
+  state = 'gameover';
+  if (score > best) {
+    best = score;
+    localStorage.setItem(LS_KEY, best);
+  }
+  addShake(20);
+  shareBtn.style.display = 'block';
+}
+
+// ─── Main loop ────────────────────────────────────────────────────────────────
+let lastTime = 0;
+
+function loop(ts) {
+  requestAnimationFrame(loop);
+  const raw = (ts - lastTime) / 1000;
+  lastTime = ts;
+  const dt = Math.min(raw, 0.05); // clamp
+
+  update(dt);
+  render();
+}
+
+function update(dt) {
+  bgHue = (bgHue + 4 * dt) % 360;
+  phaseHue += (bgHue - phaseHue) * 0.02;
+
+  updateShake();
+  updateParticles(dt);
+
+  // pulse rings
+  for (let i = pulseRings.length - 1; i >= 0; i--) {
+    const r = pulseRings[i];
+    r.radius += 3 * dt * 60;
+    r.alpha  -= 0.018 * dt * 60;
+    if (r.alpha <= 0) pulseRings.splice(i, 1);
+  }
+
+  // feedback fade
+  if (feedbackAlpha > 0) {
+    feedbackAlpha -= 1.8 * dt;
+    feedbackY -= 30 * dt;
+  }
+
+  // jelly glow fade
+  if (jellyGlow > 0) jellyGlow -= 3 * dt;
+
+  if (state !== 'playing') return;
+
+  runTime += dt;
+
+  // phase update
+  phaseTimer += dt * 1000;
+  phaseFlash = Math.max(0, phaseFlash - 4 * dt);
+  if (phaseTimer >= phaseDur) {
+    startPhase(pickNextPhase());
+  }
+
+  // beat timing
+  beatTimer -= dt * 1000;
+
+  // jelly breathing: beatPhase 0..1 within the beat
+  beatPhase = 1 - (beatTimer / beatInterval);
+  beatPhase = Math.max(0, Math.min(1, beatPhase));
+
+  // Squash & stretch: peaks at beatPhase = 0.5
+  const squeeze = Math.sin(beatPhase * Math.PI);
+  jellySquash = 1 - squeeze * 0.32;
+  jellyStretch = 1 + squeeze * 0.32;
+
+  if (beatTimer <= 0) {
+    scheduleBeat();
+    beatInterval = (60 / currentBPM()) * 1000;
+    beatTimer = beatInterval;
+    beatPhase = 0;
+    jellySquash = 1;
+    jellyStretch = 1;
+  }
+}
+
+// ─── Drawing ─────────────────────────────────────────────────────────────────
+function render() {
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
+
+  drawBackground();
+
+  if (state === 'start')    drawStart();
+  else if (state === 'playing')  drawPlaying();
+  else if (state === 'gameover') drawGameover();
+
+  drawParticles();
+  drawFeedback();
+  ctx.restore();
+}
+
+function drawBackground() {
+  const cfg = PHASE_CONFIG[phase];
+  const sat = state === 'playing' ? cfg.saturation : 35;
+  const lum = state === 'playing' ? cfg.luminance : 12;
+  const hue = bgHue;
+
+  const grad = ctx.createRadialGradient(W*0.5, H*0.5, 0, W*0.5, H*0.5, Math.max(W,H)*0.8);
+  grad.addColorStop(0, `hsl(${hue},${sat}%,${lum + 8}%)`);
+  grad.addColorStop(1, `hsl(${(hue+40)%360},${sat}%,${Math.max(6,lum-14)}%)`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Midnight vignette
+  if (phase === 'Midnight' && state === 'playing') {
+    const vig = ctx.createRadialGradient(W*0.5, H*0.5, H*0.1, W*0.5, H*0.5, H*0.75);
+    vig.addColorStop(0, 'rgba(0,0,0,0)');
+    vig.addColorStop(1, 'rgba(0,0,8,0.6)');
+    ctx.fillStyle = vig;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // Phase flash
+  if (phaseFlash > 0) {
+    ctx.globalAlpha = phaseFlash * 0.3;
+    ctx.fillStyle = PHASE_CONFIG[phase].color;
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawStart() {
+  const cy = H * 0.46;
+
+  // Decorative jelly
+  drawJelly(W * 0.5, cy, 70, 1, 1, 0.2, bgHue);
+
+  // Title
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  ctx.font = `bold 52px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = `hsl(${bgHue},90%,80%)`;
+  ctx.shadowColor = `hsl(${bgHue},100%,70%)`;
+  ctx.shadowBlur = 20;
+  ctx.fillText('Jelly Jam', W * 0.5, H * 0.22);
+  ctx.shadowBlur = 0;
+
+  ctx.font = `18px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = `rgba(255,255,255,0.7)`;
+  ctx.fillText('Squish the Jelly, Feel the Beat', W * 0.5, H * 0.3);
+
+  if (challengeScore > 0) {
+    ctx.font = `bold 15px 'Segoe UI', sans-serif`;
+    ctx.fillStyle = '#ffee44';
+    ctx.fillText(`Can you beat ${challengeScore} pts (${challengeCombo}x combo)?`, W*0.5, H*0.35);
+  } else {
+    // Show best score
+    if (best > 0) {
+      ctx.font = `15px 'Segoe UI', sans-serif`;
+      ctx.fillStyle = 'rgba(255,255,255,0.55)';
+      ctx.fillText(`Best: ${best}`, W * 0.5, H * 0.35);
+    }
+  }
+
+  // Tap to start
+  const pulse = 0.8 + 0.2 * Math.sin(Date.now() * 0.004);
+  ctx.font = `bold ${Math.round(20 * pulse)}px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = `hsl(${bgHue + 60},90%,75%)`;
+  ctx.shadowColor = `hsl(${bgHue + 60},100%,65%)`;
+  ctx.shadowBlur = 12;
+  ctx.fillText('TAP TO START', W * 0.5, H * 0.78);
+  ctx.shadowBlur = 0;
+
+  drawPhaseHint();
+  ctx.restore();
+}
+
+function drawPhaseHint() {
+  const hints = [
+    '⚡ Neon: 2x score, tight timing',
+    '🍭 Sorbet: easy timing, recover',
+    '🌑 Midnight: bitter beats multiply',
+  ];
+  ctx.font = '13px monospace';
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  for (let i = 0; i < hints.length; i++) {
+    ctx.fillText(hints[i], W * 0.5, H * 0.865 + i * 20);
+  }
+}
+
+function drawPlaying() {
+  const cx = W * 0.5;
+  const cy = H * 0.52;
+  const baseR = Math.min(W, H) * 0.16;
+
+  // Pulse rings
+  for (const r of pulseRings) {
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, r.alpha);
+    ctx.strokeStyle = r.color;
+    ctx.lineWidth = r.type === BITTER ? 4 : 2.5;
+    ctx.beginPath();
+    ctx.arc(cx, cy, baseR + r.radius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Jelly
+  drawJelly(cx, cy, baseR, jellySquash, jellyStretch, jellyGlow, bgHue);
+
+  // Current beat type indicator ring
+  if (currentBeat && !currentBeat.triggered) {
+    const prog = 1 - (beatTimer / beatInterval);
+    const alpha = 0.3 + 0.5 * Math.sin(prog * Math.PI);
+    ctx.save();
+    ctx.globalAlpha = alpha * 0.6;
+    ctx.strokeStyle = beatTypeColor(currentBeat.type);
+    ctx.lineWidth = 3;
+    ctx.setLineDash([8, 6]);
+    ctx.beginPath();
+    ctx.arc(cx, cy, baseR + 22, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+
+    // Small beat type icon
+    if (currentBeat.type === BITTER) {
+      ctx.save();
+      ctx.font = 'bold 14px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = 'rgba(255,60,60,0.85)';
+      ctx.fillText('✕ DON\'T TAP', cx, cy - baseR - 36);
+      ctx.restore();
+    } else if (currentBeat.type === REST) {
+      ctx.save();
+      ctx.font = '13px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = 'rgba(170,170,170,0.8)';
+      ctx.fillText('○ REST', cx, cy - baseR - 36);
+      ctx.restore();
+    }
+  }
+
+  // HUD
+  drawHUD();
+}
+
+function drawJelly(cx, cy, baseR, squash, stretch, glow, hue) {
+  ctx.save();
+  ctx.translate(cx, cy);
+
+  const gRadius = baseR * 1.4;
+  if (glow > 0) {
+    const gl = ctx.createRadialGradient(0, 0, baseR * 0.3, 0, 0, gRadius);
+    gl.addColorStop(0, `hsla(${hue+30},100%,80%,${glow * 0.5})`);
+    gl.addColorStop(1, `hsla(${hue+30},100%,60%,0)`);
+    ctx.fillStyle = gl;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, gRadius, gRadius, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Shadow / ground squish
+  ctx.globalAlpha = 0.3 * (1 + (1 - squash) * 0.8);
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.ellipse(0, baseR * 0.85 * squash, baseR * 0.75 * (1 / squash), baseR * 0.12, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+
+  // Jelly body gradient
+  const bodyGrad = ctx.createRadialGradient(-baseR*0.25, -baseR*0.3, baseR*0.1, 0, 0, baseR * 1.05);
+  bodyGrad.addColorStop(0, `hsl(${hue+20},85%,75%)`);
+  bodyGrad.addColorStop(0.55, `hsl(${hue},80%,55%)`);
+  bodyGrad.addColorStop(1, `hsl(${hue-20},75%,35%)`);
+
+  ctx.fillStyle = bodyGrad;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, baseR * squash, baseR * stretch, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Highlight (top-left specular)
+  const hlGrad = ctx.createRadialGradient(-baseR*0.3, -baseR*0.35, 0, -baseR*0.3, -baseR*0.35, baseR*0.5);
+  hlGrad.addColorStop(0, `rgba(255,255,255,0.55)`);
+  hlGrad.addColorStop(1, `rgba(255,255,255,0)`);
+  ctx.fillStyle = hlGrad;
+  ctx.beginPath();
+  ctx.ellipse(-baseR*0.22, -baseR*0.28, baseR*0.32*squash, baseR*0.22*stretch, -0.4, 0, Math.PI*2);
+  ctx.fill();
+
+  // Neon outline
+  if (phase === 'Neon') {
+    ctx.strokeStyle = `hsl(${hue+60},100%,75%)`;
+    ctx.lineWidth = 3;
+    ctx.shadowColor = `hsl(${hue+60},100%,70%)`;
+    ctx.shadowBlur = 14;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, baseR * squash, baseR * stretch, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
+  ctx.restore();
+}
+
+function drawHUD() {
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+
+  // Score
+  ctx.font = `bold 38px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = '#fff';
+  ctx.shadowColor = 'rgba(0,0,0,0.5)';
+  ctx.shadowBlur = 6;
+  ctx.fillText(score, W * 0.5, 18);
+  ctx.shadowBlur = 0;
+
+  // Combo
+  if (combo > 1) {
+    const cx2 = combo > 9 ? `${combo}x COMBO` : `${combo}x`;
+    ctx.font = `bold 22px 'Segoe UI', sans-serif`;
+    const comboHue = (bgHue + combo * 10) % 360;
+    ctx.fillStyle = `hsl(${comboHue},90%,72%)`;
+    ctx.shadowColor = `hsl(${comboHue},100%,60%)`;
+    ctx.shadowBlur = 8;
+    ctx.fillText(cx2, W * 0.5, 64);
+    ctx.shadowBlur = 0;
+  }
+
+  // Phase label
+  const cfg = PHASE_CONFIG[phase];
+  ctx.font = `bold 13px monospace`;
+  ctx.fillStyle = cfg.color;
+  ctx.textAlign = 'left';
+  ctx.fillText(cfg.label, 12, 16);
+
+  // Run time bar (thin strip at top)
+  ctx.fillStyle = 'rgba(255,255,255,0.12)';
+  ctx.fillRect(0, 0, W, 4);
+  ctx.fillStyle = cfg.color;
+  const bpm = currentBPM();
+  const progress = (bpm - BASE_BPM) / (MAX_BPM - BASE_BPM);
+  ctx.fillRect(0, 0, W * progress, 4);
+
+  // Best score tiny
+  ctx.textAlign = 'right';
+  ctx.font = '12px sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.45)';
+  ctx.fillText(`Best: ${best}`, W - 10, 16);
+
+  ctx.restore();
+}
+
+function drawGameover() {
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  // overlay
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(0, 0, W, H);
+
+  // Card
+  const cardW = Math.min(320, W - 40);
+  const cardH = 240;
+  const cx = W * 0.5, cy = H * 0.45;
+  ctx.fillStyle = 'rgba(255,255,255,0.07)';
+  roundRect(ctx, cx - cardW/2, cy - cardH/2, cardW, cardH, 20);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+  ctx.lineWidth = 1.5;
+  roundRect(ctx, cx - cardW/2, cy - cardH/2, cardW, cardH, 20);
+  ctx.stroke();
+
+  ctx.font = `bold 32px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = '#ff6677';
+  ctx.fillText('GAME OVER', cx, cy - 82);
+
+  ctx.font = `bold 54px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = '#fff';
+  ctx.shadowColor = `hsl(${bgHue},80%,65%)`;
+  ctx.shadowBlur = 18;
+  ctx.fillText(score, cx, cy - 20);
+  ctx.shadowBlur = 0;
+
+  ctx.font = `16px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = 'rgba(255,255,255,0.65)';
+  ctx.fillText(`Max Combo: ${maxCombo}x`, cx, cy + 30);
+
+  ctx.font = `bold 17px 'Segoe UI', sans-serif`;
+  if (score >= best && score > 0) {
+    ctx.fillStyle = '#ffe066';
+    ctx.fillText(`✦ NEW BEST: ${best} ✦`, cx, cy + 62);
+  } else {
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.fillText(`Best: ${best}`, cx, cy + 62);
+  }
+
+  ctx.font = `bold 17px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  ctx.fillText(`Phase: ${phase}  |  Run: ${runTime.toFixed(1)}s`, cx, cy + 94);
+
+  // Tap to retry
+  const pulse = 0.85 + 0.15 * Math.sin(Date.now() * 0.005);
+  ctx.font = `bold ${Math.round(18 * pulse)}px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = `hsl(${bgHue+60},90%,75%)`;
+  ctx.shadowColor = `hsl(${bgHue+60},100%,65%)`;
+  ctx.shadowBlur = 10;
+  ctx.fillText('TAP TO RETRY', cx, H * 0.8);
+  ctx.shadowBlur = 0;
+
+  ctx.restore();
+}
+
+function drawFeedback() {
+  if (feedbackAlpha <= 0) return;
+  ctx.save();
+  ctx.globalAlpha = Math.max(0, feedbackAlpha);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const size = feedback === 'PERFECT' ? 34 : feedback === 'BITTER!' ? 32 : 26;
+  ctx.font = `bold ${size}px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = feedbackColor;
+  ctx.shadowColor = feedbackColor;
+  ctx.shadowBlur = 14;
+  ctx.fillText(feedback, W * 0.5, feedbackY);
+  ctx.shadowBlur = 0;
+  ctx.restore();
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.arcTo(x + w, y, x + w, y + r, r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h);
+  ctx.arcTo(x, y + h, x, y + h - r, r);
+  ctx.lineTo(x, y + r);
+  ctx.arcTo(x, y, x + r, y, r);
+  ctx.closePath();
+}
+
+// ─── Events ───────────────────────────────────────────────────────────────────
+canvas.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  handleInput();
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    handleInput();
+  }
+});
+
+// Share button
+shareBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const url = `${location.origin}${location.pathname}?score=${score}&combo=${maxCombo}`;
+  const text = `I scored ${score} pts with a ${maxCombo}x combo in Jelly Jam! Can you beat me?`;
+  if (navigator.share) {
+    navigator.share({ title: 'Jelly Jam', text, url }).catch(() => {});
+  } else {
+    try {
+      navigator.clipboard.writeText(url);
+      shareBtn.textContent = '✓ Link Copied!';
+      setTimeout(() => { shareBtn.textContent = '🎉 Share Score'; }, 2500);
+    } catch(e2) {}
+  }
+});
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+lastTime = performance.now();
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

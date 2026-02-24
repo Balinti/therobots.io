@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Coral Droplet - Free HTML5 Game</title>
+<meta name="description" content="Play Coral Droplet - Swipe to catch dripping coral nectar as control directions invert unpredictably.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#1a0a2e">
+<link rel="canonical" href="https://balinti.github.io/coral-droplet/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Coral Droplet - Free HTML5 Game">
+<meta property="og:description" content="Play Coral Droplet - Swipe to catch dripping coral nectar as control directions invert unpredictably.">
+<meta property="og:url" content="https://balinti.github.io/coral-droplet/">
+<meta property="og:image" content="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='600' height='315' viewBox='0 0 600 315'><rect fill='%231a0a2e' width='600' height='315'/><text x='300' y='140' text-anchor='middle' font-size='48' fill='%23ff6b9d' font-family='sans-serif'>🐚</text><text x='300' y='200' text-anchor='middle' font-size='32' fill='%23ffffff' font-family='sans-serif'>Coral Droplet</text></svg>">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Coral Droplet - Free HTML5 Game">
+<meta name="twitter:description" content="Play Coral Droplet - Swipe to catch dripping coral nectar as control directions invert unpredictably.">
+<meta name="twitter:image" content="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='600' height='315' viewBox='0 0 600 315'><rect fill='%231a0a2e' width='600' height='315'/><text x='300' y='140' text-anchor='middle' font-size='48' fill='%23ff6b9d' font-family='sans-serif'>🐚</text><text x='300' y='200' text-anchor='middle' font-size='32' fill='%23ffffff' font-family='sans-serif'>Coral Droplet</text></svg>">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow-x:hidden;background:#0d0520;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;color:#e0d6f0}
+#game-wrap{display:flex;flex-direction:column;align-items:center;min-height:100vh;padding:0}
+#canvas-box{position:relative;width:min(420px,100vw);height:min(750px,100vh);touch-action:manipulation;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+canvas{display:block;width:100%;height:100%}
+.info{max-width:420px;margin:20px auto;padding:0 16px;font-size:14px;line-height:1.6;color:#a89bc4}
+.info h2{color:#ff6b9d;font-size:18px;margin:16px 0 6px}
+.info p,.info ul{margin-bottom:10px}
+.info ul{padding-left:20px}
+.info a{color:#7eb8ff;text-decoration:none}
+.info a:hover{text-decoration:underline}
+.info details{margin:8px 0}
+.info summary{cursor:pointer;color:#cbb8e8;font-weight:600}
+footer{text-align:center;padding:16px;font-size:12px;color:#5a4e72;max-width:420px;margin:0 auto}
+footer a{color:#7eb8ff;text-decoration:none}
+</style>
+</head>
+<body>
+<div id="game-wrap">
+<div id="canvas-box"><canvas id="gc"></canvas></div>
+</div>
+
+<section class="info" aria-label="Game information">
+<h2>About Coral Droplet</h2>
+<p>Coral Droplet is a free hyper-casual HTML5 game where you control a shell cup to catch falling coral nectar droplets. Tap to dash between two lanes while dodging toxic drops and riding unpredictable ocean currents.</p>
+
+<h2>How to Play</h2>
+<ul>
+<li>Tap anywhere (or press Space/Enter) to flip your shell cup between the left and right lanes.</li>
+<li>Catch every normal droplet &mdash; missing one ends the game!</li>
+<li>Watch for <strong>current waves</strong> that sweep across the screen. If caught inside, your controls reverse for 2 seconds.</li>
+<li>Gold droplets appear during current mode for bonus points &mdash; risk vs reward!</li>
+<li>Avoid toxic (green) droplets &mdash; catching one ends your run instantly.</li>
+<li>Build combos to fill the <strong>Coral Bloom</strong> meter for a 2x score burst!</li>
+</ul>
+
+<h2>Tips</h2>
+<ul>
+<li>Stay calm during current reversal &mdash; the 140ms delay is consistent, so you can learn the timing.</li>
+<li>Gold drops during current mode are worth 5 points &mdash; chase them for high scores.</li>
+<li>The Bloom meter fills faster with consecutive catches. Keep your streak alive!</li>
+</ul>
+
+<details>
+<summary>FAQ</summary>
+<p><strong>Is this game free?</strong> Yes, Coral Droplet is 100% free to play in your browser.</p>
+<p><strong>Does it work on mobile?</strong> Yes! Optimized for both mobile and desktop browsers.</p>
+<p><strong>How is high score saved?</strong> Your best score is stored locally in your browser using localStorage.</p>
+</details>
+</section>
+
+<footer>
+<a href="https://balinti.github.io/coral-droplet/">Coral Droplet</a> &middot;
+<a href="mailto:contact@example.com">Contact</a> &middot;
+<a href="https://balinti.github.io/coral-droplet/">Privacy</a>
+<br>&copy; 2026 Coral Droplet
+</footer>
+
+<script>
+'use strict';
+(function(){
+
+const canvas = document.getElementById('gc');
+const ctx = canvas.getContext('2d');
+const box = document.getElementById('canvas-box');
+
+let W, H, dpr;
+function resize(){
+  const r = box.getBoundingClientRect();
+  W = r.width; H = r.height;
+  dpr = window.devicePixelRatio || 1;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+// Constants
+const LANE_L = () => W * 0.30;
+const LANE_R = () => W * 0.70;
+const PLAYER_Y = () => H * 0.86;
+const LS_KEY = 'coralDropletHighScore_v1';
+const REVERSAL_MS = 2000;
+const REVERSAL_DELAY = 140;
+const BLOOM_DURATION = 5000;
+const BLOOM_PER_CATCH = 0.12;
+
+// State
+let state = 'start';
+let score, bestScore, combo, bloomMeter, bloomTimer, aliveMs, aliveS;
+let playerLane, playerX, playerTargetX;
+let droplets, particles, waves;
+let reversed, reversalTimer, reversalQueued;
+let shakeX, shakeY, shakeDecay;
+let baseHue, hueShift;
+let spawnAcc, nextWaveMs, waveCount;
+let lastTime;
+let currentMultiplier;
+let shareBtn = {x:0,y:0,w:0,h:0,visible:false};
+
+bestScore = parseInt(localStorage.getItem(LS_KEY)) || 0;
+
+function initGame(){
+  score = 0; combo = 0; bloomMeter = 0; bloomTimer = 0;
+  aliveMs = 0; aliveS = 0;
+  playerLane = 0; // 0=left, 1=right
+  playerX = LANE_L(); playerTargetX = LANE_L();
+  droplets = []; particles = []; waves = [];
+  reversed = false; reversalTimer = 0; reversalQueued = false;
+  shakeX = 0; shakeY = 0; shakeDecay = 0;
+  baseHue = 280; hueShift = 0;
+  spawnAcc = 0; nextWaveMs = 25000; waveCount = 0;
+  currentMultiplier = 1;
+  lastTime = performance.now();
+  shareBtn.visible = false;
+}
+
+// Input
+function doFlip(){
+  if(state === 'start'){
+    state = 'playing';
+    initGame();
+    return;
+  }
+  if(state === 'gameover'){
+    state = 'playing';
+    initGame();
+    return;
+  }
+  if(state === 'playing'){
+    if(reversed){
+      // Delayed flip during reversal
+      if(!reversalQueued){
+        reversalQueued = true;
+        setTimeout(()=>{
+          if(state==='playing'){
+            playerLane = playerLane === 0 ? 1 : 0;
+            playerTargetX = playerLane === 0 ? LANE_L() : LANE_R();
+          }
+          reversalQueued = false;
+        }, REVERSAL_DELAY);
+      }
+    } else {
+      playerLane = playerLane === 0 ? 1 : 0;
+      playerTargetX = playerLane === 0 ? LANE_L() : LANE_R();
+    }
+  }
+}
+
+function handlePointerDown(e){
+  e.preventDefault();
+  // Check share button
+  if(state === 'gameover' && shareBtn.visible){
+    const rect = canvas.getBoundingClientRect();
+    const sx = (e.clientX - rect.left);
+    const sy = (e.clientY - rect.top);
+    if(sx >= shareBtn.x && sx <= shareBtn.x + shareBtn.w &&
+       sy >= shareBtn.y && sy <= shareBtn.y + shareBtn.h){
+      doShare();
+      return;
+    }
+  }
+  doFlip();
+}
+
+canvas.addEventListener('pointerdown', handlePointerDown, {passive:false});
+document.addEventListener('keydown', function(e){
+  if(e.code === 'Space' || e.code === 'Enter'){
+    e.preventDefault();
+    doFlip();
+  }
+}, {passive:false});
+
+// Share
+function doShare(){
+  const text = `I scored ${score} in Coral Droplet! Can you beat me?\nhttps://balinti.github.io/coral-droplet/`;
+  if(navigator.share){
+    navigator.share({title:'Coral Droplet',text:text,url:'https://balinti.github.io/coral-droplet/'}).catch(()=>{});
+  } else if(navigator.clipboard){
+    navigator.clipboard.writeText(text).then(()=>{
+      shareBtn.copied = true;
+      setTimeout(()=>{ shareBtn.copied = false; }, 1500);
+    }).catch(()=>{});
+  }
+}
+
+// Particles
+function spawnParticles(x, y, color, count, speed){
+  for(let i=0;i<count;i++){
+    const angle = Math.random()*Math.PI*2;
+    const spd = speed*(0.5+Math.random());
+    particles.push({
+      x, y, vx: Math.cos(angle)*spd, vy: Math.sin(angle)*spd,
+      life: 1, decay: 0.015 + Math.random()*0.02,
+      r: 2 + Math.random()*3, color
+    });
+  }
+}
+
+function spawnBubbleTrail(x, y){
+  for(let i=0;i<3;i++){
+    particles.push({
+      x: x + (Math.random()-0.5)*16, y,
+      vx: (Math.random()-0.5)*20, vy: -40 - Math.random()*60,
+      life: 1, decay: 0.03 + Math.random()*0.02,
+      r: 1.5 + Math.random()*2, color: `hsla(${baseHue+hueShift},80%,75%,`
+    });
+  }
+}
+
+function spawnGlitter(x, y){
+  for(let i=0;i<5;i++){
+    const angle = Math.random()*Math.PI*2;
+    particles.push({
+      x, y, vx: Math.cos(angle)*80*Math.random(), vy: Math.sin(angle)*80*Math.random()-30,
+      life: 1, decay: 0.02, r: 1 + Math.random()*2,
+      color: `hsla(${45+Math.random()*30},100%,${70+Math.random()*20}%,`
+    });
+  }
+}
+
+// Droplet spawn
+function spawnDroplet(type, lane){
+  const x = lane === 0 ? LANE_L() : LANE_R();
+  droplets.push({
+    x, y: -20, lane, type, // 'normal','gold','toxic'
+    r: type === 'gold' ? 11 : (type === 'toxic' ? 10 : 9),
+    speed: 0 // set in update
+  });
+}
+
+// Shake
+function addShake(intensity){
+  shakeDecay = Math.max(shakeDecay, intensity);
+}
+
+// Game over
+function gameOver(){
+  state = 'gameover';
+  addShake(12);
+  if(score > bestScore){
+    bestScore = score;
+    localStorage.setItem(LS_KEY, bestScore);
+  }
+  spawnParticles(playerX, PLAYER_Y(), 'hsla(0,80%,60%,', 30, 120);
+}
+
+// Difficulty
+function getDifficulty(){
+  return Math.min(aliveS / 75, 1);
+}
+
+// Update
+function update(dt){
+  if(state !== 'playing') return;
+
+  aliveMs += dt * 1000;
+  aliveS += dt;
+  const d = getDifficulty();
+  hueShift = aliveS * 3;
+
+  // Player movement
+  const moveSpeed = 1800;
+  const diff = playerTargetX - playerX;
+  if(Math.abs(diff) > 1){
+    playerX += Math.sign(diff) * Math.min(moveSpeed * dt, Math.abs(diff));
+  } else {
+    playerX = playerTargetX;
+  }
+
+  // Reversal timer
+  if(reversed){
+    reversalTimer -= dt * 1000;
+    if(reversalTimer <= 0){
+      reversed = false;
+      currentMultiplier = bloomTimer > 0 ? 2 : 1;
+    }
+  }
+
+  // Bloom timer
+  if(bloomTimer > 0){
+    bloomTimer -= dt * 1000;
+    if(bloomTimer <= 0){
+      bloomTimer = 0;
+      currentMultiplier = reversed ? 1.5 : 1;
+    }
+  }
+
+  // Compute multiplier
+  currentMultiplier = 1;
+  if(bloomTimer > 0) currentMultiplier = 2;
+  if(reversed) currentMultiplier += 0.5;
+
+  // Spawn droplets
+  const spawnRate = 0.85 + 1.35 * d;
+  spawnAcc += spawnRate * dt;
+  while(spawnAcc >= 1){
+    spawnAcc -= 1;
+    // Decide what to spawn
+    const r = Math.random();
+    if(reversed && r < 0.25){
+      // Gold during current
+      spawnDroplet('gold', Math.random() < 0.5 ? 0 : 1);
+    } else if(d > 0.3 && r < 0.08 + 0.08 * d){
+      // Toxic
+      spawnDroplet('toxic', Math.random() < 0.5 ? 0 : 1);
+    } else {
+      // Normal - spawn in patterns
+      const lane = Math.random() < 0.5 ? 0 : 1;
+      spawnDroplet('normal', lane);
+      // Double pattern at higher difficulty
+      if(d > 0.4 && Math.random() < 0.25 * d){
+        // Spawn in opposite lane slightly delayed (offset y)
+        const x2 = lane === 0 ? LANE_R() : LANE_L();
+        droplets.push({
+          x: x2, y: -60 - Math.random()*40, lane: 1-lane, type: 'normal',
+          r: 9, speed: 0
+        });
+      }
+    }
+  }
+
+  // Spawn waves (current)
+  if(aliveMs >= nextWaveMs){
+    const bandH = H * 0.18;
+    waves.push({
+      y: -bandH, h: bandH, speed: 140 + 80 * d, active: true
+    });
+    waveCount++;
+    const interval = Math.max(9000, 14000 - aliveMs * 0.03);
+    nextWaveMs = aliveMs + interval;
+  }
+
+  // Update waves
+  for(let i = waves.length - 1; i >= 0; i--){
+    const w = waves[i];
+    w.y += w.speed * dt;
+    // Check if wave hits player
+    const py = PLAYER_Y();
+    if(w.active && w.y + w.h >= py - 20 && w.y <= py + 20){
+      w.active = false;
+      reversed = true;
+      reversalTimer = REVERSAL_MS;
+    }
+    if(w.y > H + 50){
+      waves.splice(i, 1);
+    }
+  }
+
+  // Update droplets
+  const fallSpeed = 260 + 240 * d + 40 * Math.sin(aliveS * 0.7);
+  const catcherR = 22 * 0.78;
+  const py = PLAYER_Y();
+
+  for(let i = droplets.length - 1; i >= 0; i--){
+    const dr = droplets[i];
+    dr.speed = fallSpeed;
+    dr.y += dr.speed * dt;
+
+    // Collision
+    const dx = dr.x - playerX;
+    const dy = dr.y - py;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    if(dist < catcherR + dr.r){
+      // Caught!
+      if(dr.type === 'toxic'){
+        droplets.splice(i, 1);
+        gameOver();
+        return;
+      }
+      const pts = dr.type === 'gold' ? 5 : 1;
+      score += Math.round(pts * currentMultiplier);
+      combo++;
+
+      // Bloom meter
+      bloomMeter += BLOOM_PER_CATCH;
+      if(bloomMeter >= 1 && bloomTimer <= 0){
+        bloomTimer = BLOOM_DURATION;
+        bloomMeter = 0;
+        addShake(8);
+        spawnGlitter(playerX, py);
+        spawnGlitter(playerX, py);
+        spawnParticles(playerX, py, `hsla(${50},100%,70%,`, 20, 100);
+      }
+
+      // Catch particles
+      const pcolor = dr.type === 'gold' ? `hsla(45,100%,65%,` : `hsla(${(baseHue+hueShift)%360},75%,65%,`;
+      spawnParticles(dr.x, dr.y, pcolor, 8, 80);
+      addShake(2);
+
+      // Bubble trail for streak
+      if(combo > 3){
+        spawnBubbleTrail(playerX, py);
+      }
+
+      droplets.splice(i, 1);
+      continue;
+    }
+
+    // Missed (fell past screen)
+    if(dr.y > H + 30){
+      droplets.splice(i, 1);
+      if(dr.type === 'normal'){
+        // Missed normal = game over
+        gameOver();
+        return;
+      }
+      // Gold and toxic can be missed safely
+      if(dr.type === 'gold'){
+        // No penalty for missing gold
+      }
+    }
+  }
+
+  // Update particles
+  for(let i = particles.length - 1; i >= 0; i--){
+    const p = particles[i];
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy += 200 * dt; // gravity
+    p.life -= p.decay;
+    if(p.life <= 0) particles.splice(i, 1);
+  }
+
+  // Shake decay
+  if(shakeDecay > 0){
+    shakeX = (Math.random() - 0.5) * shakeDecay * 2;
+    shakeY = (Math.random() - 0.5) * shakeDecay * 2;
+    shakeDecay *= 0.88;
+    if(shakeDecay < 0.3) { shakeDecay = 0; shakeX = 0; shakeY = 0; }
+  }
+
+  // Bloom glitter
+  if(bloomTimer > 0 && Math.random() < 0.3){
+    spawnGlitter(playerX + (Math.random()-0.5)*30, py - 10);
+  }
+}
+
+// Draw
+function draw(){
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
+
+  // Background gradient
+  const h = (baseHue + hueShift) % 360;
+  const grd = ctx.createLinearGradient(0, 0, 0, H);
+  grd.addColorStop(0, `hsl(${h}, 40%, 8%)`);
+  grd.addColorStop(0.5, `hsl(${(h+20)%360}, 35%, 12%)`);
+  grd.addColorStop(1, `hsl(${(h+40)%360}, 30%, 6%)`);
+  ctx.fillStyle = grd;
+  ctx.fillRect(-20, -20, W+40, H+40);
+
+  // Lane indicators
+  ctx.strokeStyle = `hsla(${h},30%,30%,0.3)`;
+  ctx.lineWidth = 1;
+  ctx.setLineDash([6, 8]);
+  ctx.beginPath();
+  ctx.moveTo(LANE_L(), 0); ctx.lineTo(LANE_L(), H);
+  ctx.moveTo(LANE_R(), 0); ctx.lineTo(LANE_R(), H);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Current waves
+  for(const w of waves){
+    const wGrd = ctx.createLinearGradient(0, w.y, 0, w.y + w.h);
+    wGrd.addColorStop(0, 'rgba(0,200,255,0)');
+    wGrd.addColorStop(0.3, 'rgba(0,200,255,0.12)');
+    wGrd.addColorStop(0.5, 'rgba(0,200,255,0.18)');
+    wGrd.addColorStop(0.7, 'rgba(0,200,255,0.12)');
+    wGrd.addColorStop(1, 'rgba(0,200,255,0)');
+    ctx.fillStyle = wGrd;
+    ctx.fillRect(0, w.y, W, w.h);
+    // Wave lines
+    ctx.strokeStyle = 'rgba(0,220,255,0.3)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for(let x = 0; x < W; x += 6){
+      const wy = w.y + w.h*0.5 + Math.sin(x*0.05 + aliveS*4)*8;
+      x === 0 ? ctx.moveTo(x, wy) : ctx.lineTo(x, wy);
+    }
+    ctx.stroke();
+  }
+
+  // Reversal tint
+  if(reversed){
+    ctx.fillStyle = 'rgba(0,180,255,0.06)';
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // Bloom overlay
+  if(bloomTimer > 0){
+    const bloomAlpha = 0.04 + 0.03 * Math.sin(aliveS * 8);
+    ctx.fillStyle = `rgba(255,215,0,${bloomAlpha})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // Droplets
+  for(const dr of droplets){
+    ctx.save();
+    ctx.translate(dr.x, dr.y);
+    if(dr.type === 'normal'){
+      const dh = (baseHue + hueShift + 160) % 360;
+      const gradient = ctx.createRadialGradient(0, -2, 1, 0, 2, dr.r);
+      gradient.addColorStop(0, `hsla(${dh},80%,80%,0.95)`);
+      gradient.addColorStop(1, `hsla(${dh},70%,55%,0.8)`);
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      // Teardrop shape
+      ctx.moveTo(0, -dr.r);
+      ctx.quadraticCurveTo(dr.r, -dr.r*0.2, dr.r*0.7, dr.r*0.5);
+      ctx.quadraticCurveTo(0, dr.r*1.3, -dr.r*0.7, dr.r*0.5);
+      ctx.quadraticCurveTo(-dr.r, -dr.r*0.2, 0, -dr.r);
+      ctx.fill();
+      // Highlight
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.beginPath();
+      ctx.arc(-2, -3, 2.5, 0, Math.PI*2);
+      ctx.fill();
+    } else if(dr.type === 'gold'){
+      ctx.shadowColor = 'rgba(255,215,0,0.6)';
+      ctx.shadowBlur = 12;
+      const gradient = ctx.createRadialGradient(0, 0, 1, 0, 0, dr.r);
+      gradient.addColorStop(0, 'hsla(50,100%,80%,1)');
+      gradient.addColorStop(1, 'hsla(40,100%,50%,0.9)');
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      // Star-ish shape
+      for(let j=0;j<5;j++){
+        const angle = j*Math.PI*2/5 - Math.PI/2 + aliveS*2;
+        const outerR = dr.r;
+        const innerR = dr.r * 0.5;
+        ctx.lineTo(Math.cos(angle)*outerR, Math.sin(angle)*outerR);
+        const a2 = angle + Math.PI/5;
+        ctx.lineTo(Math.cos(a2)*innerR, Math.sin(a2)*innerR);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    } else if(dr.type === 'toxic'){
+      const gradient = ctx.createRadialGradient(0, 0, 1, 0, 0, dr.r);
+      gradient.addColorStop(0, 'hsla(120,90%,65%,0.95)');
+      gradient.addColorStop(1, 'hsla(140,80%,35%,0.8)');
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(0, 0, dr.r, 0, Math.PI*2);
+      ctx.fill();
+      // Skull-ish X
+      ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(-4,-4); ctx.lineTo(4,4);
+      ctx.moveTo(4,-4); ctx.lineTo(-4,4);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // Player (shell cup)
+  const py = PLAYER_Y();
+  ctx.save();
+  ctx.translate(playerX, py);
+
+  // Shell body
+  const shellH = (baseHue + hueShift + 30) % 360;
+  const shellGrd = ctx.createRadialGradient(0, -5, 3, 0, 5, 24);
+  shellGrd.addColorStop(0, `hsla(${shellH},60%,75%,1)`);
+  shellGrd.addColorStop(1, `hsla(${shellH},50%,45%,1)`);
+  ctx.fillStyle = shellGrd;
+
+  // Cup shape
+  ctx.beginPath();
+  ctx.moveTo(-20, 5);
+  ctx.quadraticCurveTo(-22, -15, -10, -18);
+  ctx.quadraticCurveTo(0, -22, 10, -18);
+  ctx.quadraticCurveTo(22, -15, 20, 5);
+  ctx.quadraticCurveTo(15, 16, 0, 18);
+  ctx.quadraticCurveTo(-15, 16, -20, 5);
+  ctx.fill();
+
+  // Shell lines
+  ctx.strokeStyle = `hsla(${shellH},40%,60%,0.5)`;
+  ctx.lineWidth = 1;
+  for(let i=-2;i<=2;i++){
+    ctx.beginPath();
+    ctx.moveTo(i*6, -17);
+    ctx.quadraticCurveTo(i*7, 0, i*5, 15);
+    ctx.stroke();
+  }
+
+  // Glow during bloom
+  if(bloomTimer > 0){
+    ctx.shadowColor = 'rgba(255,215,0,0.7)';
+    ctx.shadowBlur = 20;
+    ctx.strokeStyle = 'rgba(255,215,0,0.5)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, 26, 0, Math.PI*2);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
+  ctx.restore();
+
+  // Particles
+  for(const p of particles){
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.color + p.life + ')';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r * p.life, 0, Math.PI*2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // UI
+  if(state === 'playing'){
+    // Score
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 28px "Segoe UI",system-ui,sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(score, W/2, 45);
+
+    // Combo
+    if(combo > 2){
+      ctx.font = '16px "Segoe UI",system-ui,sans-serif';
+      ctx.fillStyle = `hsla(${(baseHue+hueShift+100)%360},80%,70%,0.9)`;
+      ctx.fillText(`${combo}x combo`, W/2, 68);
+    }
+
+    // Bloom meter bar
+    const barW = 100, barH = 6, barX = W/2 - barW/2, barY = 78;
+    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    roundRect(ctx, barX, barY, barW, barH, 3);
+    ctx.fill();
+    if(bloomTimer > 0){
+      ctx.fillStyle = 'rgba(255,215,0,0.8)';
+      roundRect(ctx, barX, barY, barW * (bloomTimer/BLOOM_DURATION), barH, 3);
+      ctx.fill();
+      ctx.font = '11px "Segoe UI",system-ui,sans-serif';
+      ctx.fillStyle = '#ffd700';
+      ctx.fillText('BLOOM 2x', W/2, barY + 18);
+    } else {
+      const meterFill = Math.min(bloomMeter, 1);
+      const mh = (baseHue + hueShift + 320) % 360;
+      ctx.fillStyle = `hsla(${mh},70%,60%,0.7)`;
+      roundRect(ctx, barX, barY, barW * meterFill, barH, 3);
+      ctx.fill();
+    }
+
+    // Reversal indicator
+    if(reversed){
+      const flash = Math.sin(aliveS * 10) > 0 ? 1 : 0.6;
+      ctx.globalAlpha = flash;
+      ctx.font = 'bold 42px "Segoe UI",system-ui,sans-serif';
+      ctx.fillStyle = '#00d4ff';
+      // Arrow indicating wrong direction
+      const arrowDir = playerLane === 0 ? '\u2192' : '\u2190'; // opposite arrow
+      ctx.fillText(arrowDir, W/2, H * 0.5);
+      ctx.font = '14px "Segoe UI",system-ui,sans-serif';
+      ctx.fillStyle = 'rgba(0,212,255,0.9)';
+      ctx.fillText('CURRENT!', W/2, H * 0.5 + 22);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // Start screen
+  if(state === 'start'){
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ff6b9d';
+    ctx.font = 'bold 36px "Segoe UI",system-ui,sans-serif';
+    ctx.fillText('Coral Droplet', W/2, H*0.32);
+
+    ctx.font = '16px "Segoe UI",system-ui,sans-serif';
+    ctx.fillStyle = '#cbb8e8';
+    ctx.fillText('Catch coral nectar in your shell cup!', W/2, H*0.39);
+    ctx.fillText('Tap to flip between lanes.', W/2, H*0.43);
+    ctx.fillText('Don\'t miss any droplets!', W/2, H*0.47);
+
+    // Animated tap prompt
+    const pulse = 0.7 + 0.3 * Math.sin(performance.now() * 0.004);
+    ctx.globalAlpha = pulse;
+    ctx.font = 'bold 22px "Segoe UI",system-ui,sans-serif';
+    ctx.fillStyle = '#fff';
+    ctx.fillText('Tap to Start', W/2, H*0.58);
+    ctx.globalAlpha = 1;
+
+    if(bestScore > 0){
+      ctx.font = '14px "Segoe UI",system-ui,sans-serif';
+      ctx.fillStyle = '#a89bc4';
+      ctx.fillText(`Best: ${bestScore}`, W/2, H*0.65);
+    }
+  }
+
+  // Game over screen
+  if(state === 'gameover'){
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ff6b9d';
+    ctx.font = 'bold 30px "Segoe UI",system-ui,sans-serif';
+    ctx.fillText('Game Over', W/2, H*0.30);
+
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 48px "Segoe UI",system-ui,sans-serif';
+    ctx.fillText(score, W/2, H*0.40);
+
+    ctx.font = '16px "Segoe UI",system-ui,sans-serif';
+    ctx.fillStyle = '#a89bc4';
+    ctx.fillText(`Best: ${bestScore}`, W/2, H*0.46);
+
+    if(score >= bestScore && score > 0){
+      ctx.fillStyle = '#ffd700';
+      ctx.font = '14px "Segoe UI",system-ui,sans-serif';
+      ctx.fillText('New Best!', W/2, H*0.50);
+    }
+
+    // Tap to Retry
+    const pulse = 0.7 + 0.3 * Math.sin(performance.now() * 0.004);
+    ctx.globalAlpha = pulse;
+    ctx.font = 'bold 22px "Segoe UI",system-ui,sans-serif';
+    ctx.fillStyle = '#fff';
+    ctx.fillText('Tap to Retry', W/2, H*0.60);
+    ctx.globalAlpha = 1;
+
+    // Share button
+    const btnW = 120, btnH = 36;
+    const btnX = W/2 - btnW/2;
+    const btnY = H*0.65;
+    shareBtn.x = btnX; shareBtn.y = btnY; shareBtn.w = btnW; shareBtn.h = btnH;
+    shareBtn.visible = true;
+
+    ctx.fillStyle = 'rgba(126,184,255,0.2)';
+    ctx.strokeStyle = 'rgba(126,184,255,0.5)';
+    ctx.lineWidth = 1.5;
+    roundRect(ctx, btnX, btnY, btnW, btnH, 8);
+    ctx.fill();
+    roundRect(ctx, btnX, btnY, btnW, btnH, 8);
+    ctx.stroke();
+
+    ctx.font = '14px "Segoe UI",system-ui,sans-serif';
+    ctx.fillStyle = '#7eb8ff';
+    ctx.textAlign = 'center';
+    ctx.fillText(shareBtn.copied ? 'Copied!' : 'Share Score', W/2, btnY + btnH/2 + 5);
+  }
+
+  ctx.restore();
+}
+
+function roundRect(ctx, x, y, w, h, r){
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.lineTo(x+w-r, y);
+  ctx.arcTo(x+w, y, x+w, y+r, r);
+  ctx.lineTo(x+w, y+h-r);
+  ctx.arcTo(x+w, y+h, x+w-r, y+h, r);
+  ctx.lineTo(x+r, y+h);
+  ctx.arcTo(x, y+h, x, y+h-r, r);
+  ctx.lineTo(x, y+r);
+  ctx.arcTo(x, y, x+r, y, r);
+  ctx.closePath();
+}
+
+// Main loop
+function loop(now){
+  requestAnimationFrame(loop);
+
+  // Resize check
+  const r = box.getBoundingClientRect();
+  if(Math.abs(r.width - W) > 1 || Math.abs(r.height - H) > 1) resize();
+
+  let dt = (now - lastTime) / 1000;
+  lastTime = now;
+  if(dt > 0.1) dt = 0.016; // clamp
+
+  update(dt);
+  draw();
+}
+
+initGame();
+lastTime = performance.now();
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

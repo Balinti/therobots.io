@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Lollipop Loop - Free HTML5 Game</title>
+  <meta name="description" content="Play Lollipop Loop - Tap to time shrinking lollipops matching the beat of a candy tune.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://balinti.github.io/lollipop-loop/">
+  <meta name="theme-color" content="#0b0b10">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Lollipop Loop - Free HTML5 Game">
+  <meta property="og:description" content="Tap to time shrinking lollipops matching the beat of a candy tune. How high can you combo?">
+  <meta property="og:url" content="https://balinti.github.io/lollipop-loop/">
+  <meta property="og:image" content="https://balinti.github.io/lollipop-loop/og-image.png">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Lollipop Loop - Free HTML5 Game">
+  <meta name="twitter:description" content="Tap to time shrinking lollipops. SWEET hits = +3! How high can you combo?">
+  <meta name="twitter:image" content="https://balinti.github.io/lollipop-loop/og-image.png">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0b0b10;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100dvh;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      overflow: hidden;
+      touch-action: manipulation;
+    }
+
+    #game-wrap {
+      position: relative;
+      width: min(420px, 100vw);
+      /* Fixed aspect ratio container */
+      aspect-ratio: 420 / 750;
+      max-height: 100dvh;
+      overflow: hidden;
+      border-radius: 16px;
+      box-shadow: 0 0 60px rgba(255, 100, 180, 0.18);
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: manipulation;
+    }
+
+    /* SEO collapsible below game */
+    #seo-text {
+      max-width: 420px;
+      width: 100%;
+      margin-top: 10px;
+      padding: 0 8px;
+      color: #888;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    #seo-text summary {
+      cursor: pointer;
+      color: #aaa;
+      user-select: none;
+      padding: 4px 0;
+    }
+    #seo-text p { margin: 6px 0; }
+    #seo-text ul { margin: 4px 0 4px 16px; }
+  </style>
+</head>
+<body>
+<div id="game-wrap">
+  <canvas id="c"></canvas>
+</div>
+
+<details id="seo-text">
+  <summary>About Lollipop Loop</summary>
+  <p><strong>Lollipop Loop</strong> is a free browser-based tap timing game. A glowing ring shrinks toward a center lollipop — tap at the right moment to score!</p>
+  <p><strong>How to play:</strong></p>
+  <ul>
+    <li>Tap or press Space/Enter when the shrinking ring overlaps the green SAFE zone for +1.</li>
+    <li>Nail the pink SWEET inner ring for +3 and faster combo growth.</li>
+    <li>Miss 3 times and it's game over.</li>
+    <li>Combos increase your score multiplier — but the SWEET window shrinks as your combo grows!</li>
+    <li>After score 25, watch for double-beat cycles.</li>
+  </ul>
+  <p><strong>Tips:</strong> Listen for the visual pulse — the ring speed increases with score. Focus on SAFE hits to build combo, then go for SWEET when you feel confident.</p>
+</details>
+
+<script>
+(function() {
+  'use strict';
+
+  // ── Canvas setup ──────────────────────────────────────────────────────────
+  const canvas = document.getElementById('c');
+  const ctx    = canvas.getContext('2d');
+  const DESIGN_W = 420;
+  const DESIGN_H = 750;
+  const DPR = Math.min(window.devicePixelRatio || 1, 3);
+
+  function resizeCanvas() {
+    const wrap = document.getElementById('game-wrap');
+    const w = wrap.clientWidth;
+    const h = wrap.clientHeight;
+    canvas.width  = w * DPR;
+    canvas.height = h * DPR;
+    canvas.style.width  = w + 'px';
+    canvas.style.height = h + 'px';
+  }
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
+
+  // Scale helper — maps design coords → actual pixels
+  function scaleX(v) { return (v / DESIGN_W) * canvas.width; }
+  function scaleY(v) { return (v / DESIGN_H) * canvas.height; }
+  function scaleR(v) { return (v / DESIGN_W) * canvas.width; } // radius by width
+
+  // ── Persistent best score ─────────────────────────────────────────────────
+  const LS_KEY = 'lollipopLoop_best';
+  let bestScore = parseInt(localStorage.getItem(LS_KEY) || '0', 10);
+
+  // ── Game state ────────────────────────────────────────────────────────────
+  const STATE = { START: 'start', PLAYING: 'playing', GAMEOVER: 'gameover' };
+  let state = STATE.START;
+
+  // ── Game vars ─────────────────────────────────────────────────────────────
+  let score        = 0;
+  let combo        = 0;
+  let hearts       = 3;
+  let hue          = 0;      // HSL color cycle
+  let ringRadius   = 0;      // current shrinking ring radius
+  let ringSpeed    = 0;      // px/s (design units)
+  let beatPhase    = 0;      // 0..1 progress of current beat
+  let beatDuration = 1.2;    // seconds per beat cycle
+  let doubleBeat   = false;  // telegraphed double cycle
+  let lolliWobble  = { x: 0, y: 0, vx: 0, vy: 0 }; // spring offset
+  let shakeTimer   = 0;      // seconds remaining for screen shake
+  let shakeAmt     = 0;
+  let hitStopTimer = 0;      // micro hit-stop for SWEET
+  let vignette     = 0;      // 0..1 red flash for miss
+  let particles    = [];
+  let feedbackMsgs = [];     // floating text feedback
+  let nearMissText = '';     // bottom status line
+  let tapAllowed   = true;   // prevent double-tap per cycle
+
+  // Ring radii in design units (px based on 420 width)
+  const LOLLI_R   = 36;   // lollipop candy radius
+  const SAFE_OUTER = 90;  // outer edge of SAFE ring
+  const SAFE_INNER = 68;  // inner edge of SAFE ring (= outer of SWEET)
+  const SWEET_OUTER = 68;
+  const SWEET_INNER = 50; // inner edge of SWEET
+  const RING_START  = 195; // ring spawns at this radius
+
+  // Center position in design coords
+  const CX = DESIGN_W / 2;
+  const CY = DESIGN_H / 2 - 30;
+
+  // ── Particle system ───────────────────────────────────────────────────────
+  function spawnParticles(x, y, color, count, speed) {
+    for (let i = 0; i < count; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const v     = speed * (0.5 + Math.random());
+      particles.push({
+        x, y,
+        vx: Math.cos(angle) * v,
+        vy: Math.sin(angle) * v,
+        life: 1,
+        decay: 0.6 + Math.random() * 0.8,
+        r: 3 + Math.random() * 4,
+        color,
+        gravity: 120
+      });
+    }
+  }
+
+  function updateParticles(dt) {
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy += p.gravity * dt;
+      p.life -= p.decay * dt;
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+  }
+
+  function drawParticles() {
+    for (const p of particles) {
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, p.life);
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      // map design coords to canvas
+      ctx.arc(scaleX(p.x), scaleY(p.y), scaleR(p.r), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  // ── Floating feedback text ─────────────────────────────────────────────────
+  function spawnFeedback(x, y, text, color) {
+    feedbackMsgs.push({ x, y, vy: -60, text, color, life: 1, decay: 1.2 });
+  }
+
+  function updateFeedback(dt) {
+    for (let i = feedbackMsgs.length - 1; i >= 0; i--) {
+      const f = feedbackMsgs[i];
+      f.y += f.vy * dt;
+      f.life -= f.decay * dt;
+      if (f.life <= 0) feedbackMsgs.splice(i, 1);
+    }
+  }
+
+  function drawFeedback() {
+    for (const f of feedbackMsgs) {
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, f.life);
+      ctx.fillStyle = f.color;
+      ctx.font = `bold ${scaleR(20)}px 'Segoe UI', sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(f.text, scaleX(f.x), scaleY(f.y));
+      ctx.restore();
+    }
+  }
+
+  // ── Game logic helpers ────────────────────────────────────────────────────
+  function getDifficulty() {
+    // Base speed ramp
+    const base = 80 + score * 2.2;
+    return Math.min(base, 280); // design px/s
+  }
+
+  function startBeat() {
+    ringRadius = RING_START;
+    tapAllowed = true;
+    // After score 25, ~30% chance of double beat
+    doubleBeat = score >= 25 && Math.random() < 0.3;
+    beatDuration = doubleBeat ? 0.65 : 1.1 - Math.min(score * 0.012, 0.55);
+    ringSpeed = (RING_START - LOLLI_R * 0.7) / beatDuration;
+  }
+
+  function getSWEETWindow() {
+    // SWEET inner radius shrinks with combo (risk/reward)
+    const shrink = Math.min(combo * 0.5, 8);
+    return { outer: SWEET_OUTER, inner: SWEET_INNER + shrink };
+  }
+
+  function onTap() {
+    if (state === STATE.START) {
+      beginGame();
+      return;
+    }
+    if (state === STATE.GAMEOVER) {
+      beginGame();
+      return;
+    }
+    if (!tapAllowed) return;
+
+    tapAllowed = false;
+    const sw = getSWEETWindow();
+
+    // Check overlap
+    if (ringRadius >= SWEET_INNER && ringRadius <= SWEET_OUTER) {
+      // SWEET hit
+      score += 3;
+      combo++;
+      hitStopTimer = 0.075;
+      shakeTimer   = 0.08;
+      shakeAmt     = 3;
+      hue += 30;
+      spawnParticles(CX + lolliWobble.x, CY + lolliWobble.y,
+        `hsl(${hue},100%,70%)`, 18, 160);
+      spawnFeedback(CX, CY - 70, 'SWEET! +3', '#ff69b4');
+      nearMissText = '';
+      // Lollipop wobble
+      lolliWobble.vx += (Math.random() - 0.5) * 18;
+      lolliWobble.vy += (Math.random() - 0.5) * 18;
+    } else if (ringRadius >= SAFE_INNER && ringRadius <= SAFE_OUTER) {
+      // SAFE hit
+      score += 1;
+      combo++;
+      hue += 15;
+      shakeTimer = 0.04;
+      shakeAmt   = 1.5;
+      spawnParticles(CX + lolliWobble.x, CY + lolliWobble.y,
+        `hsl(${hue},80%,65%)`, 10, 110);
+      spawnFeedback(CX, CY - 70, '+1', '#7fff7f');
+      nearMissText = '';
+      lolliWobble.vx += (Math.random() - 0.5) * 10;
+      lolliWobble.vy += (Math.random() - 0.5) * 10;
+    } else {
+      // Miss
+      onMiss();
+      // Compute near-miss distance
+      const distToSafe  = ringRadius < SAFE_INNER ? SAFE_INNER - ringRadius : ringRadius - SAFE_OUTER;
+      const distToSweet = ringRadius < sw.inner   ? sw.inner - ringRadius   : ringRadius - sw.outer;
+      const ms = Math.round((distToSafe / ringSpeed) * 1000);
+      if (ringRadius < SAFE_INNER) {
+        nearMissText = `Too late by ~${ms}ms`;
+      } else {
+        nearMissText = `Too early by ~${ms}ms`;
+      }
+    }
+
+    if (score > bestScore) {
+      bestScore = score;
+      localStorage.setItem(LS_KEY, bestScore);
+    }
+  }
+
+  function onMiss() {
+    hearts--;
+    combo = 0;
+    vignette = 1;
+    shakeTimer = 0.22;
+    shakeAmt   = 10;
+    spawnParticles(CX, CY, '#ff3333', 12, 80);
+    spawnFeedback(CX, CY - 60, 'MISS!', '#ff4444');
+    if (hearts <= 0) {
+      state = STATE.GAMEOVER;
+    }
+  }
+
+  function onBeatEnd() {
+    // Ring passed center without tap
+    if (tapAllowed) {
+      onMiss();
+      nearMissText = 'Too slow!';
+    }
+    if (state === STATE.PLAYING) startBeat();
+  }
+
+  function beginGame() {
+    score        = 0;
+    combo        = 0;
+    hearts       = 3;
+    hue          = 280;
+    particles    = [];
+    feedbackMsgs = [];
+    nearMissText = '';
+    lolliWobble  = { x: 0, y: 0, vx: 0, vy: 0 };
+    shakeTimer   = 0;
+    hitStopTimer = 0;
+    vignette     = 0;
+    state        = STATE.PLAYING;
+    startBeat();
+  }
+
+  // ── Input ─────────────────────────────────────────────────────────────────
+  canvas.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    onTap();
+  }, { passive: false });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.code === 'Space' || e.code === 'Enter') {
+      e.preventDefault();
+      onTap();
+    }
+  });
+
+  // ── Draw helpers ──────────────────────────────────────────────────────────
+  function drawRoundRect(x, y, w, h, r, fill) {
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, r);
+    ctx.fillStyle = fill;
+    ctx.fill();
+  }
+
+  function drawHeart(x, y, size, alpha) {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = '#ff4d6d';
+    ctx.beginPath();
+    // Simple heart shape
+    const s = size;
+    ctx.moveTo(x, y + s * 0.3);
+    ctx.bezierCurveTo(x, y - s * 0.3, x - s, y - s * 0.3, x - s, y + s * 0.3);
+    ctx.bezierCurveTo(x - s, y + s * 0.8, x, y + s * 1.2, x, y + s * 1.4);
+    ctx.bezierCurveTo(x, y + s * 1.2, x + s, y + s * 0.8, x + s, y + s * 0.3);
+    ctx.bezierCurveTo(x + s, y - s * 0.3, x, y - s * 0.3, x, y + s * 0.3);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawLollipop(cx, cy, r, h, lolliHue) {
+    // Stick
+    ctx.save();
+    ctx.strokeStyle = '#c8a97e';
+    ctx.lineWidth   = scaleR(5);
+    ctx.lineCap     = 'round';
+    ctx.beginPath();
+    ctx.moveTo(cx, cy + scaleR(r));
+    ctx.lineTo(cx, cy + scaleR(r + 55));
+    ctx.stroke();
+
+    // Candy swirl: layered arcs
+    for (let i = 0; i < 6; i++) {
+      const startAngle = (i / 6) * Math.PI * 2 + h;
+      const endAngle   = startAngle + Math.PI * 2 / 6;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, scaleR(r), startAngle, endAngle);
+      ctx.closePath();
+      ctx.fillStyle = i % 2 === 0
+        ? `hsl(${lolliHue},90%,65%)`
+        : `hsl(${(lolliHue + 40) % 360},85%,80%)`;
+      ctx.fill();
+    }
+
+    // Shine
+    ctx.beginPath();
+    ctx.arc(cx - scaleR(r * 0.28), cy - scaleR(r * 0.28), scaleR(r * 0.22), 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.fill();
+
+    // Outline
+    ctx.beginPath();
+    ctx.arc(cx, cy, scaleR(r), 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+    ctx.lineWidth = scaleR(2);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  // ── Main draw ─────────────────────────────────────────────────────────────
+  let lolliRotation = 0;
+
+  function drawGame(dt) {
+    const cw = canvas.width;
+    const ch = canvas.height;
+
+    // Lollipop spin
+    lolliRotation += dt * 0.8;
+
+    // Wobble spring physics
+    const spring = 12, damping = 6;
+    lolliWobble.vx += (-spring * lolliWobble.x - damping * lolliWobble.vx) * dt;
+    lolliWobble.vy += (-spring * lolliWobble.y - damping * lolliWobble.vy) * dt;
+    lolliWobble.x += lolliWobble.vx * dt;
+    lolliWobble.y += lolliWobble.vy * dt;
+
+    // Screen shake offset
+    let sx = 0, sy = 0;
+    if (shakeTimer > 0) {
+      sx = (Math.random() - 0.5) * shakeAmt * 2;
+      sy = (Math.random() - 0.5) * shakeAmt * 2;
+      shakeTimer -= dt;
+    }
+
+    // Canvas transform for shake
+    ctx.save();
+    ctx.translate(scaleX(sx), scaleY(sy));
+
+    // Background gradient
+    const grad = ctx.createRadialGradient(cw/2, ch/2, 0, cw/2, ch/2, cw * 0.8);
+    grad.addColorStop(0, `hsl(${hue + 160},30%,12%)`);
+    grad.addColorStop(1, '#0b0b10');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, cw, ch);
+
+    // Center coords (with wobble)
+    const wcx = scaleX(CX + lolliWobble.x);
+    const wcy = scaleY(CY + lolliWobble.y);
+
+    // Draw SAFE ring (green zone)
+    ctx.beginPath();
+    ctx.arc(wcx, wcy, scaleR(SAFE_OUTER), 0, Math.PI * 2);
+    ctx.arc(wcx, wcy, scaleR(SAFE_INNER), 0, Math.PI * 2, true);
+    ctx.fillStyle = 'rgba(50,220,100,0.18)';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(wcx, wcy, scaleR(SAFE_OUTER), 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(50,220,100,0.7)';
+    ctx.lineWidth = scaleR(2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(wcx, wcy, scaleR(SAFE_INNER), 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(50,220,100,0.4)';
+    ctx.stroke();
+
+    // Draw SWEET ring (pink zone)
+    const sw = getSWEETWindow();
+    ctx.beginPath();
+    ctx.arc(wcx, wcy, scaleR(sw.outer), 0, Math.PI * 2);
+    ctx.arc(wcx, wcy, scaleR(sw.inner), 0, Math.PI * 2, true);
+    ctx.fillStyle = 'rgba(255,100,180,0.22)';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(wcx, wcy, scaleR(sw.outer), 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255,100,180,0.8)';
+    ctx.lineWidth = scaleR(2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(wcx, wcy, scaleR(sw.inner), 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255,100,180,0.5)';
+    ctx.lineWidth = scaleR(1.5);
+    ctx.stroke();
+
+    // Draw shrinking ring
+    if (state === STATE.PLAYING) {
+      const ringAlpha = 0.7 + 0.3 * Math.sin(lolliRotation * 4);
+      ctx.beginPath();
+      ctx.arc(wcx, wcy, scaleR(ringRadius), 0, Math.PI * 2);
+      ctx.strokeStyle = `hsla(${hue},100%,70%,${ringAlpha})`;
+      ctx.lineWidth   = scaleR(4);
+      ctx.shadowColor = `hsl(${hue},100%,70%)`;
+      ctx.shadowBlur  = 14;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // Double-beat telegraph: dashed secondary ring
+      if (doubleBeat) {
+        ctx.save();
+        ctx.setLineDash([scaleR(8), scaleR(6)]);
+        ctx.beginPath();
+        ctx.arc(wcx, wcy, scaleR(ringRadius * 0.7), 0, Math.PI * 2);
+        ctx.strokeStyle = `hsla(${hue + 60},90%,65%,0.4)`;
+        ctx.lineWidth = scaleR(2);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    // Draw lollipop
+    drawLollipop(wcx, wcy, LOLLI_R, lolliRotation, hue);
+
+    // Particles
+    drawParticles();
+    drawFeedback();
+
+    // ── HUD ───────────────────────────────────────────────────────────────
+    // Score (top-left)
+    ctx.fillStyle = '#fff';
+    ctx.font = `bold ${scaleR(26)}px 'Segoe UI', sans-serif`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(score, scaleX(18), scaleY(18));
+
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.font = `${scaleR(13)}px 'Segoe UI', sans-serif`;
+    ctx.fillText('BEST ' + bestScore, scaleX(18), scaleY(50));
+
+    // Hearts (below score)
+    for (let i = 0; i < 3; i++) {
+      drawHeart(
+        scaleX(22 + i * 22),
+        scaleY(70),
+        scaleR(7),
+        i < hearts ? 1 : 0.2
+      );
+    }
+
+    // Combo (top-right)
+    if (combo > 1) {
+      ctx.textAlign = 'right';
+      ctx.fillStyle = `hsl(${hue},100%,75%)`;
+      ctx.font = `bold ${scaleR(22)}px 'Segoe UI', sans-serif`;
+      ctx.textBaseline = 'top';
+      ctx.fillText(`x${combo}`, scaleX(DESIGN_W - 18), scaleY(18));
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.font = `${scaleR(12)}px 'Segoe UI', sans-serif`;
+      ctx.fillText('COMBO', scaleX(DESIGN_W - 18), scaleY(46));
+    }
+
+    // Near-miss text (bottom center)
+    if (nearMissText) {
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(255,120,120,0.85)';
+      ctx.font = `${scaleR(13)}px 'Segoe UI', sans-serif`;
+      ctx.textBaseline = 'bottom';
+      ctx.fillText(nearMissText, scaleX(CX), scaleY(DESIGN_H - 20));
+    }
+
+    // Vignette flash on miss
+    if (vignette > 0) {
+      const vg = ctx.createRadialGradient(cw/2, ch/2, cw*0.2, cw/2, ch/2, cw*0.85);
+      vg.addColorStop(0, 'rgba(200,0,0,0)');
+      vg.addColorStop(1, `rgba(200,0,0,${vignette * 0.55})`);
+      ctx.fillStyle = vg;
+      ctx.fillRect(0, 0, cw, ch);
+      vignette -= dt * 3;
+      if (vignette < 0) vignette = 0;
+    }
+
+    ctx.restore(); // end shake transform
+  }
+
+  function drawStart() {
+    const cw = canvas.width;
+    const ch = canvas.height;
+
+    const grad = ctx.createRadialGradient(cw/2, ch/2, 0, cw/2, ch/2, cw * 0.9);
+    grad.addColorStop(0, 'hsl(300,30%,14%)');
+    grad.addColorStop(1, '#0b0b10');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, cw, ch);
+
+    // Animated lollipop
+    drawLollipop(scaleX(CX), scaleY(CY - 40), LOLLI_R * 1.3, lolliRotation, hue);
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    // Title
+    ctx.fillStyle = `hsl(${hue},100%,78%)`;
+    ctx.font = `bold ${scaleR(42)}px 'Segoe UI', sans-serif`;
+    ctx.shadowColor = `hsl(${hue},100%,60%)`;
+    ctx.shadowBlur  = 20;
+    ctx.fillText('Lollipop', scaleX(CX), scaleY(CY + 80));
+    ctx.fillText('Loop', scaleX(CX), scaleY(CY + 130));
+    ctx.shadowBlur = 0;
+
+    // Instructions
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.font = `${scaleR(16)}px 'Segoe UI', sans-serif`;
+    ctx.fillText('Tap when the ring enters the zone', scaleX(CX), scaleY(CY + 195));
+    ctx.fillStyle = 'rgba(50,220,100,0.9)';
+    ctx.fillText('Green zone = SAFE  (+1)', scaleX(CX), scaleY(CY + 225));
+    ctx.fillStyle = 'rgba(255,100,180,0.9)';
+    ctx.fillText('Pink zone = SWEET  (+3)', scaleX(CX), scaleY(CY + 250));
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.fillText('Miss 3 times = game over', scaleX(CX), scaleY(CY + 278));
+
+    // Tap to start pulse
+    const pulse = 0.7 + 0.3 * Math.sin(Date.now() / 400);
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = '#fff';
+    ctx.font = `bold ${scaleR(20)}px 'Segoe UI', sans-serif`;
+    ctx.fillText('TAP TO START', scaleX(CX), scaleY(CY + 330));
+    ctx.globalAlpha = 1;
+  }
+
+  function drawGameover() {
+    const cw = canvas.width;
+    const ch = canvas.height;
+
+    // Dark overlay
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(0, 0, cw, ch);
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    // Game Over title
+    ctx.fillStyle = '#ff4d6d';
+    ctx.font = `bold ${scaleR(38)}px 'Segoe UI', sans-serif`;
+    ctx.shadowColor = '#ff4d6d';
+    ctx.shadowBlur  = 18;
+    ctx.fillText('GAME OVER', scaleX(CX), scaleY(220));
+    ctx.shadowBlur = 0;
+
+    // Score
+    ctx.fillStyle = '#fff';
+    ctx.font = `bold ${scaleR(56)}px 'Segoe UI', sans-serif`;
+    ctx.fillText(score, scaleX(CX), scaleY(320));
+
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.font = `${scaleR(16)}px 'Segoe UI', sans-serif`;
+    ctx.fillText('SCORE', scaleX(CX), scaleY(365));
+
+    // Best
+    ctx.fillStyle = `hsl(${hue},100%,72%)`;
+    ctx.font = `bold ${scaleR(22)}px 'Segoe UI', sans-serif`;
+    ctx.fillText('BEST  ' + bestScore, scaleX(CX), scaleY(410));
+
+    // Near miss
+    if (nearMissText) {
+      ctx.fillStyle = 'rgba(255,160,160,0.8)';
+      ctx.font = `italic ${scaleR(14)}px 'Segoe UI', sans-serif`;
+      ctx.fillText(nearMissText, scaleX(CX), scaleY(448));
+    }
+
+    // Tap to retry
+    const pulse = 0.65 + 0.35 * Math.sin(Date.now() / 450);
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = '#fff';
+    ctx.font = `bold ${scaleR(20)}px 'Segoe UI', sans-serif`;
+    ctx.fillText('TAP TO RETRY', scaleX(CX), scaleY(510));
+    ctx.globalAlpha = 1;
+
+    // Share buttons row
+    drawShareButtons();
+  }
+
+  // ── Share buttons ─────────────────────────────────────────────────────────
+  const shareBtn  = { x: CX - 80, y: 570, w: 150, h: 40, label: 'Share Score' };
+  const copyBtn   = { x: CX + 85, y: 570, w: 130, h: 40, label: 'Copy Link' };
+
+  function drawShareButtons() {
+    // Share
+    ctx.fillStyle = 'rgba(255,100,180,0.85)';
+    ctx.beginPath();
+    ctx.roundRect(scaleX(shareBtn.x - shareBtn.w/2), scaleY(shareBtn.y - shareBtn.h/2),
+      scaleX(shareBtn.w), scaleY(shareBtn.h), scaleR(10));
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.font = `bold ${scaleR(13)}px 'Segoe UI', sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(shareBtn.label, scaleX(shareBtn.x), scaleY(shareBtn.y));
+
+    // Copy
+    ctx.fillStyle = 'rgba(80,140,255,0.85)';
+    ctx.beginPath();
+    ctx.roundRect(scaleX(copyBtn.x - copyBtn.w/2), scaleY(copyBtn.y - copyBtn.h/2),
+      scaleX(copyBtn.w), scaleY(copyBtn.h), scaleR(10));
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.fillText(copyBtn.label, scaleX(copyBtn.x), scaleY(copyBtn.y));
+  }
+
+  // Handle button clicks on gameover
+  canvas.addEventListener('pointerdown', (e) => {
+    if (state !== STATE.GAMEOVER) return;
+    const rect = canvas.getBoundingClientRect();
+    const mx = (e.clientX - rect.left) / rect.width  * DESIGN_W;
+    const my = (e.clientY - rect.top)  / rect.height * DESIGN_H;
+
+    function inBtn(btn) {
+      return mx >= btn.x - btn.w/2 && mx <= btn.x + btn.w/2 &&
+             my >= btn.y - btn.h/2 && my <= btn.y + btn.h/2;
+    }
+
+    if (inBtn(shareBtn)) {
+      const text = `I scored ${score} in Lollipop Loop! Can you beat me? 🍭`;
+      const url  = 'https://balinti.github.io/lollipop-loop/';
+      if (navigator.share) {
+        navigator.share({ title: 'Lollipop Loop', text, url }).catch(() => {});
+      } else {
+        navigator.clipboard && navigator.clipboard.writeText(text + ' ' + url).catch(() => {});
+      }
+      return;
+    }
+    if (inBtn(copyBtn)) {
+      const url = 'https://balinti.github.io/lollipop-loop/';
+      navigator.clipboard && navigator.clipboard.writeText(url).catch(() => {});
+      spawnFeedback(CX, CY, 'Copied!', '#7baaff');
+      return;
+    }
+  });
+
+  // ── Main loop ─────────────────────────────────────────────────────────────
+  let lastTime = null;
+
+  function loop(ts) {
+    if (lastTime === null) lastTime = ts;
+    let dt = (ts - lastTime) / 1000;
+    lastTime = ts;
+    dt = Math.min(dt, 0.033); // clamp to ~30fps minimum
+
+    // Micro hit-stop: pause update when SWEET hit
+    if (hitStopTimer > 0) {
+      hitStopTimer -= dt;
+      // Still draw, skip physics
+      renderFrame(0.001); // tiny dt so animations tick minimally
+      requestAnimationFrame(loop);
+      return;
+    }
+
+    renderFrame(dt);
+    requestAnimationFrame(loop);
+  }
+
+  function renderFrame(dt) {
+    hue = (hue + dt * 12) % 360;
+    lolliRotation += dt * 0.8;
+
+    if (state === STATE.PLAYING) {
+      ringRadius -= ringSpeed * dt;
+
+      if (ringRadius < LOLLI_R * 0.5) {
+        // Ring reached center — beat ends
+        onBeatEnd();
+      }
+    }
+
+    updateParticles(dt);
+    updateFeedback(dt);
+
+    const cw = canvas.width;
+    const ch = canvas.height;
+    ctx.clearRect(0, 0, cw, ch);
+
+    if      (state === STATE.START)    drawStart();
+    else if (state === STATE.PLAYING)  drawGame(dt);
+    else if (state === STATE.GAMEOVER) { drawGame(0); drawGameover(); }
+  }
+
+  requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

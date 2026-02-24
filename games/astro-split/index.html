@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Astro Split - Free HTML5 Game</title>
+<meta name="description" content="Play Astro Split - Tap to merge floating numbers and split asteroids to clear paths through space lanes.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0a0a2e">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Astro Split - Free HTML5 Game">
+<meta property="og:description" content="Play Astro Split - Tap to merge floating numbers and split asteroids to clear paths through space lanes.">
+<meta property="og:url" content="https://balinti.github.io/astro-split/">
+<meta property="og:image" content="https://balinti.github.io/astro-split/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Astro Split - Free HTML5 Game">
+<meta name="twitter:description" content="Play Astro Split - Tap to merge floating numbers and split asteroids to clear paths through space lanes.">
+<meta name="twitter:image" content="https://balinti.github.io/astro-split/og.png">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#05051a;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;color:#fff}
+#wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;min-height:100dvh}
+#gameContainer{position:relative;width:100%;max-width:420px;max-height:750px;aspect-ratio:420/750;background:#0a0a2e;border-radius:12px;overflow:hidden;touch-action:manipulation;-webkit-tap-highlight-color:transparent;box-shadow:0 0 40px rgba(80,60,200,0.3)}
+canvas{display:block;width:100%;height:100%}
+#info{max-width:420px;width:100%;padding:12px 16px;color:#aaa;font-size:13px;line-height:1.5}
+#info summary{cursor:pointer;font-weight:600;color:#ccc;padding:4px 0}
+#info p{margin:6px 0}
+@media(max-width:440px){
+  #gameContainer{max-width:100vw;max-height:100dvh;border-radius:0;aspect-ratio:auto;height:100dvh}
+  #info{display:none}
+}
+</style>
+</head>
+<body>
+<div id="wrap">
+<div id="gameContainer">
+<canvas id="c"></canvas>
+</div>
+<details id="info">
+<summary>How to play Astro Split</summary>
+<p><strong>Tap</strong> or press <strong>Space/Enter</strong> to fire energy orbs at incoming asteroids. Each orb has a power level starting at 1.</p>
+<p>When your orb hits an asteroid with the <strong>same number</strong>, they <strong>merge</strong> — your next orb powers up and a shockwave clears nearby asteroids! Chain merges for combo multipliers.</p>
+<p>If the numbers don't match, the asteroid takes damage but your combo resets. Don't let any asteroid reach your ship!</p>
+<p>Asteroids get faster and tougher over time. Armored asteroids (marked with a shield) take 2 hits to destroy. How long can you survive?</p>
+</details>
+</div>
+
+<script>
+'use strict';
+(function(){
+
+// ── Config ──
+const CFG = {
+  shipY: 0.88,
+  projSpeed: 520,
+  projRadius: 7,
+  asteroidMinR: 18,
+  asteroidMaxR: 30,
+  spawnInterval: 1.1,
+  spawnMinInterval: 0.35,
+  spawnRampRate: 0.006,
+  asteroidBaseSpeed: 70,
+  asteroidMaxSpeed: 210,
+  speedRampRate: 0.4,
+  maxParticles: 300,
+  shakeDecay: 8,
+  mergeBlastRadius: 90,
+  starCount: 120,
+  trailLen: 6,
+  hitStopDuration: 0.06
+};
+
+// ── Canvas / State ──
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W, H, dpr;
+let state = 'start'; // start | playing | gameover
+let score, combo, maxCombo, projLevel, highScore;
+let elapsed, spawnAcc, difficulty;
+let shake = {x:0, y:0, mag:0};
+let hitStop = 0;
+let hue = 200;
+
+// ── Entity pools ──
+let asteroids = [];
+let projectiles = [];
+let particles = [];
+let stars = [];
+
+// ── Ship ──
+let ship = {x:0, y:0, w:28, h:34};
+
+// ── High Score ──
+const HS_KEY = 'astroSplit_highScore';
+function loadHS(){ highScore = parseInt(localStorage.getItem(HS_KEY)) || 0; }
+function saveHS(){ localStorage.setItem(HS_KEY, highScore); }
+
+// ── Resize ──
+function resize(){
+  const cont = canvas.parentElement;
+  const rect = cont.getBoundingClientRect();
+  dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+  W = rect.width;
+  H = rect.height;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ship.x = W / 2;
+  ship.y = H * CFG.shipY;
+  initStars();
+}
+window.addEventListener('resize', resize);
+
+// ── Stars ──
+function initStars(){
+  stars = [];
+  for(let i = 0; i < CFG.starCount; i++){
+    stars.push({
+      x: Math.random() * W,
+      y: Math.random() * H,
+      r: Math.random() * 1.5 + 0.3,
+      speed: Math.random() * 30 + 10,
+      bright: Math.random() * 0.5 + 0.3
+    });
+  }
+}
+
+// ── Particles ──
+function spawnParticles(x, y, count, color, speedMul, life){
+  for(let i = 0; i < count && particles.length < CFG.maxParticles; i++){
+    const a = Math.random() * Math.PI * 2;
+    const s = (Math.random() * 80 + 40) * (speedMul || 1);
+    particles.push({
+      x, y,
+      vx: Math.cos(a) * s,
+      vy: Math.sin(a) * s,
+      life: life || (Math.random() * 0.5 + 0.3),
+      maxLife: life || 0.6,
+      r: Math.random() * 3 + 1,
+      color: color || `hsl(${hue},90%,65%)`
+    });
+  }
+}
+
+// ── Shockwave rings ──
+let shockwaves = [];
+function spawnShockwave(x, y, maxR, color){
+  shockwaves.push({x, y, r: 10, maxR: maxR || CFG.mergeBlastRadius, life: 1, color: color || `hsl(${hue},80%,60%)`});
+}
+
+// ── Init / Reset ──
+function initGame(){
+  score = 0;
+  combo = 0;
+  maxCombo = 0;
+  projLevel = 1;
+  elapsed = 0;
+  spawnAcc = 0;
+  difficulty = 0;
+  asteroids = [];
+  projectiles = [];
+  particles = [];
+  shockwaves = [];
+  shake = {x:0, y:0, mag:0};
+  hitStop = 0;
+  hue = 200;
+  ship.x = W / 2;
+  ship.y = H * CFG.shipY;
+}
+
+// ── Fire ──
+function fire(){
+  if(state !== 'playing') return;
+  projectiles.push({
+    x: ship.x,
+    y: ship.y - ship.h / 2 - 4,
+    level: projLevel,
+    vy: -CFG.projSpeed,
+    trail: []
+  });
+}
+
+// ── Spawn asteroids ──
+function spawnAsteroid(){
+  const lvl = pickLevel();
+  const r = CFG.asteroidMinR + Math.random() * (CFG.asteroidMaxR - CFG.asteroidMinR);
+  const armored = difficulty > 20 && Math.random() < Math.min(0.25, (difficulty - 20) * 0.008);
+  const speed = CFG.asteroidBaseSpeed + Math.min(difficulty * CFG.speedRampRate, CFG.asteroidMaxSpeed - CFG.asteroidBaseSpeed);
+  asteroids.push({
+    x: r + Math.random() * (W - 2 * r),
+    y: -r - 10,
+    r,
+    level: lvl,
+    hp: armored ? 2 : 1,
+    maxHp: armored ? 2 : 1,
+    speed: speed * (0.8 + Math.random() * 0.4),
+    rot: Math.random() * Math.PI * 2,
+    rotSpeed: (Math.random() - 0.5) * 2
+  });
+}
+
+function pickLevel(){
+  if(difficulty < 10) return 1;
+  if(difficulty < 25) return Math.random() < 0.6 ? 1 : 2;
+  if(difficulty < 50) return Math.random() < 0.4 ? 1 : Math.random() < 0.7 ? 2 : 3;
+  const r = Math.random();
+  if(r < 0.25) return 1;
+  if(r < 0.55) return 2;
+  if(r < 0.8) return 3;
+  return 4;
+}
+
+// ── Collision helpers ──
+function dist(a, b){ return Math.hypot(a.x - b.x, a.y - b.y); }
+
+function resolveCollisions(){
+  for(let i = projectiles.length - 1; i >= 0; i--){
+    const p = projectiles[i];
+    let hit = false;
+    for(let j = asteroids.length - 1; j >= 0; j--){
+      const a = asteroids[j];
+      const d = dist(p, a);
+      if(d < a.r + CFG.projRadius + 4){
+        hit = true;
+        if(p.level === a.level){
+          // MERGE
+          combo++;
+          if(combo > maxCombo) maxCombo = combo;
+          projLevel = Math.min(p.level + 1, 9);
+          const bonus = combo * 2;
+          score += 1 + bonus;
+          // Blast nearby
+          mergeExplosion(a.x, a.y, p.level);
+          asteroids.splice(j, 1);
+          // Hit-stop for big merges
+          if(p.level >= 2) hitStop = CFG.hitStopDuration;
+          // Small shake
+          triggerShake(3 + p.level * 1.5);
+        } else {
+          // CHIP
+          a.hp--;
+          combo = 0;
+          projLevel = 1;
+          if(a.hp <= 0){
+            score++;
+            spawnParticles(a.x, a.y, 10, `hsl(${30},90%,60%)`, 0.8);
+            asteroids.splice(j, 1);
+          } else {
+            spawnParticles(a.x, a.y, 5, '#fff', 0.5, 0.25);
+          }
+        }
+        projectiles.splice(i, 1);
+        break;
+      }
+    }
+    if(!hit && (p.y < -20)){
+      combo = 0;
+      projLevel = 1;
+      projectiles.splice(i, 1);
+    }
+  }
+}
+
+function mergeExplosion(x, y, level){
+  const blastR = CFG.mergeBlastRadius + level * 15;
+  spawnParticles(x, y, 25 + level * 8, `hsl(${hue},90%,65%)`, 1.5, 0.6);
+  spawnShockwave(x, y, blastR, `hsl(${hue},80%,55%)`);
+  // Clear nearby asteroids
+  for(let k = asteroids.length - 1; k >= 0; k--){
+    const a2 = asteroids[k];
+    if(dist({x, y}, a2) < blastR){
+      score++;
+      spawnParticles(a2.x, a2.y, 8, `hsl(${hue + 40},80%,60%)`, 1);
+      asteroids.splice(k, 1);
+    }
+  }
+}
+
+function triggerShake(mag){
+  shake.mag = mag;
+}
+
+// ── Check game over ──
+function checkGameOver(){
+  for(const a of asteroids){
+    if(a.y + a.r >= ship.y - ship.h / 2){
+      state = 'gameover';
+      if(score > highScore){
+        highScore = score;
+        saveHS();
+      }
+      triggerShake(14);
+      spawnParticles(ship.x, ship.y, 40, '#ff4444', 2, 0.8);
+      spawnParticles(ship.x, ship.y, 20, '#ffaa00', 1.5, 0.6);
+      return;
+    }
+  }
+}
+
+// ── Update ──
+let lastTime = 0;
+function update(ts){
+  requestAnimationFrame(update);
+  const now = ts / 1000;
+  let dt = Math.min(now - lastTime, 0.05);
+  lastTime = now;
+
+  // Hit-stop
+  if(hitStop > 0){
+    hitStop -= dt;
+    if(hitStop > 0){ render(); return; }
+    dt = -hitStop; // leftover
+  }
+
+  hue = (hue + dt * 12) % 360;
+
+  if(state === 'playing'){
+    elapsed += dt;
+    difficulty = elapsed;
+
+    // Spawn
+    const interval = Math.max(CFG.spawnMinInterval, CFG.spawnInterval - difficulty * CFG.spawnRampRate);
+    spawnAcc += dt;
+    while(spawnAcc >= interval){
+      spawnAcc -= interval;
+      spawnAsteroid();
+    }
+
+    // Move asteroids
+    for(const a of asteroids){
+      a.y += a.speed * dt;
+      a.rot += a.rotSpeed * dt;
+    }
+
+    // Move projectiles + trail
+    for(const p of projectiles){
+      p.trail.push({x: p.x, y: p.y});
+      if(p.trail.length > CFG.trailLen) p.trail.shift();
+      p.y += p.vy * dt;
+    }
+
+    resolveCollisions();
+    checkGameOver();
+  }
+
+  // Stars
+  for(const s of stars){
+    s.y += s.speed * dt;
+    if(s.y > H){ s.y = -2; s.x = Math.random() * W; }
+  }
+
+  // Particles
+  for(let i = particles.length - 1; i >= 0; i--){
+    const p = particles[i];
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.life -= dt;
+    if(p.life <= 0) particles.splice(i, 1);
+  }
+
+  // Shockwaves
+  for(let i = shockwaves.length - 1; i >= 0; i--){
+    const s = shockwaves[i];
+    s.life -= dt * 3;
+    s.r += (s.maxR - s.r) * dt * 6;
+    if(s.life <= 0) shockwaves.splice(i, 1);
+  }
+
+  // Shake decay
+  if(shake.mag > 0.1){
+    shake.x = (Math.random() - 0.5) * shake.mag * 2;
+    shake.y = (Math.random() - 0.5) * shake.mag * 2;
+    shake.mag *= Math.pow(0.001, dt); // fast decay
+    shake.mag -= CFG.shakeDecay * dt;
+    if(shake.mag < 0) shake.mag = 0;
+  } else {
+    shake.x = 0; shake.y = 0; shake.mag = 0;
+  }
+
+  render();
+}
+
+// ── Render ──
+function render(){
+  ctx.save();
+  ctx.translate(shake.x, shake.y);
+
+  // Background gradient
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, '#05051a');
+  bg.addColorStop(0.5, '#0a0a2e');
+  bg.addColorStop(1, '#10103a');
+  ctx.fillStyle = bg;
+  ctx.fillRect(-10, -10, W + 20, H + 20);
+
+  // Stars
+  for(const s of stars){
+    ctx.globalAlpha = s.bright;
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // Shockwaves
+  for(const s of shockwaves){
+    ctx.globalAlpha = s.life * 0.5;
+    ctx.strokeStyle = s.color;
+    ctx.lineWidth = 2 + s.life * 3;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  // Particles
+  for(const p of particles){
+    const alpha = p.life / p.maxLife;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r * alpha, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  if(state === 'playing' || state === 'gameover'){
+    // Asteroids
+    for(const a of asteroids){
+      ctx.save();
+      ctx.translate(a.x, a.y);
+      ctx.rotate(a.rot);
+
+      // Body
+      const aHue = a.level === 1 ? 0 : a.level === 2 ? 30 : a.level === 3 ? 50 : 280;
+      const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, a.r);
+      grad.addColorStop(0, `hsl(${aHue},50%,45%)`);
+      grad.addColorStop(1, `hsl(${aHue},40%,25%)`);
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      drawAsteroidShape(ctx, a.r);
+      ctx.fill();
+
+      // Armor ring
+      if(a.maxHp >= 2){
+        ctx.strokeStyle = a.hp >= 2 ? '#66ddff' : '#664444';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(0, 0, a.r + 3, 0, Math.PI * 2);
+        ctx.stroke();
+        if(a.hp >= 2){
+          ctx.strokeStyle = 'rgba(100,220,255,0.3)';
+          ctx.lineWidth = 5;
+          ctx.stroke();
+        }
+      }
+
+      // Level number
+      ctx.fillStyle = '#fff';
+      ctx.font = `bold ${Math.round(a.r * 0.7)}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(a.level, 0, 1);
+
+      ctx.restore();
+    }
+
+    // Projectiles + trails
+    for(const p of projectiles){
+      // Trail
+      for(let i = 0; i < p.trail.length; i++){
+        const t = p.trail[i];
+        const alpha = (i + 1) / p.trail.length * 0.4;
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = `hsl(${hue},90%,65%)`;
+        ctx.beginPath();
+        ctx.arc(t.x, t.y, CFG.projRadius * 0.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+
+      // Orb
+      const oGrad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, CFG.projRadius + 2);
+      oGrad.addColorStop(0, '#fff');
+      oGrad.addColorStop(0.4, `hsl(${hue},90%,65%)`);
+      oGrad.addColorStop(1, `hsla(${hue},90%,50%,0)`);
+      ctx.fillStyle = oGrad;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, CFG.projRadius + 2, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Level on orb
+      ctx.fillStyle = '#fff';
+      ctx.font = `bold 10px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(p.level, p.x, p.y + 1);
+    }
+
+    // Ship
+    drawShip(ship.x, ship.y);
+
+    // HUD
+    drawHUD();
+  }
+
+  // Overlays
+  if(state === 'start') drawStartScreen();
+  if(state === 'gameover') drawGameOver();
+
+  ctx.restore();
+}
+
+function drawAsteroidShape(c, r){
+  const pts = 8;
+  for(let i = 0; i < pts; i++){
+    const a = (i / pts) * Math.PI * 2;
+    const jr = r * (0.8 + ((i * 7 + 3) % 5) / 10 * 0.4);
+    const px = Math.cos(a) * jr;
+    const py = Math.sin(a) * jr;
+    if(i === 0) c.moveTo(px, py);
+    else c.lineTo(px, py);
+  }
+  c.closePath();
+}
+
+function drawShip(x, y){
+  ctx.save();
+  ctx.translate(x, y);
+
+  // Engine glow
+  const eg = ctx.createRadialGradient(0, ship.h * 0.4, 0, 0, ship.h * 0.4, 18);
+  eg.addColorStop(0, `hsla(${hue},90%,65%,0.5)`);
+  eg.addColorStop(1, `hsla(${hue},90%,65%,0)`);
+  ctx.fillStyle = eg;
+  ctx.beginPath();
+  ctx.arc(0, ship.h * 0.4, 18, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Body
+  ctx.fillStyle = '#dde';
+  ctx.beginPath();
+  ctx.moveTo(0, -ship.h / 2);
+  ctx.lineTo(-ship.w / 2, ship.h / 2);
+  ctx.lineTo(-ship.w / 4, ship.h / 3);
+  ctx.lineTo(0, ship.h / 2.5);
+  ctx.lineTo(ship.w / 4, ship.h / 3);
+  ctx.lineTo(ship.w / 2, ship.h / 2);
+  ctx.closePath();
+  ctx.fill();
+
+  // Cockpit
+  ctx.fillStyle = `hsl(${hue},70%,55%)`;
+  ctx.beginPath();
+  ctx.arc(0, -2, 5, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawHUD(){
+  // Score
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 22px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText(score, 14, 14);
+
+  // Combo
+  if(combo > 0){
+    const cAlpha = Math.min(1, 0.6 + combo * 0.1);
+    ctx.globalAlpha = cAlpha;
+    ctx.fillStyle = `hsl(${(hue + combo * 30) % 360},90%,65%)`;
+    ctx.font = 'bold 16px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(`x${combo} COMBO`, W - 14, 14);
+
+    // Combo bar glow
+    const barW = Math.min(combo * 20, W - 28);
+    ctx.fillStyle = `hsla(${(hue + combo * 30) % 360},90%,55%,0.3)`;
+    ctx.fillRect(14, 40, barW, 4);
+    ctx.globalAlpha = 1;
+  }
+
+  // Projectile level indicator
+  ctx.fillStyle = `hsl(${hue},80%,60%)`;
+  ctx.font = 'bold 13px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText(`ORB LV.${projLevel}`, 14, 48);
+
+  // High score
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.font = '12px sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillText(`BEST: ${highScore}`, W - 14, 36);
+}
+
+function drawStartScreen(){
+  // Dim
+  ctx.fillStyle = 'rgba(5,5,26,0.7)';
+  ctx.fillRect(0, 0, W, H);
+
+  // Title
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 36px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('ASTRO SPLIT', W / 2, H * 0.3);
+
+  // Subtitle
+  ctx.fillStyle = `hsl(${hue},80%,65%)`;
+  ctx.font = '14px sans-serif';
+  ctx.fillText('Merge orbs. Clear asteroids. Survive.', W / 2, H * 0.3 + 38);
+
+  // Tap prompt
+  const pulse = 0.6 + Math.sin(Date.now() / 400) * 0.4;
+  ctx.globalAlpha = pulse;
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 18px sans-serif';
+  ctx.fillText('TAP TO START', W / 2, H * 0.55);
+  ctx.globalAlpha = 1;
+
+  // High score
+  if(highScore > 0){
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.font = '14px sans-serif';
+    ctx.fillText(`High Score: ${highScore}`, W / 2, H * 0.63);
+  }
+
+  // Controls
+  ctx.fillStyle = 'rgba(255,255,255,0.3)';
+  ctx.font = '12px sans-serif';
+  ctx.fillText('Tap / Space / Enter to fire', W / 2, H * 0.78);
+}
+
+function drawGameOver(){
+  // Dim
+  ctx.fillStyle = 'rgba(5,5,26,0.75)';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.fillStyle = '#ff4455';
+  ctx.font = 'bold 32px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('GAME OVER', W / 2, H * 0.28);
+
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 44px sans-serif';
+  ctx.fillText(score, W / 2, H * 0.37);
+
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.font = '14px sans-serif';
+  ctx.fillText(`Best combo: x${maxCombo}`, W / 2, H * 0.44);
+
+  if(score >= highScore && score > 0){
+    ctx.fillStyle = '#ffdd44';
+    ctx.font = 'bold 16px sans-serif';
+    ctx.fillText('NEW HIGH SCORE!', W / 2, H * 0.50);
+  } else {
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.font = '14px sans-serif';
+    ctx.fillText(`High Score: ${highScore}`, W / 2, H * 0.50);
+  }
+
+  // Retry
+  const pulse = 0.6 + Math.sin(Date.now() / 400) * 0.4;
+  ctx.globalAlpha = pulse;
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 18px sans-serif';
+  ctx.fillText('TAP TO RETRY', W / 2, H * 0.60);
+  ctx.globalAlpha = 1;
+
+  // Share button
+  drawShareButton(W / 2, H * 0.70);
+}
+
+// ── Share button ──
+let shareBtn = {x:0, y:0, w:180, h:36};
+
+function drawShareButton(x, y){
+  shareBtn.x = x - shareBtn.w / 2;
+  shareBtn.y = y - shareBtn.h / 2;
+
+  const grad = ctx.createLinearGradient(x - 90, y, x + 90, y);
+  grad.addColorStop(0, `hsl(${hue},70%,45%)`);
+  grad.addColorStop(1, `hsl(${(hue + 60) % 360},70%,45%)`);
+  ctx.fillStyle = grad;
+
+  ctx.beginPath();
+  roundRect(ctx, shareBtn.x, shareBtn.y, shareBtn.w, shareBtn.h, 18);
+  ctx.fill();
+
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 13px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('Challenge a friend', x, y + 1);
+}
+
+function roundRect(c, x, y, w, h, r){
+  c.moveTo(x + r, y);
+  c.lineTo(x + w - r, y);
+  c.quadraticCurveTo(x + w, y, x + w, y + r);
+  c.lineTo(x + w, y + h - r);
+  c.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  c.lineTo(x + r, y + h);
+  c.quadraticCurveTo(x, y + h, x, y + h - r);
+  c.lineTo(x, y + r);
+  c.quadraticCurveTo(x, y, x + r, y);
+}
+
+function doShare(){
+  const url = 'https://balinti.github.io/astro-split/?utm_source=share&utm_medium=button&utm_campaign=challenge';
+  const text = `I scored ${score} in Astro Split! Can you beat me?`;
+  if(navigator.share){
+    navigator.share({title:'Astro Split', text, url}).catch(()=>{});
+  } else {
+    navigator.clipboard.writeText(text + ' ' + url).then(()=>{
+      showCopyToast();
+    }).catch(()=>{});
+  }
+}
+
+let copyToast = 0;
+function showCopyToast(){ copyToast = 2; }
+
+// ── Input ──
+function handleTap(px, py){
+  if(state === 'start'){
+    state = 'playing';
+    initGame();
+    return;
+  }
+  if(state === 'gameover'){
+    // Check share button
+    if(px >= shareBtn.x && px <= shareBtn.x + shareBtn.w &&
+       py >= shareBtn.y && py <= shareBtn.y + shareBtn.h){
+      doShare();
+      return;
+    }
+    state = 'playing';
+    initGame();
+    return;
+  }
+  if(state === 'playing'){
+    fire();
+  }
+}
+
+canvas.addEventListener('pointerdown', function(e){
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const px = (e.clientX - rect.left) * (W / rect.width);
+  const py = (e.clientY - rect.top) * (H / rect.height);
+  handleTap(px, py);
+});
+
+document.addEventListener('keydown', function(e){
+  if(e.code === 'Space' || e.code === 'Enter'){
+    e.preventDefault();
+    handleTap(W / 2, H / 2);
+  }
+});
+
+// ── Copy toast render (called in render) ──
+// We integrate into the game over screen
+
+// ── Boot ──
+loadHS();
+resize();
+lastTime = performance.now() / 1000;
+requestAnimationFrame(update);
+
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Cactus Clash - Free HTML5 Game</title>
+<meta name="description" content="Play Cactus Clash - Swipe direction to dodge spikes and enemies in a fast-paced desert cactus arena, boosting combos.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#1a0a2e">
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="Cactus Clash - Free HTML5 Game">
+<meta property="og:description" content="Play Cactus Clash - Dodge spikes and survive in this fast-paced desert cactus arena!">
+<meta property="og:url" content="https://balinti.github.io/cactus-clash/">
+<meta property="og:image" content="https://balinti.github.io/cactus-clash/preview.png">
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Cactus Clash - Free HTML5 Game">
+<meta name="twitter:description" content="Play Cactus Clash - Dodge spikes and survive in this fast-paced desert cactus arena!">
+<meta name="twitter:image" content="https://balinti.github.io/cactus-clash/preview.png">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#0d0515;display:flex;align-items:center;justify-content:center;font-family:'Segoe UI',Arial,sans-serif}
+#wrap{position:relative;width:min(420px,100vw);height:min(750px,100vh);overflow:hidden}
+canvas{display:block;width:100%;height:100%}
+#ui{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none}
+#btn-area{position:absolute;bottom:80px;left:0;width:100%;display:flex;justify-content:center;gap:12px;pointer-events:auto;opacity:0;transition:opacity 0.3s}
+#btn-area.visible{opacity:1}
+.game-btn{background:rgba(255,255,255,0.12);border:1.5px solid rgba(255,255,255,0.3);color:#fff;padding:10px 22px;border-radius:24px;font-size:14px;cursor:pointer;backdrop-filter:blur(4px);transition:background 0.2s}
+.game-btn:hover{background:rgba(255,255,255,0.22)}
+#seo-text{position:absolute;bottom:-9999px;left:0;width:1px;height:1px;overflow:hidden;visibility:hidden}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <div id="ui">
+    <div id="btn-area">
+      <button class="game-btn" id="btn-retry">Retry</button>
+      <button class="game-btn" id="btn-share">Share</button>
+    </div>
+  </div>
+</div>
+<div id="seo-text">
+  <h1>Cactus Clash - Spine Snap</h1>
+  <p>Controls: Tap or press Space/Enter to rotate your cactus 90 degrees clockwise. Dodge incoming spike sweeps. Survive as long as possible. Time your rotation perfectly into danger and back out for PERFECT bonuses. Start with 3 spines as health. Free HTML5 arcade game playable in any browser.</p>
+</div>
+<script>
+(function(){
+'use strict';
+
+// --- Constants ---
+const LS_KEY = 'ccss_highscore_v1';
+const TWO_PI = Math.PI*2;
+const HALF_PI = Math.PI/2;
+
+// --- DOM ---
+const wrap = document.getElementById('wrap');
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d', {alpha: false});
+const btnArea = document.getElementById('btn-area');
+const btnRetry = document.getElementById('btn-retry');
+const btnShare = document.getElementById('btn-share');
+
+// --- State ---
+let W, H, DPR;
+let state = 'start'; // 'start','playing','gameover'
+let runTime = 0;
+let score = 0;
+let bestScore = parseInt(localStorage.getItem(LS_KEY)||'0');
+let baseHue = 100;
+let hueSpeed = 6; // deg/sec
+
+// Player
+let playerQ = 0; // 0..3 quadrant index
+let spines = 3;
+let lastRotTime = -9999;
+let lastRotFromQ = -1;
+let streak = 0;
+let comboHeat = 0; // 0..1
+
+// Beat system
+let beatTimer = 0;
+let currentBeat = null; // {dangerQs:[], teleT, gapT, interval, phase}
+let beatPhase = 'idle'; // 'idle','tele','gap','impact','post'
+let beatPhaseTimer = 0;
+let perfectEligible = false;
+let perfectPoints = 0;
+
+// Shake
+let shakeAmt = 0;
+let shakeDecay = 8;
+
+// Time slow
+let timeSlow = 1;
+let timeSlowDur = 0;
+
+// Particles
+const MAX_PARTS = 280;
+const parts = [];
+for(let i=0;i<MAX_PARTS;i++) parts.push({active:false});
+
+// Shockwaves
+const MAX_WAVES = 12;
+const waves = [];
+for(let i=0;i<MAX_WAVES;i++) waves.push({active:false});
+
+// Pop texts
+const pops = [];
+
+// Spine animation
+const spineAnims = []; // {q, t, type:'break'|'restore'}
+
+// Cactus body anim
+let cactusSquash = 1; // scale Y
+let cactusSquashV = 0;
+
+// --- Resize ---
+function resize(){
+  const r = wrap.getBoundingClientRect();
+  W = r.width; H = r.height;
+  DPR = Math.min(window.devicePixelRatio||1, 2);
+  canvas.width = Math.round(W*DPR);
+  canvas.height = Math.round(H*DPR);
+  canvas.style.width = W+'px';
+  canvas.style.height = H+'px';
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+resize();
+window.addEventListener('resize', resize);
+
+// --- Geometry helpers ---
+function rootR(){ return Math.min(W,H)*0.06; }
+function cactusR(){ return Math.min(W,H)*0.045; }
+function cx(){ return W/2; }
+function cy(){ return H/2; }
+function qAngle(q){ return -HALF_PI + q*HALF_PI; }
+function qPos(q){
+  const a = qAngle(q);
+  const r = rootR();
+  return {x: cx()+Math.cos(a)*r, y: cy()+Math.sin(a)*r};
+}
+
+// --- Particle pool ---
+function spawnParticle(x, y, vx, vy, life, size, color, type){
+  for(let i=0;i<MAX_PARTS;i++){
+    const p = parts[i];
+    if(!p.active){
+      p.active=true; p.x=x; p.y=y; p.vx=vx; p.vy=vy;
+      p.life=life; p.maxLife=life; p.size=size; p.color=color; p.type=type||'dot';
+      return;
+    }
+  }
+}
+
+function dustBurst(x, y, col){
+  for(let i=0;i<18;i++){
+    const a = Math.random()*TWO_PI;
+    const spd = 40+Math.random()*90;
+    spawnParticle(x,y, Math.cos(a)*spd, Math.sin(a)*spd, 0.45+Math.random()*0.4, 3+Math.random()*4, col,'dust');
+  }
+}
+
+function sparkBurst(x, y){
+  for(let i=0;i<28;i++){
+    const a = Math.random()*TWO_PI;
+    const spd = 60+Math.random()*140;
+    const hue = 45+Math.random()*60;
+    spawnParticle(x,y, Math.cos(a)*spd, Math.sin(a)*spd, 0.5+Math.random()*0.5, 2+Math.random()*3, `hsl(${hue},100%,70%)`,'spark');
+  }
+}
+
+function shardBurst(x, y){
+  for(let i=0;i<14;i++){
+    const a = Math.random()*TWO_PI;
+    const spd = 30+Math.random()*70;
+    spawnParticle(x,y, Math.cos(a)*spd, Math.sin(a)*spd, 0.6+Math.random()*0.5, 4+Math.random()*4, `hsl(${100+Math.random()*60},70%,55%)`,'shard');
+  }
+}
+
+function spawnWave(x, y, col){
+  for(let i=0;i<MAX_WAVES;i++){
+    const w = waves[i];
+    if(!w.active){
+      w.active=true; w.x=x; w.y=y; w.r=0; w.maxR=Math.min(W,H)*0.55;
+      w.life=0.55; w.maxLife=0.55; w.col=col;
+      return;
+    }
+  }
+}
+
+function spawnPop(x, y, text, hue){
+  pops.push({x,y,text,hue,life:1.1,maxLife:1.1,vy:-55,sx:1.3,sy:0.7});
+}
+
+// --- Beat logic ---
+function difficultyD(t){
+  return 1-Math.exp(-t/22);
+}
+
+function beatInterval(d){ return 1.05 - 0.38*d; }
+function teleT(d){ return 0.62 - 0.26*d; }
+function gapT(){ return 0.06; }
+
+function clamp(v,mn,mx){ return v<mn?mn:v>mx?mx:v; }
+function perfectWindow(d){ return clamp(0.16-0.06*d, 0.07, 0.16); }
+
+function choosePlan(t){
+  const rng = Math.random();
+  if(t<10){
+    return {type:'single'};
+  } else if(t<25){
+    return rng<0.10 ? {type:'double'} : {type:'single'};
+  } else if(t<45){
+    if(rng<0.65) return {type:'single'};
+    if(rng<0.95) return {type:'double'};
+    return {type:'feint'};
+  } else {
+    if(rng<0.45) return {type:'single'};
+    if(rng<0.85) return {type:'double'};
+    if(rng<0.95) return {type:'feint'};
+    return {type:'allbutone'};
+  }
+}
+
+function buildBeat(t){
+  const plan = choosePlan(t);
+  let dangerQs = [];
+  if(plan.type==='single'){
+    // pick quadrant that isn't player (prefer not current)
+    const opts = [0,1,2,3].filter(q=>q!==playerQ);
+    dangerQs = [opts[Math.floor(Math.random()*opts.length)]];
+  } else if(plan.type==='double'){
+    // two adjacent quadrants
+    const start = Math.floor(Math.random()*4);
+    dangerQs = [start, (start+1)%4];
+  } else if(plan.type==='feint'){
+    dangerQs = []; // no damage
+  } else if(plan.type==='allbutone'){
+    const safe = Math.floor(Math.random()*4);
+    dangerQs = [0,1,2,3].filter(q=>q!==safe);
+  }
+  return {dangerQs, type:plan.type};
+}
+
+// --- Game reset ---
+function startGame(){
+  runTime=0; score=0; baseHue=100;
+  playerQ=0; spines=3; lastRotTime=-9999; lastRotFromQ=-1;
+  streak=0; comboHeat=0;
+  beatTimer=0; currentBeat=null; beatPhase='idle'; beatPhaseTimer=0;
+  perfectEligible=false; perfectPoints=0;
+  shakeAmt=0; timeSlow=1; timeSlowDur=0;
+  pops.length=0; spineAnims.length=0;
+  cactusSquash=1; cactusSquashV=0;
+  for(let p of parts) p.active=false;
+  for(let w of waves) w.active=false;
+  state='playing';
+  btnArea.classList.remove('visible');
+}
+
+function endGame(){
+  state='gameover';
+  score = Math.floor(runTime*10*(1+0.35*difficultyD(runTime)) + perfectPoints);
+  if(score>bestScore){ bestScore=score; localStorage.setItem(LS_KEY,bestScore); }
+  shakeAmt=10;
+  dustBurst(cx(),cy(),'#ff6a00');
+  btnArea.classList.add('visible');
+}
+
+// --- Input ---
+function handleInput(){
+  if(state==='start'){ startGame(); return; }
+  if(state==='gameover'){ startGame(); return; }
+  if(state==='playing'){
+    const prevQ = playerQ;
+    lastRotFromQ = prevQ;
+    lastRotTime = runTime;
+    playerQ = (playerQ+1)%4;
+    // squash
+    cactusSquash=0.65; cactusSquashV=8;
+  }
+}
+
+canvas.addEventListener('pointerdown', e=>{ e.preventDefault(); handleInput(); },{passive:false});
+document.addEventListener('keydown', e=>{
+  if(e.code==='Space'||e.code==='Enter'){ e.preventDefault(); handleInput(); }
+});
+btnRetry.addEventListener('click', e=>{ e.stopPropagation(); startGame(); });
+btnShare.addEventListener('click', e=>{
+  e.stopPropagation();
+  const txt = `I survived ${Math.round(runTime)}s in Cactus Clash! Score: ${score}. Can you beat me? https://balinti.github.io/cactus-clash/`;
+  if(navigator.share){
+    navigator.share({title:'Cactus Clash',text:txt,url:'https://balinti.github.io/cactus-clash/'}).catch(()=>{});
+  } else {
+    navigator.clipboard.writeText(txt).then(()=>{ btnShare.textContent='Copied!'; setTimeout(()=>btnShare.textContent='Share',1500); }).catch(()=>{});
+  }
+});
+
+// --- Drawing helpers ---
+function drawSector(x, y, r0, r1, a0, a1, col){
+  ctx.beginPath();
+  ctx.arc(x,y,r1,a0,a1);
+  ctx.arc(x,y,r0,a1,a0,true);
+  ctx.closePath();
+  ctx.fillStyle=col;
+  ctx.fill();
+}
+
+function drawCactus(x, y, r, hue, squashY, spineCount){
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(1, squashY);
+
+  // Body
+  const grad = ctx.createRadialGradient(-r*0.25,-r*0.25,r*0.1,0,0,r);
+  const heat = Math.min(comboHeat,1);
+  const bodyHue = hue + heat*40;
+  grad.addColorStop(0,`hsl(${bodyHue},70%,68%)`);
+  grad.addColorStop(1,`hsl(${bodyHue},55%,35%)`);
+  ctx.beginPath();
+  ctx.ellipse(0,0,r,r*1.15,0,0,TWO_PI);
+  ctx.fillStyle=grad;
+  ctx.fill();
+
+  // Eyes
+  ctx.fillStyle='rgba(0,0,0,0.7)';
+  ctx.beginPath(); ctx.ellipse(-r*0.25,-r*0.18,r*0.12,r*0.15,0,0,TWO_PI); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(r*0.25,-r*0.18,r*0.12,r*0.15,0,0,TWO_PI); ctx.fill();
+  ctx.fillStyle='#fff';
+  ctx.beginPath(); ctx.ellipse(-r*0.2,-r*0.22,r*0.05,r*0.06,0,0,TWO_PI); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(r*0.3,-r*0.22,r*0.05,r*0.06,0,0,TWO_PI); ctx.fill();
+
+  // Mouth
+  ctx.strokeStyle='rgba(0,0,0,0.5)'; ctx.lineWidth=r*0.08;
+  ctx.beginPath(); ctx.arc(0,r*0.2,r*0.2,0.2,Math.PI-0.2); ctx.stroke();
+
+  // Arms
+  ctx.strokeStyle=`hsl(${bodyHue},55%,42%)`;
+  ctx.lineWidth=r*0.22;
+  ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(-r,r*0.1); ctx.lineTo(-r*1.5,-r*0.3); ctx.lineTo(-r*1.5,-r*0.7); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(r,r*0.1); ctx.lineTo(r*1.5,-r*0.3); ctx.lineTo(r*1.5,-r*0.7); ctx.stroke();
+
+  ctx.restore();
+
+  // Spines (drawn separate, no squash transform)
+  const spineAngles = [-HALF_PI, 0, HALF_PI, Math.PI, -HALF_PI*0.5, HALF_PI*0.5, Math.PI*1.5, -Math.PI*0.25];
+  for(let i=0;i<Math.min(spineCount,8);i++){
+    const sa = spineAngles[i];
+    const sx = x+Math.cos(sa)*(r+2);
+    const sy = y+Math.sin(sa)*(r+2);
+    const ex = x+Math.cos(sa)*(r+r*0.45);
+    const ey = y+Math.sin(sa)*(r+r*0.45);
+    ctx.strokeStyle=`hsl(${bodyHue},60%,75%)`;
+    ctx.lineWidth=2;
+    ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(sx,sy); ctx.lineTo(ex,ey); ctx.stroke();
+  }
+}
+
+function drawRootSpot(x, y, r, q, isPlayer){
+  ctx.beginPath();
+  ctx.arc(x,y,r,0,TWO_PI);
+  const hue = baseHue+q*30;
+  if(isPlayer){
+    ctx.fillStyle=`hsl(${hue},55%,30%)`;
+    ctx.strokeStyle=`hsl(${hue},80%,65%)`;
+    ctx.lineWidth=2.5;
+    ctx.fill();
+    ctx.stroke();
+  } else {
+    ctx.fillStyle=`hsla(${hue},30%,20%,0.7)`;
+    ctx.strokeStyle=`hsla(${hue},50%,45%,0.5)`;
+    ctx.lineWidth=1.5;
+    ctx.fill();
+    ctx.stroke();
+  }
+}
+
+// --- Main loop ---
+let lastT = 0;
+function loop(ts){
+  requestAnimationFrame(loop);
+  const rawDt = Math.min((ts-lastT)/1000, 0.033);
+  lastT = ts;
+
+  // Apply time slow
+  const dt = rawDt * timeSlow;
+  if(timeSlowDur>0){
+    timeSlowDur -= rawDt;
+    if(timeSlowDur<=0){ timeSlow=1; timeSlowDur=0; }
+  }
+
+  // Update shake
+  shakeAmt = Math.max(0, shakeAmt - shakeDecay*rawDt*8);
+
+  // Update cactus squash spring
+  cactusSquashV += (1-cactusSquash)*18 - cactusSquashV*5;
+  cactusSquash += cactusSquashV * rawDt;
+  cactusSquash = clamp(cactusSquash, 0.5, 1.6);
+
+  // Update hue
+  baseHue += hueSpeed * dt;
+
+  // --- Game logic ---
+  if(state==='playing'){
+    runTime += dt;
+    const d = difficultyD(runTime);
+
+    // Combo heat decay
+    comboHeat = Math.max(0, comboHeat - dt*0.15);
+
+    // Beat system
+    beatTimer -= dt;
+    if(beatTimer<=0 && beatPhase==='idle'){
+      // Start new beat
+      currentBeat = buildBeat(runTime);
+      const interval = beatInterval(d);
+      const tT = teleT(d);
+      const gT = gapT();
+      currentBeat.interval = interval;
+      currentBeat.teleT = tT;
+      currentBeat.gapT = gT;
+      currentBeat.teleProgress = 0;
+      beatPhase = 'tele';
+      beatPhaseTimer = tT;
+      perfectEligible = false;
+    }
+
+    if(beatPhase==='tele'){
+      beatPhaseTimer -= dt;
+      currentBeat.teleProgress = 1-(beatPhaseTimer/currentBeat.teleT);
+      if(beatPhaseTimer<=0){
+        beatPhase='impact';
+        beatPhaseTimer=currentBeat.gapT;
+      }
+    } else if(beatPhase==='impact'){
+      beatPhaseTimer -= dt;
+      if(beatPhaseTimer<=0){
+        // IMPACT
+        doImpact(d);
+        beatPhase='post';
+        beatPhaseTimer=0.12;
+        // schedule next beat
+        beatTimer = Math.max(0.1, currentBeat.interval - currentBeat.teleT - currentBeat.gapT - 0.12);
+      }
+    } else if(beatPhase==='post'){
+      beatPhaseTimer -= dt;
+      if(beatPhaseTimer<=0){ beatPhase='idle'; }
+    }
+
+    // Check perfect eligibility: rotation into danger quadrant
+    if(currentBeat && beatPhase==='tele' && currentBeat.dangerQs && currentBeat.dangerQs.length>0){
+      if(lastRotFromQ!==-1 && (runTime-lastRotTime)<perfectWindow(d)){
+        // was last rotated from a danger quadrant? => rotated INTO danger then OUT
+        // perfect: player rotated INTO a danger quadrant within perfectWindow of impact
+        // Actually perfect = last rotation was FROM a dangerQ => means we were in danger then rotated out
+        if(currentBeat.dangerQs.includes(lastRotFromQ)){
+          perfectEligible = true;
+        }
+      }
+    }
+  }
+
+  // --- Update particles ---
+  for(let p of parts){
+    if(!p.active) continue;
+    p.life -= rawDt;
+    if(p.life<=0){ p.active=false; continue; }
+    p.x += p.vx*rawDt;
+    p.y += p.vy*rawDt;
+    p.vx *= 0.88;
+    p.vy *= 0.88;
+    p.vy += 80*rawDt; // gravity
+  }
+
+  // Update waves
+  for(let w of waves){
+    if(!w.active) continue;
+    w.life -= rawDt;
+    if(w.life<=0){ w.active=false; continue; }
+    w.r += (w.maxR/w.maxLife)*rawDt*1.4;
+  }
+
+  // Update pops
+  for(let i=pops.length-1;i>=0;i--){
+    const p=pops[i];
+    p.life-=rawDt;
+    if(p.life<=0){ pops.splice(i,1); continue; }
+    p.y+=p.vy*rawDt;
+    p.vy*=0.92;
+    const t=p.life/p.maxLife;
+    p.sx=1+0.3*Math.sin(t*Math.PI*2);
+    p.sy=1-0.3*Math.sin(t*Math.PI*2);
+  }
+
+  // Update spine anims
+  for(let i=spineAnims.length-1;i>=0;i--){
+    const s=spineAnims[i];
+    s.t-=rawDt;
+    if(s.t<=0) spineAnims.splice(i,1);
+  }
+
+  // --- Render ---
+  render();
+}
+
+function doImpact(d){
+  if(!currentBeat) return;
+
+  const hit = currentBeat.dangerQs.includes(playerQ);
+  const pPos = qPos(playerQ);
+  const impactCol = `hsl(${baseHue+120},80%,60%)`;
+
+  // Shockwave at center
+  spawnWave(cx(), cy(), impactCol);
+  dustBurst(cx(), cy(), impactCol);
+
+  if(hit){
+    if(spines>0){
+      spines--;
+      spineAnims.push({q:playerQ, t:0.7, type:'break'});
+      shakeAmt=6;
+      shardBurst(pPos.x, pPos.y);
+      timeSlow=0.45; timeSlowDur=0.07;
+      cactusSquash=0.55; cactusSquashV=10;
+      streak=0; comboHeat=0;
+      spawnPop(cx(), cy()-40, 'OUCH!', 0);
+    } else {
+      endGame();
+      return;
+    }
+  } else {
+    // No hit
+    if(perfectEligible){
+      // perfect!
+      streak++;
+      const bonusN = 1+0.25*Math.min(streak,12);
+      const bonus = Math.floor(50*bonusN);
+      perfectPoints += bonus;
+      comboHeat = Math.min(1, comboHeat+0.25);
+      sparkBurst(pPos.x, pPos.y);
+      shakeAmt=3;
+      timeSlow=0.35; timeSlowDur=0.065;
+      cactusSquash=1.35; cactusSquashV=-5;
+      spawnPop(cx(), cy()-50, `PERFECT x${streak}`, 55);
+    } else {
+      // safe dodge
+      streak=Math.max(0,streak-0); // maintain streak on safe dodge
+    }
+  }
+  perfectEligible = false;
+  lastRotTime = -9999;
+}
+
+function render(){
+  // Apply shake
+  const sx = shakeAmt>0 ? (Math.random()-0.5)*shakeAmt : 0;
+  const sy = shakeAmt>0 ? (Math.random()-0.5)*shakeAmt : 0;
+  ctx.save();
+  ctx.translate(sx, sy);
+
+  // Background
+  const bgGrad = ctx.createLinearGradient(0,0,0,H);
+  bgGrad.addColorStop(0, `hsl(${baseHue+220},45%,6%)`);
+  bgGrad.addColorStop(1, `hsl(${baseHue+180},35%,10%)`);
+  ctx.fillStyle=bgGrad;
+  ctx.fillRect(0,0,W,H);
+
+  // Combo pulse
+  if(comboHeat>0.1){
+    ctx.save();
+    ctx.globalAlpha=comboHeat*0.08;
+    ctx.fillStyle=`hsl(${baseHue+40},80%,55%)`;
+    ctx.fillRect(0,0,W,H);
+    ctx.restore();
+  }
+
+  // Ground circle
+  ctx.beginPath();
+  ctx.arc(cx(),cy(),rootR()*2.2,0,TWO_PI);
+  ctx.fillStyle=`hsla(${baseHue+30},40%,12%,0.8)`;
+  ctx.fill();
+  ctx.strokeStyle=`hsla(${baseHue+30},60%,30%,0.4)`;
+  ctx.lineWidth=1;
+  ctx.stroke();
+
+  if(state==='playing'||state==='gameover'){
+    // Draw telegraph wedges
+    if(currentBeat && (beatPhase==='tele'||beatPhase==='impact')){
+      const prog = clamp(currentBeat.teleProgress||0, 0, 1);
+      for(const dq of currentBeat.dangerQs){
+        const a = qAngle(dq);
+        const a0 = a - HALF_PI/2;
+        const a1 = a + HALF_PI/2;
+        const r0 = Math.min(W,H)*0.12;
+        const r1 = Math.min(W,H)*0.48;
+
+        // Color shifts yellow->orange->red
+        let wHue, wSat, wLit, alpha;
+        if(currentBeat.type==='feint'){
+          wHue=55; wSat=90; wLit=65; alpha=0.18+prog*0.1;
+        } else {
+          wHue = 60 - prog*60; // 60=yellow, 0=red
+          wSat = 90+prog*10;
+          wLit = 60-prog*10;
+          alpha = 0.12+prog*0.38;
+        }
+
+        // Pulse on near-impact
+        const pulse = beatPhase==='impact' ? 1 : prog;
+
+        ctx.save();
+        ctx.globalAlpha = alpha*(0.8+0.2*Math.sin(runTime*20));
+        drawSector(cx(),cy(),r0,r1,a0,a1,`hsl(${wHue},${wSat}%,${wLit}%)`);
+
+        // Inner warning ring
+        if(!currentBeat.type==='feint'){
+          ctx.beginPath();
+          ctx.arc(cx(),cy(),r0,a0,a1);
+          ctx.arc(cx(),cy(),r0-4,a1,a0,true);
+          ctx.closePath();
+          ctx.fillStyle=`hsl(${wHue},100%,75%)`;
+          ctx.globalAlpha=alpha*1.5;
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+    }
+
+    // Draw root spots
+    for(let q=0;q<4;q++){
+      const p=qPos(q);
+      drawRootSpot(p.x,p.y,rootR()*0.7, q, q===playerQ);
+    }
+
+    // Draw cactus
+    const pp=qPos(playerQ);
+    drawCactus(pp.x,pp.y,cactusR(),baseHue+60,cactusSquash,spines);
+
+    // Shockwaves
+    for(const w of waves){
+      if(!w.active) continue;
+      const t=w.life/w.maxLife;
+      ctx.save();
+      ctx.globalAlpha=t*0.6;
+      ctx.beginPath();
+      ctx.arc(w.x,w.y,w.r,0,TWO_PI);
+      ctx.strokeStyle=w.col;
+      ctx.lineWidth=3-t*2;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Particles
+    for(const p of parts){
+      if(!p.active) continue;
+      const t=p.life/p.maxLife;
+      ctx.save();
+      ctx.globalAlpha=t;
+      if(p.type==='shard'){
+        ctx.save();
+        ctx.translate(p.x,p.y);
+        ctx.rotate(p.vx*0.05);
+        ctx.fillStyle=p.color;
+        ctx.fillRect(-p.size/2,-p.size/2,p.size,p.size);
+        ctx.restore();
+      } else {
+        ctx.beginPath();
+        ctx.arc(p.x,p.y,p.size*t,0,TWO_PI);
+        ctx.fillStyle=p.color;
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    // Pop texts
+    for(const p of pops){
+      const t=p.life/p.maxLife;
+      ctx.save();
+      ctx.translate(p.x,p.y);
+      ctx.scale(p.sx, p.sy);
+      ctx.globalAlpha=Math.min(1,t*2);
+      ctx.textAlign='center';
+      ctx.textBaseline='middle';
+      ctx.font=`bold ${22+streak*1.5}px 'Segoe UI',Arial`;
+      ctx.fillStyle=`hsl(${p.hue},100%,70%)`;
+      ctx.strokeStyle='rgba(0,0,0,0.6)';
+      ctx.lineWidth=3;
+      ctx.strokeText(p.text,0,0);
+      ctx.fillText(p.text,0,0);
+      ctx.restore();
+    }
+
+    // HUD - Score
+    ctx.save();
+    ctx.textAlign='center';
+    ctx.textBaseline='top';
+    ctx.font=`bold 28px 'Segoe UI',Arial`;
+    ctx.fillStyle=`hsl(${baseHue},80%,80%)`;
+    ctx.strokeStyle='rgba(0,0,0,0.5)'; ctx.lineWidth=3;
+    const displayScore = Math.floor(runTime*10*(1+0.35*difficultyD(runTime))+perfectPoints);
+    ctx.strokeText(displayScore+'', cx(), 18);
+    ctx.fillText(displayScore+'', cx(), 18);
+
+    // Best
+    ctx.font=`14px 'Segoe UI',Arial`;
+    ctx.fillStyle=`hsla(${baseHue},60%,70%,0.7)`;
+    ctx.fillText('BEST: '+bestScore, cx(), 52);
+
+    // Spines HUD
+    for(let i=0;i<3;i++){
+      const sx2 = 18+i*22;
+      const sy2 = 18;
+      const active = i<spines;
+      ctx.beginPath();
+      ctx.moveTo(sx2, sy2+10);
+      ctx.lineTo(sx2-5, sy2+2);
+      ctx.lineTo(sx2, sy2-8);
+      ctx.lineTo(sx2+5, sy2+2);
+      ctx.closePath();
+      ctx.fillStyle = active ? `hsl(${baseHue+60},80%,65%)` : `rgba(255,255,255,0.15)`;
+      ctx.fill();
+    }
+
+    // Timer
+    ctx.font=`12px 'Segoe UI',Arial`;
+    ctx.fillStyle=`hsla(${baseHue},50%,70%,0.5)`;
+    ctx.textAlign='right';
+    ctx.fillText(runTime.toFixed(1)+'s', W-12, 22);
+
+    // Streak
+    if(streak>1){
+      ctx.textAlign='left';
+      ctx.font=`bold ${12+streak}px 'Segoe UI',Arial`;
+      ctx.fillStyle=`hsl(${baseHue+40+streak*5},90%,65%)`;
+      ctx.fillText(`🔥 x${streak}`, 14, 44);
+    }
+    ctx.restore();
+  }
+
+  // Start screen
+  if(state==='start'){
+    // Title card
+    ctx.save();
+    ctx.textAlign='center';
+    ctx.textBaseline='middle';
+
+    // Cactus icon
+    drawCactus(cx(), cy()-60, cactusR()*2, baseHue+60, 1+0.05*Math.sin(lastT*0.002), 8);
+
+    // Title
+    ctx.font=`bold 38px 'Segoe UI',Arial`;
+    ctx.fillStyle=`hsl(${baseHue},85%,75%)`;
+    ctx.strokeStyle='rgba(0,0,0,0.6)'; ctx.lineWidth=4;
+    ctx.strokeText('CACTUS CLASH', cx(), cy()+55);
+    ctx.fillText('CACTUS CLASH', cx(), cy()+55);
+
+    ctx.font=`16px 'Segoe UI',Arial`;
+    ctx.fillStyle=`hsl(${baseHue+40},70%,75%)`;
+    ctx.fillText('SPINE SNAP', cx(), cy()+82);
+
+    // Tap prompt
+    const pulse = 0.7+0.3*Math.sin(lastT*0.003);
+    ctx.globalAlpha=pulse;
+    ctx.font=`18px 'Segoe UI',Arial`;
+    ctx.fillStyle='#ffffff';
+    ctx.fillText('Tap to Start', cx(), cy()+130);
+
+    // Instructions
+    ctx.globalAlpha=0.6;
+    ctx.font=`13px 'Segoe UI',Arial`;
+    ctx.fillStyle='#ccc';
+    ctx.fillText('Tap / Space / Enter to rotate 90°', cx(), cy()+160);
+    ctx.fillText('Dodge the sweeps • Perfect timing = bonus!', cx(), cy()+178);
+
+    if(bestScore>0){
+      ctx.globalAlpha=0.8;
+      ctx.font=`14px 'Segoe UI',Arial`;
+      ctx.fillStyle=`hsl(${baseHue+50},80%,70%)`;
+      ctx.fillText('Best: '+bestScore, cx(), cy()+205);
+    }
+
+    ctx.restore();
+  }
+
+  // Game over screen
+  if(state==='gameover'){
+    ctx.save();
+    // Dim overlay
+    ctx.fillStyle='rgba(0,0,0,0.55)';
+    ctx.fillRect(0,0,W,H);
+
+    ctx.textAlign='center';
+    ctx.textBaseline='middle';
+
+    ctx.font=`bold 36px 'Segoe UI',Arial`;
+    ctx.fillStyle=`hsl(${baseHue},85%,70%)`;
+    ctx.strokeStyle='rgba(0,0,0,0.6)'; ctx.lineWidth=4;
+    ctx.strokeText('GAME OVER', cx(), cy()-70);
+    ctx.fillText('GAME OVER', cx(), cy()-70);
+
+    ctx.font=`bold 52px 'Segoe UI',Arial`;
+    ctx.fillStyle='#ffffff';
+    ctx.strokeText(score+'', cx(), cy()-5);
+    ctx.fillText(score+'', cx(), cy()-5);
+
+    ctx.font=`16px 'Segoe UI',Arial`;
+    ctx.fillStyle=`hsla(${baseHue},60%,75%,0.8)`;
+    ctx.fillText('BEST: '+bestScore, cx(), cy()+40);
+
+    const pulse2 = 0.7+0.3*Math.sin(lastT*0.003);
+    ctx.globalAlpha=pulse2;
+    ctx.font=`18px 'Segoe UI',Arial`;
+    ctx.fillStyle='#fff';
+    ctx.fillText('Tap to Retry', cx(), cy()+85);
+
+    ctx.restore();
+  }
+
+  ctx.restore(); // shake
+}
+
+// Start loop
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

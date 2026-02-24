@@ -1,0 +1,1023 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Astro Glide - Free HTML5 Game</title>
+  <meta name="description" content="Play Astro Glide - Tap to glide between asteroids, creating colorful comet-like trail effects.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a0a1a">
+  <link rel="canonical" href="https://balinti.github.io/astro-glide/">
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Astro Glide - Free HTML5 Game">
+  <meta property="og:description" content="Play Astro Glide - Tap to glide between asteroids, creating colorful comet-like trail effects.">
+  <meta property="og:url" content="https://balinti.github.io/astro-glide/">
+  <meta property="og:image" content="https://balinti.github.io/astro-glide/og.png">
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Astro Glide - Free HTML5 Game">
+  <meta name="twitter:description" content="Play Astro Glide - Tap to glide between asteroids, creating colorful comet-like trail effects.">
+  <meta name="twitter:image" content="https://balinti.github.io/astro-glide/og.png">
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #0a0a1a;
+      display: flex; flex-direction: column;
+      align-items: center;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      color: #e0e0f0;
+      overflow-x: hidden;
+    }
+    #game-wrap {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      height: 100svh;
+      max-height: 750px;
+      flex-shrink: 0;
+      touch-action: manipulation;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      border-radius: 0;
+    }
+    /* Overlays */
+    .overlay {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      background: rgba(5,5,20,0.82);
+      backdrop-filter: blur(4px);
+      border-radius: 0;
+      z-index: 10;
+      cursor: pointer;
+      user-select: none;
+    }
+    .overlay.hidden { display: none; }
+    .overlay h1 {
+      font-size: clamp(2rem, 8vw, 3rem);
+      font-weight: 900;
+      letter-spacing: 0.04em;
+      background: linear-gradient(135deg, #7ee8fa, #80ff72, #f9ca24);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 0.3em;
+      text-align: center;
+    }
+    .overlay .tagline {
+      font-size: clamp(0.85rem, 3.5vw, 1.1rem);
+      color: #9090b8;
+      margin-bottom: 2.2em;
+      text-align: center;
+      padding: 0 1em;
+    }
+    .tap-prompt {
+      font-size: clamp(1rem, 4vw, 1.25rem);
+      color: #fff;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%,100%{opacity:1;transform:scale(1);}
+      50%{opacity:0.55;transform:scale(0.96);}
+    }
+    .score-display {
+      font-size: clamp(1.1rem, 5vw, 1.5rem);
+      color: #f9ca24;
+      font-weight: 800;
+      margin-bottom: 0.3em;
+    }
+    .best-display {
+      font-size: clamp(0.8rem, 3.5vw, 1rem);
+      color: #7ee8fa;
+      margin-bottom: 1.8em;
+    }
+    /* HUD */
+    #hud {
+      position: absolute;
+      top: 14px; left: 0; right: 0;
+      display: flex; justify-content: space-between;
+      padding: 0 18px;
+      pointer-events: none;
+      z-index: 5;
+    }
+    #hud-score {
+      font-size: clamp(1.1rem,4.5vw,1.5rem);
+      font-weight: 900;
+      color: #fff;
+      text-shadow: 0 0 12px rgba(126,232,250,0.8);
+    }
+    #hud-combo {
+      font-size: clamp(0.85rem,3.5vw,1.1rem);
+      font-weight: 700;
+      color: #f9ca24;
+      text-shadow: 0 0 8px rgba(249,202,36,0.7);
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    #hud-combo.show { opacity: 1; }
+    /* Info section below game */
+    #game-info {
+      width: 100%;
+      max-width: 420px;
+      padding: 1.5rem 1.2rem 2rem;
+      color: #8080a0;
+      font-size: 0.88rem;
+      line-height: 1.6;
+    }
+    #game-info h2 { color: #b0b0d0; font-size: 1rem; margin-bottom: 0.5em; }
+    #game-info p { margin-bottom: 1em; }
+    #game-info details { border-top: 1px solid #1e1e3a; padding: 0.5em 0; }
+    #game-info summary { cursor: pointer; color: #a0a0c8; font-weight: 600; list-style: none; }
+    #game-info summary::before { content: '+ '; }
+    #game-info details[open] summary::before { content: '- '; }
+    #game-info details p { margin: 0.4em 0 0; padding-left: 0.8em; }
+    .controls-list { list-style: none; margin-bottom: 1em; }
+    .controls-list li::before { content: '▸ '; color: #7ee8fa; }
+  </style>
+</head>
+<body>
+  <div id="game-wrap">
+    <canvas id="c"></canvas>
+    <!-- HUD -->
+    <div id="hud">
+      <span id="hud-score">0</span>
+      <span id="hud-combo" id="hud-combo"></span>
+    </div>
+    <!-- Start overlay -->
+    <div class="overlay" id="overlay-start">
+      <h1>Astro Glide</h1>
+      <p class="tagline">Orbit ✦ Hop ✦ Survive</p>
+      <p class="tap-prompt">TAP TO START</p>
+    </div>
+    <!-- Game over overlay -->
+    <div class="overlay hidden" id="overlay-gameover">
+      <h1>Astro Glide</h1>
+      <p class="score-display" id="go-score">Score: 0</p>
+      <p class="best-display" id="go-best">Best: 0</p>
+      <p class="tap-prompt">TAP TO RETRY</p>
+    </div>
+  </div>
+
+  <!-- SEO content below game -->
+  <section id="game-info" aria-label="Game information">
+    <h2>About Astro Glide</h2>
+    <p>
+      Astro Glide is a hyper-casual arcade game where you pilot a tiny spaceship through a procedurally
+      generated asteroid field. Tap to detach from your current orbit and slingshot to the next asteroid.
+      Thread through tight gate gaps for Perfect bonuses, chain combos, and see how far you can survive
+      as the asteroid belt speeds up around you.
+    </p>
+    <h2>Controls</h2>
+    <ul class="controls-list">
+      <li>Tap / Click — hop to the next highlighted asteroid</li>
+      <li>Space / Enter — same as tap (desktop)</li>
+      <li>Avoid asteroid edges and blocker pebbles</li>
+    </ul>
+    <details>
+      <summary>How do gates work?</summary>
+      <p>Gates are gaps between paired asteroids. Passing through the center earns a Perfect bonus and increases your combo multiplier. Passing off-center is OK but resets your combo.</p>
+    </details>
+    <details>
+      <summary>What are decoy asteroids?</summary>
+      <p>Decoy asteroids (dim purple rings) are landable but give fewer points and place you on a trickier route. Skilled players avoid them for high-score runs.</p>
+    </details>
+    <details>
+      <summary>How is difficulty calculated?</summary>
+      <p>Scroll speed, orbit speed, and hop velocity all increase with time. Gate gaps narrow and pebble obstacles appear more frequently as you survive longer.</p>
+    </details>
+    <details>
+      <summary>Does the game save my score?</summary>
+      <p>Yes — your best score is saved locally in your browser using localStorage and displayed on the game-over screen.</p>
+    </details>
+    <details>
+      <summary>Does it work on mobile?</summary>
+      <p>Absolutely. Astro Glide is designed for one-handed mobile play with touch input optimized for smooth response and no accidental zooming.</p>
+    </details>
+    <details>
+      <summary>Can I play offline?</summary>
+      <p>Yes — the game is fully self-contained in a single HTML file with no external dependencies, so it works offline once loaded.</p>
+    </details>
+  </section>
+
+<script>
+(function(){
+'use strict';
+
+// ── DOM refs ──────────────────────────────────────────────────────────────────
+const canvas   = document.getElementById('c');
+const ctx      = canvas.getContext('2d');
+const wrap     = document.getElementById('game-wrap');
+const overlayStart = document.getElementById('overlay-start');
+const overlayGO    = document.getElementById('overlay-gameover');
+const hudScore     = document.getElementById('hud-score');
+const hudCombo     = document.getElementById('hud-combo');
+const goScore      = document.getElementById('go-score');
+const goBest       = document.getElementById('go-best');
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+const LS_KEY = 'astroglide_best';
+const MAX_DPR = 2;
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let W, H, dpr;
+let state = 'start'; // 'start' | 'playing' | 'gameover'
+let lastTime = 0;
+let rafId = null;
+
+// Game variables (reset on start)
+let score, best, combo, t, difficulty;
+let player, asteroids, particles, trails;
+let camY;
+let shakeAmp, shakeDur, shakeTime;
+let slowmo, slowmoTime, slowmoDur;
+let colorHue;
+let spawnTimer, nextSpawnIn;
+let hopping; // bool: player in hop flight
+let hopVx, hopVy;
+let targetAsteroid; // current orbit target
+let candidates;    // highlighted candidate asteroids for next hop
+let gateDefinitions; // array of {a,b} asteroid index pairs
+let nearMissFlash;
+let nearMissTimer;
+
+// ── Resize ────────────────────────────────────────────────────────────────────
+function resize(){
+  const rect = wrap.getBoundingClientRect();
+  W = rect.width;
+  H = rect.height;
+  dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
+  canvas.width  = W * dpr;
+  canvas.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function clamp(v, lo, hi){ return v < lo ? lo : v > hi ? hi : v; }
+function lerp(a, b, t){ return a + (b - a) * t; }
+function dist(ax, ay, bx, by){ const dx=ax-bx,dy=ay-by; return Math.sqrt(dx*dx+dy*dy); }
+function rnd(lo, hi){ return lo + Math.random() * (hi - lo); }
+function rndInt(lo, hi){ return Math.floor(rnd(lo, hi+1)); }
+
+// Difficulty formulas (t = elapsed seconds since game start)
+function scrollV(){ return Math.min(110 + 1.35*t + 18*Math.sin(t*0.35), 260); }
+function orbitOmega(){ return 3.6 + 0.018*t; }
+function hopSpeedVal(){ return clamp(420 + 6.0*t, 420, 720); }
+function gateHalfWidth(){ return clamp(46 - 0.25*t, 18, 46); }
+function perfectHalf(){ return clamp(16 - 0.12*t, 7, 16); }
+function spawnEvery(){ return clamp(1.05 - 0.0045*t, 0.62, 1.05); }
+function pebbleChance(){ return clamp((t-25)/40, 0, 0.55); }
+
+// ── Spawn Patterns ────────────────────────────────────────────────────────────
+const PATTERNS = [
+  // each pattern: array of {dx, dy, r, decoy, gatePair}
+  // dx in [-1..1] of W, dy spacing, gate pair defined by indices
+  (W, rowY) => [
+    { x: W*0.5,             y: rowY,      r: 28, decoy: false },
+  ],
+  (W, rowY) => {
+    const half = clamp(gateHalfWidth() + 14, 22, 56);
+    return [
+      { x: W*0.5 - half - 28, y: rowY, r: 26, decoy: false, gateWith: 1 },
+      { x: W*0.5 + half + 28, y: rowY, r: 26, decoy: false, gateWith: 0 },
+    ];
+  },
+  (W, rowY) => {
+    const off = rnd(0.12, 0.22);
+    return [
+      { x: W*(0.5+off),   y: rowY,       r: 24, decoy: false },
+      { x: W*(0.5-off*1.3), y: rowY+50,  r: 22, decoy: true  },
+    ];
+  },
+  (W, rowY) => {
+    const half = clamp(gateHalfWidth() + 10, 20, 52);
+    const side = rnd(0.08,0.18);
+    return [
+      { x: W*(0.5-side) - half - 22, y: rowY, r: 24, decoy: false, gateWith: 1 },
+      { x: W*(0.5-side) + half + 22, y: rowY, r: 24, decoy: false, gateWith: 0 },
+      { x: W*0.85,                   y: rowY+30, r: 18, decoy: true },
+    ];
+  },
+];
+
+function spawnRow(baseY){
+  const pattern = PATTERNS[rndInt(0, PATTERNS.length-1)](W, baseY);
+  const newAsteroids = [];
+  const idxOffset = asteroids.length;
+  pattern.forEach((p, i) => {
+    const isDecoy = p.decoy || false;
+    const a = {
+      x: p.x,
+      y: p.y,
+      r: p.r + rnd(-3, 5),
+      decoy: isDecoy,
+      id: idxOffset + i,
+      // gate partner: index within this batch
+      gatePeerLocalIdx: (p.gateWith !== undefined) ? p.gateWith : -1,
+      gatePeerGlobalId: -1,
+      color: isDecoy ? 270 : rndInt(160, 240),
+      alpha: 0, // fade in
+    };
+    newAsteroids.push(a);
+  });
+  // Resolve gate peer global ids
+  newAsteroids.forEach((a, i) => {
+    if(a.gatePeerLocalIdx >= 0 && newAsteroids[a.gatePeerLocalIdx]){
+      a.gatePeerGlobalId = newAsteroids[a.gatePeerLocalIdx].id;
+    }
+  });
+
+  // Maybe add pebbles
+  if(Math.random() < pebbleChance()){
+    const px = rnd(W*0.1, W*0.9);
+    const py = baseY + rnd(-40, 40);
+    newAsteroids.push({
+      x: px, y: py, r: rnd(6, 11),
+      decoy: false, isPebble: true,
+      id: idxOffset + newAsteroids.length,
+      gatePeerLocalIdx: -1, gatePeerGlobalId: -1,
+      color: 0, alpha: 0,
+    });
+  }
+
+  asteroids.push(...newAsteroids);
+}
+
+// ── Game Init ─────────────────────────────────────────────────────────────────
+function initGame(){
+  score    = 0;
+  combo    = 1;
+  t        = 0;
+  difficulty = 0;
+  camY     = 0;
+  shakeAmp = 0; shakeDur = 0; shakeTime = 0;
+  slowmo   = false; slowmoTime = 0; slowmoDur = 0.15;
+  colorHue = 180;
+  spawnTimer = 0;
+  nextSpawnIn = 0.6;
+  hopping  = false;
+  hopVx = 0; hopVy = 0;
+  nearMissFlash = false; nearMissTimer = 0;
+  trails   = [];
+  particles = [];
+  asteroids = [];
+  candidates = [];
+  gateDefinitions = [];
+  best = parseInt(localStorage.getItem(LS_KEY) || '0', 10);
+
+  // Seed initial asteroids
+  // First anchor in the middle for player to start on
+  const firstAst = {
+    x: W * 0.5, y: H * 0.45,
+    r: 30, decoy: false, isPebble: false,
+    id: 0,
+    gatePeerLocalIdx: -1, gatePeerGlobalId: -1,
+    color: 200, alpha: 1,
+  };
+  asteroids.push(firstAst);
+
+  // Spawn several rows ahead
+  for(let row = 0; row < 5; row++){
+    spawnRow(H * 0.45 - 160 - row * 160);
+  }
+
+  // Place player on first asteroid
+  targetAsteroid = asteroids[0];
+  const orbitR = targetAsteroid.r + 18;
+  player = {
+    x: targetAsteroid.x + orbitR,
+    y: targetAsteroid.y,
+    orbitAngle: 0,
+    orbitR: orbitR,
+    r: 6,
+    hue: 60,
+    lastX: 0, lastY: 0,
+  };
+
+  updateCandidates();
+  updateHUD();
+}
+
+// ── Candidates ────────────────────────────────────────────────────────────────
+function updateCandidates(){
+  if(!targetAsteroid){ candidates = []; return; }
+  // Find 2-3 asteroids above current target (smaller y in world, since world scrolls down = lower y is 'ahead')
+  const above = asteroids.filter(a =>
+    a !== targetAsteroid &&
+    !a.isPebble &&
+    a.y < targetAsteroid.y - 20 &&
+    a.y > targetAsteroid.y - 400
+  );
+  above.sort((a,b) => b.y - a.y); // closest first (largest y still ahead)
+  candidates = above.slice(0, 3);
+}
+
+// ── Particles ─────────────────────────────────────────────────────────────────
+function spawnParticles(x, y, n, hue, speed, life, size){
+  for(let i=0;i<n;i++){
+    const ang = Math.random() * Math.PI * 2;
+    const spd = rnd(speed*0.3, speed);
+    particles.push({
+      x, y,
+      vx: Math.cos(ang)*spd,
+      vy: Math.sin(ang)*spd,
+      life, maxLife: life,
+      hue: hue + rnd(-20,20),
+      size: size || rnd(2,5),
+    });
+  }
+}
+
+function spawnRing(x, y, hue){
+  // ring-feel: particles outward in circle
+  const n = 18;
+  for(let i=0;i<n;i++){
+    const ang = (i/n)*Math.PI*2;
+    const spd = rnd(60,120);
+    particles.push({
+      x, y,
+      vx: Math.cos(ang)*spd,
+      vy: Math.sin(ang)*spd,
+      life: 0.45, maxLife: 0.45,
+      hue: hue + rnd(-15,15),
+      size: rnd(3,6),
+    });
+  }
+}
+
+// ── Shake ─────────────────────────────────────────────────────────────────────
+function triggerShake(amp, dur){
+  shakeAmp = amp;
+  shakeDur = dur;
+  shakeTime = 0;
+}
+
+// ── Score ─────────────────────────────────────────────────────────────────────
+function addScore(pts){
+  score += pts;
+  updateHUD();
+}
+
+function updateHUD(){
+  hudScore.textContent = score;
+  if(combo > 1){
+    hudCombo.textContent = `×${combo} COMBO`;
+    hudCombo.classList.add('show');
+  } else {
+    hudCombo.classList.remove('show');
+  }
+}
+
+// ── Gate Crossing ─────────────────────────────────────────────────────────────
+// Track previous sign for gate detection
+const gateCrossed = new Set();
+let prevGateSigns = {};
+
+function checkGateCrossings(){
+  // For each gate pair
+  for(let i=0;i<asteroids.length;i++){
+    const a = asteroids[i];
+    if(a.gatePeerGlobalId < 0) continue;
+    const bArr = asteroids.filter(x=>x.id===a.gatePeerGlobalId);
+    if(!bArr.length) continue;
+    const b = bArr[0];
+    // Only check once per pair (lower id)
+    if(a.id >= b.id) continue;
+
+    const gateKey = `${a.id}-${b.id}`;
+    if(gateCrossed.has(gateKey)) continue;
+
+    const mx = (a.x + b.x)/2;
+    const my = (a.y + b.y)/2;
+    const ux = b.x - a.x, uy = b.y - a.y;
+    const ul = Math.sqrt(ux*ux+uy*uy)||1;
+    const nx = -uy/ul, ny = ux/ul; // normal perpendicular to axis
+
+    // signed distance along normal
+    const sd = (player.x - mx)*nx + (player.y - my)*ny;
+    const key2 = gateKey;
+    const prevSd = prevGateSigns[key2];
+    prevGateSigns[key2] = sd;
+
+    if(prevSd !== undefined && Math.sign(prevSd) !== Math.sign(sd) && Math.sign(prevSd) < 0){
+      // Player crossed the gate line (from negative to positive normal direction)
+      // Check lateral position
+      const proj = (player.x - mx)*(ux/ul) + (player.y - my)*(uy/ul);
+      const hw = gateHalfWidth();
+      const ph = perfectHalf();
+      const absP = Math.abs(proj);
+
+      gateCrossed.add(gateKey);
+
+      if(absP <= ph){
+        // Perfect
+        addScore(50 * combo);
+        combo++;
+        spawnRing(player.x, player.y, colorHue);
+        spawnParticles(player.x, player.y, 18, colorHue, 110, 0.5, 4);
+        triggerShake(2.5, 0.08);
+        showFloatingText(player.x, player.y - 20, 'PERFECT!', '#f9ca24');
+      } else if(absP <= hw){
+        // OK
+        addScore(20 * combo);
+        combo = 1;
+        spawnParticles(player.x, player.y, 8, colorHue, 70, 0.35, 3);
+        showFloatingText(player.x, player.y - 20, 'OK', '#7ee8fa');
+      }
+      updateHUD();
+    }
+  }
+}
+
+// ── Floating Text ─────────────────────────────────────────────────────────────
+let floatingTexts = [];
+function showFloatingText(x, y, txt, color){
+  floatingTexts.push({ x, y, txt, color, life: 0.7, maxLife: 0.7, vy: -60 });
+}
+
+// ── Input ─────────────────────────────────────────────────────────────────────
+function handleInput(){
+  if(state === 'start'){
+    startGame();
+  } else if(state === 'playing'){
+    doHop();
+  } else if(state === 'gameover'){
+    startGame();
+  }
+}
+
+wrap.addEventListener('pointerdown', e => { e.preventDefault(); handleInput(); });
+document.addEventListener('keydown', e => {
+  if(e.code === 'Space' || e.code === 'Enter') handleInput();
+});
+
+overlayStart.addEventListener('pointerdown', e => { e.stopPropagation(); handleInput(); });
+overlayGO.addEventListener('pointerdown', e => { e.stopPropagation(); handleInput(); });
+
+// ── Start / Stop ──────────────────────────────────────────────────────────────
+function startGame(){
+  overlayStart.classList.add('hidden');
+  overlayGO.classList.add('hidden');
+  initGame();
+  state = 'playing';
+  lastTime = performance.now();
+  if(rafId) cancelAnimationFrame(rafId);
+  rafId = requestAnimationFrame(loop);
+}
+
+function endGame(){
+  state = 'gameover';
+  triggerShake(9, 0.28);
+  spawnParticles(player.x, player.y, 40, 0, 200, 0.7, 5);
+
+  if(score > best){
+    best = score;
+    localStorage.setItem(LS_KEY, best);
+  }
+  goScore.textContent = `Score: ${score}`;
+  goBest.textContent  = `Best: ${best}`;
+  setTimeout(() => { overlayGO.classList.remove('hidden'); }, 400);
+}
+
+// ── Hop ───────────────────────────────────────────────────────────────────────
+function doHop(){
+  if(hopping) return; // already in flight
+  if(!targetAsteroid || candidates.length === 0) return;
+
+  // Choose best candidate: closest ahead
+  let best_c = candidates[0];
+  let bestDist = Infinity;
+  candidates.forEach(c => {
+    const d = dist(player.x, player.y, c.x, c.y);
+    if(d < bestDist){ bestDist=d; best_c=c; }
+  });
+  const tgt = best_c;
+
+  // Direction: blend tangent (0.55) + aim-to-target (0.45)
+  const orbitR = targetAsteroid.r + 18;
+  const tangX = -Math.sin(player.orbitAngle);
+  const tangY =  Math.cos(player.orbitAngle);
+
+  const aimX = tgt.x - player.x;
+  const aimY = tgt.y - player.y;
+  const aimL = Math.sqrt(aimX*aimX + aimY*aimY) || 1;
+  const aimNx = aimX/aimL, aimNy = aimY/aimL;
+
+  let dx = tangX * 0.55 + aimNx * 0.45;
+  let dy = tangY * 0.55 + aimNy * 0.45;
+  const dl = Math.sqrt(dx*dx+dy*dy)||1;
+  dx /= dl; dy /= dl;
+
+  const spd = hopSpeedVal();
+  hopVx = dx * spd;
+  hopVy = dy * spd;
+
+  hopping = true;
+  targetAsteroid = null;
+  candidates = [];
+
+  // Burst particles
+  spawnParticles(player.x, player.y, 10, colorHue, 80, 0.3, 3);
+}
+
+// ── Main Loop ─────────────────────────────────────────────────────────────────
+function loop(now){
+  rafId = requestAnimationFrame(loop);
+  let rawDt = (now - lastTime) / 1000;
+  lastTime = now;
+  rawDt = clamp(rawDt, 0, 0.05);
+
+  const dt = slowmo ? rawDt * 0.3 : rawDt;
+
+  update(dt, rawDt);
+  render();
+}
+
+function update(dt, rawDt){
+  t += rawDt; // real time for difficulty
+  colorHue = (colorHue + 25 * dt) % 360;
+
+  // Slowmo timer
+  if(slowmo){
+    slowmoTime += rawDt;
+    if(slowmoTime >= slowmoDur){ slowmo=false; slowmoTime=0; }
+  }
+
+  // Near-miss flash
+  if(nearMissFlash){
+    nearMissTimer += rawDt;
+    if(nearMissTimer >= 0.15){ nearMissFlash=false; nearMissTimer=0; }
+  }
+
+  // Shake
+  if(shakeTime < shakeDur) shakeTime += rawDt;
+
+  // Floating texts
+  floatingTexts.forEach(ft => {
+    ft.life -= dt;
+    ft.y += ft.vy * dt;
+  });
+  floatingTexts = floatingTexts.filter(ft => ft.life > 0);
+
+  // Camera scrolls world upward
+  const sv = scrollV();
+  camY += sv * dt;
+
+  // Move all asteroids down with camera
+  asteroids.forEach(a => {
+    a.y += sv * dt;
+    if(a.alpha < 1) a.alpha = Math.min(1, a.alpha + dt * 3);
+  });
+
+  // Spawn new asteroids
+  spawnTimer += dt;
+  if(spawnTimer >= nextSpawnIn){
+    spawnTimer = 0;
+    nextSpawnIn = spawnEvery();
+    // Spawn above viewport
+    spawnRow(-80 - rnd(0, 60));
+    updateCandidates();
+  }
+
+  // Remove off-screen asteroids
+  asteroids = asteroids.filter(a => a.y < H + 100);
+
+  // Update particles
+  particles.forEach(p => {
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vx *= 0.92;
+    p.vy *= 0.92;
+    p.life -= dt;
+  });
+  particles = particles.filter(p => p.life > 0);
+
+  // Player update
+  if(hopping){
+    // Physics
+    hopVx *= Math.exp(-0.9 * dt);
+    hopVy *= Math.exp(-0.9 * dt);
+    hopVy += (40 + 1.2 * t * 0.1) * dt * 60 * dt; // gravity
+
+    player.lastX = player.x;
+    player.lastY = player.y;
+    player.x += hopVx * dt;
+    player.y += hopVy * dt;
+    player.y += sv * dt; // scroll with world
+
+    // Trail
+    trails.push({ x: player.x, y: player.y, hue: colorHue, life: 0.3 });
+
+    // Check gate crossings while hopping
+    checkGateCrossings();
+
+    // Check landing or collision
+    let landed = false;
+    let crashed = false;
+
+    for(let i=0;i<asteroids.length;i++){
+      const a = asteroids[i];
+      const d = dist(player.x, player.y, a.x, a.y);
+
+      if(a.isPebble){
+        if(d < a.r + player.r){ crashed = true; break; }
+      } else {
+        const orbitR = a.r + 18;
+        // Landing zone: within orbitR + some tolerance
+        if(d < orbitR + 10 && d > a.r - player.r){
+          // Landed!
+          targetAsteroid = a;
+          player.orbitAngle = Math.atan2(player.y - a.y, player.x - a.x);
+          player.orbitR = orbitR;
+          hopping = false;
+          landed = true;
+          addScore(5);
+          spawnParticles(player.x, player.y, 5, colorHue, 50, 0.25, 2);
+          updateCandidates();
+          break;
+        }
+        // Crash into body
+        if(d < a.r - 2){
+          crashed = true;
+          break;
+        }
+        // Near miss
+        if(d > orbitR && d < orbitR + 28 && !nearMissFlash){
+          nearMissFlash = true;
+          nearMissTimer = 0;
+          slowmo = true; slowmoTime = 0;
+          addScore(15);
+          showFloatingText(player.x, player.y - 15, '+15 CLOSE!', '#80ff72');
+        }
+      }
+    }
+
+    if(crashed){ endGame(); return; }
+
+    // Out of bounds check
+    if(player.x < -50 || player.x > W+50 || player.y > H + 80){
+      endGame(); return;
+    }
+
+  } else {
+    // Orbiting
+    if(targetAsteroid){
+      player.orbitAngle += orbitOmega() * dt;
+      player.x = targetAsteroid.x + Math.cos(player.orbitAngle) * player.orbitR;
+      player.y = targetAsteroid.y + Math.sin(player.orbitAngle) * player.orbitR;
+      player.y += sv * dt; // target already moved, so player follows
+      // Adjust orbit center
+      // Actually targetAsteroid.y already updated above so player.y is correct
+      player.x = targetAsteroid.x + Math.cos(player.orbitAngle) * player.orbitR;
+      player.y = targetAsteroid.y + Math.sin(player.orbitAngle) * player.orbitR;
+    }
+  }
+
+  // Update trails
+  trails.forEach(tr => { tr.life -= dt * 3.5; });
+  trails = trails.filter(tr => tr.life > 0);
+
+  // Player hue
+  player.hue = colorHue;
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function render(){
+  ctx.save();
+
+  // Screen shake
+  if(shakeTime < shakeDur){
+    const progress = shakeTime / shakeDur;
+    const amp = shakeAmp * (1 - progress);
+    const sx = (Math.random()-0.5)*2 * amp;
+    const sy = (Math.random()-0.5)*2 * amp;
+    ctx.translate(sx, sy);
+  }
+
+  // Background gradient
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, '#05051a');
+  bg.addColorStop(1, '#0a0a2e');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // Slowmo overlay
+  if(slowmo || nearMissFlash){
+    ctx.fillStyle = `hsla(${colorHue},70%,60%,0.07)`;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // Stars (static background, use camY for parallax)
+  drawStars();
+
+  // Trails
+  trails.forEach(tr => {
+    ctx.beginPath();
+    ctx.arc(tr.x, tr.y, 3.5, 0, Math.PI*2);
+    ctx.fillStyle = `hsla(${tr.hue},90%,65%,${tr.life * 0.6})`;
+    ctx.fill();
+  });
+
+  // Gate lines
+  for(let i=0;i<asteroids.length;i++){
+    const a = asteroids[i];
+    if(a.gatePeerGlobalId < 0) continue;
+    const bArr = asteroids.filter(x=>x.id===a.gatePeerGlobalId);
+    if(!bArr.length) continue;
+    const b = bArr[0];
+    if(a.id >= b.id) continue;
+
+    const hw = gateHalfWidth();
+    const ph = perfectHalf();
+    const mx=(a.x+b.x)/2, my=(a.y+b.y)/2;
+    const ux=(b.x-a.x), uy=(b.y-a.y), ul=Math.sqrt(ux*ux+uy*uy)||1;
+    const unx=ux/ul, uny=uy/ul;
+
+    // Perfect zone (gold)
+    ctx.beginPath();
+    ctx.moveTo(mx + unx*ph, my + uny*ph);
+    ctx.lineTo(mx - unx*ph, my - uny*ph);
+    ctx.strokeStyle = `rgba(249,202,36,${0.55*a.alpha})`;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    // OK zone (cyan)
+    ctx.beginPath();
+    ctx.moveTo(mx + unx*hw, my + uny*hw);
+    ctx.lineTo(mx + unx*ph, my + uny*ph);
+    ctx.strokeStyle = `rgba(126,232,250,${0.35*a.alpha})`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(mx - unx*ph, my - uny*ph);
+    ctx.lineTo(mx - unx*hw, my - uny*hw);
+    ctx.strokeStyle = `rgba(126,232,250,${0.35*a.alpha})`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  // Asteroids
+  asteroids.forEach(a => {
+    const alpha = a.alpha;
+    if(alpha <= 0) return;
+
+    if(a.isPebble){
+      // Pebble: solid grey
+      ctx.beginPath();
+      ctx.arc(a.x, a.y, a.r, 0, Math.PI*2);
+      ctx.fillStyle = `rgba(140,120,110,${alpha})`;
+      ctx.fill();
+      ctx.strokeStyle = `rgba(200,180,160,${alpha*0.6})`;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    } else {
+      const isTarget = (a === targetAsteroid);
+      const isCandidate = candidates.includes(a);
+      const hue = a.color;
+      const bright = a.decoy ? 35 : 55;
+
+      // Body
+      ctx.beginPath();
+      ctx.arc(a.x, a.y, a.r, 0, Math.PI*2);
+      ctx.fillStyle = `hsla(${hue},50%,${bright}%,${alpha*0.18})`;
+      ctx.fill();
+
+      // Outline ring
+      ctx.beginPath();
+      ctx.arc(a.x, a.y, a.r, 0, Math.PI*2);
+      const ringAlpha = isTarget ? 0.95 : isCandidate ? 0.75 : alpha * 0.4;
+      const ringW = isTarget ? 2.5 : isCandidate ? 2 : 1.5;
+      ctx.strokeStyle = `hsla(${hue},${a.decoy?40:75}%,${a.decoy?45:65}%,${ringAlpha})`;
+      ctx.lineWidth = ringW;
+      ctx.stroke();
+
+      // Candidate indicator: pulsing outer ring
+      if(isCandidate){
+        const pulse = 0.5 + 0.5*Math.sin(performance.now()*0.006);
+        ctx.beginPath();
+        ctx.arc(a.x, a.y, a.r + 7 + pulse*4, 0, Math.PI*2);
+        ctx.strokeStyle = `hsla(${hue},80%,70%,${0.3*pulse})`;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+    }
+  });
+
+  // Particles
+  particles.forEach(p => {
+    const progress = 1 - p.life / p.maxLife;
+    const alpha = p.life / p.maxLife;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size * (1 - progress*0.5), 0, Math.PI*2);
+    ctx.fillStyle = `hsla(${p.hue},85%,65%,${alpha})`;
+    ctx.fill();
+  });
+
+  // Player
+  if(state === 'playing' || state === 'gameover'){
+    const px = player.x, py = player.y;
+    const hue = player.hue;
+
+    // Hitbox clarity ring
+    ctx.beginPath();
+    ctx.arc(px, py, player.r + 5, 0, Math.PI*2);
+    ctx.strokeStyle = `hsla(${hue},90%,75%,0.25)`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Main ship body
+    ctx.save();
+    ctx.translate(px, py);
+    const ang = hopping
+      ? Math.atan2(hopVy, hopVx)
+      : (player.orbitAngle + Math.PI/2);
+    ctx.rotate(ang);
+
+    // Ship shape (small triangle)
+    ctx.beginPath();
+    ctx.moveTo(0, -player.r - 2);
+    ctx.lineTo(player.r - 1, player.r + 1);
+    ctx.lineTo(-(player.r - 1), player.r + 1);
+    ctx.closePath();
+    ctx.fillStyle = `hsl(${hue},90%,70%)`;
+    ctx.fill();
+    ctx.strokeStyle = `hsl(${hue},100%,88%)`;
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+
+    ctx.restore();
+
+    // Bright outline ring
+    ctx.beginPath();
+    ctx.arc(px, py, player.r + 3, 0, Math.PI*2);
+    ctx.strokeStyle = `hsla(${hue},100%,85%,0.55)`;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+
+  // Floating texts
+  floatingTexts.forEach(ft => {
+    const alpha = ft.life / ft.maxLife;
+    ctx.font = `bold ${clamp(16, 14, 20)}px 'Segoe UI', system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = ft.color.replace(')', `,${alpha})`).replace('rgb', 'rgba').replace('#', 'rgba(') || ft.color;
+    // Simple approach: just use globalAlpha
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = ft.color;
+    ctx.font = 'bold 15px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(ft.txt, ft.x, ft.y);
+    ctx.restore();
+  });
+
+  ctx.restore();
+}
+
+// ── Stars ─────────────────────────────────────────────────────────────────────
+const STARS = [];
+(function initStars(){
+  for(let i=0;i<80;i++){
+    STARS.push({
+      x: Math.random(),
+      y: Math.random(),
+      r: Math.random() * 1.5 + 0.3,
+      bright: 0.3 + Math.random() * 0.5,
+    });
+  }
+})();
+
+function drawStars(){
+  STARS.forEach(s => {
+    // Parallax: stars drift slightly with camY
+    const parallaxY = (s.y * H + camY * 0.08) % H;
+    ctx.beginPath();
+    ctx.arc(s.x * W, parallaxY, s.r, 0, Math.PI*2);
+    ctx.fillStyle = `rgba(255,255,255,${s.bright})`;
+    ctx.fill();
+  });
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+best = parseInt(localStorage.getItem(LS_KEY) || '0', 10);
+// Draw a single idle frame so canvas isn't blank
+resize();
+(function idleFrame(){
+  const bg2 = ctx.createLinearGradient(0,0,0,H);
+  bg2.addColorStop(0,'#05051a'); bg2.addColorStop(1,'#0a0a2e');
+  ctx.fillStyle = bg2; ctx.fillRect(0,0,W,H);
+  drawStars();
+})();
+
+})();
+</script>
+</body>
+</html>

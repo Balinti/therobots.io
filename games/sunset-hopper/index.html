@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Sunset Hopper - Free HTML5 Game</title>
+<meta name="description" content="Play Sunset Hopper - Tap to jump and collect glowing orbs as the speed of the setting sun accelerates.">
+<meta name="theme-color" content="#1a0a2e">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Sunset Hopper - Free HTML5 Game">
+<meta property="og:description" content="Tap to jump and collect glowing orbs as the speed of the setting sun accelerates. Play free in your browser!">
+<meta property="og:url" content="https://balinti.github.io/sunset-hopper/">
+<meta property="og:image" content="https://balinti.github.io/sunset-hopper/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Sunset Hopper - Free HTML5 Game">
+<meta name="twitter:description" content="Tap to jump and collect glowing orbs as the speed of the setting sun accelerates.">
+<meta name="twitter:image" content="https://balinti.github.io/sunset-hopper/og-image.png">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{width:100%;height:100%;overflow:hidden;background:#0d0618;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;touch-action:none;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;}
+#game-wrap{position:relative;width:100%;max-width:420px;max-height:750px;display:flex;flex-direction:column;align-items:center;padding:env(safe-area-inset-top,12px) 0 env(safe-area-inset-bottom,12px) 0;}
+canvas{display:block;width:100%;max-width:420px;border-radius:12px;box-shadow:0 0 40px rgba(255,100,50,0.15);}
+#seo-block{max-width:420px;width:100%;margin-top:10px;padding:8px 12px;background:rgba(255,255,255,0.04);border-radius:8px;color:rgba(255,255,255,0.25);font-size:10px;line-height:1.4;}
+#seo-block summary{cursor:pointer;color:rgba(255,255,255,0.35);font-size:11px;}
+</style>
+</head>
+<body>
+<div id="game-wrap">
+<canvas id="c"></canvas>
+<details id="seo-block">
+<summary>About Sunset Hopper</summary>
+<p>Sunset Hopper is a free HTML5 hyper-casual game. A one-tap endless runner you can play in your browser with no download required. Jump across floating dune platforms, collect glowing orbs, and dash through the sunset sky. Features include glow dash mechanics, streak multipliers, and increasing difficulty. Built with HTML5 Canvas for instant play on any device.</p>
+<p>Tags: HTML5 game, one-tap runner, endless runner, play in browser, no download, hyper-casual game, mobile game, free online game, glow dash, sunset runner.</p>
+</details>
+</div>
+<script>
+'use strict';
+(()=>{
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+
+// --- High-DPI + responsive sizing ---
+const MAX_W=420,MAX_H=700;
+let W,H,dpr;
+function resize(){
+  dpr=window.devicePixelRatio||1;
+  const wrap=document.getElementById('game-wrap');
+  const avail_w=Math.min(window.innerWidth,MAX_W);
+  const avail_h=Math.min(window.innerHeight-40,MAX_H);
+  const aspect=MAX_W/MAX_H;
+  if(avail_w/avail_h>aspect){W=avail_h*aspect;H=avail_h;}
+  else{W=avail_w;H=avail_w/aspect;}
+  canvas.style.width=W+'px';
+  canvas.style.height=H+'px';
+  canvas.width=W*dpr;
+  canvas.height=H*dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+window.addEventListener('resize',resize);
+resize();
+
+// --- Game constants ---
+const GRAVITY=0.55;
+const JUMP_VEL=-11;
+const PLAYER_W=18,PLAYER_H=24;
+const PLAT_H=14;
+const ORB_R=8;
+const DASH_VX=8,DASH_VY=-4;
+const MAX_CHARGES=3;
+const SUN_SLOW_DUR=120; // frames (~2s)
+const STREAK_THRESHOLD=5;
+
+// --- State ---
+let state='start'; // start | playing | gameover
+let highScore=parseInt(localStorage.getItem('sh_hi'))||0;
+let score,dist,orbScore,multiplier,streak;
+let player,platforms,orbs,particles;
+let camX,sunX,sunSpeed,baseSunSpeed;
+let sunSlowTimer,shakeTimer,shakeAmt;
+let gameTime,spawnX,nextOrbSpawn;
+let glowCharges;
+let hue;
+let deathFreeze;
+let nearDeathPulse;
+
+function init(){
+  score=0;dist=0;orbScore=0;multiplier=1;streak=0;
+  glowCharges=0;
+  camX=0;sunX=-W*0.6;baseSunSpeed=1.2;sunSpeed=baseSunSpeed;
+  sunSlowTimer=0;shakeTimer=0;shakeAmt=0;
+  gameTime=0;hue=20;deathFreeze=0;nearDeathPulse=0;
+  player={x:80,y:300,vy:0,onGround:false,dashing:false,dashTrail:0};
+  platforms=[];orbs=[];particles=[];
+  // seed initial platforms
+  spawnX=0;nextOrbSpawn=0;
+  for(let i=0;i<15;i++) spawnPlatform(i===0);
+}
+
+// --- Platform spawning ---
+function spawnPlatform(first){
+  const pw=60+Math.random()*80;
+  let gap=first?0:30+Math.random()*40+Math.min(gameTime*0.003,35);
+  const py=350+Math.random()*80-40;
+  const p={x:spawnX+gap,y:py,w:pw};
+  platforms.push(p);
+  spawnX=p.x+p.w;
+  // orb spawning
+  if(!first&&Math.random()<0.6){
+    const ox=p.x+p.w*0.3+Math.random()*p.w*0.4;
+    const highRoute=Math.random()<0.2;
+    const oy=highRoute?py-90-Math.random()*40:py-40-Math.random()*20;
+    const val=highRoute?3:1;
+    orbs.push({x:ox,y:oy,val:val,alive:true,r:ORB_R,pulse:Math.random()*Math.PI*2});
+  }
+  // ensure no impossible gap: if gap is large, place an orb to allow dash
+  if(gap>65&&Math.random()<0.8){
+    const midX=spawnX-gap*0.5;
+    orbs.push({x:midX,y:py-55,val:1,alive:true,r:ORB_R,pulse:Math.random()*Math.PI*2});
+  }
+}
+
+// --- Particles ---
+function emit(x,y,count,color,spread,life,size){
+  for(let i=0;i<count;i++){
+    const angle=Math.random()*Math.PI*2;
+    const speed=Math.random()*spread;
+    particles.push({x,y,vx:Math.cos(angle)*speed,vy:Math.sin(angle)*speed-1,
+      life:life*(0.6+Math.random()*0.4),maxLife:life,
+      color,size:size*(0.5+Math.random()*0.5)});
+  }
+}
+
+// --- Input ---
+let jumpPressed=false;
+function doInput(){
+  if(state==='start'){state='playing';init();return;}
+  if(state==='gameover'){
+    if(deathFreeze>0)return;
+    state='playing';init();return;
+  }
+  if(state==='playing'){
+    if(player.onGround){
+      player.vy=JUMP_VEL;
+      player.onGround=false;
+      emit(player.x,player.y+PLAYER_H/2,8,`hsla(35,80%,70%,0.8)`,3,20,3);
+    } else if(glowCharges>0){
+      // mid-air glow dash
+      glowCharges--;
+      player.dashing=true;
+      player.dashTrail=15;
+      player.vy=DASH_VY;
+      // forward burst handled in update
+      emit(player.x,player.y,12,`hsla(${hue+40},100%,70%,0.9)`,4,25,4);
+    }
+  }
+}
+window.addEventListener('keydown',e=>{
+  if(e.code==='Space'||e.code==='Enter'){e.preventDefault();if(!jumpPressed){jumpPressed=true;doInput();}}
+});
+window.addEventListener('keyup',e=>{
+  if(e.code==='Space'||e.code==='Enter')jumpPressed=false;
+});
+canvas.addEventListener('pointerdown',e=>{e.preventDefault();doInput();});
+
+// --- WebAudio simple beep ---
+let audioCtx=null;
+function beep(freq,dur,vol){
+  try{
+    if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+    const osc=audioCtx.createOscillator();
+    const gain=audioCtx.createGain();
+    osc.connect(gain);gain.connect(audioCtx.destination);
+    osc.frequency.value=freq;
+    osc.type='sine';
+    gain.gain.setValueAtTime(vol,audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+dur);
+    osc.start();osc.stop(audioCtx.currentTime+dur);
+  }catch(e){}
+}
+
+// --- Update ---
+function update(){
+  if(state!=='playing')return;
+  if(deathFreeze>0){deathFreeze--;return;}
+
+  gameTime++;
+  hue=(hue+0.15)%360;
+
+  // difficulty ramp
+  const diff=Math.min(gameTime/3600,1); // ramps over ~60s
+  const runSpeed=3+diff*2.5;
+
+  // sun speed
+  baseSunSpeed=1.2+diff*1.8;
+  if(sunSlowTimer>0){sunSlowTimer--;sunSpeed=baseSunSpeed*0.4;}
+  else{sunSpeed=baseSunSpeed;}
+
+  // player movement
+  if(player.dashing){
+    player.x+=DASH_VX;
+    player.dashTrail--;
+    if(player.dashTrail<=0)player.dashing=false;
+  }
+  player.x+=runSpeed;
+  player.vy+=GRAVITY;
+  player.y+=player.vy;
+  player.onGround=false;
+
+  // platform collision
+  for(const p of platforms){
+    if(player.x+PLAYER_W/2>p.x&&player.x-PLAYER_W/2<p.x+p.w){
+      if(player.vy>=0&&player.y+PLAYER_H/2>=p.y&&player.y+PLAYER_H/2<=p.y+PLAT_H+player.vy+2){
+        player.y=p.y-PLAYER_H/2;
+        player.vy=0;
+        player.onGround=true;
+      }
+    }
+  }
+
+  // fall death
+  if(player.y>H+100){
+    die();return;
+  }
+
+  // camera
+  camX=player.x-W*0.25;
+
+  // sun chase
+  sunX+=sunSpeed;
+  if(sunX<camX-W*0.7)sunX=camX-W*0.7; // keep on screen
+
+  // sun catches player
+  const sunScreenX=sunX-camX;
+  const playerScreenX=player.x-camX;
+  if(sunScreenX+60>=playerScreenX-PLAYER_W/2){
+    die();return;
+  }
+
+  // near-death feedback
+  const sunDist=playerScreenX-sunScreenX-60;
+  nearDeathPulse=sunDist<80?1-sunDist/80:0;
+
+  // orb collection
+  for(const o of orbs){
+    if(!o.alive)continue;
+    const dx=player.x-o.x,dy=player.y-o.y;
+    if(Math.sqrt(dx*dx+dy*dy)<PLAYER_H/2+o.r){
+      o.alive=false;
+      orbScore+=o.val*multiplier;
+      if(glowCharges<MAX_CHARGES)glowCharges++;
+      streak++;
+      beep(600+o.val*200,0.15,0.12);
+      emit(o.x,o.y,15,`hsla(${50+o.val*30},100%,65%,0.9)`,5,25,3);
+      // streak milestone
+      if(streak>0&&streak%STREAK_THRESHOLD===0){
+        sunSlowTimer=SUN_SLOW_DUR;
+        multiplier=Math.min(multiplier+1,5);
+        emit(player.x,player.y,30,`hsla(180,100%,80%,0.9)`,6,35,5);
+        beep(880,0.2,0.15);
+      }
+    }
+  }
+
+  // orbs passing off-screen (uncollected)
+  for(const o of orbs){
+    if(o.alive&&o.x<camX-30){
+      streak=0;
+      multiplier=1;
+      sunSlowTimer=0;
+      o.alive=false;
+    }
+  }
+
+  // score
+  dist=Math.floor(player.x/10);
+  score=dist+orbScore;
+
+  // spawn new platforms ahead
+  while(spawnX<camX+W+300)spawnPlatform(false);
+
+  // cleanup off-screen objects
+  platforms=platforms.filter(p=>p.x+p.w>camX-100);
+  orbs=orbs.filter(o=>o.x>camX-100);
+
+  // particles
+  updateParticles();
+
+  // dash trail particles
+  if(player.dashing){
+    emit(player.x-10,player.y,2,`hsla(${hue+60},100%,75%,0.7)`,2,12,3);
+  }
+
+  // shake decay
+  if(shakeTimer>0)shakeTimer--;
+}
+
+function die(){
+  state='gameover';
+  deathFreeze=20;
+  shakeTimer=25;shakeAmt=8;
+  if(score>highScore){highScore=score;localStorage.setItem('sh_hi',''+highScore);}
+  beep(200,0.3,0.2);
+  beep(120,0.5,0.15);
+  emit(player.x,player.y,40,`hsla(10,100%,60%,0.9)`,7,40,5);
+}
+
+function updateParticles(){
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    p.x+=p.vx;p.y+=p.vy;p.vy+=0.05;
+    p.life--;
+    if(p.life<=0)particles.splice(i,1);
+  }
+}
+
+// --- Draw ---
+function draw(){
+  ctx.save();
+
+  // screen shake
+  let sx=0,sy=0;
+  if(shakeTimer>0){
+    sx=(Math.random()-0.5)*shakeAmt*(shakeTimer/25);
+    sy=(Math.random()-0.5)*shakeAmt*(shakeTimer/25);
+  }
+  ctx.translate(sx,sy);
+
+  // sky gradient
+  const skyGrad=ctx.createLinearGradient(0,0,0,H);
+  skyGrad.addColorStop(0,`hsl(${260+hue*0.1},60%,12%)`);
+  skyGrad.addColorStop(0.5,`hsl(${20+hue*0.2},70%,25%)`);
+  skyGrad.addColorStop(1,`hsl(${35+hue*0.15},80%,15%)`);
+  ctx.fillStyle=skyGrad;
+  ctx.fillRect(0,0,W,H);
+
+  // stars
+  const starSeed=42;
+  for(let i=0;i<40;i++){
+    const sx2=((starSeed*i*137.5)%W+W)%W;
+    const sy2=((starSeed*i*97.3)%( H*0.5));
+    const bright=0.2+0.3*Math.sin(gameTime*0.02+i);
+    ctx.fillStyle=`rgba(255,255,230,${bright})`;
+    ctx.fillRect(sx2,sy2,1.5,1.5);
+  }
+
+  ctx.save();
+  ctx.translate(-camX,0);
+
+  // sun (chase wall)
+  drawSun();
+
+  // platforms
+  for(const p of platforms){
+    if(p.x+p.w<camX-20||p.x>camX+W+20)continue;
+    const pg=ctx.createLinearGradient(p.x,p.y,p.x,p.y+PLAT_H);
+    pg.addColorStop(0,`hsla(${30+hue*0.3},50%,40%,0.9)`);
+    pg.addColorStop(1,`hsla(${25+hue*0.3},40%,25%,0.9)`);
+    ctx.fillStyle=pg;
+    ctx.beginPath();
+    roundRect(ctx,p.x,p.y,p.w,PLAT_H,4);
+    ctx.fill();
+    // platform glow
+    ctx.shadowColor=`hsla(${30+hue*0.3},60%,50%,0.3)`;
+    ctx.shadowBlur=8;
+    ctx.fill();
+    ctx.shadowBlur=0;
+  }
+
+  // orbs
+  for(const o of orbs){
+    if(!o.alive)continue;
+    if(o.x<camX-30||o.x>camX+W+30)continue;
+    o.pulse+=0.06;
+    const r=o.r+Math.sin(o.pulse)*2;
+    const orbHue=o.val>1?60:40;
+    ctx.beginPath();
+    ctx.arc(o.x,o.y,r,0,Math.PI*2);
+    ctx.fillStyle=`hsla(${orbHue},100%,70%,0.9)`;
+    ctx.fill();
+    ctx.shadowColor=`hsla(${orbHue},100%,60%,0.6)`;
+    ctx.shadowBlur=15;
+    ctx.fill();
+    ctx.shadowBlur=0;
+    // inner glow
+    ctx.beginPath();
+    ctx.arc(o.x,o.y,r*0.5,0,Math.PI*2);
+    ctx.fillStyle=`hsla(${orbHue},100%,90%,0.7)`;
+    ctx.fill();
+    // value indicator for high-value orbs
+    if(o.val>1){
+      ctx.fillStyle='rgba(255,255,255,0.8)';
+      ctx.font='bold 8px sans-serif';
+      ctx.textAlign='center';
+      ctx.fillText('x'+o.val,o.x,o.y+3);
+    }
+  }
+
+  // player
+  drawPlayer();
+
+  // particles (world space)
+  for(const p of particles){
+    const alpha=p.life/p.maxLife;
+    ctx.globalAlpha=alpha;
+    ctx.fillStyle=p.color;
+    ctx.fillRect(p.x-p.size/2,p.y-p.size/2,p.size,p.size);
+  }
+  ctx.globalAlpha=1;
+
+  ctx.restore(); // camera
+
+  // near-death vignette
+  if(nearDeathPulse>0){
+    const vigAlpha=nearDeathPulse*0.3*(0.7+0.3*Math.sin(gameTime*0.15));
+    const vig=ctx.createRadialGradient(W/2,H/2,W*0.3,W/2,H/2,W*0.8);
+    vig.addColorStop(0,'rgba(255,30,0,0)');
+    vig.addColorStop(1,`rgba(255,30,0,${vigAlpha})`);
+    ctx.fillStyle=vig;
+    ctx.fillRect(0,0,W,H);
+  }
+
+  // HUD
+  drawHUD();
+
+  // state overlays
+  if(state==='start')drawStartScreen();
+  if(state==='gameover'&&deathFreeze<=0)drawGameOver();
+
+  ctx.restore(); // shake
+}
+
+function drawSun(){
+  const sx=sunX;
+  const sy=H*0.35;
+  const sr=50;
+  // glow
+  const sg=ctx.createRadialGradient(sx,sy,sr*0.3,sx,sy,sr*2.5);
+  sg.addColorStop(0,`hsla(30,100%,60%,0.8)`);
+  sg.addColorStop(0.4,`hsla(15,100%,50%,0.3)`);
+  sg.addColorStop(1,`hsla(0,100%,40%,0)`);
+  ctx.fillStyle=sg;
+  ctx.fillRect(sx-sr*3,sy-sr*3,sr*6,sr*6);
+  // body
+  ctx.beginPath();
+  ctx.arc(sx,sy,sr,0,Math.PI*2);
+  const sbg=ctx.createRadialGradient(sx,sy,0,sx,sy,sr);
+  sbg.addColorStop(0,`hsla(50,100%,80%,1)`);
+  sbg.addColorStop(0.7,`hsla(30,100%,55%,1)`);
+  sbg.addColorStop(1,`hsla(10,100%,45%,0.8)`);
+  ctx.fillStyle=sbg;
+  ctx.fill();
+  // heat wall effect
+  ctx.fillStyle=`hsla(10,100%,50%,0.08)`;
+  ctx.fillRect(sx+sr,0,W*2,H);
+}
+
+function drawPlayer(){
+  const px=player.x,py=player.y;
+  ctx.save();
+  ctx.translate(px,py);
+
+  // dash glow
+  if(player.dashing){
+    ctx.shadowColor=`hsla(${hue+60},100%,70%,0.8)`;
+    ctx.shadowBlur=20;
+  }
+
+  // body
+  const bodyGrad=ctx.createLinearGradient(-PLAYER_W/2,-PLAYER_H/2,PLAYER_W/2,PLAYER_H/2);
+  bodyGrad.addColorStop(0,`hsl(${200+hue*0.2},70%,65%)`);
+  bodyGrad.addColorStop(1,`hsl(${220+hue*0.2},60%,45%)`);
+  ctx.fillStyle=bodyGrad;
+  ctx.beginPath();
+  roundRect(ctx,-PLAYER_W/2,-PLAYER_H/2,PLAYER_W,PLAYER_H,5);
+  ctx.fill();
+
+  // eyes
+  ctx.fillStyle='rgba(255,255,255,0.9)';
+  ctx.fillRect(2,-5,4,4);
+  ctx.fillRect(2,-5,4,4);
+
+  // glow charge indicator (small dots below player)
+  ctx.shadowBlur=0;
+  for(let i=0;i<glowCharges;i++){
+    ctx.beginPath();
+    ctx.arc(-6+i*6,PLAYER_H/2+5,2.5,0,Math.PI*2);
+    ctx.fillStyle=`hsla(50,100%,70%,0.9)`;
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+function drawHUD(){
+  // score
+  ctx.fillStyle='rgba(255,255,255,0.9)';
+  ctx.font='bold 18px "Segoe UI",system-ui,sans-serif';
+  ctx.textAlign='left';
+  ctx.fillText(''+score,15,35);
+
+  // multiplier
+  if(multiplier>1){
+    ctx.fillStyle=`hsla(50,100%,70%,0.9)`;
+    ctx.font='bold 14px sans-serif';
+    ctx.fillText('x'+multiplier,15,55);
+  }
+
+  // streak
+  if(streak>0){
+    ctx.fillStyle='rgba(255,200,100,0.7)';
+    ctx.font='11px sans-serif';
+    ctx.textAlign='left';
+    const nextMilestone=STREAK_THRESHOLD-streak%STREAK_THRESHOLD;
+    ctx.fillText('Streak: '+streak+(nextMilestone<=2?' ('+nextMilestone+' to slow!)':''),15,72);
+  }
+
+  // glow charges (top right)
+  ctx.textAlign='right';
+  ctx.font='bold 13px sans-serif';
+  ctx.fillStyle='rgba(255,220,100,0.8)';
+  let chargeStr='';
+  for(let i=0;i<MAX_CHARGES;i++) chargeStr+=i<glowCharges?'\u2B50':'\u2B1C';
+  ctx.fillText(chargeStr,W-12,35);
+
+  // sun slow indicator
+  if(sunSlowTimer>0){
+    ctx.fillStyle=`hsla(180,100%,70%,${0.5+0.3*Math.sin(gameTime*0.1)})`;
+    ctx.font='bold 12px sans-serif';
+    ctx.textAlign='center';
+    ctx.fillText('\u2744 SUN SLOWED',W/2,25);
+  }
+
+  // high score
+  ctx.textAlign='right';
+  ctx.fillStyle='rgba(255,255,255,0.4)';
+  ctx.font='11px sans-serif';
+  ctx.fillText('HI: '+highScore,W-12,52);
+}
+
+function drawStartScreen(){
+  ctx.fillStyle='rgba(0,0,0,0.55)';
+  ctx.fillRect(0,0,W,H);
+
+  ctx.textAlign='center';
+  ctx.fillStyle='#fff';
+  ctx.font='bold 32px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText('SUNSET HOPPER',W/2,H*0.3);
+
+  ctx.fillStyle=`hsla(40,100%,70%,0.8)`;
+  ctx.font='16px sans-serif';
+  ctx.fillText('Glow Dash',W/2,H*0.3+30);
+
+  ctx.fillStyle='rgba(255,255,255,0.7)';
+  ctx.font='14px sans-serif';
+  ctx.fillText('Tap or press Space to start',W/2,H*0.5);
+
+  ctx.fillStyle='rgba(255,255,255,0.4)';
+  ctx.font='12px sans-serif';
+  ctx.fillText('Jump \u2022 Collect orbs \u2022 Dash mid-air',W/2,H*0.5+25);
+  ctx.fillText('Build streaks to slow the sun!',W/2,H*0.5+45);
+
+  if(highScore>0){
+    ctx.fillStyle='rgba(255,200,100,0.6)';
+    ctx.font='13px sans-serif';
+    ctx.fillText('Best: '+highScore,W/2,H*0.65);
+  }
+}
+
+function drawGameOver(){
+  ctx.fillStyle='rgba(0,0,0,0.6)';
+  ctx.fillRect(0,0,W,H);
+
+  ctx.textAlign='center';
+  ctx.fillStyle=`hsla(10,100%,65%,0.9)`;
+  ctx.font='bold 28px "Segoe UI",system-ui,sans-serif';
+  ctx.fillText('GAME OVER',W/2,H*0.32);
+
+  ctx.fillStyle='#fff';
+  ctx.font='bold 22px sans-serif';
+  ctx.fillText('Score: '+score,W/2,H*0.42);
+
+  if(score>=highScore&&score>0){
+    ctx.fillStyle=`hsla(50,100%,65%,${0.6+0.3*Math.sin(Date.now()*0.005)})`;
+    ctx.font='bold 14px sans-serif';
+    ctx.fillText('\u2B50 NEW BEST! \u2B50',W/2,H*0.48);
+  }
+
+  ctx.fillStyle='rgba(255,255,255,0.5)';
+  ctx.font='14px sans-serif';
+  ctx.fillText('Tap to play again',W/2,H*0.58);
+}
+
+function roundRect(ctx,x,y,w,h,r){
+  ctx.moveTo(x+r,y);
+  ctx.lineTo(x+w-r,y);
+  ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+  ctx.lineTo(x+w,y+h-r);
+  ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  ctx.lineTo(x+r,y+h);
+  ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+  ctx.lineTo(x,y+r);
+  ctx.quadraticCurveTo(x,y,x+r,y);
+  ctx.closePath();
+}
+
+// --- Game loop ---
+function loop(){
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+init();
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

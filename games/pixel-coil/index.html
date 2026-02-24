@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Pixel Coil - Free HTML5 Game</title>
+<meta name="description" content="Play Pixel Coil - Tap to steer a glowing snake, adapting as controls randomly reverse in a cyberpunk metropolis.">
+<meta name="theme-color" content="#070A12">
+<link rel="canonical" href="https://balinti.github.io/pixel-coil/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Pixel Coil - Free HTML5 Game">
+<meta property="og:description" content="Play Pixel Coil - Tap to steer a glowing snake, adapting as controls randomly reverse in a cyberpunk metropolis.">
+<meta property="og:url" content="https://balinti.github.io/pixel-coil/">
+<meta property="og:image" content="https://balinti.github.io/pixel-coil/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Pixel Coil - Free HTML5 Game">
+<meta name="twitter:description" content="Play Pixel Coil - Tap to steer a glowing snake, adapting as controls randomly reverse in a cyberpunk metropolis.">
+<meta name="twitter:image" content="https://balinti.github.io/pixel-coil/og.png">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#050810;font-family:'Courier New',monospace;color:#e0e8ff;touch-action:none;-webkit-tap-highlight-color:transparent;user-select:none}
+#wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;min-height:100dvh}
+#game-container{position:relative;width:100%;max-width:420px;max-height:750px;aspect-ratio:420/750;overflow:hidden;border-radius:6px;box-shadow:0 0 40px rgba(0,200,255,0.08)}
+canvas{display:block;width:100%;height:100%}
+#hud{position:absolute;top:0;left:0;width:100%;pointer-events:none;padding:12px 16px;display:flex;justify-content:space-between;align-items:flex-start;z-index:2}
+#hud-left,#hud-right{display:flex;flex-direction:column;gap:2px}
+#hud-left{align-items:flex-start}
+#hud-right{align-items:flex-end}
+.hud-label{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;opacity:0.5}
+.hud-val{font-size:22px;font-weight:bold;letter-spacing:1px;text-shadow:0 0 8px rgba(0,200,255,0.5)}
+#combo-display{font-size:13px;color:#ffdd57;text-shadow:0 0 6px rgba(255,221,87,0.5);margin-top:2px;opacity:0;transition:opacity 0.2s}
+#glitch-label{font-size:11px;color:#ff3366;text-shadow:0 0 8px rgba(255,51,102,0.6);letter-spacing:2px;text-transform:uppercase;opacity:0;transition:opacity 0.15s;margin-top:4px}
+#overlay{position:absolute;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:3;pointer-events:auto}
+#overlay.hidden{pointer-events:none;opacity:0}
+#panel{text-align:center;padding:24px;max-width:90%}
+#panel h1{font-size:28px;letter-spacing:4px;text-transform:uppercase;margin-bottom:6px;color:#00e5ff;text-shadow:0 0 20px rgba(0,229,255,0.4)}
+#panel .sub{font-size:11px;letter-spacing:2px;opacity:0.5;margin-bottom:24px}
+#panel .score-big{font-size:48px;font-weight:bold;color:#fff;text-shadow:0 0 16px rgba(0,200,255,0.5);margin-bottom:4px}
+#panel .score-label{font-size:10px;letter-spacing:2px;opacity:0.5;margin-bottom:12px}
+#panel .best-line{font-size:13px;color:#ffdd57;margin-bottom:20px}
+#panel .tap-msg{font-size:13px;letter-spacing:1.5px;opacity:0.6;animation:pulse 1.8s ease-in-out infinite}
+#challenge-banner{font-size:12px;color:#ff3366;margin-bottom:12px;display:none}
+#share-btn{pointer-events:auto;margin-top:14px;padding:8px 20px;background:transparent;border:1px solid rgba(0,229,255,0.4);color:#00e5ff;font-family:inherit;font-size:12px;letter-spacing:1.5px;cursor:pointer;border-radius:3px;transition:background 0.2s}
+#share-btn:hover{background:rgba(0,229,255,0.1)}
+@keyframes pulse{0%,100%{opacity:0.4}50%{opacity:0.9}}
+#seo-section{max-width:420px;width:100%;padding:16px 20px;margin-top:8px;font-size:11px;line-height:1.6;opacity:0.35;text-align:center}
+#seo-section h2{font-size:13px;margin-bottom:6px;letter-spacing:1px}
+</style>
+</head>
+<body>
+<div id="wrap">
+<div id="game-container">
+<canvas id="c"></canvas>
+<div id="hud">
+<div id="hud-left">
+<span class="hud-label">Time</span>
+<span class="hud-val" id="hud-score">0</span>
+<span id="combo-display"></span>
+<span id="glitch-label"></span>
+</div>
+<div id="hud-right">
+<span class="hud-label">Best</span>
+<span class="hud-val" id="hud-best">0</span>
+</div>
+</div>
+<div id="overlay">
+<div id="panel">
+<div id="start-panel">
+<h1>Pixel Coil</h1>
+<div class="sub">Glitch Gates</div>
+<div id="challenge-banner"></div>
+<div class="tap-msg">Tap to Start</div>
+</div>
+<div id="gameover-panel" style="display:none">
+<div class="score-label">SURVIVED</div>
+<div class="score-big" id="final-score">0</div>
+<div class="score-label">SECONDS</div>
+<div class="best-line">Best: <span id="final-best">0</span>s</div>
+<button id="share-btn">SHARE</button>
+<div class="tap-msg" style="margin-top:16px">Tap to Retry</div>
+</div>
+</div>
+</div>
+</div>
+<div id="seo-section">
+<h2>How to Play Pixel Coil</h2>
+<p>Steer a glowing data coil through a cyberpunk lane by tapping to flip your curve direction. Collect data shards to build combo multipliers, and dare to pass through Glitch Gates that invert or tighten your controls. Survive as long as you can while the speed and difficulty ramp up. Works on mobile and desktop — tap or press Space to play.</p>
+</div>
+</div>
+
+<script>
+(()=>{
+'use strict';
+
+// --- Canvas setup ---
+const cvs = document.getElementById('c');
+const ctx = cvs.getContext('2d');
+const container = document.getElementById('game-container');
+const DPR = Math.min(window.devicePixelRatio || 1, 2);
+let W, H;
+
+function resize() {
+  const rect = container.getBoundingClientRect();
+  W = Math.round(rect.width);
+  H = Math.round(rect.height);
+  cvs.width = W * DPR;
+  cvs.height = H * DPR;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+resize();
+window.addEventListener('resize', resize);
+
+// --- DOM refs ---
+const hudScore = document.getElementById('hud-score');
+const hudBest = document.getElementById('hud-best');
+const comboDisplay = document.getElementById('combo-display');
+const glitchLabel = document.getElementById('glitch-label');
+const overlay = document.getElementById('overlay');
+const startPanel = document.getElementById('start-panel');
+const goPanel = document.getElementById('gameover-panel');
+const finalScore = document.getElementById('final-score');
+const finalBest = document.getElementById('final-best');
+const shareBtn = document.getElementById('share-btn');
+const challengeBanner = document.getElementById('challenge-banner');
+
+// --- State ---
+let state = 'start'; // start | playing | gameover
+let bestScore = parseInt(localStorage.getItem('pcgg_best')) || 0;
+hudBest.textContent = bestScore;
+
+// Challenge
+const urlP = new URLSearchParams(window.location.search);
+const challengeScore = urlP.get('challenge');
+if (challengeScore) {
+  challengeBanner.style.display = 'block';
+  challengeBanner.textContent = `Challenge: beat ${challengeScore}s`;
+}
+
+// --- Game variables ---
+let t, score, combo, comboTimer, curveDir, trail, particles, shards, gates;
+let headX, headY, headAngle, alive;
+let glitchType, glitchTimer, glitchDuration;
+let nextShardT, nextGateT;
+let shakeX, shakeY, shakeMag;
+let nearMissCooldown;
+let skyline;
+
+// --- Constants ---
+const TRAIL_SPACING = 4;
+const TRAIL_MAX = 2400;
+const TRAIL_IGNORE = 18;
+const HEAD_R = 6;
+const SHARD_R = 7;
+const GATE_W = 40;
+const GATE_H = 22;
+const NEAR_MISS_DIST = 12;
+const NEAR_MISS_CD = 0.8;
+
+// --- Difficulty formulas ---
+function getSpeed(t) { return Math.min(220 + 3.2 * t, 420); }
+function getTurnRate(t) { return Math.min(1.35 + 0.006 * t, 1.85); }
+function getLanePad(t) { return Math.min(18 + 0.10 * t, 42); }
+function getShardEvery(t) { return Math.max(1.20 - 0.006 * t, 0.55); }
+function getGateEvery(t) { return Math.max(7.5 - 0.03 * t, 3.8); }
+function getGlitchDuration(t) { return Math.min(2.2 + 0.015 * t, 3.8); }
+
+// --- Skyline generation ---
+function genSkyline() {
+  const buildings = [];
+  let x = 0;
+  while (x < W + 60) {
+    const w = 12 + Math.random() * 28;
+    const h = 30 + Math.random() * 90;
+    buildings.push({ x, w, h });
+    x += w + 2 + Math.random() * 8;
+  }
+  return buildings;
+}
+
+// --- Particle system ---
+function spawnParticles(x, y, count, color, spread, life) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 30 + Math.random() * spread;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: life || (0.3 + Math.random() * 0.4),
+      maxLife: life || (0.3 + Math.random() * 0.4),
+      color,
+      size: 2 + Math.random() * 3
+    });
+  }
+}
+
+// --- Init game ---
+function initGame() {
+  t = 0;
+  score = 0;
+  combo = 0;
+  comboTimer = 0;
+  curveDir = 1;
+  headX = W / 2;
+  headY = H * 0.7;
+  headAngle = -Math.PI / 2;
+  alive = true;
+  trail = [{ x: headX, y: headY }];
+  particles = [];
+  shards = [];
+  gates = [];
+  glitchType = null;
+  glitchTimer = 0;
+  glitchDuration = 0;
+  nextShardT = 1.5;
+  nextGateT = 5;
+  shakeX = 0;
+  shakeY = 0;
+  shakeMag = 0;
+  nearMissCooldown = 0;
+  skyline = genSkyline();
+  hudScore.textContent = '0';
+  comboDisplay.style.opacity = '0';
+  glitchLabel.style.opacity = '0';
+}
+
+// --- Shard spawning ---
+function spawnShard() {
+  const pad = getLanePad(t) + 20;
+  const sx = pad + Math.random() * (W - pad * 2);
+  const sy = -10;
+  shards.push({ x: sx, y: sy, alive: true });
+}
+
+// --- Gate spawning ---
+function spawnGate() {
+  const pad = getLanePad(t) + 30;
+  const gx = pad + Math.random() * (W - pad * 2);
+  const gy = -20;
+  const type = Math.random() < 0.5 ? 'invert' : 'tight';
+  gates.push({ x: gx, y: gy, type, alive: true, flash: 0 });
+}
+
+// --- Screen shake ---
+function triggerShake(mag) {
+  shakeMag = Math.max(shakeMag, mag);
+}
+
+// --- Collision: point to segment distance ---
+function ptSegDist(px, py, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return Math.hypot(px - ax, py - ay);
+  let tt = ((px - ax) * dx + (py - ay) * dy) / lenSq;
+  tt = Math.max(0, Math.min(1, tt));
+  return Math.hypot(px - (ax + tt * dx), py - (ay + tt * dy));
+}
+
+// --- Input handling ---
+function handleTap() {
+  if (state === 'start') {
+    state = 'playing';
+    initGame();
+    overlay.classList.add('hidden');
+    return;
+  }
+  if (state === 'gameover') {
+    state = 'start';
+    startPanel.style.display = '';
+    goPanel.style.display = 'none';
+    overlay.classList.remove('hidden');
+    return;
+  }
+  if (state === 'playing') {
+    if (glitchType === 'invert') {
+      // tap does nothing during invert
+      return;
+    }
+    curveDir *= -1;
+  }
+}
+
+cvs.addEventListener('pointerdown', (e) => { e.preventDefault(); handleTap(); });
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); handleTap(); }
+});
+
+// --- Share ---
+shareBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const url = `https://balinti.github.io/pixel-coil/?challenge=${score}`;
+  const text = `I survived ${score}s in Pixel Coil! Can you beat me?`;
+  if (navigator.share) {
+    navigator.share({ title: 'Pixel Coil', text, url }).catch(() => {});
+  } else {
+    navigator.clipboard.writeText(`${text} ${url}`).then(() => {
+      shareBtn.textContent = 'COPIED!';
+      setTimeout(() => { shareBtn.textContent = 'SHARE'; }, 1500);
+    }).catch(() => {});
+  }
+});
+
+// --- Game Over ---
+function gameOver() {
+  alive = false;
+  state = 'gameover';
+  if (score > bestScore) {
+    bestScore = score;
+    localStorage.setItem('pcgg_best', bestScore);
+  }
+  hudBest.textContent = bestScore;
+  finalScore.textContent = score;
+  finalBest.textContent = bestScore;
+  startPanel.style.display = 'none';
+  goPanel.style.display = '';
+  overlay.classList.remove('hidden');
+  triggerShake(12);
+  spawnParticles(headX, headY, 40, '#ff3366', 120, 0.6);
+  spawnParticles(headX, headY, 20, '#00e5ff', 80, 0.5);
+}
+
+// --- Main update ---
+let lastTime = 0;
+
+function update(dt) {
+  if (state !== 'playing') return;
+
+  t += dt;
+
+  // Score: seconds survived
+  const newScore = Math.floor(t);
+  if (newScore !== score) {
+    score = newScore;
+    hudScore.textContent = score;
+  }
+
+  // Combo decay
+  if (comboTimer > 0) {
+    comboTimer -= dt;
+    if (comboTimer <= 0) {
+      combo = 0;
+      comboDisplay.style.opacity = '0';
+    }
+  }
+
+  // Glitch timer
+  if (glitchType) {
+    glitchTimer -= dt;
+    if (glitchTimer <= 0) {
+      glitchType = null;
+      glitchLabel.style.opacity = '0';
+    }
+  }
+
+  // Near-miss cooldown
+  if (nearMissCooldown > 0) nearMissCooldown -= dt;
+
+  // Difficulty
+  const speed = getSpeed(t);
+  let turnRate = getTurnRate(t);
+  const lanePad = getLanePad(t);
+
+  // Tight glitch
+  if (glitchType === 'tight') {
+    turnRate *= 1.6;
+  }
+
+  // Move head
+  headAngle += curveDir * turnRate * dt;
+  headX += Math.cos(headAngle) * speed * dt;
+  headY += Math.sin(headAngle) * speed * dt;
+
+  // Trail
+  const lastPt = trail[trail.length - 1];
+  const dx = headX - lastPt.x, dy = headY - lastPt.y;
+  if (dx * dx + dy * dy >= TRAIL_SPACING * TRAIL_SPACING) {
+    trail.push({ x: headX, y: headY });
+    if (trail.length > TRAIL_MAX) trail.shift();
+  }
+
+  // Scroll world down relative to head (keep head in lower third)
+  const targetY = H * 0.7;
+  const offsetY = headY - targetY;
+  if (offsetY < 0) {
+    const shift = -offsetY;
+    headY += shift;
+    for (const p of trail) p.y += shift;
+    for (const s of shards) s.y += shift;
+    for (const g of gates) g.y += shift;
+    for (const p of particles) p.y += shift;
+  }
+
+  // Scroll horizontal to keep head centered-ish
+  const targetX = W / 2;
+  const offsetX = headX - targetX;
+  if (Math.abs(offsetX) > W * 0.2) {
+    const shift = offsetX * 0.05;
+    headX -= shift;
+    for (const p of trail) p.x -= shift;
+    for (const s of shards) s.x -= shift;
+    for (const g of gates) g.x -= shift;
+    for (const p of particles) p.x -= shift;
+  }
+
+  // Wall collision
+  if (headX < lanePad || headX > W - lanePad) {
+    gameOver();
+    return;
+  }
+
+  // Trail collision
+  const ignoreCount = Math.min(TRAIL_IGNORE, trail.length - 1);
+  for (let i = 0; i < trail.length - ignoreCount - 1; i++) {
+    const a = trail[i], b = trail[i + 1];
+    const d = ptSegDist(headX, headY, a.x, a.y, b.x, b.y);
+    if (d < HEAD_R * 0.8) {
+      gameOver();
+      return;
+    }
+    // Near-miss
+    if (d < NEAR_MISS_DIST && nearMissCooldown <= 0) {
+      nearMissCooldown = NEAR_MISS_CD;
+      score += 1;
+      hudScore.textContent = score;
+      triggerShake(2);
+      spawnParticles(headX, headY, 5, '#ffdd57', 30, 0.25);
+    }
+  }
+
+  // Wall near-miss
+  if (nearMissCooldown <= 0) {
+    const wallDistL = headX - lanePad;
+    const wallDistR = (W - lanePad) - headX;
+    const wallDist = Math.min(wallDistL, wallDistR);
+    if (wallDist < NEAR_MISS_DIST && wallDist > HEAD_R * 0.8) {
+      nearMissCooldown = NEAR_MISS_CD;
+      score += 1;
+      hudScore.textContent = score;
+      triggerShake(2);
+      spawnParticles(headX, headY, 5, '#ffdd57', 30, 0.25);
+    }
+  }
+
+  // Spawn shards
+  nextShardT -= dt;
+  if (nextShardT <= 0) {
+    spawnShard();
+    nextShardT = getShardEvery(t);
+  }
+
+  // Spawn gates
+  nextGateT -= dt;
+  if (nextGateT <= 0) {
+    spawnGate();
+    nextGateT = getGateEvery(t);
+  }
+
+  // Move shards down
+  for (const s of shards) {
+    s.y += speed * 0.3 * dt;
+  }
+
+  // Move gates down
+  for (const g of gates) {
+    g.y += speed * 0.3 * dt;
+    if (g.flash > 0) g.flash -= dt * 4;
+  }
+
+  // Shard pickup
+  for (const s of shards) {
+    if (!s.alive) continue;
+    const d = Math.hypot(headX - s.x, headY - s.y);
+    if (d < HEAD_R + SHARD_R) {
+      s.alive = false;
+      combo = Math.min(combo + 1, 6);
+      comboTimer = 3;
+      comboDisplay.textContent = `x${combo} COMBO`;
+      comboDisplay.style.opacity = '1';
+      spawnParticles(s.x, s.y, 8, '#00e5ff', 50, 0.3);
+      triggerShake(1.5);
+    }
+  }
+
+  // Gate entry (circle-rect)
+  for (const g of gates) {
+    if (!g.alive) continue;
+    const closestX = Math.max(g.x - GATE_W / 2, Math.min(headX, g.x + GATE_W / 2));
+    const closestY = Math.max(g.y - GATE_H / 2, Math.min(headY, g.y + GATE_H / 2));
+    const d = Math.hypot(headX - closestX, headY - closestY);
+    if (d < HEAD_R) {
+      g.alive = false;
+      glitchType = g.type;
+      glitchDuration = getGlitchDuration(t);
+      glitchTimer = glitchDuration;
+      glitchLabel.textContent = g.type === 'invert' ? '⊘ INVERT' : '◎ TIGHT';
+      glitchLabel.style.opacity = '1';
+      g.flash = 1;
+      // Bonus score
+      const bonus = Math.floor(3 + t * 0.1 + combo * 2);
+      score += bonus;
+      hudScore.textContent = score;
+      spawnParticles(g.x, g.y, 15, g.type === 'invert' ? '#ff3366' : '#aa44ff', 60, 0.4);
+      triggerShake(4);
+    }
+  }
+
+  // Clean up
+  shards = shards.filter(s => s.alive && s.y < H + 20);
+  gates = gates.filter(g => g.alive && g.y < H + 30);
+
+  // Update particles
+  for (const p of particles) {
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vx *= 0.96;
+    p.vy *= 0.96;
+    p.life -= dt;
+  }
+  particles = particles.filter(p => p.life > 0);
+
+  // Shake decay
+  if (shakeMag > 0) {
+    shakeX = (Math.random() - 0.5) * shakeMag * 2;
+    shakeY = (Math.random() - 0.5) * shakeMag * 2;
+    shakeMag *= 0.88;
+    if (shakeMag < 0.3) { shakeMag = 0; shakeX = 0; shakeY = 0; }
+  }
+}
+
+// --- Render ---
+function render() {
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
+
+  const lanePad = state === 'playing' ? getLanePad(t) : 20;
+  const hue = (t * 30) % 360;
+
+  // Background gradient
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, '#070A12');
+  bg.addColorStop(0.5, '#0c1220');
+  bg.addColorStop(1, '#0a0f1c');
+  ctx.fillStyle = bg;
+  ctx.fillRect(-20, -20, W + 40, H + 40);
+
+  // Skyline silhouettes
+  if (skyline) {
+    ctx.fillStyle = '#0d1525';
+    for (const b of skyline) {
+      ctx.fillRect(b.x, H * 0.25 - b.h, b.w, b.h + H * 0.75 + 40);
+    }
+    // Tiny lit windows
+    ctx.fillStyle = 'rgba(0,229,255,0.07)';
+    for (const b of skyline) {
+      for (let wy = H * 0.25 - b.h + 5; wy < H * 0.25; wy += 10) {
+        for (let wx = b.x + 3; wx < b.x + b.w - 3; wx += 7) {
+          if (Math.random() < 0.03) {
+            ctx.fillRect(wx, wy, 3, 3);
+          }
+        }
+      }
+    }
+  }
+
+  // Lane walls
+  const wallAlpha = 0.25 + Math.sin(t * 2) * 0.05;
+  ctx.strokeStyle = `hsla(${hue}, 80%, 60%, ${wallAlpha})`;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(lanePad, 0);
+  ctx.lineTo(lanePad, H);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(W - lanePad, 0);
+  ctx.lineTo(W - lanePad, H);
+  ctx.stroke();
+
+  // Lane wall glow
+  const wallGlow = ctx.createLinearGradient(0, 0, lanePad + 5, 0);
+  wallGlow.addColorStop(0, `hsla(${hue}, 80%, 60%, 0.04)`);
+  wallGlow.addColorStop(1, 'transparent');
+  ctx.fillStyle = wallGlow;
+  ctx.fillRect(0, 0, lanePad + 5, H);
+
+  const wallGlow2 = ctx.createLinearGradient(W, 0, W - lanePad - 5, 0);
+  wallGlow2.addColorStop(0, `hsla(${hue}, 80%, 60%, 0.04)`);
+  wallGlow2.addColorStop(1, 'transparent');
+  ctx.fillStyle = wallGlow2;
+  ctx.fillRect(W - lanePad - 5, 0, lanePad + 5, H);
+
+  // Gates (draw before trail so trail goes over them)
+  for (const g of gates) {
+    if (!g.alive) continue;
+    const gc = g.type === 'invert' ? '#ff3366' : '#aa44ff';
+    const ga = 0.6 + g.flash * 0.4;
+    ctx.strokeStyle = gc;
+    ctx.globalAlpha = ga;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(g.x - GATE_W / 2, g.y - GATE_H / 2, GATE_W, GATE_H);
+
+    // Gate icon
+    ctx.fillStyle = gc;
+    ctx.font = '11px Courier New';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(g.type === 'invert' ? '⊘' : '◎', g.x, g.y);
+
+    // Telegraph line
+    ctx.globalAlpha = 0.15;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(g.x, g.y + GATE_H / 2);
+    ctx.lineTo(g.x, g.y + 80);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+  }
+
+  // Shards
+  for (const s of shards) {
+    if (!s.alive) continue;
+    const sh = (t * 100 + s.x * 3) % 360;
+    ctx.fillStyle = `hsl(${sh}, 90%, 70%)`;
+    ctx.globalAlpha = 0.8;
+    // Diamond shape
+    ctx.save();
+    ctx.translate(s.x, s.y);
+    ctx.rotate(t * 3);
+    ctx.beginPath();
+    ctx.moveTo(0, -SHARD_R);
+    ctx.lineTo(SHARD_R * 0.6, 0);
+    ctx.lineTo(0, SHARD_R);
+    ctx.lineTo(-SHARD_R * 0.6, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+
+  // Trail
+  if (trail.length > 1) {
+    // Faint glow pass
+    ctx.strokeStyle = `hsla(${hue}, 90%, 60%, 0.12)`;
+    ctx.lineWidth = 8;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(trail[0].x, trail[0].y);
+    for (let i = 1; i < trail.length; i++) {
+      ctx.lineTo(trail[i].x, trail[i].y);
+    }
+    ctx.stroke();
+
+    // Core trail
+    ctx.strokeStyle = `hsl(${hue}, 90%, 65%)`;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(trail[0].x, trail[0].y);
+    for (let i = 1; i < trail.length; i++) {
+      ctx.lineTo(trail[i].x, trail[i].y);
+    }
+    ctx.stroke();
+  }
+
+  // Player head
+  if (state === 'playing' || state === 'gameover') {
+    // RGB split during glitch
+    if (glitchType) {
+      const jitter = 2 + Math.random() * 2;
+      ctx.globalAlpha = 0.4;
+      ctx.fillStyle = '#ff0044';
+      ctx.beginPath();
+      ctx.arc(headX - jitter, headY - jitter, HEAD_R, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#00aaff';
+      ctx.beginPath();
+      ctx.arc(headX + jitter, headY + jitter, HEAD_R, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    // Main head
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(headX, headY, HEAD_R, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Head glow
+    ctx.fillStyle = `hsla(${hue}, 90%, 70%, 0.3)`;
+    ctx.beginPath();
+    ctx.arc(headX, headY, HEAD_R + 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Glitch countdown ring
+    if (glitchType && glitchDuration > 0) {
+      const frac = glitchTimer / glitchDuration;
+      const ringColor = glitchType === 'invert' ? '#ff3366' : '#aa44ff';
+      ctx.strokeStyle = ringColor;
+      ctx.lineWidth = 2;
+      ctx.globalAlpha = 0.8;
+      ctx.beginPath();
+      ctx.arc(headX, headY, HEAD_R + 8, -Math.PI / 2, -Math.PI / 2 + frac * Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // Particles
+  for (const p of particles) {
+    const alpha = p.life / p.maxLife;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+  }
+  ctx.globalAlpha = 1;
+
+  // Vignette
+  const vig = ctx.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, H * 0.75);
+  vig.addColorStop(0, 'transparent');
+  vig.addColorStop(1, 'rgba(0,0,0,0.5)');
+  ctx.fillStyle = vig;
+  ctx.fillRect(-20, -20, W + 40, H + 40);
+
+  ctx.restore();
+}
+
+// --- Game loop ---
+function loop(now) {
+  requestAnimationFrame(loop);
+  if (!lastTime) { lastTime = now; return; }
+  let dt = (now - lastTime) / 1000;
+  lastTime = now;
+  if (dt > 0.1) dt = 0.1; // clamp
+
+  update(dt);
+  render();
+}
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

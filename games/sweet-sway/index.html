@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Sweet Sway - Free HTML5 Game</title>
+  <meta name="description" content="Play Sweet Sway - Swipe left or right to avoid candy drops as your avatar rhythmically grows and shrinks.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#1a0a2e">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Sweet Sway - Free HTML5 Game">
+  <meta property="og:description" content="Play Sweet Sway - Swipe left or right to avoid candy drops as your avatar rhythmically grows and shrinks.">
+  <meta property="og:url" content="https://balinti.github.io/sweet-sway/">
+  <meta property="og:image" content="https://balinti.github.io/sweet-sway/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Sweet Sway - Free HTML5 Game">
+  <meta name="twitter:description" content="Play Sweet Sway - Swipe left or right to avoid candy drops as your avatar rhythmically grows and shrinks.">
+  <meta name="twitter:image" content="https://balinti.github.io/sweet-sway/og-image.png">
+  <link rel="canonical" href="https://balinti.github.io/sweet-sway/">
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #0d0518;
+      display: flex; flex-direction: column;
+      align-items: center;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      color: #fff;
+      overflow-x: hidden;
+    }
+    #game-wrap {
+      display: flex; flex-direction: column; align-items: center;
+      width: min(420px, 100vw);
+      min-height: 100vh;
+    }
+    #canvas-container {
+      position: relative;
+      width: min(420px, 100vw);
+      height: min(750px, 100vh);
+      overflow: hidden;
+      border-radius: 0 0 20px 20px;
+      box-shadow: 0 0 60px #a855f766;
+    }
+    canvas {
+      display: block;
+      width: 100%; height: 100%;
+      touch-action: none;
+      cursor: pointer;
+    }
+    #about {
+      padding: 16px 20px 24px;
+      max-width: 420px;
+      text-align: center;
+      color: #9966cc88;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    #about h2 { font-size: 15px; color: #cc99ff99; margin-bottom: 6px; }
+    #about p { margin-bottom: 4px; }
+  </style>
+</head>
+<body>
+<div id="game-wrap">
+  <div id="canvas-container">
+    <canvas id="gc"></canvas>
+  </div>
+  <section id="about" aria-label="About Sweet Sway">
+    <h2>How to Play Sweet Sway</h2>
+    <p>Tap or press Space/Enter to flip your sway direction and pass through candy gates.</p>
+    <p>Blue gates: any size. Purple gates: must be Small. Smash Gold blocks when Big for bonus!</p>
+    <p>Chain near-misses for a combo and unlock the "Sweet!" bonus. Free HTML5 game, no download needed.</p>
+  </section>
+</div>
+<script>
+(function(){
+'use strict';
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+const LS_KEY = 'ssbg_highscore';
+const SAFE_BOTTOM = 80;
+const BEAT_MS = 600;          // one beat duration
+const SWAY_PERIOD = BEAT_MS * 2; // full left<->right cycle = 2 beats
+const SMALL_R = 14;
+const BIG_R   = 24;
+const PULSE_BEAT = BEAT_MS;   // player pulses every beat
+
+// Gate types
+const GT_BLUE   = 0;
+const GT_PURPLE = 1;
+const GT_GOLD   = 2; // gold blocks near hole edges (modifier on blue/purple)
+
+const STATES = { start:'start', playing:'playing', gameover:'gameover' };
+
+// ─── Setup canvas ────────────────────────────────────────────────────────────
+const canvas = document.getElementById('gc');
+const ctx    = canvas.getContext('2d');
+const container = document.getElementById('canvas-container');
+
+let W, H, dpr;
+function resize() {
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W   = container.clientWidth;
+  H   = container.clientHeight;
+  canvas.width  = W * dpr;
+  canvas.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ─── State ───────────────────────────────────────────────────────────────────
+let state = STATES.start;
+let score, best, combo, comboTimer;
+let gameTime;  // ms since game start
+let shake, shakeTime;
+let deathMsg;
+let readyTimer; // countdown before playing starts
+let hueShift;
+
+// ─── Player ──────────────────────────────────────────────────────────────────
+let player;
+function makePlayer() {
+  return {
+    x: W / 2,
+    y: H - SAFE_BOTTOM - BIG_R,
+    swayDir: 1,          // +1 right, -1 left
+    swayPhase: 0,        // 0..1 within SWAY_PERIOD
+    pulsePhase: 0,       // 0..1 within BEAT_MS
+    r: SMALL_R,          // current radius
+    isSmall: true,
+    ringAlpha: 1,
+    trail: [],           // {x,y,r,alpha}
+  };
+}
+
+// ─── Gates ───────────────────────────────────────────────────────────────────
+let gates;
+let nextGateY; // where next gate spawns (above canvas top)
+let spawnTimer;
+let beatCount;
+
+function makeGate(y, gateSpeed) {
+  // solvable hole: center somewhere in the middle 60% of width
+  const diff = getDiff();
+  const holeW = lerp(160, 80, diff);  // shrinks with difficulty
+  const margin = holeW / 2 + 20;
+  const holeX  = margin + Math.random() * (W - margin * 2);
+
+  // choose type
+  let type = GT_BLUE;
+  const r = Math.random();
+  if (diff > 0.3 && r < 0.35) type = GT_PURPLE;
+
+  // gold modifier: blocks near hole edges on some gates
+  const hasGold = diff > 0.2 && Math.random() < 0.3;
+  const goldBlocks = [];
+  if (hasGold) {
+    // one or two blocks near hole edge
+    const sides = Math.random() < 0.5 ? [0] : [0, 1];
+    for (const side of sides) {
+      const bx = side === 0
+        ? holeX - holeW / 2 - 16 - Math.random() * 20
+        : holeX + holeW / 2 + 16 + Math.random() * 20;
+      if (bx > 20 && bx < W - 20) {
+        goldBlocks.push({ x: bx, w: 24, h: 18 });
+      }
+    }
+  }
+
+  return {
+    y,
+    h: 18,
+    holeX,
+    holeW,
+    type,
+    goldBlocks,
+    passed: false,
+    smashedGold: false,
+    alpha: 1,
+  };
+}
+
+// ─── Particles ───────────────────────────────────────────────────────────────
+let particles;
+
+function spawnParticles(x, y, count, colors, speedScale, lifeScale, sizeRange) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = (0.5 + Math.random() * 0.5) * speedScale;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - speedScale * 0.3,
+      r: sizeRange[0] + Math.random() * (sizeRange[1] - sizeRange[0]),
+      color: colors[Math.floor(Math.random() * colors.length)],
+      life: 1,
+      decay: (0.012 + Math.random() * 0.02) / lifeScale,
+      gravity: 0.12,
+    });
+  }
+}
+
+function spawnSprinkles(x, y) {
+  spawnParticles(x, y, 14,
+    ['#ff99cc','#ffdd55','#99eeff','#cc88ff','#88ffcc'],
+    3.5, 1, [2, 5]);
+}
+
+function spawnSmash(x, y) {
+  spawnParticles(x, y, 22,
+    ['#ffd700','#ffaa00','#ffe066','#fff0a0'],
+    5, 1.2, [3, 7]);
+}
+
+function spawnDeath(x, y) {
+  spawnParticles(x, y, 30,
+    ['#ff4466','#ff88aa','#ffbb00','#cc44ff','#fff'],
+    6, 1.5, [3, 8]);
+}
+
+// ─── Utils ───────────────────────────────────────────────────────────────────
+function lerp(a, b, t) { return a + (b - a) * Math.max(0, Math.min(1, t)); }
+
+function getDiff() {
+  // 0..1 over first 120s
+  return Math.min(1, gameTime / 120000);
+}
+
+function getSpeed() {
+  return lerp(100, 340, getDiff());
+}
+
+function getSpawnInterval() {
+  // beats between gates; fewer beats = denser
+  const beats = lerp(3.5, 1.5, getDiff());
+  return beats * BEAT_MS;
+}
+
+function triggerShake(strength) {
+  shake = Math.max(shake || 0, strength);
+  shakeTime = 400;
+}
+
+// ─── Input ───────────────────────────────────────────────────────────────────
+function handleTap() {
+  if (state === STATES.start) {
+    startGame();
+  } else if (state === STATES.playing && readyTimer <= 0) {
+    player.swayDir *= -1;
+  } else if (state === STATES.gameover) {
+    startGame();
+  }
+}
+
+canvas.addEventListener('pointerdown', handleTap);
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    handleTap();
+  }
+});
+
+// ─── Game lifecycle ───────────────────────────────────────────────────────────
+function startGame() {
+  best = parseInt(localStorage.getItem(LS_KEY) || '0');
+  score     = 0;
+  combo     = 0;
+  comboTimer= 0;
+  gameTime  = 0;
+  shake     = 0;
+  shakeTime = 0;
+  hueShift  = 0;
+  deathMsg  = '';
+  readyTimer = 900; // 0.9s ready flash
+  player    = makePlayer();
+  gates     = [];
+  particles = [];
+  spawnTimer = getSpawnInterval();
+  beatCount  = 0;
+  nextGateY  = -40;
+  state = STATES.playing;
+}
+
+function endGame(msg) {
+  deathMsg = msg;
+  best = Math.max(best, score);
+  localStorage.setItem(LS_KEY, best);
+  state = STATES.gameover;
+  triggerShake(14);
+  spawnDeath(player.x, player.y);
+}
+
+// ─── Update ───────────────────────────────────────────────────────────────────
+let lastTime = 0;
+function update(ts) {
+  const rawDt = ts - lastTime;
+  lastTime = ts;
+  const dt = Math.min(rawDt, 50); // clamp dt to 50ms
+
+  if (state === STATES.playing) {
+    gameTime += dt;
+
+    // Ready countdown
+    if (readyTimer > 0) {
+      readyTimer -= dt;
+      // during ready, don't move gates or spawn
+      updateParticles(dt);
+      return;
+    }
+
+    const spd = getSpeed();
+
+    // ── Player sway ──
+    player.swayPhase += dt / SWAY_PERIOD;
+    if (player.swayPhase >= 1) player.swayPhase -= 1;
+
+    // pendulum sway: sin wave, but we track direction flip
+    // We'll use a phase-based sway but allow instant direction flip
+    // swayDir flips what half of the sine we track
+    const swayAmplitude = W * 0.38;
+    // compute raw sway x using accumulated phase
+    // Instead of pure sin, we track position and velocity with direction
+    // Simple approach: player.x moves toward target based on swayDir
+    const targetX = W / 2 + player.swayDir * swayAmplitude * Math.sin(player.swayPhase * Math.PI);
+    // Actually let's use a simpler metronome approach with phase
+    player.x = W / 2 + swayAmplitude * Math.sin(player.swayPhase * Math.PI * 2 * (player.swayDir > 0 ? 1 : -1));
+
+    // Clamp x
+    const margin = 24;
+    player.x = Math.max(margin + BIG_R, Math.min(W - margin - BIG_R, player.x));
+
+    // ── Player pulse ──
+    player.pulsePhase += dt / PULSE_BEAT;
+    if (player.pulsePhase >= 1) player.pulsePhase -= 1;
+    // Small for first half-beat, Big for second half-beat
+    const wasSmall = player.isSmall;
+    player.isSmall = player.pulsePhase < 0.5;
+    player.r = lerp(player.isSmall ? SMALL_R : BIG_R,
+                    player.isSmall ? BIG_R   : SMALL_R,
+                    Math.abs(player.pulsePhase - 0.25) * 4);
+    // smooth: use eased actual radius
+    const t = player.pulsePhase;
+    // sine-based smooth radius
+    player.r = SMALL_R + (BIG_R - SMALL_R) * (0.5 - 0.5 * Math.cos(t * Math.PI * 2));
+    player.isSmall = player.r < (SMALL_R + BIG_R) / 2;
+
+    // ── Ring alpha ──
+    player.ringAlpha = 1 - (player.pulsePhase % 0.5) * 2; // pulses each half-beat
+
+    // ── Trail ──
+    player.trail.push({ x: player.x, y: player.y, r: player.r, alpha: 0.35 });
+    if (player.trail.length > 12) player.trail.shift();
+    for (const t of player.trail) t.alpha *= 0.85;
+
+    // ── Spawn gates ──
+    spawnTimer -= dt;
+    if (spawnTimer <= 0) {
+      gates.push(makeGate(-20, spd));
+      spawnTimer = getSpawnInterval();
+    }
+
+    // ── Move gates ──
+    for (const g of gates) {
+      g.y += spd * dt / 1000;
+    }
+
+    // ── Collision & scoring ──
+    for (const g of gates) {
+      if (g.passed) continue;
+
+      // Check if player center has passed the gate bottom
+      const gTop    = g.y - g.h / 2;
+      const gBottom = g.y + g.h / 2;
+
+      if (player.y - player.r < gBottom && player.y + player.r > gTop) {
+        // Player is at gate level — check collision
+
+        const px = player.x;
+        const pr = player.r;
+        const holeLeft  = g.holeX - g.holeW / 2;
+        const holeRight = g.holeX + g.holeW / 2;
+
+        // Check if player overlaps with gate bar (outside hole)
+        const inHoleX = px + pr > holeLeft && px - pr < holeRight;
+
+        if (!inHoleX) {
+          // Hit the gate bar
+          endGame('Missed the gate!');
+          break;
+        }
+
+        // Purple gate: must be Small
+        if (g.type === GT_PURPLE && !player.isSmall) {
+          endGame('Too Big for Purple gate!');
+          break;
+        }
+
+        // Gold block collision (smash when Big)
+        for (const gb of g.goldBlocks) {
+          if (!gb.smashed) {
+            const gbLeft  = gb.x - gb.w / 2;
+            const gbRight = gb.x + gb.w / 2;
+            const gbTop   = g.y - gb.h / 2;
+            const gbBot   = g.y + gb.h / 2;
+            // AABB vs circle
+            const nearX = Math.max(gbLeft, Math.min(gbRight, px));
+            const nearY = Math.max(gbTop,  Math.min(gbBot,  player.y));
+            const dx = px - nearX, dy = player.y - nearY;
+            if (dx * dx + dy * dy < pr * pr) {
+              if (player.isSmall) {
+                // Can't smash when small
+                endGame('Too Small to smash Gold!');
+                break;
+              } else {
+                gb.smashed = true;
+                score += 3;
+                triggerShake(6);
+                spawnSmash(gb.x, g.y);
+                hueShift = (hueShift + 30) % 360;
+              }
+            }
+          }
+        }
+        if (state !== STATES.playing) break;
+      }
+
+      // Gate fully passed
+      if (!g.passed && g.y - g.h / 2 > player.y + player.r) {
+        g.passed = true;
+        score++;
+        combo++;
+        comboTimer = 3000;
+
+        // Near-miss "Sweet!" bonus
+        const px = player.x, pr = player.r;
+        const holeLeft  = g.holeX - g.holeW / 2;
+        const holeRight = g.holeX + g.holeW / 2;
+        const distToLeft  = Math.abs((px - pr) - holeLeft);
+        const distToRight = Math.abs((px + pr) - holeRight);
+        if (Math.min(distToLeft, distToRight) < 12) {
+          score += 2;
+          triggerShake(3);
+          spawnSprinkles(player.x, player.y - player.r - 10);
+          showFloatText('Sweet!', player.x, player.y - 40, '#ffe066');
+        }
+
+        if (combo > 0 && combo % 5 === 0) {
+          hueShift = (hueShift + 60) % 360;
+          spawnSprinkles(player.x, player.y - player.r - 10);
+        }
+      }
+    }
+
+    // Remove off-screen gates
+    gates = gates.filter(g => g.y < H + 60);
+
+    // Combo timer decay
+    if (comboTimer > 0) {
+      comboTimer -= dt;
+      if (comboTimer <= 0) combo = 0;
+    }
+
+    // Shake decay
+    if (shakeTime > 0) {
+      shakeTime -= dt;
+      if (shakeTime <= 0) shake = 0;
+      else shake *= 0.92;
+    }
+
+    // Hue shift with combo
+    if (combo >= 10) hueShift = (hueShift + dt * 0.08) % 360;
+  }
+
+  // Particles always update
+  updateParticles(dt);
+}
+
+// ─── Float texts ──────────────────────────────────────────────────────────────
+let floatTexts = [];
+function showFloatText(text, x, y, color) {
+  floatTexts.push({ text, x, y, color, alpha: 1, vy: -1.2, life: 1 });
+}
+
+function updateParticles(dt) {
+  for (const p of particles) {
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += p.gravity;
+    p.life -= p.decay * dt;
+  }
+  particles = particles.filter(p => p.life > 0);
+
+  for (const t of floatTexts) {
+    t.y += t.vy;
+    t.life -= 0.012 * dt / 16;
+    t.alpha = t.life;
+  }
+  floatTexts = floatTexts.filter(t => t.life > 0);
+}
+
+// ─── Draw ─────────────────────────────────────────────────────────────────────
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+
+  // Background gradient
+  const bgHue = (200 + hueShift * 0.3) % 360;
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, `hsl(${bgHue},40%,6%)`);
+  grad.addColorStop(1, `hsl(${(bgHue+40)%360},50%,10%)`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Shake offset
+  let sx = 0, sy = 0;
+  if (shake > 0) {
+    sx = (Math.random() - 0.5) * shake;
+    sy = (Math.random() - 0.5) * shake;
+  }
+  ctx.save();
+  ctx.translate(sx, sy);
+
+  if (state === STATES.start) {
+    drawStartScreen();
+  } else if (state === STATES.playing) {
+    drawGame();
+  } else if (state === STATES.gameover) {
+    drawGame();
+    drawGameOver();
+  }
+
+  // Always draw particles
+  drawParticles();
+  drawFloatTexts();
+
+  ctx.restore();
+}
+
+function drawStartScreen() {
+  // Animated title
+  const cx = W / 2, cy = H / 2;
+
+  // Glow circle
+  const g = ctx.createRadialGradient(cx, cy - 60, 10, cx, cy - 60, 120);
+  g.addColorStop(0, 'rgba(200,120,255,0.25)');
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  // Title
+  ctx.font = 'bold 42px "Segoe UI", Arial';
+  ctx.fillStyle = '#fff';
+  ctx.shadowColor = '#cc88ff';
+  ctx.shadowBlur = 24;
+  ctx.fillText('Sweet Sway', cx, cy - 80);
+  ctx.shadowBlur = 0;
+
+  ctx.font = '18px "Segoe UI", Arial';
+  ctx.fillStyle = '#dd99ff';
+  ctx.fillText('Beat Gates', cx, cy - 42);
+
+  // Instructions
+  ctx.font = '14px "Segoe UI", Arial';
+  ctx.fillStyle = '#aaaacc';
+  ctx.fillText('Tap/Space/Enter to flip sway', cx, cy + 10);
+  ctx.fillText('Blue = any size  |  Purple = Small only', cx, cy + 34);
+  ctx.fillText('Gold blocks = smash when Big', cx, cy + 58);
+
+  // Tap to start
+  const pulse = 0.7 + 0.3 * Math.sin(Date.now() / 400);
+  ctx.globalAlpha = pulse;
+  ctx.font = 'bold 20px "Segoe UI", Arial';
+  ctx.fillStyle = '#fff';
+  ctx.fillText('TAP TO START', cx, cy + 110);
+  ctx.globalAlpha = 1;
+
+  // Best score
+  best = parseInt(localStorage.getItem(LS_KEY) || '0');
+  if (best > 0) {
+    ctx.font = '14px "Segoe UI", Arial';
+    ctx.fillStyle = '#ffdd88';
+    ctx.fillText(`Best: ${best}`, cx, cy + 150);
+  }
+
+  // Demo player
+  drawPlayerAt(cx, cy - 160, BIG_R * (0.7 + 0.3 * Math.sin(Date.now() / 300)), 0);
+}
+
+function drawGame() {
+  const cx = W / 2;
+
+  // Safe bottom line (subtle)
+  ctx.strokeStyle = 'rgba(200,150,255,0.1)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([6, 8]);
+  ctx.beginPath();
+  ctx.moveTo(0, H - SAFE_BOTTOM);
+  ctx.lineTo(W, H - SAFE_BOTTOM);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Draw gates
+  for (const g of gates) {
+    drawGate(g);
+  }
+
+  // Draw trail
+  for (let i = 0; i < player.trail.length; i++) {
+    const t = player.trail[i];
+    const frac = i / player.trail.length;
+    ctx.globalAlpha = t.alpha * frac * 0.5;
+    ctx.fillStyle = combo >= 10 ? `hsl(${(hueShift + i * 20) % 360},80%,70%)` : '#cc88ff';
+    ctx.beginPath();
+    ctx.arc(t.x, t.y, t.r * frac, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  // Draw player
+  if (state === STATES.playing && readyTimer > 0) {
+    // Ready flash
+    const flash = Math.floor(readyTimer / 200) % 2 === 0;
+    if (flash) drawPlayerAt(player.x, player.y, player.r, player.pulsePhase);
+    // Ready text
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = 'bold 28px "Segoe UI", Arial';
+    ctx.fillStyle = '#fff';
+    ctx.shadowColor = '#cc88ff';
+    ctx.shadowBlur = 20;
+    ctx.fillText('Ready? Beat!', W / 2, H / 2);
+    ctx.shadowBlur = 0;
+  } else {
+    drawPlayerAt(player.x, player.y, player.r, player.pulsePhase);
+  }
+
+  // Beat ring
+  const ringR = BIG_R + 8 + (1 - player.pulsePhase % 0.5 * 2) * 10;
+  ctx.strokeStyle = `rgba(255,200,100,${player.ringAlpha * 0.6})`;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(player.x, player.y, ringR, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // HUD
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.font = 'bold 32px "Segoe UI", Arial';
+  ctx.fillStyle = '#fff';
+  ctx.shadowColor = 'rgba(0,0,0,0.5)';
+  ctx.shadowBlur = 8;
+  ctx.fillText(score, W / 2, 12);
+  ctx.shadowBlur = 0;
+
+  if (combo >= 3) {
+    ctx.font = 'bold 14px "Segoe UI", Arial';
+    ctx.fillStyle = `hsl(${(hueShift + 60) % 360},90%,70%)`;
+    ctx.fillText(`x${combo} COMBO`, W / 2, 50);
+  }
+
+  best = Math.max(best, score);
+  if (score > 0) {
+    ctx.font = '13px "Segoe UI", Arial';
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.textAlign = 'right';
+    ctx.fillText(`Best ${best}`, W - 14, 16);
+    ctx.textAlign = 'center';
+  }
+}
+
+function drawPlayerAt(x, y, r, phase) {
+  // Main candy body
+  const bodyGrad = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, r * 0.1, x, y, r);
+  bodyGrad.addColorStop(0, '#ffaae8');
+  bodyGrad.addColorStop(0.5, '#dd55cc');
+  bodyGrad.addColorStop(1, '#7722aa');
+  ctx.fillStyle = bodyGrad;
+  ctx.shadowColor = '#cc44ff';
+  ctx.shadowBlur = 16;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Shine
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.beginPath();
+  ctx.ellipse(x - r * 0.25, y - r * 0.3, r * 0.25, r * 0.15, -0.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Eyes
+  const eyeY = y - r * 0.1;
+  const eyeOff = r * 0.3;
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.arc(x - eyeOff, eyeY, r * 0.18, 0, Math.PI * 2);
+  ctx.arc(x + eyeOff, eyeY, r * 0.18, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#330066';
+  ctx.beginPath();
+  ctx.arc(x - eyeOff + 1, eyeY + 1, r * 0.09, 0, Math.PI * 2);
+  ctx.arc(x + eyeOff + 1, eyeY + 1, r * 0.09, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawGate(g) {
+  const gTop    = g.y - g.h / 2;
+  const gBottom = g.y + g.h / 2;
+  const holeLeft  = g.holeX - g.holeW / 2;
+  const holeRight = g.holeX + g.holeW / 2;
+
+  // Gate bar color by type
+  let barColor, glowColor;
+  if (g.type === GT_PURPLE) {
+    barColor  = 'rgba(150,50,220,0.9)';
+    glowColor = '#aa55ff';
+  } else {
+    barColor  = 'rgba(40,120,220,0.9)';
+    glowColor = '#44aaff';
+  }
+
+  ctx.shadowColor = glowColor;
+  ctx.shadowBlur  = 10;
+  ctx.fillStyle   = barColor;
+
+  // Left segment
+  if (holeLeft > 0) {
+    ctx.beginPath();
+    roundRect(ctx, 0, gTop, holeLeft, g.h, 4);
+    ctx.fill();
+  }
+  // Right segment
+  if (holeRight < W) {
+    ctx.beginPath();
+    roundRect(ctx, holeRight, gTop, W - holeRight, g.h, 4);
+    ctx.fill();
+  }
+  ctx.shadowBlur = 0;
+
+  // Purple label
+  if (g.type === GT_PURPLE) {
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = 'bold 11px "Segoe UI", Arial';
+    ctx.fillStyle = '#ffccff';
+    // Draw on whichever segment is wider
+    const leftW  = holeLeft;
+    const rightW = W - holeRight;
+    const lx = leftW > rightW  ? leftW / 2          : holeRight + rightW / 2;
+    ctx.fillText('SMALL', lx, g.y);
+  }
+
+  // Gold blocks
+  for (const gb of g.goldBlocks) {
+    if (gb.smashed) continue;
+    const bx = gb.x - gb.w / 2, by = gTop;
+    ctx.shadowColor = '#ffaa00';
+    ctx.shadowBlur  = 12;
+    ctx.fillStyle   = '#ffd700';
+    ctx.beginPath();
+    roundRect(ctx, bx, by, gb.w, gb.h, 4);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    // Shine
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.fillRect(bx + 3, by + 2, gb.w - 6, 3);
+  }
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.roundRect(x, y, w, h, r);
+}
+
+function drawGameOver() {
+  // Overlay
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, 'rgba(10,2,20,0.85)');
+  grad.addColorStop(1, 'rgba(10,2,20,0.95)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  const cx = W / 2, cy = H / 2;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  ctx.font = 'bold 38px "Segoe UI", Arial';
+  ctx.fillStyle = '#ff6688';
+  ctx.shadowColor = '#ff2255';
+  ctx.shadowBlur = 20;
+  ctx.fillText('Game Over', cx, cy - 90);
+  ctx.shadowBlur = 0;
+
+  ctx.font = 'bold 52px "Segoe UI", Arial';
+  ctx.fillStyle = '#fff';
+  ctx.fillText(score, cx, cy - 20);
+
+  ctx.font = '18px "Segoe UI", Arial';
+  ctx.fillStyle = '#ffdd88';
+  ctx.fillText(`Best: ${best}`, cx, cy + 40);
+
+  if (deathMsg) {
+    ctx.font = '15px "Segoe UI", Arial';
+    ctx.fillStyle = '#ff9999';
+    ctx.fillText(deathMsg, cx, cy + 72);
+  }
+
+  const pulse = 0.7 + 0.3 * Math.sin(Date.now() / 400);
+  ctx.globalAlpha = pulse;
+  ctx.font = 'bold 20px "Segoe UI", Arial';
+  ctx.fillStyle = '#fff';
+  ctx.fillText('TAP TO RETRY', cx, cy + 120);
+  ctx.globalAlpha = 1;
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    ctx.globalAlpha = Math.max(0, p.life);
+    ctx.fillStyle   = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawFloatTexts() {
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (const t of floatTexts) {
+    ctx.globalAlpha = Math.max(0, t.alpha);
+    ctx.font = 'bold 20px "Segoe UI", Arial';
+    ctx.fillStyle = t.color;
+    ctx.shadowColor = t.color;
+    ctx.shadowBlur  = 10;
+    ctx.fillText(t.text, t.x, t.y);
+    ctx.shadowBlur = 0;
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ─── Loop ─────────────────────────────────────────────────────────────────────
+function loop(ts) {
+  update(ts);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// Init
+best = parseInt(localStorage.getItem(LS_KEY) || '0');
+particles = [];
+floatTexts = [];
+shake = 0;
+shakeTime = 0;
+hueShift = 0;
+requestAnimationFrame(ts => { lastTime = ts; requestAnimationFrame(loop); });
+
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1030 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Aqua Shrink - Free HTML5 Game</title>
+  <meta name="description" content="Play Aqua Shrink - Tap to dodge oncoming shrinking asteroids in deep ocean layers.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a0a2e">
+  <link rel="canonical" href="https://balinti.github.io/aqua-shrink/">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Aqua Shrink - Free HTML5 Game">
+  <meta property="og:description" content="Play Aqua Shrink - Tap to dodge oncoming shrinking asteroids in deep ocean layers.">
+  <meta property="og:url" content="https://balinti.github.io/aqua-shrink/">
+  <meta property="og:image" content="https://balinti.github.io/aqua-shrink/og-image.jpg">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Aqua Shrink - Free HTML5 Game">
+  <meta name="twitter:description" content="Play Aqua Shrink - Tap to dodge oncoming shrinking asteroids in deep ocean layers.">
+  <meta name="twitter:image" content="https://balinti.github.io/aqua-shrink/og-image.jpg">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #050518;
+      color: #c8e8ff;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100dvh;
+      overflow-x: hidden;
+    }
+
+    #game-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 100%;
+      max-width: 420px;
+      padding: 8px 8px 0;
+    }
+
+    #canvas-container {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 420 / 750;
+      max-height: calc(100dvh - 180px);
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 0 40px rgba(0, 160, 255, 0.3), 0 0 80px rgba(0, 60, 160, 0.2);
+      flex-shrink: 0;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      border-radius: 14px;
+    }
+
+    /* HUD */
+    #hud {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding: 12px 16px;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    .hud-val {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      text-shadow: 0 0 10px currentColor;
+    }
+
+    #hud-score { color: #7ef7ff; }
+    #hud-best  { color: #ffdd77; font-size: 14px; margin-top: 4px; opacity: 0.8; }
+    #hud-combo { color: #ff9933; font-size: 18px; font-weight: 700; text-align: right; }
+    #hud-combo-label { font-size: 11px; opacity: 0.7; text-align: right; }
+
+    #hud-sound {
+      position: absolute;
+      top: 10px; right: 14px;
+      font-size: 20px;
+      cursor: pointer;
+      pointer-events: all;
+      user-select: none;
+      opacity: 0.7;
+      transition: opacity 0.2s;
+    }
+    #hud-sound:hover { opacity: 1; }
+
+    /* Overlay panels */
+    .overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: rgba(2, 8, 40, 0.82);
+      backdrop-filter: blur(6px);
+      border-radius: 14px;
+      z-index: 20;
+      cursor: pointer;
+      transition: opacity 0.3s;
+    }
+    .overlay.hidden { display: none; }
+
+    .overlay h2 {
+      font-size: 44px;
+      font-weight: 900;
+      letter-spacing: 2px;
+      color: #7ef7ff;
+      text-shadow: 0 0 20px #00cfff, 0 0 40px #007fff;
+      margin-bottom: 8px;
+    }
+    .overlay .sub {
+      font-size: 14px;
+      color: #88aacc;
+      margin-bottom: 32px;
+      letter-spacing: 1px;
+    }
+
+    .tap-btn {
+      background: linear-gradient(135deg, #0088ff, #00ccff);
+      border: none;
+      color: #fff;
+      font-size: 18px;
+      font-weight: 700;
+      padding: 14px 44px;
+      border-radius: 40px;
+      cursor: pointer;
+      box-shadow: 0 0 20px rgba(0, 180, 255, 0.5);
+      transition: transform 0.1s, box-shadow 0.1s;
+      margin: 6px;
+      letter-spacing: 1px;
+    }
+    .tap-btn:active { transform: scale(0.95); }
+    .tap-btn.secondary {
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      font-size: 14px;
+      padding: 10px 28px;
+    }
+
+    #go-score { font-size: 52px; font-weight: 900; color: #7ef7ff; text-shadow: 0 0 16px #00cfff; }
+    #go-best  { font-size: 15px; color: #ffdd77; margin-top: 4px; margin-bottom: 24px; }
+
+    .go-divider { width: 60px; height: 2px; background: rgba(255,255,255,0.15); border-radius: 2px; margin: 16px auto; }
+
+    /* DOM sections below canvas */
+    .seo-section {
+      width: 100%;
+      max-width: 420px;
+      padding: 16px 16px 8px;
+      color: #6688aa;
+    }
+    .seo-section h1 { font-size: 18px; color: #88c8ff; margin-bottom: 6px; }
+    .seo-section p  { font-size: 13px; line-height: 1.6; margin-bottom: 8px; }
+    .seo-section h3 { font-size: 14px; color: #7ef7ff; margin: 10px 0 4px; }
+    .seo-section ul { font-size: 13px; padding-left: 18px; line-height: 1.8; }
+
+    .depth-badge {
+      display: inline-block;
+      background: linear-gradient(135deg,#0044aa,#006ecc);
+      color: #7ef7ff;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 20px;
+      letter-spacing: 1px;
+      margin-bottom: 12px;
+    }
+
+    @media (max-height: 650px) {
+      #canvas-container { max-height: calc(100dvh - 120px); }
+    }
+  </style>
+</head>
+<body>
+
+<div id="game-wrap">
+  <div id="canvas-container">
+    <canvas id="c"></canvas>
+
+    <!-- HUD -->
+    <div id="hud">
+      <div>
+        <div id="hud-score" class="hud-val">0</div>
+        <div id="hud-best">BEST 0</div>
+      </div>
+      <div style="text-align:right">
+        <div id="hud-combo-label">COMBO</div>
+        <div id="hud-combo" class="hud-val">x1</div>
+      </div>
+    </div>
+
+    <div id="hud-sound">🔊</div>
+
+    <!-- Start overlay -->
+    <div class="overlay" id="overlay-start">
+      <div class="depth-badge">DEEP DIVE</div>
+      <h2>AQUA SHRINK</h2>
+      <p class="sub">Pressure Pulse Diver</p>
+      <button class="tap-btn">TAP TO START</button>
+      <p style="font-size:12px;color:#446688;margin-top:16px;">SPACE / ENTER / TAP</p>
+    </div>
+
+    <!-- Game over overlay -->
+    <div class="overlay hidden" id="overlay-go">
+      <p style="font-size:13px;color:#6688aa;letter-spacing:2px;margin-bottom:8px;">DEPTH REACHED</p>
+      <div id="go-score">0</div>
+      <div id="go-best">BEST: 0</div>
+      <div class="go-divider"></div>
+      <button class="tap-btn" id="btn-retry">DIVE AGAIN</button>
+      <button class="tap-btn secondary" id="btn-share">SHARE SCORE</button>
+    </div>
+  </div>
+
+  <!-- SEO content -->
+  <div class="seo-section">
+    <h1>Aqua Shrink — Pressure Pulse Diver</h1>
+    <p>Navigate your diver deeper into the ocean. Tap to activate a <strong>Pressure Pulse</strong> that temporarily shrinks your diver, letting you squeeze through narrow mine clusters.</p>
+
+    <h3>Controls</h3>
+    <ul>
+      <li>Tap / Click / Space / Enter — Activate Pressure Pulse (shrinks diver)</li>
+      <li>Build near-miss streaks for combo multipliers (x1–x4)</li>
+    </ul>
+
+    <h3>Scoring Tips</h3>
+    <ul>
+      <li>Pass gates: <strong>25 pts</strong> × combo</li>
+      <li>Collect pearls: <strong>10 pts</strong> × combo</li>
+      <li>Near-miss while shrunk: <strong>15 pts</strong> × combo</li>
+      <li>Don't spam Pulse — combo decays while shrunk!</li>
+      <li>Gates get narrower and faster over time</li>
+    </ul>
+  </div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+// ─── Audio ────────────────────────────────────────────────────────────────────
+let audioCtx = null;
+let soundOn = true;
+
+function getAudio(){
+  if(!audioCtx){
+    try{ audioCtx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){}
+  }
+  return audioCtx;
+}
+
+function beep(freq, dur, vol, type='sine', fadeOut=true){
+  if(!soundOn) return;
+  const ctx = getAudio();
+  if(!ctx) return;
+  try{
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, ctx.currentTime);
+    gain.gain.setValueAtTime(vol, ctx.currentTime);
+    if(fadeOut) gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + dur);
+  }catch(e){}
+}
+
+function playPulse(){
+  beep(440, 0.12, 0.15, 'sine');
+  beep(880, 0.08, 0.08, 'sine');
+}
+function playGatePass(){
+  beep(660, 0.1, 0.12, 'triangle');
+}
+function playPearlCollect(){
+  beep(1200, 0.08, 0.1, 'sine');
+}
+function playNearMiss(){
+  beep(300, 0.15, 0.1, 'sawtooth');
+}
+function playDeath(){
+  beep(220, 0.3, 0.2, 'sawtooth', true);
+  beep(110, 0.5, 0.15, 'square', true);
+}
+
+// ─── Canvas & sizing ──────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const DESIGN_W = 420, DESIGN_H = 750;
+let W = DESIGN_W, H = DESIGN_H;
+let dpr = 1;
+
+function resize(){
+  const container = document.getElementById('canvas-container');
+  const rect = container.getBoundingClientRect();
+  W = rect.width;
+  H = rect.height;
+  dpr = Math.min(2.5, window.devicePixelRatio || 1);
+  canvas.width  = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', ()=>{ resize(); if(state!=='playing') drawIdle(); });
+resize();
+
+// ─── State ────────────────────────────────────────────────────────────────────
+let state = 'start'; // 'start' | 'playing' | 'gameover'
+let score = 0;
+let bestScore = parseInt(localStorage.getItem('aqua_best') || '0');
+let runTime = 0;
+let hitstop = 0;
+
+// ─── Shake ────────────────────────────────────────────────────────────────────
+let shakeMag = 0, shakeDur = 0;
+function applyShake(mag, dur){ shakeMag = Math.max(shakeMag, mag); shakeDur = Math.max(shakeDur, dur); }
+
+// ─── Player ───────────────────────────────────────────────────────────────────
+const PLAYER_R_NORMAL = 18;
+const PLAYER_R_SHRUNK = 10;
+const SHRINK_DUR = 0.35;
+const SHRINK_COOL = 0.55;
+
+let player = {
+  x: 0, y: 0,
+  r: PLAYER_R_NORMAL,
+  rTarget: PLAYER_R_NORMAL,
+  shrunk: false,
+  shrinkTimer: 0,
+  coolTimer: 0,
+  hue: 200,
+};
+
+function initPlayer(){
+  player.x = W * 0.5;
+  player.y = H * 0.68;
+  player.r = PLAYER_R_NORMAL;
+  player.rTarget = PLAYER_R_NORMAL;
+  player.shrunk = false;
+  player.shrinkTimer = 0;
+  player.coolTimer = 0;
+}
+
+// ─── Gates ────────────────────────────────────────────────────────────────────
+let gates = [];
+let nextGateTimer = 0;
+let gateHue = 0;
+
+function spawnInterval(t){ return clamp(1.15 - 0.0045*t, 0.72, 1.15); }
+function gapHalf(t)       { return clamp(92 - 0.55*t, 44, 92); }
+function speed(t)          { return 220 + 3.2*t + 18*Math.log2(1 + t/12); }
+function pNarrow(t)        { return clamp(0.10 + 0.012*t, 0.10, 0.65); }
+function pDouble(t)        { return clamp((t-25)*0.006, 0, 0.18); }
+function clamp(v,lo,hi)    { return v<lo?lo:v>hi?hi:v; }
+
+function spawnGate(forced){
+  const t = runTime;
+  const narrow = forced || Math.random() < pNarrow(t);
+  let gh = gapHalf(t);
+  if(narrow) gh = Math.max(32, gh * 0.62);
+
+  const cx = W * 0.5;
+  const mineR = 10;
+  const bandW = cx - gh - 8; // width of mine band each side
+
+  gateHue = (gateHue + 37) % 360;
+  const gate = {
+    y: H + 80,
+    gh,
+    narrow,
+    passed: false,
+    nearMissed: false,
+    armed: false,
+    hue: gateHue,
+    pearls: [],
+  };
+
+  // Spawn pearls near wide gates
+  if(!narrow && Math.random() < 0.6){
+    const numP = 1 + Math.floor(Math.random()*2);
+    for(let i=0;i<numP;i++){
+      const px = cx + (Math.random()<0.5?-1:1) * (gh*0.5 + Math.random()*30);
+      gate.pearls.push({ x: px, y: gate.y - 20 - i*28, r:7, collected:false });
+    }
+  }
+
+  gates.push(gate);
+}
+
+// ─── Combo ────────────────────────────────────────────────────────────────────
+let comboMeter = 0;
+function getCombo(){ return Math.min(4, 1 + Math.floor(comboMeter * 4)); }
+
+// ─── Particles ────────────────────────────────────────────────────────────────
+const MAX_PARTICLES = 500;
+let particles = [];
+
+function addParticle(x,y,vx,vy,r,life,color,type='dot'){
+  if(particles.length >= MAX_PARTICLES) return;
+  particles.push({x,y,vx,vy,r,life,maxLife:life,color,type});
+}
+
+function addBubble(x,y){
+  addParticle(x,y,(Math.random()-0.5)*20,-20-Math.random()*40,
+    2+Math.random()*3, 0.6+Math.random()*0.8,
+    `hsla(200,80%,80%,0.6)`, 'bubble');
+}
+
+function addSpark(x,y,n,color){
+  for(let i=0;i<n;i++){
+    const a = Math.random()*Math.PI*2;
+    const s = 60+Math.random()*120;
+    addParticle(x,y,Math.cos(a)*s,Math.sin(a)*s,2+Math.random()*3,0.3+Math.random()*0.4,color,'spark');
+  }
+}
+
+function addRing(x,y,color){
+  addParticle(x,y,0,0,player.r,0.6,color,'ring');
+}
+
+function addDeathBurst(x,y){
+  addRing(x,y,'rgba(255,80,60,0.9)');
+  addSpark(x,y,30,'#ff6644');
+  addSpark(x,y,20,'#ffcc44');
+  for(let i=0;i<15;i++){
+    const a=Math.random()*Math.PI*2;
+    addParticle(x,y,Math.cos(a)*180,Math.sin(a)*180,4+Math.random()*4,0.5+Math.random()*0.5,'rgba(255,120,60,0.9)','spark');
+  }
+}
+
+// ─── Game loop ────────────────────────────────────────────────────────────────
+let lastTime = 0;
+let animId = null;
+
+function loop(ts){
+  animId = requestAnimationFrame(loop);
+  const raw = (ts - lastTime) / 1000;
+  lastTime = ts;
+  const dt = Math.min(raw, 0.05);
+
+  if(state === 'playing'){
+    if(hitstop > 0){
+      hitstop -= dt;
+      render();
+      return;
+    }
+    update(dt);
+  }
+  render();
+}
+
+function startLoop(){
+  lastTime = performance.now();
+  if(animId) cancelAnimationFrame(animId);
+  animId = requestAnimationFrame(loop);
+}
+
+// ─── Update ───────────────────────────────────────────────────────────────────
+function update(dt){
+  runTime += dt;
+  const t = runTime;
+
+  // Player shrink
+  player.shrinkTimer = Math.max(0, player.shrinkTimer - dt);
+  player.coolTimer   = Math.max(0, player.coolTimer - dt);
+  player.shrunk = player.shrinkTimer > 0;
+  player.rTarget = player.shrunk ? PLAYER_R_SHRUNK : PLAYER_R_NORMAL;
+  player.r += (player.rTarget - player.r) * Math.min(1, dt * 18);
+
+  // Combo decay while shrunk
+  if(player.shrunk) comboMeter = Math.max(0, comboMeter - dt * 0.85);
+  comboMeter = clamp(comboMeter, 0, 1);
+
+  // Shake decay
+  if(shakeDur > 0){
+    shakeDur -= dt;
+    if(shakeDur <= 0){ shakeMag = 0; }
+  }
+
+  // Bubbles
+  if(Math.random() < dt * 8){
+    addBubble(player.x + (Math.random()-0.5)*player.r*1.5,
+              player.y + player.r * 0.5);
+  }
+
+  // Particle update
+  for(let i=particles.length-1;i>=0;i--){
+    const p = particles[i];
+    p.life -= dt;
+    if(p.life <= 0){ particles.splice(i,1); continue; }
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy += (p.type==='bubble' ? -5 : 180) * dt; // bubbles rise, others fall
+    if(p.type==='ring') p.r += 60 * dt;
+  }
+
+  // Gate spawn
+  nextGateTimer -= dt;
+  if(nextGateTimer <= 0){
+    const si = spawnInterval(t);
+    nextGateTimer = si;
+    const doDouble = t > 25 && Math.random() < pDouble(t);
+    spawnGate(false);
+    if(doDouble){
+      // schedule a second gate right after
+      setTimeout(()=>{
+        if(state==='playing') spawnGate(true);
+      }, si * 650);
+    }
+  }
+
+  // Gate update
+  const sp = speed(t);
+  const playerCX = player.x;
+  const BAND_W = 80; // visual mine band width each side
+
+  for(let i=gates.length-1;i>=0;i--){
+    const g = gates[i];
+    g.y -= sp * dt;
+
+    // Move pearls
+    for(const p of g.pearls){
+      p.y -= sp * dt;
+    }
+
+    // Armed telegraph
+    g.armed = (g.y - player.y) > 0 && (g.y - player.y) < 140;
+
+    // Gate pass
+    if(!g.passed && g.y < player.y){
+      g.passed = true;
+      const mult = getCombo();
+      score += Math.floor(25 * mult);
+      if(!player.shrunk) comboMeter = Math.min(1, comboMeter + 0.18);
+      else               comboMeter = Math.min(1, comboMeter + 0.06);
+      playGatePass();
+      addSpark(player.x, player.y - player.r, 6, '#7ef7ff');
+    }
+
+    // Near-miss (only while shrunk, once per gate)
+    if(!g.nearMissed && player.shrunk){
+      const dist = distToGate(player.x, player.y, g, W);
+      if(dist > 0 && dist < player.r + 6){
+        g.nearMissed = true;
+        const mult = getCombo();
+        score += Math.floor(15 * mult);
+        comboMeter = Math.min(1, comboMeter + 0.08);
+        playNearMiss();
+        addSpark(player.x, player.y, 8, '#ff9933');
+        applyShake(3, 0.2);
+      }
+    }
+
+    // Collision
+    const dist = distToGate(player.x, player.y, g, W);
+    if(dist < 0){ // penetrating
+      die();
+      return;
+    }
+
+    // Pearl collection
+    for(const p of g.pearls){
+      if(!p.collected && !player.shrunk){
+        const dx = player.x - p.x, dy = player.y - p.y;
+        if(dx*dx+dy*dy < (player.r+p.r)*(player.r+p.r)){
+          p.collected = true;
+          const mult = getCombo();
+          score += Math.floor(10 * mult);
+          comboMeter = Math.min(1, comboMeter + 0.04);
+          playPearlCollect();
+          addSpark(p.x, p.y, 5, '#ffdd77');
+        }
+      }
+    }
+
+    // Remove off-screen
+    if(g.y < -200) gates.splice(i,1);
+  }
+
+  // Update HUD
+  updateHUD();
+}
+
+// Distance from circle center (px,py) to nearest gate mine rect, negative = collision
+function distToGate(px, py, g, W){
+  const cx = W * 0.5;
+  const gh = g.gh;
+  // Left band: x from 0 to (cx - gh), full height strip 60px tall centered at g.y
+  const BAND_H = 60;
+  const MINE_MARGIN = 8;
+
+  // Left rect
+  const lx1 = 0, lx2 = cx - gh;
+  const ly1 = g.y - BAND_H/2, ly2 = g.y + BAND_H/2;
+  // Right rect
+  const rx1 = cx + gh, rx2 = W;
+  const ry1 = ly1, ry2 = ly2;
+
+  const dL = distCircleRect(px, py, lx1, ly1, lx2-lx1, ly2-ly1);
+  const dR = distCircleRect(px, py, rx1, ry1, rx2-rx1, ry2-ry1);
+  return Math.min(dL, dR) - player.r;
+}
+
+function distCircleRect(cx,cy,rx,ry,rw,rh){
+  const nearX = Math.max(rx, Math.min(cx, rx+rw));
+  const nearY = Math.max(ry, Math.min(cy, ry+rh));
+  const dx = cx-nearX, dy = cy-nearY;
+  return Math.sqrt(dx*dx+dy*dy);
+}
+
+function updateHUD(){
+  document.getElementById('hud-score').textContent = score;
+  document.getElementById('hud-best').textContent  = 'BEST ' + bestScore;
+  const c = getCombo();
+  document.getElementById('hud-combo').textContent = 'x' + c;
+}
+
+// ─── Die ──────────────────────────────────────────────────────────────────────
+function die(){
+  if(state !== 'playing') return;
+  state = 'gameover';
+  playDeath();
+  applyShake(12, 0.45);
+  hitstop = 0.12;
+  addDeathBurst(player.x, player.y);
+
+  if(score > bestScore){
+    bestScore = score;
+    localStorage.setItem('aqua_best', bestScore);
+  }
+
+  setTimeout(()=>{
+    document.getElementById('go-score').textContent = score;
+    document.getElementById('go-best').textContent  = 'BEST: ' + bestScore;
+    document.getElementById('overlay-go').classList.remove('hidden');
+  }, 300);
+}
+
+// ─── Input ────────────────────────────────────────────────────────────────────
+function activatePulse(){
+  if(state === 'playing'){
+    if(player.coolTimer <= 0){
+      player.shrinkTimer = SHRINK_DUR;
+      player.coolTimer   = SHRINK_DUR + SHRINK_COOL;
+      playPulse();
+      addRing(player.x, player.y, 'rgba(0,200,255,0.5)');
+    }
+  }
+}
+
+function handleTap(e){
+  e.preventDefault();
+  // Resume audio on iOS
+  const ac = getAudio();
+  if(ac && ac.state === 'suspended') ac.resume();
+
+  if(state === 'start'){
+    startGame();
+  } else if(state === 'playing'){
+    activatePulse();
+  }
+}
+
+document.getElementById('canvas-container').addEventListener('pointerdown', handleTap, {passive:false});
+document.getElementById('overlay-start').addEventListener('pointerdown', e=>{ e.stopPropagation(); handleTap(e); }, {passive:false});
+
+document.getElementById('btn-retry').addEventListener('pointerdown', e=>{ e.stopPropagation(); e.preventDefault(); startGame(); });
+document.getElementById('btn-share').addEventListener('pointerdown', e=>{ e.stopPropagation(); e.preventDefault(); shareScore(); });
+
+document.getElementById('hud-sound').addEventListener('pointerdown', e=>{
+  e.stopPropagation(); e.preventDefault();
+  soundOn = !soundOn;
+  document.getElementById('hud-sound').textContent = soundOn ? '🔊' : '🔇';
+});
+
+window.addEventListener('keydown', e=>{
+  if(e.code==='Space'||e.code==='Enter'){
+    e.preventDefault();
+    const ac = getAudio();
+    if(ac && ac.state==='suspended') ac.resume();
+    if(state==='start'||state==='gameover') startGame();
+    else activatePulse();
+  }
+});
+
+// ─── Start / Reset ────────────────────────────────────────────────────────────
+function startGame(){
+  state = 'playing';
+  score = 0;
+  runTime = 0;
+  hitstop = 0;
+  comboMeter = 0;
+  shakeMag = 0; shakeDur = 0;
+  gates = [];
+  particles = [];
+  nextGateTimer = 0.3;
+  initPlayer();
+  updateHUD();
+  document.getElementById('overlay-start').classList.add('hidden');
+  document.getElementById('overlay-go').classList.add('hidden');
+}
+
+// ─── Share ────────────────────────────────────────────────────────────────────
+async function shareScore(){
+  const text = `🌊 Aqua Shrink — I reached ${score} points! Can you beat me?\nhttps://balinti.github.io/aqua-shrink/`;
+  if(navigator.share){
+    try{ await navigator.share({ title:'Aqua Shrink', text }); }catch(e){}
+  } else {
+    try{ await navigator.clipboard.writeText(text); alert('Score copied to clipboard!'); }catch(e){}
+  }
+}
+
+// ─── Render ───────────────────────────────────────────────────────────────────
+let bgHue = 220;
+
+function render(){
+  ctx.save();
+
+  // Shake
+  if(shakeMag > 0 && shakeDur > 0){
+    const sx = (Math.random()-0.5)*2*shakeMag;
+    const sy = (Math.random()-0.5)*2*shakeMag;
+    ctx.translate(sx, sy);
+  }
+
+  drawBackground();
+  drawParticles();
+  drawGates();
+  drawPearls();
+  drawPlayer();
+
+  ctx.restore();
+}
+
+function drawIdle(){
+  ctx.save();
+  drawBackground();
+  ctx.restore();
+}
+
+function drawBackground(){
+  bgHue += 0.02;
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0,   `hsl(${bgHue},70%,6%)`);
+  grad.addColorStop(0.5, `hsl(${bgHue+15},60%,9%)`);
+  grad.addColorStop(1,   `hsl(${bgHue+30},50%,4%)`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Caustic shimmer lines
+  ctx.save();
+  ctx.globalAlpha = 0.04;
+  ctx.strokeStyle = '#7ef7ff';
+  ctx.lineWidth = 1;
+  const now = performance.now() * 0.0003;
+  for(let i=0;i<6;i++){
+    const x = W*(0.1 + i*0.16) + Math.sin(now + i*1.2)*20;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x + Math.sin(now*0.5)*30, H);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // Depth fog at bottom
+  const fog = ctx.createLinearGradient(0, H*0.8, 0, H);
+  fog.addColorStop(0, 'rgba(0,0,0,0)');
+  fog.addColorStop(1, 'rgba(0,10,30,0.4)');
+  ctx.fillStyle = fog;
+  ctx.fillRect(0, H*0.8, W, H*0.2);
+}
+
+function drawGates(){
+  const cx = W * 0.5;
+  const BAND_H = 60;
+
+  for(const g of gates){
+    if(g.y < -BAND_H/2 - 20 || g.y > H + BAND_H/2 + 20) continue;
+
+    const y = g.y;
+    const gh = g.gh;
+    const armed = g.armed;
+
+    // Flash telegraph
+    const flashA = armed ? 0.15 + 0.15*Math.sin(performance.now()*0.025) : 0;
+
+    // Left band
+    drawMineBand(0, y - BAND_H/2, cx - gh, BAND_H, g.hue, armed, flashA, 'left');
+    // Right band
+    drawMineBand(cx + gh, y - BAND_H/2, W - (cx+gh), BAND_H, g.hue, armed, flashA, 'right');
+
+    // Gap glow
+    if(!g.passed){
+      ctx.save();
+      ctx.globalAlpha = 0.12 + flashA*0.5;
+      const gapGlow = ctx.createLinearGradient(cx-gh, 0, cx+gh, 0);
+      gapGlow.addColorStop(0,   `hsl(${g.hue},90%,60%)`);
+      gapGlow.addColorStop(0.5, `hsla(${g.hue},90%,80%,0.3)`);
+      gapGlow.addColorStop(1,   `hsl(${g.hue},90%,60%)`);
+      ctx.fillStyle = gapGlow;
+      ctx.fillRect(cx-gh, y - BAND_H/2, gh*2, BAND_H);
+      ctx.restore();
+    }
+  }
+}
+
+function drawMineBand(x, y, w, h, hue, armed, flashA, side){
+  if(w <= 0) return;
+  ctx.save();
+
+  // Base band
+  const grad = ctx.createLinearGradient(x, 0, x+w, 0);
+  if(side==='left'){
+    grad.addColorStop(0, `hsl(${hue},50%,12%)`);
+    grad.addColorStop(1, `hsl(${hue},70%,20%)`);
+  } else {
+    grad.addColorStop(0, `hsl(${hue},70%,20%)`);
+    grad.addColorStop(1, `hsl(${hue},50%,12%)`);
+  }
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.rect(x, y, w, h);
+  ctx.fill();
+
+  // Armed glow overlay
+  if(armed){
+    ctx.globalAlpha = flashA;
+    ctx.fillStyle = `hsl(${hue},100%,60%)`;
+    ctx.fill();
+  }
+
+  // Border
+  ctx.globalAlpha = 0.7;
+  ctx.strokeStyle = `hsl(${hue},80%,50%)`;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Mine decals
+  ctx.globalAlpha = 1;
+  const mineCount = Math.max(1, Math.floor(w / 30));
+  const mineR = 7;
+  const cy = y + h/2;
+  for(let i=0;i<mineCount;i++){
+    const mx = x + (i+0.5) * (w/mineCount);
+    // Mine body
+    ctx.beginPath();
+    ctx.arc(mx, cy, mineR, 0, Math.PI*2);
+    ctx.fillStyle = `hsl(${hue},60%,30%)`;
+    ctx.fill();
+    ctx.strokeStyle = `hsl(${hue},80%,55%)`;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    // Mine spikes
+    ctx.strokeStyle = `hsl(${hue},70%,60%)`;
+    ctx.lineWidth = 1;
+    for(let s=0;s<6;s++){
+      const a = s * Math.PI/3;
+      ctx.beginPath();
+      ctx.moveTo(mx + Math.cos(a)*mineR, cy + Math.sin(a)*mineR);
+      ctx.lineTo(mx + Math.cos(a)*(mineR+4), cy + Math.sin(a)*(mineR+4));
+      ctx.stroke();
+    }
+    // Blink eye
+    if(armed){
+      ctx.fillStyle = `hsl(0,90%,${50+40*Math.abs(Math.sin(performance.now()*0.01))}%)`;
+    } else {
+      ctx.fillStyle = `hsl(${hue},90%,70%)`;
+    }
+    ctx.beginPath();
+    ctx.arc(mx, cy, 2.5, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+function drawPearls(){
+  for(const g of gates){
+    for(const p of g.pearls){
+      if(p.collected) continue;
+      if(p.y < -20 || p.y > H+20) continue;
+      ctx.save();
+      // Shimmer
+      const shimmer = 0.7 + 0.3*Math.sin(performance.now()*0.005 + p.x);
+      ctx.globalAlpha = shimmer;
+      const grad = ctx.createRadialGradient(p.x-2, p.y-2, 1, p.x, p.y, p.r);
+      grad.addColorStop(0,'#fff');
+      grad.addColorStop(0.4,'#ffe0f0');
+      grad.addColorStop(1,'rgba(255,180,220,0.3)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,220,240,0.8)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+}
+
+function drawPlayer(){
+  const r = player.r;
+  const x = player.x, y = player.y;
+  const t = performance.now() * 0.001;
+
+  ctx.save();
+
+  // Pulse shrink ring
+  if(player.shrunk){
+    ctx.save();
+    const pulseR = r + 4 + 3*Math.sin(t*20);
+    ctx.beginPath();
+    ctx.arc(x, y, pulseR, 0, Math.PI*2);
+    ctx.strokeStyle = `rgba(0,220,255,${0.4 + 0.3*Math.sin(t*15)})`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Glow
+  ctx.save();
+  ctx.shadowColor = player.shrunk ? '#00eeff' : '#0088ff';
+  ctx.shadowBlur = 18;
+
+  // Body gradient
+  const bodyGrad = ctx.createRadialGradient(x-r*0.3, y-r*0.3, r*0.1, x, y, r);
+  if(player.shrunk){
+    bodyGrad.addColorStop(0,'#88ffff');
+    bodyGrad.addColorStop(0.5,'#00ccff');
+    bodyGrad.addColorStop(1,'#0044aa');
+  } else {
+    bodyGrad.addColorStop(0,'#aaddff');
+    bodyGrad.addColorStop(0.5,'#0077cc');
+    bodyGrad.addColorStop(1,'#001a66');
+  }
+  ctx.fillStyle = bodyGrad;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI*2);
+  ctx.fill();
+
+  // Outline
+  ctx.strokeStyle = player.shrunk ? '#00eeff' : '#44aaff';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.restore();
+
+  // Visor / face detail
+  ctx.save();
+  ctx.fillStyle = 'rgba(200,240,255,0.85)';
+  ctx.beginPath();
+  ctx.ellipse(x+r*0.18, y-r*0.1, r*0.38, r*0.28, 0.3, 0, Math.PI*2);
+  ctx.fill();
+  // Bubble reflection
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  ctx.beginPath();
+  ctx.arc(x+r*0.1, y-r*0.2, r*0.1, 0, Math.PI*2);
+  ctx.fill();
+  ctx.restore();
+
+  // Tank outline
+  ctx.save();
+  ctx.strokeStyle = 'rgba(180,220,255,0.4)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.ellipse(x-r*0.45, y+r*0.05, r*0.18, r*0.38, -0.2, 0, Math.PI*2);
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.restore();
+}
+
+function drawParticles(){
+  for(const p of particles){
+    const prog = 1 - p.life/p.maxLife;
+    const alpha = p.life/p.maxLife;
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+
+    if(p.type === 'bubble'){
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+      ctx.strokeStyle = `rgba(180,230,255,${alpha})`;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    } else if(p.type === 'ring'){
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+      ctx.strokeStyle = p.color;
+      ctx.lineWidth = 3*(1-prog);
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r*(1-prog*0.5), 0, Math.PI*2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+updateHUD();
+startLoop();
+
+})();
+</script>
+</body>
+</html>

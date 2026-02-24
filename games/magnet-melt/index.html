@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Magnet Melt - Free HTML5 Game</title>
+  <meta name="description" content="Play Magnet Melt - Tap to activate magnetic fields that steer molten rocks safely through volcano vents.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a0a0f">
+  <!-- Open Graph -->
+  <meta property="og:title" content="Magnet Melt - Free HTML5 Game">
+  <meta property="og:description" content="Tap to flip magnetic polarity and guide molten lava through volcanic ring vents. How long can you survive?">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://balinti.github.io/magnet-melt/">
+  <meta property="og:image" content="https://balinti.github.io/magnet-melt/og-image.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Magnet Melt - Free HTML5 Game">
+  <meta name="twitter:description" content="Tap to flip magnetic polarity and guide molten lava through volcanic ring vents.">
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #0a0a0f;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: flex-start;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      color: #e0e0e0;
+      overflow-x: hidden;
+      overflow-y: auto;
+    }
+    #game-wrap {
+      width: 100%;
+      max-width: 420px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 0;
+    }
+    #canvas-container {
+      width: 100%;
+      max-width: 420px;
+      aspect-ratio: 420 / 750;
+      position: relative;
+      background: #0a0a0f;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+      user-select: none;
+    }
+    #info {
+      width: 100%;
+      max-width: 420px;
+      padding: 16px 20px 24px;
+      background: #12121a;
+      border-top: 1px solid #222;
+    }
+    #info h2 { font-size: 1rem; color: #ff6b35; margin-bottom: 8px; letter-spacing: 0.05em; }
+    #info p { font-size: 0.82rem; color: #888; line-height: 1.5; margin-bottom: 6px; }
+    #info strong { color: #ccc; }
+  </style>
+</head>
+<body>
+<div id="game-wrap">
+  <div id="canvas-container">
+    <canvas id="c"></canvas>
+  </div>
+  <div id="info">
+    <h2>How to Play — Magnet Melt</h2>
+    <p><strong>Tap / Click / Space / Enter</strong> to toggle magnetic polarity (↓ Pull Down ↔ ↑ Pull Up).</p>
+    <p>Guide the glowing lava droplet through each ring vent without touching the molten rim. Pass through the center for bonus points and streak multipliers!</p>
+    <p>Speed and ring difficulty increase over time — how many vents can you survive?</p>
+  </div>
+</div>
+<script>
+(function(){
+'use strict';
+
+// ─── Canvas Setup ────────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+const DPR    = window.devicePixelRatio || 1;
+
+const LOGIC_W = 420;
+const LOGIC_H = 750;
+
+function resize() {
+  const container = canvas.parentElement;
+  const w = container.clientWidth;
+  const h = container.clientHeight;
+  canvas.width  = Math.round(w * DPR);
+  canvas.height = Math.round(h * DPR);
+  canvas.style.width  = w + 'px';
+  canvas.style.height = h + 'px';
+}
+resize();
+window.addEventListener('resize', resize);
+
+function scaleX(v){ return v * canvas.width  / LOGIC_W; }
+function scaleY(v){ return v * canvas.height / LOGIC_H; }
+function scaleR(v){ return v * Math.min(canvas.width/LOGIC_W, canvas.height/LOGIC_H); }
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+const PLAYER_X     = LOGIC_W * 0.28;
+const GRAVITY      = 0.38;   // base accel magnitude (logic units/frame²)
+const MAX_VY       = 9;
+const BALL_R       = 10;
+const VENT_SPEED_BASE = 2.0;
+const VENT_SPAWN_X    = LOGIC_W + 60;
+
+// ─── State ───────────────────────────────────────────────────────────────────
+let state      = 'start';  // start | playing | gameover
+let score      = 0;
+let bestScore  = parseInt(localStorage.getItem('mm_best') || '0', 10);
+let streak     = 0;
+let multiplier = 1;
+let hue        = 20;   // HSL hue for cycling
+let frame      = 0;
+let totalVents = 0;
+let hitstop    = 0;    // frames of hitstop remaining
+let shakeAmt   = 0;    // current screen shake magnitude
+let shakeDecay = 0.85;
+
+// Player
+let py, vy, polarity; // polarity: 1=down (default), -1=up
+
+// Vents array
+let vents = [];
+
+// Particles
+let particles = [];
+
+// Trail
+let trail = [];
+
+// Double-vent mode
+let doubleVentActive = false;
+
+// ─── Challenge score from URL ─────────────────────────────────────────────
+const urlParams = new URLSearchParams(window.location.search);
+const challengeScore = parseInt(urlParams.get('challenge') || '0', 10);
+
+// ─── Difficulty Helper ────────────────────────────────────────────────────
+function getDifficulty() {
+  const s = totalVents;
+  if (s < 10)  return { speed: 2.0, outerR: 70, holeR: 40, bobAmp: 0,   bobFreq: 0 };
+  if (s < 25)  return { speed: 2.4, outerR: 62, holeR: 36, bobAmp: 0,   bobFreq: 0 };
+  if (s < 50)  return { speed: 3.0, outerR: 55, holeR: 30, bobAmp: 20,  bobFreq: 0.04 };
+  if (s < 80)  return { speed: 3.8, outerR: 50, holeR: 26, bobAmp: 28,  bobFreq: 0.05 };
+               return { speed: 4.8, outerR: 44, holeR: 22, bobAmp: 36,  bobFreq: 0.06 };
+}
+
+function useDoubleVent() {
+  return totalVents >= 50 && Math.random() < 0.30;
+}
+
+// ─── Spawn Vent ───────────────────────────────────────────────────────────
+function spawnVent() {
+  const d = getDifficulty();
+  const margin = d.outerR + 10;
+  const cy = margin + Math.random() * (LOGIC_H - margin * 2);
+  const v = {
+    x:       VENT_SPAWN_X,
+    cy:      cy,
+    baseCy:  cy,
+    outerR:  d.outerR,
+    holeR:   d.holeR,
+    speed:   d.speed,
+    bobAmp:  d.bobAmp,
+    bobFreq: d.bobFreq,
+    bobPhase:Math.random() * Math.PI * 2,
+    crossed: false,   // player has crossed this vent's plane
+    hit:     false,   // collision detected
+    passOk:  false,   // successfully passed
+    rimHue:  0,       // set on spawn for color
+    age:     0,
+    glowAlpha: 0,
+  };
+  v.rimHue = hue;
+  return v;
+}
+
+function spawnDoubleVent() {
+  const d = getDifficulty();
+  const gap = d.outerR * 2 + 20;
+  const top = d.outerR + 10 + Math.random() * (LOGIC_H * 0.4);
+  const v1 = spawnVent();
+  v1.cy    = top;
+  v1.baseCy = top;
+  const v2 = spawnVent();
+  v2.x     = v1.x;
+  v2.cy    = top + gap;
+  v2.baseCy = top + gap;
+  // Player must pick one; mark as a pair
+  v1.pair = v2;
+  v2.pair = v1;
+  return [v1, v2];
+}
+
+// ─── Reset / Init ─────────────────────────────────────────────────────────
+function initGame() {
+  py         = LOGIC_H / 2;
+  vy         = 0;
+  polarity   = 1;   // 1 = PULL DOWN (default)
+  score      = 0;
+  streak     = 0;
+  multiplier = 1;
+  frame      = 0;
+  totalVents = 0;
+  hitstop    = 0;
+  shakeAmt   = 0;
+  vents      = [];
+  particles  = [];
+  trail      = [];
+  hue        = 20;
+  doubleVentActive = false;
+  // Spawn first vent a bit closer
+  const v = spawnVent();
+  v.x = LOGIC_W + 10;
+  vents.push(v);
+}
+
+// ─── Polarity Toggle ──────────────────────────────────────────────────────
+function togglePolarity() {
+  if (state === 'playing') {
+    polarity = -polarity;
+    // Small burst particles on toggle
+    spawnToggleParticles();
+  } else if (state === 'start' || state === 'gameover') {
+    startGame();
+  }
+}
+
+function startGame() {
+  initGame();
+  state = 'playing';
+}
+
+// ─── Input ────────────────────────────────────────────────────────────────
+canvas.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  togglePolarity();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    togglePolarity();
+  }
+});
+
+// ─── Particles ────────────────────────────────────────────────────────────
+function spawnSplash(x, y, count) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 1.5 + Math.random() * 5;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      r:  2 + Math.random() * 4,
+      life: 1.0,
+      decay: 0.02 + Math.random() * 0.03,
+      hue:  hue + (Math.random() - 0.5) * 30,
+      type: 'splash'
+    });
+  }
+}
+
+function spawnSuccessBurst(x, y) {
+  for (let i = 0; i < 18; i++) {
+    const angle = (i / 18) * Math.PI * 2;
+    const speed = 2 + Math.random() * 3;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      r:  1.5 + Math.random() * 2.5,
+      life: 1.0,
+      decay: 0.025,
+      hue:  hue + i * 10,
+      type: 'burst'
+    });
+  }
+}
+
+function spawnToggleParticles() {
+  const bx = PLAYER_X;
+  const by = py;
+  const col = polarity === -1 ? 190 : 20;
+  for (let i = 0; i < 6; i++) {
+    const angle = (Math.random() - 0.5) * Math.PI;
+    const speed = 1 + Math.random() * 2.5;
+    particles.push({
+      x: bx, y: by,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      r:  1 + Math.random() * 2,
+      life: 1.0,
+      decay: 0.04,
+      hue:  col,
+      type: 'toggle'
+    });
+  }
+}
+
+function updateParticles() {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    if (p.type === 'splash') p.vy += 0.15;
+    p.r    *= 0.97;
+    p.life -= p.decay;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+// ─── Trail ────────────────────────────────────────────────────────────────
+function updateTrail() {
+  trail.push({ x: PLAYER_X, y: py, hue: hue });
+  if (trail.length > 28) trail.shift();
+}
+
+// ─── Collision ────────────────────────────────────────────────────────────
+function checkCollision(v) {
+  // Check when player X == vent X (crossing plane)
+  // We detect crossing: vent was ahead, now behind
+  if (!v.crossed && v.x <= PLAYER_X) {
+    v.crossed = true;
+    const dist = Math.abs(py - v.cy);
+
+    if (dist < v.holeR - BALL_R) {
+      // Clean pass through hole
+      const fromCenter = dist / v.holeR;
+      let bonus = 0;
+      let isPerfect = false;
+      if (fromCenter < 0.25) {
+        // Center pass
+        bonus = 2;
+        isPerfect = true;
+        hitstop = 5;
+        shakeAmt = 2;
+        spawnSuccessBurst(PLAYER_X, py);
+      } else if (fromCenter < 0.65) {
+        bonus = 1;
+        spawnSuccessBurst(PLAYER_X, py);
+      }
+      // Near-miss danger bonus
+      const fromRim = (v.outerR - dist - BALL_R);
+      if (fromRim >= 0 && fromRim < 8 && !isPerfect) {
+        bonus += 1; // danger bonus
+      }
+
+      streak++;
+      multiplier = Math.min(1 + Math.floor(streak / 3), 8);
+      const gained = (1 + bonus) * multiplier;
+      score += gained;
+      totalVents++;
+      v.passOk  = true;
+      v.glowAlpha = 1.0;
+      return 'pass';
+
+    } else if (dist < v.outerR + BALL_R) {
+      // Hit rim
+      return 'rim_hit';
+    } else {
+      // Missed entirely
+      return 'miss';
+    }
+  }
+  return null;
+}
+
+// ─── Game Over ───────────────────────────────────────────────────────────
+function triggerGameOver() {
+  state    = 'gameover';
+  shakeAmt = 12;
+  spawnSplash(PLAYER_X, py, 60);
+  if (score > bestScore) {
+    bestScore = score;
+    localStorage.setItem('mm_best', bestScore);
+  }
+}
+
+// ─── Share ────────────────────────────────────────────────────────────────
+function shareScore() {
+  const url = `https://balinti.github.io/magnet-melt/?challenge=${score}`;
+  const text = `I survived ${score} vents in Magnet Melt! Can you beat me? 🌋`;
+  if (navigator.share) {
+    navigator.share({ title: 'Magnet Melt', text, url }).catch(() => {});
+  } else {
+    navigator.clipboard && navigator.clipboard.writeText(text + ' ' + url).then(() => {
+      // silently copy
+    }).catch(() => {});
+  }
+}
+
+// ─── Update ───────────────────────────────────────────────────────────────
+function update() {
+  if (state !== 'playing') return;
+  if (hitstop > 0) { hitstop--; return; }
+
+  frame++;
+  hue = (hue + 0.3) % 360;
+
+  // Player physics
+  const accel = polarity * GRAVITY;
+  vy = Math.max(-MAX_VY, Math.min(MAX_VY, vy + accel));
+  py += vy;
+
+  // Wall collision
+  if (py < BALL_R) {
+    py = BALL_R; vy = Math.abs(vy) * 0.4;
+    triggerGameOver(); return;
+  }
+  if (py > LOGIC_H - BALL_R) {
+    py = LOGIC_H - BALL_R; vy = -Math.abs(vy) * 0.4;
+    triggerGameOver(); return;
+  }
+
+  updateTrail();
+
+  // Update vents
+  const speed = getDifficulty().speed;
+  for (let i = vents.length - 1; i >= 0; i--) {
+    const v = vents[i];
+    v.x -= speed;
+    v.age++;
+    // Bob movement
+    if (v.bobAmp > 0) {
+      v.cy = v.baseCy + Math.sin(frame * v.bobFreq + v.bobPhase) * v.bobAmp;
+    }
+    // Fade glow
+    if (v.glowAlpha > 0) v.glowAlpha -= 0.04;
+
+    // Collision check
+    if (!v.crossed) {
+      const result = checkCollision(v);
+      if (result === 'rim_hit' || result === 'miss') {
+        spawnSplash(PLAYER_X, py, 45);
+        triggerGameOver();
+        return;
+      }
+    }
+
+    // Remove off-screen
+    if (v.x < -120) vents.splice(i, 1);
+  }
+
+  // Spawn new vents
+  const lastVent = vents.reduce((acc, v) => v.x > acc ? v.x : acc, -999);
+  const spawnGap = 300 - Math.min(totalVents, 80) * 2;
+  if (lastVent < LOGIC_W + spawnGap - 20) {
+    if (useDoubleVent()) {
+      const pair = spawnDoubleVent();
+      vents.push(...pair);
+    } else {
+      vents.push(spawnVent());
+    }
+  }
+
+  updateParticles();
+  shakeAmt *= shakeDecay;
+}
+
+// ─── Render Helpers ───────────────────────────────────────────────────────
+function applyShake() {
+  if (shakeAmt < 0.5) return;
+  const sx = (Math.random() - 0.5) * shakeAmt * 2;
+  const sy = (Math.random() - 0.5) * shakeAmt * 2;
+  ctx.translate(scaleX(sx), scaleY(sy));
+}
+
+function drawBg() {
+  // Gradient background
+  const grd = ctx.createLinearGradient(0, 0, 0, canvas.height);
+  grd.addColorStop(0,   '#06060d');
+  grd.addColorStop(0.5, '#0d0812');
+  grd.addColorStop(1,   '#150a08');
+  ctx.fillStyle = grd;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Ambient glow from polarity
+  const pHue = polarity === -1 ? 190 : 20;
+  const grdP = ctx.createRadialGradient(
+    scaleX(PLAYER_X), scaleY(py), 0,
+    scaleX(PLAYER_X), scaleY(py), scaleR(120)
+  );
+  grdP.addColorStop(0,   `hsla(${pHue},90%,50%,0.06)`);
+  grdP.addColorStop(1,   `hsla(${pHue},90%,30%,0)`);
+  ctx.fillStyle = grdP;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+}
+
+function drawTrail() {
+  for (let i = 0; i < trail.length; i++) {
+    const t = trail[i];
+    const alpha = (i / trail.length) * 0.55;
+    const r     = scaleR(BALL_R * (i / trail.length) * 0.8);
+    ctx.beginPath();
+    ctx.arc(scaleX(t.x), scaleY(t.y), r, 0, Math.PI * 2);
+    ctx.fillStyle = `hsla(${t.hue},100%,60%,${alpha})`;
+    ctx.fill();
+  }
+}
+
+function drawPlayer() {
+  const px = scaleX(PLAYER_X);
+  const pY = scaleY(py);
+  const pr = scaleR(BALL_R);
+  const pHue = polarity === -1 ? 190 : 20;
+
+  // Outer glow
+  const g = ctx.createRadialGradient(px, pY, 0, px, pY, pr * 3);
+  g.addColorStop(0, `hsla(${pHue},100%,70%,0.35)`);
+  g.addColorStop(1, `hsla(${pHue},100%,40%,0)`);
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(px, pY, pr * 3, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Core
+  const core = ctx.createRadialGradient(px - pr*0.3, pY - pr*0.3, 0, px, pY, pr);
+  core.addColorStop(0, `hsl(${pHue+20},100%,90%)`);
+  core.addColorStop(0.5, `hsl(${pHue},100%,65%)`);
+  core.addColorStop(1, `hsl(${pHue-20},100%,40%)`);
+  ctx.fillStyle = core;
+  ctx.beginPath();
+  ctx.arc(px, pY, pr, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Polarity arrow indicator (small)
+  ctx.save();
+  ctx.translate(px, pY);
+  ctx.fillStyle = `hsla(${pHue},100%,90%,0.9)`;
+  ctx.font = `bold ${scaleR(8)}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(polarity === -1 ? '↑' : '↓', 0, 0);
+  ctx.restore();
+}
+
+function drawVent(v) {
+  const vx = scaleX(v.x);
+  const vy_ = scaleY(v.cy);
+  const outerR = scaleR(v.outerR);
+  const holeR  = scaleR(v.holeR);
+
+  // Rim hue shifted toward gold for streaks
+  const streakGold = Math.min(streak / 10, 1);
+  const rimHue = v.rimHue * (1 - streakGold) + 48 * streakGold;
+
+  // Outer glow
+  if (v.glowAlpha > 0) {
+    ctx.beginPath();
+    ctx.arc(vx, vy_, outerR + scaleR(6), 0, Math.PI * 2);
+    ctx.strokeStyle = `hsla(${rimHue},100%,75%,${v.glowAlpha * 0.6})`;
+    ctx.lineWidth = scaleR(4);
+    ctx.stroke();
+  }
+
+  // Draw ring as two arcs (top half and bottom half representing the rim annulus)
+  // We draw the ring as concentric circles with the hole transparent
+
+  // Shadow/glow behind ring
+  ctx.shadowBlur  = scaleR(18);
+  ctx.shadowColor = `hsla(${rimHue},100%,55%,0.7)`;
+
+  // Top cap (above hole)
+  const topCapH = vy_ - holeR;
+  const botCapH = vy_ + holeR;
+  const rimW    = outerR - holeR;
+
+  // Draw top rim section
+  ctx.beginPath();
+  ctx.arc(vx, topCapH - rimW/2, outerR, 0, Math.PI * 2);
+  ctx.fillStyle = `hsl(${rimHue},90%,55%)`;
+  const topGrd = ctx.createRadialGradient(vx, topCapH - rimW/2, holeR*0.5, vx, topCapH - rimW/2, outerR);
+  topGrd.addColorStop(0, `hsla(${rimHue},60%,30%,0)`);
+  topGrd.addColorStop(1, `hsl(${rimHue},90%,55%)`);
+  ctx.fillStyle = topGrd;
+
+  // Rect for top rim
+  ctx.shadowBlur = 0;
+  ctx.beginPath();
+  ctx.rect(vx - outerR - 2, vy_ - outerR - 2, outerR * 2 + 4, (vy_ - holeR) - (vy_ - outerR) + 2);
+  const rGrd1 = ctx.createLinearGradient(vx - outerR, 0, vx + outerR, 0);
+  rGrd1.addColorStop(0,   `hsla(${rimHue},70%,25%,0.8)`);
+  rGrd1.addColorStop(0.2, `hsl(${rimHue},95%,60%)`);
+  rGrd1.addColorStop(0.5, `hsl(${rimHue+20},100%,75%)`);
+  rGrd1.addColorStop(0.8, `hsl(${rimHue},95%,60%)`);
+  rGrd1.addColorStop(1,   `hsla(${rimHue},70%,25%,0.8)`);
+  ctx.fillStyle = rGrd1;
+  ctx.fill();
+
+  // Bottom rim rect
+  ctx.beginPath();
+  ctx.rect(vx - outerR - 2, vy_ + holeR, outerR * 2 + 4, (vy_ + outerR) - (vy_ + holeR) + 2);
+  ctx.fillStyle = rGrd1;
+  ctx.fill();
+
+  // Inner edge glows
+  ctx.strokeStyle = `hsla(${rimHue},100%,80%,0.5)`;
+  ctx.lineWidth = scaleR(1.5);
+
+  // Top inner edge
+  ctx.beginPath();
+  ctx.moveTo(vx - outerR, vy_ - holeR);
+  ctx.lineTo(vx + outerR, vy_ - holeR);
+  ctx.stroke();
+
+  // Bottom inner edge
+  ctx.beginPath();
+  ctx.moveTo(vx - outerR, vy_ + holeR);
+  ctx.lineTo(vx + outerR, vy_ + holeR);
+  ctx.stroke();
+
+  // Hole dark zone (depth illusion)
+  const holeGrd = ctx.createLinearGradient(vx - holeR, 0, vx + holeR, 0);
+  holeGrd.addColorStop(0,   `hsla(${rimHue},80%,10%,0.9)`);
+  holeGrd.addColorStop(0.15, `hsla(${rimHue},60%,5%,0.7)`);
+  holeGrd.addColorStop(0.5, `rgba(0,0,0,0.3)`);
+  holeGrd.addColorStop(0.85, `hsla(${rimHue},60%,5%,0.7)`);
+  holeGrd.addColorStop(1,   `hsla(${rimHue},80%,10%,0.9)`);
+  ctx.fillStyle = holeGrd;
+  ctx.fillRect(vx - holeR, vy_ - holeR, holeR * 2, holeR * 2);
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    ctx.beginPath();
+    ctx.arc(scaleX(p.x), scaleY(p.y), scaleR(p.r), 0, Math.PI * 2);
+    const alpha = Math.max(0, p.life);
+    ctx.fillStyle = `hsla(${p.hue},100%,65%,${alpha})`;
+    ctx.shadowBlur  = scaleR(6);
+    ctx.shadowColor = `hsla(${p.hue},100%,65%,${alpha * 0.6})`;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+}
+
+function drawHUD() {
+  const cw = canvas.width;
+  const ch = canvas.height;
+
+  // Score
+  ctx.textAlign = 'center';
+  ctx.font = `bold ${scaleR(32)}px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = `hsl(${hue},90%,75%)`;
+  ctx.shadowBlur  = scaleR(10);
+  ctx.shadowColor = `hsl(${hue},100%,60%)`;
+  ctx.fillText(score, cw / 2, scaleY(52));
+  ctx.shadowBlur = 0;
+
+  // Best
+  ctx.font = `${scaleR(12)}px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  ctx.fillText(`BEST ${bestScore}`, cw / 2, scaleY(75));
+
+  // Streak
+  if (streak >= 3) {
+    const goldAmt = Math.min(streak / 10, 1);
+    const sHue    = goldAmt * 48 + (1 - goldAmt) * hue;
+    ctx.font = `bold ${scaleR(13)}px 'Segoe UI', sans-serif`;
+    ctx.fillStyle = `hsl(${sHue},100%,70%)`;
+    ctx.fillText(`×${multiplier} STREAK ${streak}`, cw / 2, scaleY(95));
+  }
+
+  // Polarity label
+  const pHue  = polarity === -1 ? 190 : 20;
+  const pText = polarity === -1 ? '↑ PULL UP' : '↓ PULL DOWN';
+  ctx.font = `${scaleR(11)}px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = `hsla(${pHue},90%,70%,0.75)`;
+  ctx.textAlign = 'left';
+  ctx.fillText(pText, scaleX(14), scaleY(36));
+
+  // Challenge line
+  if (challengeScore > 0) {
+    ctx.textAlign = 'right';
+    ctx.font = `${scaleR(10)}px 'Segoe UI', sans-serif`;
+    ctx.fillStyle = 'rgba(255,200,100,0.6)';
+    ctx.fillText(`BEAT ${challengeScore}`, cw - scaleX(14), scaleY(36));
+  }
+}
+
+function drawStartScreen() {
+  const cw = canvas.width;
+  const ch = canvas.height;
+
+  // Dark overlay
+  ctx.fillStyle = 'rgba(5,5,12,0.88)';
+  ctx.fillRect(0, 0, cw, ch);
+
+  // Title glow
+  ctx.textAlign = 'center';
+  ctx.shadowBlur  = scaleR(30);
+  ctx.shadowColor = `hsl(20,100%,60%)`;
+  ctx.font = `bold ${scaleR(44)}px 'Segoe UI', sans-serif`;
+  const titleGrd = ctx.createLinearGradient(cw/2 - scaleR(100), 0, cw/2 + scaleR(100), 0);
+  titleGrd.addColorStop(0,   '#ff6b35');
+  titleGrd.addColorStop(0.5, '#ffcc55');
+  titleGrd.addColorStop(1,   '#ff6b35');
+  ctx.fillStyle = titleGrd;
+  ctx.fillText('MAGNET MELT', cw / 2, scaleY(280));
+  ctx.shadowBlur = 0;
+
+  ctx.font = `${scaleR(14)}px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = 'rgba(200,180,160,0.8)';
+  ctx.fillText('Polarity Pop', cw / 2, scaleY(312));
+
+  // Instruction box
+  const bx = cw/2 - scaleR(140);
+  const by = scaleY(345);
+  const bw = scaleR(280);
+  const bh = scaleY(110);
+  ctx.fillStyle = 'rgba(255,255,255,0.05)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  ctx.lineWidth = 1;
+  roundRect(ctx, bx, by, bw, bh, scaleR(10));
+  ctx.fill(); ctx.stroke();
+
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.font = `${scaleR(12)}px 'Segoe UI', sans-serif`;
+  ctx.fillText('Tap / Space / Enter to toggle polarity', cw/2, by + scaleY(26));
+  ctx.fillText('Guide the lava through ring vents', cw/2, by + scaleY(48));
+  ctx.fillText('↓ PULL DOWN  ←→  ↑ PULL UP', cw/2, by + scaleY(70));
+  ctx.font = `bold ${scaleR(12)}px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = '#ff9955';
+  ctx.fillText('Don\'t hit the rim!', cw/2, by + scaleY(92));
+
+  // Best score
+  if (bestScore > 0) {
+    ctx.font = `${scaleR(12)}px 'Segoe UI', sans-serif`;
+    ctx.fillStyle = 'rgba(255,220,100,0.7)';
+    ctx.fillText(`Best: ${bestScore}`, cw/2, scaleY(490));
+  }
+
+  // Tap to start
+  const pulse = 0.6 + 0.4 * Math.sin(Date.now() / 400);
+  ctx.font = `bold ${scaleR(16)}px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = `rgba(255,160,80,${pulse})`;
+  ctx.shadowBlur  = scaleR(8);
+  ctx.shadowColor = 'rgba(255,120,40,0.5)';
+  ctx.fillText('TAP TO START', cw/2, scaleY(550));
+  ctx.shadowBlur = 0;
+}
+
+function drawGameOver() {
+  const cw = canvas.width;
+  const ch = canvas.height;
+
+  ctx.fillStyle = 'rgba(5,5,12,0.82)';
+  ctx.fillRect(0, 0, cw, ch);
+
+  ctx.textAlign = 'center';
+  ctx.shadowBlur  = scaleR(20);
+  ctx.shadowColor = 'rgba(255,80,40,0.8)';
+  ctx.font = `bold ${scaleR(38)}px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = '#ff4422';
+  ctx.fillText('MELTED!', cw/2, scaleY(260));
+  ctx.shadowBlur = 0;
+
+  ctx.font = `bold ${scaleR(52)}px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = `hsl(${hue},90%,70%)`;
+  ctx.shadowBlur = scaleR(14);
+  ctx.shadowColor = `hsl(${hue},100%,50%)`;
+  ctx.fillText(score, cw/2, scaleY(340));
+  ctx.shadowBlur = 0;
+
+  ctx.font = `${scaleR(13)}px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = 'rgba(200,180,160,0.7)';
+  ctx.fillText('vents survived', cw/2, scaleY(368));
+
+  if (score >= bestScore && score > 0) {
+    ctx.font = `bold ${scaleR(14)}px 'Segoe UI', sans-serif`;
+    ctx.fillStyle = '#ffd700';
+    ctx.shadowBlur = scaleR(10);
+    ctx.shadowColor = 'rgba(255,215,0,0.7)';
+    ctx.fillText('★ NEW BEST! ★', cw/2, scaleY(400));
+    ctx.shadowBlur = 0;
+  } else if (bestScore > 0) {
+    ctx.font = `${scaleR(11)}px 'Segoe UI', sans-serif`;
+    ctx.fillStyle = 'rgba(255,200,100,0.6)';
+    ctx.fillText(`Best: ${bestScore}`, cw/2, scaleY(400));
+  }
+
+  // Buttons
+  const btnY = scaleY(450);
+  const btnH = scaleY(46);
+  const btnW = scaleR(180);
+
+  // Retry button
+  ctx.fillStyle = 'rgba(255,100,40,0.15)';
+  ctx.strokeStyle = 'rgba(255,100,40,0.6)';
+  ctx.lineWidth = scaleR(1.5);
+  roundRect(ctx, cw/2 - btnW/2, btnY, btnW, btnH, scaleR(10));
+  ctx.fill(); ctx.stroke();
+  ctx.font = `bold ${scaleR(15)}px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = '#ff9060';
+  ctx.fillText('PLAY AGAIN', cw/2, btnY + btnH/2 + scaleR(5));
+
+  // Share button
+  const shareY = btnY + btnH + scaleY(16);
+  ctx.fillStyle = 'rgba(80,200,255,0.1)';
+  ctx.strokeStyle = 'rgba(80,200,255,0.4)';
+  ctx.lineWidth = scaleR(1);
+  roundRect(ctx, cw/2 - btnW/2, shareY, btnW, btnH, scaleR(10));
+  ctx.fill(); ctx.stroke();
+  ctx.font = `${scaleR(13)}px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = '#80d0ff';
+  ctx.fillText('SHARE SCORE', cw/2, shareY + btnH/2 + scaleR(4));
+
+  // Store share btn bounds for click
+  window._shareBtn = { x: cw/2 - btnW/2, y: shareY, w: btnW, h: btnH };
+
+  // Pulse tap
+  const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 500);
+  ctx.font = `${scaleR(11)}px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = `rgba(255,255,255,${pulse * 0.5})`;
+  ctx.fillText('Tap anywhere to restart', cw/2, shareY + btnH + scaleY(30));
+}
+
+// ─── Pointer Handling for game over share button ───────────────────────────
+canvas.addEventListener('pointerdown', (e) => {
+  if (state !== 'gameover') return;
+  if (!window._shareBtn) return;
+  const rect  = canvas.getBoundingClientRect();
+  const cx = (e.clientX - rect.left) * (canvas.width / rect.width);
+  const cy = (e.clientY - rect.top)  * (canvas.height / rect.height);
+  const sb = window._shareBtn;
+  if (cx >= sb.x && cx <= sb.x + sb.w && cy >= sb.y && cy <= sb.y + sb.h) {
+    shareScore();
+    // Don't restart if share button hit
+    e.stopImmediatePropagation();
+  }
+}, true);
+
+// ─── Round Rect Helper ───────────────────────────────────────────────────
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+// ─── Main Render Loop ─────────────────────────────────────────────────────
+function render() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.save();
+
+  if (state === 'playing' && shakeAmt > 0.5) applyShake();
+
+  drawBg();
+
+  if (state === 'playing' || state === 'gameover') {
+    drawTrail();
+    for (const v of vents) drawVent(v);
+    drawParticles();
+    if (state === 'playing') drawPlayer();
+    drawHUD();
+  }
+
+  ctx.restore();
+
+  if (state === 'start')    drawStartScreen();
+  if (state === 'gameover') drawGameOver();
+}
+
+// ─── Game Loop ────────────────────────────────────────────────────────────
+function loop() {
+  update();
+  render();
+  requestAnimationFrame(loop);
+}
+
+// ─── Kick off ────────────────────────────────────────────────────────────
+loop();
+
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Prism Drift - Free HTML5 Game</title>
+  <meta name="description" content="Play Prism Drift - Swipe to dodge neon asteroids as the city's color palette shifts around you.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a0a1a">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Prism Drift - Free HTML5 Game">
+  <meta property="og:description" content="Play Prism Drift - Swipe to dodge neon asteroids as the city's color palette shifts around you.">
+  <meta property="og:url" content="https://balinti.github.io/prism-drift/">
+  <meta property="og:image" content="https://balinti.github.io/prism-drift/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Prism Drift - Free HTML5 Game">
+  <meta name="twitter:description" content="Play Prism Drift - Swipe to dodge neon asteroids as the city's color palette shifts around you.">
+  <meta name="twitter:image" content="https://balinti.github.io/prism-drift/og.png">
+
+  <!-- JSON-LD Structured Data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Prism Drift",
+    "description": "Play Prism Drift - Swipe to dodge neon asteroids as the city's color palette shifts around you.",
+    "url": "https://balinti.github.io/prism-drift/",
+    "applicationCategory": "GameApplication",
+    "operatingSystem": "Web",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    },
+    "genre": "Arcade",
+    "image": "https://balinti.github.io/prism-drift/og.png"
+  }
+  </script>
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%; height: 100%;
+      background: #0a0a1a;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Courier New', monospace;
+      overflow: hidden;
+      touch-action: none;
+      user-select: none;
+    }
+
+    /* Safe areas outside the game wrapper */
+    #top-bar {
+      width: 100%;
+      max-width: 420px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    #game-wrapper {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      flex: 1;
+      max-height: 750px;
+      overflow: hidden;
+      border-radius: 4px;
+    }
+
+    #game-canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: pointer;
+    }
+
+    #bottom-bar {
+      width: 100%;
+      max-width: 420px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    /* Touch zone overlays for lane control */
+    #touch-left, #touch-right {
+      position: absolute;
+      top: 0; bottom: 0;
+      width: 30%;
+      z-index: 10;
+      pointer-events: none; /* handled by canvas pointer events */
+    }
+    #touch-left { left: 0; }
+    #touch-right { right: 0; }
+  </style>
+</head>
+<body>
+  <div id="top-bar"></div>
+  <div id="game-wrapper">
+    <canvas id="game-canvas"></canvas>
+  </div>
+  <div id="bottom-bar"></div>
+
+  <script>
+  // =====================================================================
+  // PRISM DRIFT: PHASE LANES
+  // Single-file HTML5 canvas game
+  // =====================================================================
+
+  (function() {
+    'use strict';
+
+    // ── Constants ────────────────────────────────────────────────────────
+    const LS_BEST       = 'prism_best';
+    const LS_BEST_STREAK= 'prism_bestStreak';
+    const LS_BEST_NEAR  = 'prism_bestNearMiss';
+
+    const PHASE_CYAN    = 0;   // hue ~180
+    const PHASE_MAGENTA = 1;   // hue ~300
+
+    const LANE_COUNT    = 3;
+    const FIXED_DT      = 1 / 60;  // 60 Hz fixed timestep
+    const DPR           = Math.min(window.devicePixelRatio || 1, 2);
+
+    const COL_CYAN      = '#00f5ff';
+    const COL_MAGENTA   = '#ff00c8';
+    const COL_GHOST_CYAN    = 'rgba(0,245,255,0.22)';
+    const COL_GHOST_MAG     = 'rgba(255,0,200,0.22)';
+
+    // ── Canvas Setup ──────────────────────────────────────────────────────
+    const canvas  = document.getElementById('game-canvas');
+    const ctx     = canvas.getContext('2d');
+    const wrapper = document.getElementById('game-wrapper');
+
+    let W = 0, H = 0; // CSS pixels
+
+    function resize() {
+      const rect = wrapper.getBoundingClientRect();
+      W = rect.width;
+      H = rect.height;
+      canvas.width  = Math.round(W * DPR);
+      canvas.height = Math.round(H * DPR);
+      canvas.style.width  = W + 'px';
+      canvas.style.height = H + 'px';
+    }
+
+    window.addEventListener('resize', () => { resize(); });
+    resize();
+
+    // Road geometry helpers (derived from W/H each frame)
+    function roadLeft()  { return W * 0.14; }
+    function roadRight() { return W * 0.86; }
+    function roadWidth() { return roadRight() - roadLeft(); }
+    function laneX(i)   { // i = 0,1,2
+      const seg = roadWidth() / LANE_COUNT;
+      return roadLeft() + seg * i + seg / 2;
+    }
+
+    // ── State ─────────────────────────────────────────────────────────────
+    let state = 'start'; // 'start' | 'playing' | 'gameover'
+
+    // Persistent bests
+    let best       = parseInt(localStorage.getItem(LS_BEST)        || '0', 10);
+    let bestStreak = parseInt(localStorage.getItem(LS_BEST_STREAK) || '0', 10);
+    let bestNear   = parseInt(localStorage.getItem(LS_BEST_NEAR)   || '0', 10);
+
+    // Game session vars
+    let score, lane, phase, t, accumulator;
+    let speed, spawnTimer, nextSpawn;
+    let obstacles, particles, speedLines, skylineSegs;
+    let ghostStreak, streakMult;
+    let nearMissCount, nearMissMax;
+    let shakeAmt, shakeTimer;
+    let hitStop;
+    let retryArm;         // countdown before retry allowed
+    let bgHue;
+    let lastTime;
+    let gameover_score, gameover_streak, gameover_near, isNewBest;
+
+    // Player smooth x
+    let playerX, playerTargetX;
+
+    // Drag state
+    let dragStartX = null, dragStartLane = null;
+    const DRAG_THRESH = 30; // px
+
+    // ── Audio (WebAudio, subtle, off by default) ──────────────────────────
+    let audioCtx = null;
+    let audioOn  = false; // off by default
+
+    function getAudio() {
+      if (!audioCtx) {
+        try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {}
+      }
+      return audioCtx;
+    }
+
+    function beep(freq, type, dur, vol, when) {
+      if (!audioOn) return;
+      const ac = getAudio();
+      if (!ac) return;
+      const o = ac.createOscillator();
+      const g = ac.createGain();
+      o.connect(g); g.connect(ac.destination);
+      o.type = type || 'sine';
+      o.frequency.value = freq;
+      g.gain.setValueAtTime(vol || 0.15, when || ac.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.0001, (when || ac.currentTime) + dur);
+      o.start(when || ac.currentTime);
+      o.stop((when || ac.currentTime) + dur + 0.01);
+    }
+
+    // ── Skyline ───────────────────────────────────────────────────────────
+    function buildSkyline() {
+      skylineSegs = [];
+      const count = 18;
+      for (let i = 0; i < count; i++) {
+        skylineSegs.push({
+          x: (i / count) * 1.1 - 0.05,
+          w: 0.04 + Math.random() * 0.045,
+          h: 0.08 + Math.random() * 0.18,
+          windows: Math.floor(2 + Math.random() * 4)
+        });
+      }
+    }
+
+    // ── Speed Lines ───────────────────────────────────────────────────────
+    function buildSpeedLines() {
+      speedLines = [];
+      for (let i = 0; i < 28; i++) {
+        speedLines.push(newSpeedLine(true));
+      }
+    }
+
+    function newSpeedLine(rand) {
+      return {
+        x: Math.random() * W,
+        y: rand ? Math.random() * H : -5,
+        len: 18 + Math.random() * 50,
+        spd: 0.6 + Math.random() * 0.5
+      };
+    }
+
+    // ── Particles ─────────────────────────────────────────────────────────
+    function spawnParticles(x, y, color, count, vScale, life) {
+      for (let i = 0; i < count; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        const spd = (0.5 + Math.random() * 1.5) * (vScale || 1);
+        particles.push({
+          x, y,
+          vx: Math.cos(ang) * spd * 80,
+          vy: Math.sin(ang) * spd * 80,
+          life: life || (0.3 + Math.random() * 0.4),
+          maxLife: life || (0.3 + Math.random() * 0.4),
+          color,
+          r: 2 + Math.random() * 3
+        });
+      }
+    }
+
+    // ── Game Init ─────────────────────────────────────────────────────────
+    function initGame() {
+      score        = 0;
+      lane         = 1;
+      phase        = PHASE_CYAN;
+      t            = 0;
+      accumulator  = 0;
+      speed        = 260;
+      spawnTimer   = 0;
+      nextSpawn    = 0.5;
+      obstacles    = [];
+      particles    = [];
+      ghostStreak  = 0;
+      streakMult   = 1;
+      nearMissCount= 0;
+      nearMissMax  = 1;
+      shakeAmt     = 0;
+      shakeTimer   = 0;
+      hitStop      = 0;
+      retryArm     = 0;
+      bgHue        = 200;
+      lastTime     = null;
+
+      playerX      = laneX(1);
+      playerTargetX= laneX(1);
+
+      buildSpeedLines();
+      buildSkyline();
+    }
+
+    // ── Obstacle Spawning ─────────────────────────────────────────────────
+    function calcSpeed(sec) {
+      return Math.min(260 + 9 * sec + 0.12 * sec * sec, 720);
+    }
+    function calcSpawnEvery(sec) {
+      return Math.max(0.42, Math.min(0.95, 0.95 - 0.010 * sec));
+    }
+
+    function spawnObstacle() {
+      // Pattern phases
+      const phase_t = t;
+      if (phase_t < 10) {
+        spawnSingle();
+      } else if (phase_t < 25) {
+        Math.random() < 0.7 ? spawnSingle() : spawnDouble();
+      } else if (phase_t < 45) {
+        const r = Math.random();
+        if (r < 0.4)      spawnSingle();
+        else if (r < 0.7) spawnDouble();
+        else              spawnGate();
+      } else {
+        const r = Math.random();
+        if (r < 0.25)     spawnSingle();
+        else if (r < 0.5) spawnDouble();
+        else if (r < 0.7) spawnGate();
+        else              spawnTrap();
+      }
+    }
+
+    function makeObs(lane, obPhase) {
+      return {
+        lane,
+        phase: obPhase,
+        x: laneX(lane),
+        y: -30,
+        w: 38, h: 22,
+        passed: false,
+        nearMissed: false
+      };
+    }
+
+    function spawnSingle() {
+      const l = Math.floor(Math.random() * 3);
+      const p = Math.random() < 0.5 ? PHASE_CYAN : PHASE_MAGENTA;
+      obstacles.push(makeObs(l, p));
+    }
+
+    function spawnDouble() {
+      // Two lanes occupied
+      const lanes = [0, 1, 2].sort(() => Math.random() - 0.5).slice(0, 2);
+      const p1 = Math.random() < 0.5 ? PHASE_CYAN : PHASE_MAGENTA;
+      const p2 = Math.random() < 0.5 ? PHASE_CYAN : PHASE_MAGENTA;
+      obstacles.push(makeObs(lanes[0], p1));
+      obstacles.push(makeObs(lanes[1], p2));
+    }
+
+    function spawnGate() {
+      // Two adjacent lanes same phase, one lane opposite (safe to ghost or dodge)
+      const safePhase = Math.random() < 0.5 ? PHASE_CYAN : PHASE_MAGENTA;
+      const solidPhase = 1 - safePhase;
+      const safeLane = Math.floor(Math.random() * 3);
+      for (let l = 0; l < 3; l++) {
+        obstacles.push(makeObs(l, l === safeLane ? safePhase : solidPhase));
+      }
+    }
+
+    function spawnTrap() {
+      // All 3 lanes, one matching player's current phase (solid), others opposite
+      const solidLane = Math.floor(Math.random() * 3);
+      for (let l = 0; l < 3; l++) {
+        obstacles.push(makeObs(l, l === solidLane ? phase : (1 - phase)));
+      }
+    }
+
+    // ── Collision ─────────────────────────────────────────────────────────
+    function circleAABB(cx, cy, r, rx, ry, rw, rh) {
+      const nearX = Math.max(rx - rw/2, Math.min(cx, rx + rw/2));
+      const nearY = Math.max(ry - rh/2, Math.min(cy, ry + rh/2));
+      const dx = cx - nearX, dy = cy - nearY;
+      return dx*dx + dy*dy < r*r;
+    }
+
+    // ── Update ────────────────────────────────────────────────────────────
+    function fixedUpdate(dt) {
+      if (hitStop > 0) { hitStop -= dt; return; }
+
+      t     += dt;
+      bgHue  = (bgHue + dt * 4) % 360;
+      speed  = calcSpeed(t);
+
+      // Player smooth follow
+      playerTargetX = laneX(lane);
+      playerX += (playerTargetX - playerX) * Math.min(1, dt * 14);
+
+      const playerY = H * 0.78;
+      const playerR = 14;
+
+      // Spawn
+      spawnTimer += dt;
+      if (spawnTimer >= nextSpawn) {
+        spawnTimer -= nextSpawn;
+        nextSpawn   = calcSpawnEvery(t);
+        spawnObstacle();
+      }
+
+      // Update obstacles
+      const curPhase = phase;
+      for (let i = obstacles.length - 1; i >= 0; i--) {
+        const ob = obstacles[i];
+        ob.y += speed * dt;
+        ob.x  = laneX(ob.lane); // keep aligned to lane
+
+        if (ob.y > H + 50) {
+          obstacles.splice(i, 1);
+          continue;
+        }
+
+        const solid = ob.phase === curPhase;
+
+        if (!ob.passed && ob.y > playerY) {
+          ob.passed = true;
+          if (!solid) {
+            // Ghost pass — reward
+            ghostStreak++;
+            streakMult = Math.min(nearMissMax, ghostStreak);
+            score += Math.floor(50 * streakMult);
+            spawnParticles(ob.x, playerY, ob.phase === PHASE_CYAN ? COL_CYAN : COL_MAGENTA, 8, 0.8, 0.4);
+            beep(600 + ghostStreak * 40, 'sine', 0.12, 0.1);
+          } else {
+            // Passed a solid safely → break ghost streak
+            ghostStreak = 0;
+            streakMult  = 1;
+          }
+          continue;
+        }
+
+        if (ob.passed) continue;
+
+        // Near-miss check (for solid obs above player)
+        if (solid && !ob.nearMissed) {
+          const dx = Math.abs(ob.x - playerX);
+          const dy = Math.abs(ob.y - playerY);
+          if (dy < 40 && dx < 52 && dy > 18) {
+            ob.nearMissed = true;
+            nearMissCount++;
+            nearMissMax = Math.min(10, Math.floor(1 + t / 20));
+            score += Math.floor(30 * streakMult);
+            shakeAmt   = 3; shakeTimer = 0.15;
+            spawnParticles(ob.x, ob.y, '#ffff00', 6, 0.6, 0.3);
+            beep(300, 'square', 0.08, 0.08);
+          }
+        }
+
+        // Collision (solid only)
+        if (solid && circleAABB(playerX, playerY, playerR, ob.x, ob.y, ob.w, ob.h)) {
+          triggerGameOver(playerX, playerY);
+          return;
+        }
+      }
+
+      // Survival score
+      score += dt * speed * 0.018;
+
+      // Speed lines
+      for (let i = speedLines.length - 1; i >= 0; i--) {
+        const sl = speedLines[i];
+        sl.y += sl.spd * speed * dt * 0.5;
+        if (sl.y > H + sl.len) {
+          speedLines[i] = newSpeedLine(false);
+          speedLines[i].x = Math.random() * W;
+        }
+      }
+
+      // Update particles
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.life -= dt;
+        if (p.life <= 0) { particles.splice(i, 1); continue; }
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.vy += 60 * dt; // gravity
+      }
+
+      // Shake decay
+      if (shakeTimer > 0) {
+        shakeTimer -= dt;
+        if (shakeTimer <= 0) shakeAmt = 0;
+      }
+    }
+
+    function triggerGameOver(px, py) {
+      state = 'gameover';
+      hitStop  = 0.08;
+      shakeAmt = 14; shakeTimer = 0.9;
+      spawnParticles(px, py, COL_CYAN,    18, 2.0, 0.8);
+      spawnParticles(px, py, COL_MAGENTA, 18, 2.0, 0.8);
+      spawnParticles(px, py, '#ffffff',   10, 1.5, 0.6);
+      retryArm = 0.9;
+      gameover_score  = Math.floor(score);
+      gameover_streak = ghostStreak;
+      gameover_near   = nearMissCount;
+
+      isNewBest = gameover_score > best;
+      if (isNewBest)              { best       = gameover_score; localStorage.setItem(LS_BEST, best); }
+      if (ghostStreak > bestStreak){ bestStreak = ghostStreak;   localStorage.setItem(LS_BEST_STREAK, bestStreak); }
+      if (nearMissCount > bestNear){ bestNear   = nearMissCount; localStorage.setItem(LS_BEST_NEAR, bestNear); }
+
+      beep(120, 'sawtooth', 0.5, 0.18);
+    }
+
+    // ── Phase Toggle ──────────────────────────────────────────────────────
+    function togglePhase() {
+      phase = 1 - phase;
+      spawnParticles(playerX, H * 0.78,
+        phase === PHASE_CYAN ? COL_CYAN : COL_MAGENTA, 10, 1.0, 0.35);
+      beep(phase === PHASE_CYAN ? 440 : 330, 'sine', 0.1, 0.12);
+    }
+
+    // ── Input ──────────────────────────────────────────────────────────────
+    canvas.addEventListener('pointerdown', onPointerDown, { passive: false });
+    canvas.addEventListener('pointermove', onPointerMove, { passive: false });
+    canvas.addEventListener('pointerup',   onPointerUp,   { passive: false });
+
+    function onPointerDown(e) {
+      e.preventDefault();
+      dragStartX    = e.clientX;
+      dragStartLane = lane;
+
+      if (state === 'start') {
+        state = 'playing';
+        initGame();
+        return;
+      }
+      if (state === 'gameover') {
+        if (retryArm <= 0) {
+          state = 'playing';
+          initGame();
+        }
+        return;
+      }
+    }
+
+    function onPointerMove(e) {
+      if (state !== 'playing' || dragStartX === null) return;
+      e.preventDefault();
+      const dx = e.clientX - dragStartX;
+      if (Math.abs(dx) > DRAG_THRESH) {
+        const dir = dx > 0 ? 1 : -1;
+        const newLane = Math.max(0, Math.min(2, dragStartLane + dir));
+        if (newLane !== lane) {
+          lane = newLane;
+          dragStartX    = e.clientX;
+          dragStartLane = lane;
+        }
+      }
+    }
+
+    function onPointerUp(e) {
+      if (state !== 'playing') { dragStartX = null; return; }
+      e.preventDefault();
+      const dx = Math.abs(e.clientX - (dragStartX || e.clientX));
+      if (dx < DRAG_THRESH) {
+        // It's a tap — determine zone
+        const rect  = canvas.getBoundingClientRect();
+        const tapX  = e.clientX - rect.left;
+        const zone  = tapX / rect.width;
+        if (zone < 0.28) {
+          lane = Math.max(0, lane - 1);
+        } else if (zone > 0.72) {
+          lane = Math.min(2, lane + 1);
+        } else {
+          togglePhase();
+        }
+      }
+      dragStartX = null;
+    }
+
+    // Keyboard
+    window.addEventListener('keydown', onKey);
+    function onKey(e) {
+      if (state === 'start') {
+        if (e.code === 'Space' || e.code === 'Enter') { state = 'playing'; initGame(); }
+        return;
+      }
+      if (state === 'gameover') {
+        if ((e.code === 'Space' || e.code === 'Enter') && retryArm <= 0) {
+          state = 'playing'; initGame();
+        }
+        return;
+      }
+      // Playing
+      switch (e.code) {
+        case 'ArrowLeft': case 'KeyA': lane = Math.max(0, lane - 1); break;
+        case 'ArrowRight': case 'KeyD': lane = Math.min(2, lane + 1); break;
+        case 'Space': case 'Enter': togglePhase(); break;
+      }
+    }
+
+    // ── Draw ──────────────────────────────────────────────────────────────
+    function draw() {
+      ctx.save();
+      ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+      // Shake offset
+      let sx = 0, sy = 0;
+      if (shakeAmt > 0) {
+        sx = (Math.random() * 2 - 1) * shakeAmt;
+        sy = (Math.random() * 2 - 1) * shakeAmt;
+        ctx.translate(sx, sy);
+      }
+
+      // Background gradient
+      const grad = ctx.createLinearGradient(0, 0, 0, H);
+      grad.addColorStop(0, `hsl(${bgHue}, 40%, 6%)`);
+      grad.addColorStop(0.5, `hsl(${(bgHue + 30) % 360}, 30%, 4%)`);
+      grad.addColorStop(1, `hsl(${(bgHue + 60) % 360}, 20%, 8%)`);
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, W, H);
+
+      // Skyline
+      drawSkyline();
+
+      // Speed lines
+      drawSpeedLines();
+
+      // Road
+      drawRoad();
+
+      if (state === 'playing' || state === 'gameover') {
+        // Obstacles
+        drawObstacles();
+
+        // Player
+        if (state === 'playing') drawPlayer();
+
+        // Particles
+        drawParticles();
+
+        // HUD
+        drawHUD();
+      }
+
+      if (state === 'start')    drawStartScreen();
+      if (state === 'gameover') drawGameOver();
+
+      ctx.restore();
+    }
+
+    // ── Skyline ───────────────────────────────────────────────────────────
+    function drawSkyline() {
+      if (!skylineSegs) return;
+      const baseY = H * 0.72;
+      ctx.save();
+      ctx.globalAlpha = 0.18;
+      for (const seg of skylineSegs) {
+        const x = seg.x * W;
+        const w = seg.w * W;
+        const h = seg.h * H;
+        ctx.fillStyle = `hsl(${(bgHue + 160) % 360}, 30%, 15%)`;
+        ctx.fillRect(x, baseY - h, w, h);
+        // Windows
+        ctx.fillStyle = `hsl(${bgHue}, 60%, 60%)`;
+        const wCols = 2, wRows = seg.windows;
+        const ww = w * 0.18, wh = h * 0.06;
+        for (let r = 0; r < wRows; r++) {
+          for (let c = 0; c < wCols; c++) {
+            if (Math.random() < 0.5) continue;
+            const wx = x + w * 0.18 + c * (w * 0.38);
+            const wy = baseY - h * 0.15 - r * (h / (wRows + 1));
+            ctx.fillRect(wx, wy, ww, wh);
+          }
+        }
+      }
+      ctx.restore();
+    }
+
+    // ── Speed Lines ───────────────────────────────────────────────────────
+    function drawSpeedLines() {
+      if (!speedLines) return;
+      ctx.save();
+      ctx.globalAlpha = state === 'playing' ? Math.min(0.35, speed / 1200) : 0.08;
+      ctx.strokeStyle = `hsl(${bgHue}, 60%, 70%)`;
+      ctx.lineWidth = 0.8;
+      for (const sl of speedLines) {
+        ctx.beginPath();
+        ctx.moveTo(sl.x, sl.y);
+        ctx.lineTo(sl.x, sl.y + sl.len);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // ── Road ──────────────────────────────────────────────────────────────
+    function drawRoad() {
+      const rl = roadLeft(), rr = roadRight(), rw = roadWidth();
+
+      // Road surface
+      ctx.save();
+      const rGrad = ctx.createLinearGradient(0, H * 0.3, 0, H);
+      rGrad.addColorStop(0, 'rgba(20,20,35,0.6)');
+      rGrad.addColorStop(1, 'rgba(10,10,25,0.95)');
+      ctx.fillStyle = rGrad;
+      ctx.fillRect(rl, 0, rw, H);
+
+      // Road edges glow
+      ctx.shadowBlur = 12;
+      ctx.shadowColor = `hsl(${bgHue}, 70%, 50%)`;
+      ctx.strokeStyle = `hsl(${bgHue}, 70%, 45%)`;
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(rl, 0); ctx.lineTo(rl, H); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(rr, 0); ctx.lineTo(rr, H); ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // Lane dividers (dashed)
+      ctx.setLineDash([18, 22]);
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = `rgba(255,255,255,0.12)`;
+      for (let i = 1; i < LANE_COUNT; i++) {
+        const lx = rl + rw * (i / LANE_COUNT);
+        ctx.beginPath(); ctx.moveTo(lx, 0); ctx.lineTo(lx, H); ctx.stroke();
+      }
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+
+    // ── Obstacles ─────────────────────────────────────────────────────────
+    function drawObstacles() {
+      for (const ob of obstacles) {
+        const solid = ob.phase === phase;
+        const col   = ob.phase === PHASE_CYAN ? COL_CYAN : COL_MAGENTA;
+        const x = ob.x, y = ob.y, hw = ob.w / 2, hh = ob.h / 2;
+
+        ctx.save();
+
+        if (solid) {
+          // Solid obstacle — fully opaque with glow
+          ctx.shadowBlur  = 16;
+          ctx.shadowColor = col;
+          ctx.fillStyle   = col;
+          roundRect(ctx, x - hw, y - hh, ob.w, ob.h, 6);
+          ctx.fill();
+
+          // White outline for contrast
+          ctx.shadowBlur    = 0;
+          ctx.strokeStyle   = 'rgba(255,255,255,0.85)';
+          ctx.lineWidth     = 1.5;
+          roundRect(ctx, x - hw, y - hh, ob.w, ob.h, 6);
+          ctx.stroke();
+
+          // Phase label
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 10px Courier New';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(ob.phase === PHASE_CYAN ? 'C' : 'M', x, y);
+
+        } else {
+          // Ghost obstacle — translucent, dashed outline
+          ctx.globalAlpha = 0.35;
+          ctx.fillStyle   = col;
+          roundRect(ctx, x - hw, y - hh, ob.w, ob.h, 6);
+          ctx.fill();
+          ctx.globalAlpha = 1;
+          ctx.setLineDash([4, 4]);
+          ctx.strokeStyle = col;
+          ctx.lineWidth   = 1.5;
+          roundRect(ctx, x - hw, y - hh, ob.w, ob.h, 6);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          // White outline
+          ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+          ctx.lineWidth   = 1;
+          roundRect(ctx, x - hw, y - hh, ob.w, ob.h, 6);
+          ctx.stroke();
+
+          ctx.globalAlpha = 0.6;
+          ctx.fillStyle = col;
+          ctx.font = 'bold 10px Courier New';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(ob.phase === PHASE_CYAN ? 'C' : 'M', x, y);
+        }
+
+        ctx.restore();
+      }
+    }
+
+    // ── Player ────────────────────────────────────────────────────────────
+    function drawPlayer() {
+      const x  = playerX;
+      const y  = H * 0.78;
+      const r  = 14;
+      const col= phase === PHASE_CYAN ? COL_CYAN : COL_MAGENTA;
+
+      ctx.save();
+
+      // Glow
+      ctx.shadowBlur  = 24;
+      ctx.shadowColor = col;
+
+      // Core circle
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fillStyle = col;
+      ctx.fill();
+
+      // Inner ring
+      ctx.shadowBlur = 0;
+      ctx.beginPath();
+      ctx.arc(x, y, r * 0.55, 0, Math.PI * 2);
+      ctx.fillStyle = '#fff';
+      ctx.fill();
+
+      // Outer ring
+      ctx.beginPath();
+      ctx.arc(x, y, r + 3, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // Phase label
+      ctx.fillStyle = phase === PHASE_CYAN ? '#003' : '#300';
+      ctx.font = 'bold 9px Courier New';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(phase === PHASE_CYAN ? 'C' : 'M', x, y);
+
+      // Trail
+      ctx.globalAlpha = 0.25;
+      for (let i = 1; i <= 4; i++) {
+        ctx.beginPath();
+        ctx.arc(x, y + i * 8, r * (1 - i * 0.2), 0, Math.PI * 2);
+        ctx.fillStyle = col;
+        ctx.fill();
+      }
+
+      ctx.restore();
+    }
+
+    // ── Particles ─────────────────────────────────────────────────────────
+    function drawParticles() {
+      for (const p of particles) {
+        const alpha = p.life / p.maxLife;
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = p.color;
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r * alpha, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    // ── HUD ───────────────────────────────────────────────────────────────
+    function drawHUD() {
+      ctx.save();
+      ctx.font = 'bold 22px Courier New';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillStyle = '#fff';
+      ctx.shadowBlur = 8;
+      ctx.shadowColor = 'rgba(255,255,255,0.4)';
+      ctx.fillText(Math.floor(score).toString().padStart(6, '0'), W / 2, 14);
+
+      // Streak multiplier
+      if (streakMult > 1) {
+        ctx.font = 'bold 14px Courier New';
+        ctx.fillStyle = ghostStreak > 0
+          ? (phase === PHASE_CYAN ? COL_CYAN : COL_MAGENTA)
+          : '#aaa';
+        ctx.fillText('x' + streakMult, W / 2, 40);
+      }
+
+      // Phase indicator
+      ctx.font = 'bold 13px Courier New';
+      ctx.textAlign = 'left';
+      ctx.shadowBlur = 10;
+      ctx.shadowColor = phase === PHASE_CYAN ? COL_CYAN : COL_MAGENTA;
+      ctx.fillStyle   = phase === PHASE_CYAN ? COL_CYAN : COL_MAGENTA;
+      ctx.fillText(phase === PHASE_CYAN ? 'CYAN' : 'MAGENTA', roadLeft() + 6, 14);
+
+      // Best
+      ctx.shadowBlur = 0;
+      ctx.font = '10px Courier New';
+      ctx.textAlign = 'right';
+      ctx.fillStyle = 'rgba(255,255,255,0.4)';
+      ctx.fillText('BEST ' + best, roadRight() - 4, 14);
+
+      // Near-miss streak indicator (bottom-left)
+      if (nearMissCount > 0) {
+        ctx.font = '10px Courier New';
+        ctx.textAlign = 'left';
+        ctx.fillStyle = '#ffff00';
+        ctx.shadowBlur = 6;
+        ctx.shadowColor = '#ffff00';
+        ctx.fillText('NEAR x' + nearMissCount, roadLeft() + 6, H * 0.78 + 22);
+      }
+
+      ctx.restore();
+    }
+
+    // ── Start Screen ──────────────────────────────────────────────────────
+    function drawStartScreen() {
+      // Semi-transparent overlay
+      ctx.save();
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillRect(0, 0, W, H);
+
+      const cx = W / 2;
+      let y = H * 0.22;
+
+      // Title
+      ctx.textAlign = 'center';
+      ctx.font = 'bold 38px Courier New';
+      ctx.shadowBlur = 28;
+      ctx.shadowColor = COL_CYAN;
+      ctx.fillStyle = COL_CYAN;
+      ctx.fillText('PRISM', cx, y); y += 44;
+      ctx.shadowColor = COL_MAGENTA;
+      ctx.fillStyle = COL_MAGENTA;
+      ctx.fillText('DRIFT', cx, y); y += 30;
+
+      ctx.font = '14px Courier New';
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = 'rgba(255,255,255,0.55)';
+      ctx.fillText('PHASE LANES', cx, y); y += 44;
+
+      // Rules
+      ctx.shadowBlur = 0;
+      ctx.font = '12px Courier New';
+      ctx.fillStyle = 'rgba(255,255,255,0.8)';
+      const rules = [
+        'TAP CENTER  →  toggle phase C/M',
+        'TAP LEFT/RIGHT  →  change lane',
+        '← → / A D  →  keyboard lanes',
+        '',
+        'SAME COLOR = SOLID (AVOID!)',
+        'OTHER COLOR = GHOST (PASS FOR POINTS)',
+        'NEAR MISS = BONUS!'
+      ];
+      for (const r of rules) {
+        if (r === '') { y += 8; continue; }
+        ctx.fillText(r, cx, y); y += 18;
+      }
+
+      y += 20;
+      // Pulse tap to start
+      const pulse = 0.6 + 0.4 * Math.sin(Date.now() / 400);
+      ctx.globalAlpha = pulse;
+      ctx.font = 'bold 18px Courier New';
+      ctx.fillStyle = '#fff';
+      ctx.fillText('TAP TO START', cx, y);
+      ctx.globalAlpha = 1;
+
+      if (best > 0) {
+        ctx.font = '11px Courier New';
+        ctx.fillStyle = 'rgba(255,255,255,0.4)';
+        ctx.fillText('BEST: ' + best, cx, y + 28);
+      }
+
+      ctx.restore();
+    }
+
+    // ── Game Over ─────────────────────────────────────────────────────────
+    function drawGameOver() {
+      ctx.save();
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.fillRect(0, 0, W, H);
+
+      const cx = W / 2;
+      let y = H * 0.18;
+
+      ctx.textAlign = 'center';
+      ctx.font = 'bold 30px Courier New';
+      ctx.shadowBlur = 20;
+      ctx.shadowColor = '#ff4444';
+      ctx.fillStyle   = '#ff5555';
+      ctx.fillText('GAME OVER', cx, y); y += 48;
+
+      ctx.shadowBlur = 0;
+      ctx.font = 'bold 42px Courier New';
+      ctx.fillStyle = '#fff';
+      ctx.fillText(gameover_score.toString().padStart(6, '0'), cx, y); y += 50;
+
+      if (isNewBest) {
+        ctx.font = 'bold 16px Courier New';
+        ctx.shadowBlur = 14;
+        ctx.shadowColor = '#ffdd00';
+        ctx.fillStyle   = '#ffdd00';
+        ctx.fillText('★  NEW BEST!  ★', cx, y); y += 30;
+        ctx.shadowBlur = 0;
+      }
+
+      ctx.font = '12px Courier New';
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.fillText('BEST: ' + best, cx, y); y += 32;
+
+      ctx.font = '13px Courier New';
+      ctx.fillStyle = 'rgba(255,255,255,0.75)';
+      ctx.fillText('GHOST STREAK: ' + gameover_streak + '  (BEST ' + bestStreak + ')', cx, y); y += 22;
+      ctx.fillText('NEAR MISSES:  ' + gameover_near  + '  (BEST ' + bestNear   + ')', cx, y); y += 40;
+
+      // Tap to retry (only after arm delay)
+      if (retryArm <= 0) {
+        const pulse = 0.6 + 0.4 * Math.sin(Date.now() / 380);
+        ctx.globalAlpha = pulse;
+        ctx.font = 'bold 18px Courier New';
+        ctx.fillStyle = '#fff';
+        ctx.fillText('TAP TO RETRY', cx, y);
+        ctx.globalAlpha = 1;
+      } else {
+        ctx.font = '13px Courier New';
+        ctx.fillStyle = 'rgba(255,255,255,0.3)';
+        ctx.fillText('...', cx, y);
+      }
+
+      ctx.restore();
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────
+    function roundRect(ctx, x, y, w, h, r) {
+      r = Math.min(r, w / 2, h / 2);
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.lineTo(x + w - r, y);
+      ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+      ctx.lineTo(x + w, y + h - r);
+      ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      ctx.lineTo(x + r, y + h);
+      ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+      ctx.lineTo(x, y + r);
+      ctx.quadraticCurveTo(x, y, x + r, y);
+      ctx.closePath();
+    }
+
+    // ── RAF Loop ──────────────────────────────────────────────────────────
+    function loop(timestamp) {
+      requestAnimationFrame(loop);
+
+      if (lastTime === null) lastTime = timestamp;
+      let frameTime = (timestamp - lastTime) / 1000;
+      lastTime = timestamp;
+
+      // Cap frame time to avoid spiral of death
+      if (frameTime > 0.1) frameTime = 0.1;
+
+      if (state === 'playing') {
+        accumulator += frameTime;
+        while (accumulator >= FIXED_DT) {
+          fixedUpdate(FIXED_DT);
+          accumulator -= FIXED_DT;
+          if (state !== 'playing') break; // may have transitioned
+        }
+      }
+
+      if (state === 'gameover') {
+        retryArm -= frameTime;
+        if (retryArm < 0) retryArm = 0;
+        // Keep updating particles + shake decay during gameover
+        shakeTimer -= frameTime;
+        if (shakeTimer < 0) { shakeTimer = 0; shakeAmt = 0; }
+        for (let i = particles.length - 1; i >= 0; i--) {
+          const p = particles[i];
+          p.life -= frameTime;
+          if (p.life <= 0) { particles.splice(i, 1); continue; }
+          p.x += p.vx * frameTime;
+          p.y += p.vy * frameTime;
+          p.vy += 60 * frameTime;
+        }
+      }
+
+      draw();
+    }
+
+    // ── Boot ──────────────────────────────────────────────────────────────
+    // Initialize display-only state for start screen
+    buildSkyline();
+    buildSpeedLines();
+    obstacles  = [];
+    particles  = [];
+    score      = 0;
+    t          = 0;
+    bgHue      = 200;
+    shakeAmt   = 0;
+    shakeTimer = 0;
+    phase      = PHASE_CYAN;
+    streakMult = 1;
+    ghostStreak= 0;
+    nearMissCount = 0;
+    retryArm   = 0;
+    lastTime   = null;
+    accumulator= 0;
+    playerX    = 0; playerTargetX = 0;
+
+    requestAnimationFrame(loop);
+
+  })();
+  </script>
+</body>
+</html>

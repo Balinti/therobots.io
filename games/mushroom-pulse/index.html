@@ -1,0 +1,923 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Mushroom Pulse - Free HTML5 Game</title>
+<meta name="description" content="Play Mushroom Pulse - Swipe to time your mushroom's growth spikes perfectly as it rhythmically expands and contracts.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0b0f14">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Mushroom Pulse - Free HTML5 Game">
+<meta property="og:description" content="Play Mushroom Pulse - Swipe to time your mushroom's growth spikes perfectly as it rhythmically expands and contracts.">
+<meta property="og:url" content="https://balinti.github.io/mushroom-pulse/">
+<meta property="og:image" content="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='630' viewBox='0 0 1200 630'%3E%3Crect width='1200' height='630' fill='%230b0f14'/%3E%3Cellipse cx='600' cy='380' rx='120' ry='60' fill='%23c84b2f'/%3E%3Cellipse cx='600' cy='340' rx='160' ry='90' fill='%23e05a38'/%3E%3Cellipse cx='600' cy='300' rx='140' ry='100' fill='%23b33a20'/%3E%3Crect x='560' y='380' width='80' height='90' rx='12' fill='%23f0d080'/%3E%3Ctext x='600' y='540' font-family='Arial' font-weight='bold' font-size='72' fill='%23ffffff' text-anchor='middle'%3EMushroom Pulse%3C/text%3E%3Ctext x='600' y='600' font-family='Arial' font-size='32' fill='%23aaaaaa' text-anchor='middle'%3ETap to time your spore hops!%3C/text%3E%3C/svg%3E">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Mushroom Pulse - Free HTML5 Game">
+<meta name="twitter:description" content="Play Mushroom Pulse - Swipe to time your mushroom's growth spikes perfectly as it rhythmically expands and contracts.">
+<meta name="twitter:image" content="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='630' viewBox='0 0 1200 630'%3E%3Crect width='1200' height='630' fill='%230b0f14'/%3E%3Cellipse cx='600' cy='380' rx='120' ry='60' fill='%23c84b2f'/%3E%3Cellipse cx='600' cy='340' rx='160' ry='90' fill='%23e05a38'/%3E%3Cellipse cx='600' cy='300' rx='140' ry='100' fill='%23b33a20'/%3E%3Crect x='560' y='380' width='80' height='90' rx='12' fill='%23f0d080'/%3E%3Ctext x='600' y='540' font-family='Arial' font-weight='bold' font-size='72' fill='%23ffffff' text-anchor='middle'%3EMushroom Pulse%3C/text%3E%3Ctext x='600' y='600' font-family='Arial' font-size='32' fill='%23aaaaaa' text-anchor='middle'%3ETap to time your spore hops!%3C/text%3E%3C/svg%3E">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#0b0f14;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;font-family:'Segoe UI',system-ui,sans-serif;overflow:hidden}
+#wrap{position:relative;width:100%;max-width:420px;height:100dvh;max-height:750px;display:flex;flex-direction:column;align-items:center;justify-content:center}
+canvas{display:block;width:100%;height:100%;touch-action:none;cursor:pointer}
+#seo-text{width:100%;max-width:420px;padding:12px 16px;color:#555;font-size:11px;line-height:1.6;text-align:center;flex-shrink:0}
+#seo-text h2{font-size:13px;color:#667;margin-bottom:4px}
+#seo-text p{margin-bottom:2px}
+#mute-btn{position:absolute;top:8px;right:8px;background:rgba(255,255,255,0.1);border:none;color:#aaa;font-size:18px;width:32px;height:32px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:10;transition:background 0.2s}
+#mute-btn:hover{background:rgba(255,255,255,0.2)}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <button id="mute-btn" title="Toggle mute">🔊</button>
+</div>
+<div id="seo-text">
+  <h2>Mushroom Pulse: Spore Hop</h2>
+  <p><strong>How to play:</strong> Tap or press Space/Enter to lock the mushroom's size and launch! Time it in the safe window for higher jumps. Land perfectly for combo multipliers and bonus spores!</p>
+  <p>Free browser game — no download needed. Works on mobile and desktop.</p>
+</div>
+<script>
+(function(){
+'use strict';
+
+// ─── URL PARAMS ─────────────────────────────────────────────────────────────
+const params = new URLSearchParams(location.search);
+const challengeScore = parseInt(params.get('challengeScore')) || 0;
+const urlSeed = parseInt(params.get('seed')) || 0;
+
+// ─── SEEDED RNG ──────────────────────────────────────────────────────────────
+function mkRng(seed) {
+  let s = seed >>> 0 || 0x12345678;
+  return function() {
+    s ^= s << 13; s ^= s >> 17; s ^= s << 5;
+    return ((s >>> 0) / 0xffffffff);
+  };
+}
+let rng = mkRng(urlSeed || Date.now());
+
+// ─── CANVAS SETUP ────────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+
+function resize() {
+  const wrap = document.getElementById('wrap');
+  const rect = wrap.getBoundingClientRect();
+  W = rect.width; H = rect.height;
+  DPR = Math.min(window.devicePixelRatio || 1, 3);
+  canvas.width = Math.round(W * DPR);
+  canvas.height = Math.round(H * DPR);
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener('resize', () => { resize(); if(state !== 'playing') draw(); });
+resize();
+
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+const clamp = (v,a,b) => v<a?a:v>b?b:v;
+const lerp = (a,b,t) => a+(b-a)*t;
+const rand = (a,b) => a + rng()*(b-a);
+function circleAABB(cx,cy,cr,rx,ry,rw,rh) {
+  const nx = clamp(cx, rx, rx+rw);
+  const ny = clamp(cy, ry, ry+rh);
+  return (cx-nx)**2 + (cy-ny)**2 < cr*cr;
+}
+
+// ─── AUDIO ───────────────────────────────────────────────────────────────────
+let audioCtx = null;
+let muted = false;
+const muteBtn = document.getElementById('mute-btn');
+muteBtn.addEventListener('click', e => {
+  e.stopPropagation();
+  muted = !muted;
+  muteBtn.textContent = muted ? '🔇' : '🔊';
+});
+
+function ensureAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+function beep(freq, type, dur, vol, delay) {
+  if (muted || !audioCtx) return;
+  try {
+    const g = audioCtx.createGain();
+    const o = audioCtx.createOscillator();
+    o.type = type || 'sine';
+    o.frequency.setValueAtTime(freq, audioCtx.currentTime + (delay||0));
+    g.gain.setValueAtTime(vol||0.15, audioCtx.currentTime + (delay||0));
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + (delay||0) + dur);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(audioCtx.currentTime + (delay||0));
+    o.stop(audioCtx.currentTime + (delay||0) + dur + 0.05);
+  } catch(e){}
+}
+function playLand(perfect) {
+  if(perfect){ beep(440,  'sine', 0.1, 0.15); beep(660,'sine',0.12,0.12,0.05); beep(880,'sine',0.1,0.1,0.1); }
+  else        { beep(300, 'sine', 0.08, 0.1); }
+}
+function playBonk()  { beep(120,'sawtooth',0.15,0.15); beep(80,'sawtooth',0.1,0.1,0.05); }
+function playFall()  { beep(200,'triangle',0.2,0.15); beep(100,'triangle',0.15,0.1,0.1); }
+function playPulse(t){ beep(220 + t*80,'sine',0.03,0.05); }
+
+// ─── GAME STATE ──────────────────────────────────────────────────────────────
+let state = 'start';
+let score = 0, combo = 0, bestCombo = 0, multiplier = 1;
+let bestScore = parseInt(localStorage.getItem('mp_best')) || 0;
+let bestComboStored = parseInt(localStorage.getItem('mp_bestCombo')) || 0;
+let deathReason = '';
+let hue = 200;
+let globalTime = 0;
+let shakeAmt = 0, shakeDur = 0, shakeT = 0;
+let shakeX = 0, shakeY = 0;
+
+// ─── PLAYER ──────────────────────────────────────────────────────────────────
+let player = {};
+let cameraY = 0;
+
+function initPlayer() {
+  player = {
+    x: W/2, y: H*0.75,
+    vy: 0, vx: 0,
+    r: 18,
+    // pulse
+    pulsePhase: 0, pulseMin: 12, pulseMax: 36,
+    lockedR: 0, locked: false,
+    jumping: false,
+    dead: false,
+    groundY: 0,
+    onGround: false,
+    // visuals
+    squish: 1, squishV: 0,
+    eyeOpen: 1,
+    hatR: 0,
+  };
+}
+
+// ─── LEDGES ──────────────────────────────────────────────────────────────────
+let ledges = [];
+let particles = [];
+
+const LEDGE_H = 14;
+const GRAVITY = 900;
+const PLAYER_STEM_H = 18;
+
+function diffScale() {
+  // 0..1 as score increases
+  return Math.min(score / 60, 1);
+}
+function pulseSpeed() {
+  return lerp(1.2, 3.2, diffScale());
+}
+function ledgeW() {
+  return lerp(110, 55, diffScale());
+}
+function safeWindow() {
+  // fraction of pulse range that is "safe"
+  return lerp(0.45, 0.22, diffScale());
+}
+
+function spawnLedge(prevLedge) {
+  const d = diffScale();
+  const lw = ledgeW() + rand(-15, 15);
+  const lx = rand(lw/2 + 10, W - lw/2 - 10);
+  // height above previous
+  const gap = lerp(95, 140, d) + rand(-20, 20);
+  const ly = prevLedge ? prevLedge.y - gap : H * 0.6;
+
+  // safe window: range of pulse sizes that allow a good jump
+  const safeW = safeWindow();
+  const pMin = player.pulseMin, pMax = player.pulseMax;
+  const pRange = pMax - pMin;
+  const safeCenter = pMin + pRange * rand(0.4, 0.6);
+  const sHalf = pRange * safeW * 0.5;
+  const safeMin = clamp(safeCenter - sHalf, pMin + 2, pMax - 2);
+  const safeMax = clamp(safeCenter + sHalf, pMin + 4, pMax - 2);
+
+  // movement
+  const moves = score >= 10 && rng() < diffScale() * 0.7;
+  const speed = moves ? rand(40, 120) * (rng() < 0.5 ? 1 : -1) : 0;
+
+  // ceiling hazard (visual + kills on contact)
+  const hasCeiling = score >= 25 && rng() < diffScale() * 0.55;
+  const ceilH = 12;
+  const ceilY = ly - gap * 0.5 - ceilH;
+  const ceilX = lx + rand(-30, 30);
+  const ceilW = rand(40, 90);
+
+  return {
+    x: lx, y: ly,
+    w: lw, h: LEDGE_H,
+    safeMin, safeMax,
+    moveSpeed: speed,
+    ceiling: hasCeiling ? { x: ceilX, y: ceilY, w: ceilW, h: ceilH } : null,
+    hue: (hue + score * 7 + rand(-20, 20)) % 360,
+    shake: 0,
+    wobble: 0,
+  };
+}
+
+function initLedges() {
+  ledges = [];
+  // ground ledge
+  const ground = {
+    x: W/2, y: H * 0.78,
+    w: W * 0.55, h: LEDGE_H,
+    safeMin: player.pulseMin + 4,
+    safeMax: player.pulseMax - 4,
+    moveSpeed: 0,
+    ceiling: null,
+    hue: 200,
+    shake: 0, wobble: 0,
+  };
+  ledges.push(ground);
+  for (let i = 0; i < 3; i++) {
+    ledges.push(spawnLedge(ledges[ledges.length - 1]));
+  }
+}
+
+// ─── PARTICLES ───────────────────────────────────────────────────────────────
+const MAX_PARTICLES = 120;
+
+function spawnParticles(x, y, count, perfect) {
+  for (let i = 0; i < count; i++) {
+    if (particles.length >= MAX_PARTICLES) particles.shift();
+    const angle = rand(0, Math.PI * 2);
+    const spd = rand(40, perfect ? 220 : 130);
+    const ph = perfect ? (hue + rand(-20, 60)) % 360 : (hue + rand(0, 40)) % 360;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * spd,
+      vy: Math.sin(angle) * spd - (perfect ? 60 : 20),
+      r: rand(2, perfect ? 7 : 5),
+      life: 1, decay: rand(0.8, 1.8),
+      hue: ph, sat: rand(70, 100), lit: rand(50, 80),
+      type: 'spore',
+    });
+  }
+  if (perfect) {
+    // shockwave ring
+    particles.push({
+      x, y, r: 0, maxR: 80,
+      life: 1, decay: 2.5,
+      type: 'ring',
+      hue: (hue + 60) % 360,
+    });
+  }
+}
+
+function spawnDeathParticles(x, y) {
+  for (let i = 0; i < 30; i++) {
+    if (particles.length >= MAX_PARTICLES) particles.shift();
+    const angle = rand(0, Math.PI * 2);
+    const spd = rand(60, 280);
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * spd,
+      vy: Math.sin(angle) * spd,
+      r: rand(3, 9),
+      life: 1, decay: rand(0.5, 1.2),
+      hue: rand(0, 30), sat: 90, lit: 60,
+      type: 'spore',
+    });
+  }
+}
+
+// ─── SHAKE ───────────────────────────────────────────────────────────────────
+function triggerShake(amount, duration) {
+  shakeAmt = Math.max(shakeAmt, amount);
+  shakeDur = duration;
+  shakeT = 0;
+}
+
+// ─── JUMP LOGIC ──────────────────────────────────────────────────────────────
+function doJump() {
+  if (!player.jumping || player.locked) return;
+  // lock size
+  const r = clamp(
+    player.pulseMin + (player.pulseMax - player.pulseMin) *
+    (0.5 + 0.5 * Math.sin(player.pulsePhase)),
+    player.pulseMin, player.pulseMax
+  );
+  player.lockedR = r;
+  player.locked = true;
+
+  // current ledge (nearest below)
+  const ledge = ledges[0];
+  if (!ledge) return;
+
+  const safe = r >= ledge.safeMin && r <= ledge.safeMax;
+  if (!safe) {
+    // jump anyway but may not reach
+  }
+
+  // jump power: map r to vy
+  const t = (r - player.pulseMin) / (player.pulseMax - player.pulseMin);
+  // too small = weak, too big = too fast (bonk risk)
+  const baseJump = lerp(350, 850, t);
+  player.vy = -baseJump;
+  player.vx = rand(-15, 15); // slight drift
+  player.onGround = false;
+  player.jumping = true;
+  player.squish = 0.6;
+  ensureAudio();
+  beep(180 + t*200, 'sine', 0.06, 0.12);
+}
+
+// ─── INPUT ───────────────────────────────────────────────────────────────────
+function handleInput() {
+  ensureAudio();
+  if (state === 'start') {
+    startGame();
+  } else if (state === 'playing') {
+    if (player.onGround && !player.jumping) {
+      player.jumping = true;
+      player.locked = false;
+    } else if (player.jumping && !player.locked) {
+      doJump();
+    }
+  } else if (state === 'gameover') {
+    restartGame();
+  }
+}
+
+canvas.addEventListener('pointerdown', e => { e.preventDefault(); handleInput(); });
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); handleInput(); }
+});
+
+// ─── GAME INIT ───────────────────────────────────────────────────────────────
+function startGame() {
+  if (urlSeed) rng = mkRng(urlSeed);
+  else rng = mkRng(Date.now());
+  score = 0; combo = 0; bestCombo = 0; multiplier = 1;
+  deathReason = '';
+  particles = [];
+  shakeAmt = 0;
+  initPlayer();
+  initLedges();
+  cameraY = 0;
+  state = 'playing';
+  player.onGround = true;
+  player.y = ledges[0].y - PLAYER_STEM_H - player.r;
+  player.groundY = player.y;
+}
+
+function restartGame() {
+  startGame();
+}
+
+// ─── DEATH ───────────────────────────────────────────────────────────────────
+function killPlayer(reason) {
+  if (player.dead) return;
+  player.dead = true;
+  deathReason = reason;
+  state = 'gameover';
+  if (score > bestScore) { bestScore = score; localStorage.setItem('mp_best', bestScore); }
+  if (bestCombo > bestComboStored) { bestComboStored = bestCombo; localStorage.setItem('mp_bestCombo', bestComboStored); }
+  triggerShake(14, 0.22);
+  spawnDeathParticles(player.x, player.y - cameraY);
+  ensureAudio();
+  if (reason === 'Bonk!') playBonk();
+  else playFall();
+}
+
+// ─── UPDATE ──────────────────────────────────────────────────────────────────
+let lastTime = 0;
+function update(ts) {
+  const dt = Math.min((ts - lastTime) / 1000, 0.05);
+  lastTime = ts;
+  globalTime += dt;
+  hue = (globalTime * 8) % 360;
+
+  // shake
+  if (shakeT < shakeDur) {
+    shakeT += dt;
+    const p = 1 - shakeT / shakeDur;
+    shakeX = (rng() - 0.5) * shakeAmt * 2 * p;
+    shakeY = (rng() - 0.5) * shakeAmt * 2 * p;
+  } else {
+    shakeX = 0; shakeY = 0; shakeAmt = 0;
+  }
+
+  if (state !== 'playing') return;
+
+  const d = diffScale();
+
+  // pulse
+  player.pulsePhase += pulseSpeed() * dt * Math.PI;
+  const pT = 0.5 + 0.5 * Math.sin(player.pulsePhase);
+  const currentR = player.locked ? player.lockedR :
+    lerp(player.pulseMin, player.pulseMax, pT);
+  player.r = currentR;
+  player.hatR = currentR * 1.55;
+
+  // squish spring
+  const sqTarget = player.onGround ? 1 : (player.vy < 0 ? 1.1 : 0.9);
+  player.squishV += (sqTarget - player.squish) * 600 * dt;
+  player.squishV *= Math.pow(0.001, dt);
+  player.squish += player.squishV * dt;
+  player.squish = clamp(player.squish, 0.5, 1.5);
+
+  // physics
+  if (!player.onGround) {
+    player.vy += GRAVITY * dt;
+    // wind drift after score 50
+    if (score >= 50) player.vx += Math.sin(globalTime * 2.1) * 30 * dt;
+    player.x += player.vx * dt;
+    player.y += player.vy * dt;
+    player.x = clamp(player.x, 20, W - 20);
+  }
+
+  // update ledges
+  for (const l of ledges) {
+    if (l.moveSpeed) {
+      l.x += l.moveSpeed * dt;
+      if (l.x - l.w/2 < 5 || l.x + l.w/2 > W - 5) l.moveSpeed *= -1;
+      if (l.ceiling) l.ceiling.x += l.moveSpeed * dt;
+    }
+    // wobble visual
+    if (score >= 50) l.wobble = Math.sin(globalTime * 3 + l.x) * 2 * d;
+    // shake
+    if (l.shake > 0) l.shake = Math.max(0, l.shake - dt * 8);
+  }
+
+  // ceiling hazard collision
+  for (const l of ledges) {
+    if (l.ceiling) {
+      const c = l.ceiling;
+      if (circleAABB(player.x, player.y - cameraY,
+          player.r * 0.7, c.x - c.w/2, c.y, c.w, c.h)) {
+        killPlayer('Bonk!');
+        return;
+      }
+    }
+  }
+
+  // camera: smooth follow
+  const targetCamY = player.y - H * 0.7;
+  cameraY = lerp(cameraY, targetCamY, dt * 4);
+
+  // player screen y
+  const screenY = player.y - cameraY;
+
+  // landing collision
+  if (!player.onGround && player.vy > 0) {
+    for (const l of ledges) {
+      const ly = l.y - cameraY;
+      const prevScreenY = (player.y - player.vy * dt) - cameraY;
+      // swept
+      if (prevScreenY + PLAYER_STEM_H < ly &&
+          screenY + PLAYER_STEM_H >= ly &&
+          player.x >= l.x - l.w/2 - 5 &&
+          player.x <= l.x + l.w/2 + 5) {
+
+        // check if it's the NEXT ledge
+        if (ledges.indexOf(l) < 1) continue; // skip ground until jumped
+
+        // safe window check
+        const safe = player.lockedR >= l.safeMin && player.lockedR <= l.safeMax;
+        if (!safe) {
+          // too small = fall off
+          if (player.lockedR < l.safeMin) {
+            killPlayer('Too Small!');
+          } else {
+            // too big = bounce into ceiling check handled separately
+            // just let them land but warn
+            doLand(l, false);
+          }
+          return;
+        }
+
+        const center = (l.safeMin + l.safeMax) / 2;
+        const perfect = Math.abs(player.lockedR - center) < (l.safeMax - l.safeMin) * 0.25;
+        doLand(l, perfect);
+        return;
+      }
+    }
+  }
+
+  // fall off screen
+  if (screenY > H + 100) {
+    killPlayer('Too Small!');
+    return;
+  }
+
+  // update particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.life -= p.decay * dt;
+    if (p.life <= 0) { particles.splice(i, 1); continue; }
+    if (p.type === 'spore') {
+      p.vy += 200 * dt;
+      p.x += p.vx * dt; p.y += p.vy * dt;
+      p.vx *= Math.pow(0.3, dt);
+    } else if (p.type === 'ring') {
+      p.r = lerp(p.r, p.maxR, dt * 5);
+    }
+  }
+}
+
+function doLand(l, perfect) {
+  player.vy = 0; player.vx = 0;
+  player.y = l.y - PLAYER_STEM_H + cameraY;
+  player.onGround = true;
+  player.jumping = false;
+  player.locked = false;
+  player.squish = 0.5;
+
+  score += multiplier;
+  if (perfect) {
+    combo++;
+    bestCombo = Math.max(bestCombo, combo);
+    multiplier = Math.min(combo + 1, 8);
+    triggerShake(5, 0.12);
+    spawnParticles(player.x, l.y - cameraY, 18, true);
+    playLand(true);
+  } else {
+    combo = 0;
+    multiplier = 1;
+    triggerShake(2, 0.06);
+    spawnParticles(player.x, l.y - cameraY, 8, false);
+    playLand(false);
+  }
+  l.shake = 1;
+
+  // advance ledges: remove current ledge[0] if it's behind us
+  const li = ledges.indexOf(l);
+  if (li > 0) {
+    ledges.splice(0, li);
+  }
+
+  // spawn new ledges to keep 4 ahead
+  while (ledges.length < 4) {
+    ledges.push(spawnLedge(ledges[ledges.length - 1]));
+  }
+}
+
+// ─── DRAW ─────────────────────────────────────────────────────────────────────
+function draw() {
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
+
+  // background gradient
+  const bg1 = `hsl(${(hue + 220) % 360},35%,7%)`;
+  const bg2 = `hsl(${(hue + 180) % 360},30%,12%)`;
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, bg1);
+  grad.addColorStop(1, bg2);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // combo tint overlay
+  if (state === 'playing' && combo >= 3) {
+    const comboHue = (hue + combo * 20) % 360;
+    ctx.fillStyle = `hsla(${comboHue},80%,60%,${Math.min(combo * 0.015, 0.12)})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // particles
+  for (const p of particles) {
+    if (p.type === 'spore') {
+      ctx.globalAlpha = Math.max(0, p.life);
+      ctx.fillStyle = `hsl(${p.hue},${p.sat}%,${p.lit}%)`;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, Math.max(0.5, p.r * p.life), 0, Math.PI * 2);
+      ctx.fill();
+    } else if (p.type === 'ring') {
+      ctx.globalAlpha = Math.max(0, p.life * 0.6);
+      ctx.strokeStyle = `hsl(${p.hue},90%,70%)`;
+      ctx.lineWidth = 3 * p.life;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+  ctx.globalAlpha = 1;
+
+  if (state === 'playing' || state === 'gameover') {
+    // draw ledges
+    for (const l of ledges) {
+      const sx = l.x - cameraY * 0; // cameraY only affects Y
+      const sy = (l.y - cameraY) + l.wobble;
+      const sk = l.shake;
+
+      // safe window highlight
+      if (state === 'playing') {
+        const pRange = player.pulseMax - player.pulseMin;
+        const swX = l.x - l.w/2 + (l.safeMin - player.pulseMin) / pRange * l.w;
+        const swW = (l.safeMax - l.safeMin) / pRange * l.w;
+        const swGrad = ctx.createLinearGradient(swX, sy, swX + swW, sy);
+        swGrad.addColorStop(0, `hsla(${(l.hue+80)%360},90%,60%,0)`);
+        swGrad.addColorStop(0.3, `hsla(${(l.hue+80)%360},90%,60%,0.35)`);
+        swGrad.addColorStop(0.7, `hsla(${(l.hue+80)%360},90%,60%,0.35)`);
+        swGrad.addColorStop(1, `hsla(${(l.hue+80)%360},90%,60%,0)`);
+        ctx.fillStyle = swGrad;
+        ctx.beginPath();
+        ctx.roundRect(swX, sy - 6, swW, l.h + 12, 6);
+        ctx.fill();
+      }
+
+      // ledge body
+      ctx.save();
+      ctx.translate(0, Math.sin(sk * Math.PI) * sk * 3);
+      const ledgeG = ctx.createLinearGradient(l.x - l.w/2, sy, l.x - l.w/2, sy + l.h);
+      ledgeG.addColorStop(0, `hsl(${l.hue},60%,45%)`);
+      ledgeG.addColorStop(1, `hsl(${l.hue},55%,28%)`);
+      ctx.fillStyle = ledgeG;
+      ctx.beginPath();
+      ctx.roundRect(l.x - l.w/2, sy, l.w, l.h, 5);
+      ctx.fill();
+      // highlight top
+      ctx.fillStyle = `hsla(${l.hue},70%,70%,0.3)`;
+      ctx.beginPath();
+      ctx.roundRect(l.x - l.w/2 + 3, sy + 2, l.w - 6, 3, 2);
+      ctx.fill();
+      ctx.restore();
+
+      // ceiling hazard
+      if (l.ceiling && state === 'playing') {
+        const c = l.ceiling;
+        const cy = c.y - cameraY;
+        const spikes = Math.ceil(c.w / 14);
+        ctx.fillStyle = `hsl(${(l.hue+180)%360},80%,40%)`;
+        for (let s = 0; s < spikes; s++) {
+          const sx2 = c.x - c.w/2 + s * (c.w/spikes);
+          ctx.beginPath();
+          ctx.moveTo(sx2, cy);
+          ctx.lineTo(sx2 + c.w/spikes*0.5, cy + c.h);
+          ctx.lineTo(sx2 + c.w/spikes, cy);
+          ctx.closePath();
+          ctx.fill();
+        }
+      }
+    }
+
+    // draw player
+    if (!player.dead) {
+      const px = player.x;
+      const py = player.y - cameraY;
+      const r = player.r;
+      const sq = player.squish;
+      const ph = (hue + 40) % 360;
+
+      ctx.save();
+      ctx.translate(px, py);
+
+      // stem
+      const stemW = r * 0.55;
+      const stemH = PLAYER_STEM_H + r * 0.2;
+      ctx.fillStyle = `hsl(${ph},30%,75%)`;
+      ctx.beginPath();
+      ctx.roundRect(-stemW/2, 0, stemW, stemH, [0,0,4,4]);
+      ctx.fill();
+      // stem shadow
+      ctx.fillStyle = `hsla(0,0%,0%,0.2)`;
+      ctx.beginPath();
+      ctx.roundRect(stemW*0.1, 0, stemW*0.25, stemH, [0,0,4,4]);
+      ctx.fill();
+
+      // cap
+      ctx.scale(sq, 2 - sq);
+      const capR = r * 1.45;
+      const capGrad = ctx.createRadialGradient(-capR*0.3, -capR*0.4, capR*0.1, 0, 0, capR);
+      capGrad.addColorStop(0, `hsl(${ph},80%,70%)`);
+      capGrad.addColorStop(0.6, `hsl(${ph},75%,45%)`);
+      capGrad.addColorStop(1, `hsl(${ph},65%,25%)`);
+      ctx.fillStyle = capGrad;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, capR, capR * 0.7, 0, Math.PI, 0);
+      ctx.fill();
+
+      // spots
+      ctx.fillStyle = `hsla(0,0%,100%,0.55)`;
+      const spots = [[-capR*0.35, -capR*0.25, capR*0.12], [capR*0.2, -capR*0.35, capR*0.09], [capR*0.5, -capR*0.15, capR*0.07]];
+      for (const [sx2, sy2, sr] of spots) {
+        ctx.beginPath(); ctx.arc(sx2, sy2, sr, 0, Math.PI * 2); ctx.fill();
+      }
+
+      // eyes
+      ctx.scale(1/sq, 1/(2-sq));
+      const eyeY = -capR * 0.08;
+      const eyeX = capR * 0.28;
+      const eyeR = r * 0.18 * player.eyeOpen;
+      ctx.fillStyle = '#1a0a00';
+      ctx.beginPath(); ctx.ellipse(-eyeX, eyeY, eyeR, eyeR * player.eyeOpen, 0, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(eyeX, eyeY, eyeR, eyeR * player.eyeOpen, 0, 0, Math.PI*2); ctx.fill();
+      // gleam
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      ctx.beginPath(); ctx.arc(-eyeX - eyeR*0.2, eyeY - eyeR*0.2, eyeR*0.35, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(eyeX - eyeR*0.2, eyeY - eyeR*0.2, eyeR*0.35, 0, Math.PI*2); ctx.fill();
+
+      ctx.restore();
+    }
+  }
+
+  // ── UI ──────────────────────────────────────────────────────────────────────
+  if (state === 'start') {
+    drawStart();
+  } else if (state === 'playing') {
+    drawHUD();
+  } else if (state === 'gameover') {
+    drawGameOver();
+  }
+
+  ctx.restore();
+}
+
+function drawStart() {
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  ctx.fillRect(0, 0, W, H);
+
+  // Title
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const titleY = H * 0.28;
+
+  ctx.shadowColor = `hsl(${hue},80%,60%)`;
+  ctx.shadowBlur = 24;
+  ctx.fillStyle = `hsl(${hue},80%,75%)`;
+  ctx.font = `bold ${Math.round(W*0.11)}px 'Segoe UI',sans-serif`;
+  ctx.fillText('MUSHROOM', W/2, titleY - 22);
+  ctx.fillStyle = `hsl(${(hue+60)%360},90%,70%)`;
+  ctx.font = `bold ${Math.round(W*0.095)}px 'Segoe UI',sans-serif`;
+  ctx.fillText('PULSE', W/2, titleY + 32);
+  ctx.shadowBlur = 0;
+
+  // mushroom icon
+  drawMushroomIcon(W/2, H * 0.5, 36);
+
+  // challenge
+  if (challengeScore) {
+    ctx.fillStyle = `hsl(${(hue+30)%360},90%,70%)`;
+    ctx.font = `bold 15px 'Segoe UI',sans-serif`;
+    ctx.fillText(`Challenge: Beat ${challengeScore}!`, W/2, H * 0.62);
+  }
+
+  // best
+  if (bestScore > 0) {
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.font = `14px 'Segoe UI',sans-serif`;
+    ctx.fillText(`Best: ${bestScore}`, W/2, H * 0.67);
+  }
+
+  ctx.fillStyle = `hsl(${(hue+40)%360},90%,72%)`;
+  ctx.font = `bold 16px 'Segoe UI',sans-serif`;
+  const blink = Math.sin(globalTime * 3) > 0;
+  if (blink) ctx.fillText('TAP TO START', W/2, H * 0.78);
+
+  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  ctx.font = `12px 'Segoe UI',sans-serif`;
+  ctx.fillText('Tap • Space • Enter to jump & lock size', W/2, H * 0.86);
+}
+
+function drawMushroomIcon(cx, cy, r) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  // stem
+  ctx.fillStyle = '#e8d09a';
+  ctx.beginPath(); ctx.roundRect(-r*0.25, 0, r*0.5, r*0.7, 4); ctx.fill();
+  // cap
+  const cg = ctx.createRadialGradient(-r*0.3,-r*0.4,r*0.1,0,0,r);
+  cg.addColorStop(0, `hsl(${hue},80%,65%)`);
+  cg.addColorStop(1, `hsl(${(hue+30)%360},70%,35%)`);
+  ctx.fillStyle = cg;
+  ctx.beginPath(); ctx.ellipse(0, 0, r, r*0.7, 0, Math.PI, 0); ctx.fill();
+  // spots
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.beginPath(); ctx.arc(-r*0.3, -r*0.25, r*0.11, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(r*0.2, -r*0.35, r*0.08, 0, Math.PI*2); ctx.fill();
+  ctx.restore();
+}
+
+function drawHUD() {
+  // score
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.font = `bold 22px 'Segoe UI',sans-serif`;
+  ctx.fillText(score, 14, 12);
+
+  // best
+  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  ctx.font = `12px 'Segoe UI',sans-serif`;
+  ctx.fillText(`Best ${bestScore}`, 14, 38);
+
+  // combo
+  if (combo >= 2) {
+    ctx.textAlign = 'right';
+    ctx.fillStyle = `hsl(${(hue+60)%360},90%,70%)`;
+    ctx.font = `bold ${Math.min(14 + combo, 24)}px 'Segoe UI',sans-serif`;
+    ctx.fillText(`x${multiplier} COMBO ${combo}`, W - 14, 12);
+  }
+
+  // pulse indicator bar
+  const barW = 80, barH = 10;
+  const bx = W/2 - barW/2, by = H - 28;
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  ctx.beginPath(); ctx.roundRect(bx, by, barW, barH, 5); ctx.fill();
+
+  const pT = 0.5 + 0.5 * Math.sin(player.pulsePhase);
+  const curL = ledges[1] || ledges[0];
+  if (curL) {
+    const pRange = player.pulseMax - player.pulseMin;
+    const safeStart = (curL.safeMin - player.pulseMin) / pRange;
+    const safeEnd = (curL.safeMax - player.pulseMin) / pRange;
+    ctx.fillStyle = `hsla(${(hue+80)%360},90%,60%,0.5)`;
+    ctx.beginPath(); ctx.roundRect(bx + safeStart*barW, by, (safeEnd-safeStart)*barW, barH, 3); ctx.fill();
+  }
+  const fillW = pT * barW;
+  const barGrad = ctx.createLinearGradient(bx, by, bx + barW, by);
+  barGrad.addColorStop(0, `hsl(${hue},80%,55%)`);
+  barGrad.addColorStop(1, `hsl(${(hue+90)%360},80%,55%)`);
+  ctx.fillStyle = barGrad;
+  ctx.beginPath(); ctx.roundRect(bx, by, fillW, barH, 5); ctx.fill();
+}
+
+function drawGameOver() {
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const cy = H / 2;
+
+  // death reason
+  ctx.shadowColor = '#ff4444';
+  ctx.shadowBlur = 20;
+  ctx.fillStyle = '#ff6666';
+  ctx.font = `bold ${Math.round(W*0.1)}px 'Segoe UI',sans-serif`;
+  ctx.fillText(deathReason, W/2, cy - 100);
+  ctx.shadowBlur = 0;
+
+  // score
+  ctx.fillStyle = '#ffffff';
+  ctx.font = `bold ${Math.round(W*0.13)}px 'Segoe UI',sans-serif`;
+  ctx.fillText(score, W/2, cy - 30);
+
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.font = `14px 'Segoe UI',sans-serif`;
+  ctx.fillText(`Best: ${bestScore}`, W/2, cy + 22);
+  if (bestCombo >= 2) ctx.fillText(`Best Combo: ${bestComboStored}`, W/2, cy + 44);
+
+  // tap to retry
+  const blink2 = Math.sin(globalTime * 4) > 0;
+  if (blink2) {
+    ctx.fillStyle = `hsl(${(hue+40)%360},90%,72%)`;
+    ctx.font = `bold 17px 'Segoe UI',sans-serif`;
+    ctx.fillText('TAP TO RETRY', W/2, cy + 90);
+  }
+
+  // share button
+  ctx.fillStyle = `hsla(${(hue+120)%360},70%,55%,0.85)`;
+  const btnW = 160, btnH = 36;
+  const btnX = W/2 - btnW/2, btnY = cy + 118;
+  ctx.beginPath(); ctx.roundRect(btnX, btnY, btnW, btnH, 10); ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.font = `bold 14px 'Segoe UI',sans-serif`;
+  ctx.fillText('Challenge a Friend 🍄', W/2, btnY + btnH/2);
+  // store share button area for click detection
+  draw._shareBtn = { x: btnX, y: btnY, w: btnW, h: btnH };
+}
+
+// share button click
+canvas.addEventListener('pointerdown', e => {
+  if (state !== 'gameover') return;
+  const r = canvas.getBoundingClientRect();
+  const cx = (e.clientX - r.left) * (W / r.width);
+  const cy2 = (e.clientY - r.top) * (H / r.height);
+  const b = draw._shareBtn;
+  if (b && cx >= b.x && cx <= b.x + b.w && cy2 >= b.y && cy2 <= b.y + b.h) {
+    e.stopPropagation();
+    const seed = Math.floor(rng() * 99999);
+    const url = `${location.origin}${location.pathname}?challengeScore=${score}&seed=${seed}`;
+    if (navigator.share) {
+      navigator.share({ title: 'Mushroom Pulse', text: `Beat my score of ${score} in Mushroom Pulse!`, url });
+    } else {
+      navigator.clipboard.writeText(url).then(() => alert('Link copied!')).catch(() => alert(url));
+    }
+  }
+});
+
+// ─── MAIN LOOP ───────────────────────────────────────────────────────────────
+function loop(ts) {
+  update(ts);
+  draw();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+})();
+</script>
+
+<!-- SEO Section -->
+<section id="seo-text">
+  <h2>Mushroom Pulse: Spore Hop - Free Browser Game</h2>
+  <p><strong>Controls:</strong> Tap the screen (mobile) or press <kbd>Space</kbd>/<kbd>Enter</kbd> (desktop) to jump and lock the mushroom's pulse size. Time it right!</p>
+  <p><strong>Tips:</strong> The green zone on the platform shows the safe landing size. Lock in that zone for perfect landings and higher combo multipliers. Bigger mushroom = higher jump, but watch for ceiling spikes!</p>
+  <p>No download required. Play instantly in your browser on mobile or desktop.</p>
+</section>
+</body>
+</html>

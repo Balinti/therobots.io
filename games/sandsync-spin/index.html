@@ -1,0 +1,1040 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Sandsync Spin - Free HTML5 Game</title>
+  <meta name="description" content="Play Sandsync Spin - Tap to the desert beats as the screen rotates, keeping rhythm with shifting dunes.">
+  <meta name="robots" content="index,follow,max-image-preview:large">
+  <meta name="theme-color" content="#1a0a2e">
+  <link rel="canonical" href="https://balinti.github.io/sandsync-spin/">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Sandsync Spin - Free HTML5 Game">
+  <meta property="og:description" content="Play Sandsync Spin - Tap to the desert beats as the screen rotates, keeping rhythm with shifting dunes.">
+  <meta property="og:url" content="https://balinti.github.io/sandsync-spin/">
+  <meta property="og:image" content="https://balinti.github.io/sandsync-spin/og-image.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Sandsync Spin - Free HTML5 Game">
+  <meta name="twitter:description" content="Play Sandsync Spin - Tap to the desert beats as the screen rotates, keeping rhythm with shifting dunes.">
+  <meta name="twitter:image" content="https://balinti.github.io/sandsync-spin/og-image.jpg">
+
+  <!-- JSON-LD Structured Data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "VideoGame",
+    "name": "Sandsync Spin",
+    "description": "Play Sandsync Spin - Tap to the desert beats as the screen rotates, keeping rhythm with shifting dunes.",
+    "url": "https://balinti.github.io/sandsync-spin/",
+    "image": "https://balinti.github.io/sandsync-spin/og-image.jpg",
+    "genre": "Casual",
+    "playMode": "SinglePlayer",
+    "applicationCategory": "Game",
+    "operatingSystem": "Any",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    }
+  }
+  </script>
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #0d0618;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      color: #e8d5b7;
+      overflow-x: hidden;
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100dvh;
+      min-height: 100vh;
+      background: radial-gradient(ellipse at 50% 0%, #1e0a3c 0%, #0d0618 60%);
+    }
+    #seo-header {
+      width: 100%;
+      max-width: 420px;
+      padding: 12px 16px 0;
+      text-align: center;
+    }
+    #seo-header h1 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #c8a96e;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      opacity: 0.85;
+    }
+    #game-wrap {
+      width: 100%;
+      max-width: 420px;
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      padding: 0 0 4px;
+    }
+    #gameCanvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+      cursor: pointer;
+    }
+    #seo-footer {
+      width: 100%;
+      max-width: 420px;
+      padding: 8px 16px 16px;
+      text-align: center;
+      font-size: 0.72rem;
+      color: #9988aa;
+      line-height: 1.5;
+    }
+    #seo-footer .how-to { margin-bottom: 8px; }
+    #seo-footer .more-games { color: #c8a96e; }
+  </style>
+</head>
+<body>
+
+<div id="seo-header">
+  <h1>Sandsync Spin</h1>
+</div>
+
+<div id="game-wrap">
+  <canvas id="gameCanvas"></canvas>
+</div>
+
+<div id="seo-footer">
+  <p class="how-to"><strong>How to play:</strong> Tap or press Space to switch lanes. Hit the rotating gates on the beat to score. Build your combo and survive as long as you can!</p>
+  <p class="more-games">Play more free HTML5 games &mdash; no download required.</p>
+</div>
+
+<script>
+(function() {
+'use strict';
+
+// ─── Canvas Setup ───────────────────────────────────────────────────────────
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const wrap = document.getElementById('game-wrap');
+const DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+let W = 0, H = 0, CX = 0, CY = 0;
+let INNER_R = 0, OUTER_R = 0, HIT_ANGLE = 0;
+
+function resize() {
+  const rect = wrap.getBoundingClientRect();
+  W = rect.width;
+  H = rect.height;
+  canvas.width = W * DPR;
+  canvas.height = H * DPR;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.scale(DPR, DPR);
+  CX = W / 2;
+  CY = H / 2;
+  const minDim = Math.min(W, H);
+  INNER_R = minDim * 0.28;
+  OUTER_R = minDim * 0.42;
+  HIT_ANGLE = Math.PI / 2; // bottom
+}
+
+window.addEventListener('resize', () => { resize(); });
+resize();
+
+// ─── Audio ───────────────────────────────────────────────────────────────────
+let audioCtx = null;
+
+function getAudioCtx() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+function playClick(time, vol = 0.3, freq = 880, dur = 0.04) {
+  const ac = getAudioCtx();
+  const osc = ac.createOscillator();
+  const gain = ac.createGain();
+  osc.connect(gain); gain.connect(ac.destination);
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(freq, time);
+  osc.frequency.exponentialRampToValueAtTime(freq * 0.5, time + dur);
+  gain.gain.setValueAtTime(vol, time);
+  gain.gain.exponentialRampToValueAtTime(0.001, time + dur + 0.02);
+  osc.start(time); osc.stop(time + dur + 0.03);
+}
+
+function playHit(perfect = false) {
+  const ac = getAudioCtx();
+  const t = ac.currentTime;
+  if (perfect) {
+    playClick(t, 0.5, 1200, 0.06);
+    playClick(t + 0.05, 0.3, 1600, 0.04);
+  } else {
+    playClick(t, 0.35, 900, 0.05);
+  }
+}
+
+function playMiss() {
+  const ac = getAudioCtx();
+  const t = ac.currentTime;
+  const osc = ac.createOscillator();
+  const gain = ac.createGain();
+  osc.connect(gain); gain.connect(ac.destination);
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(200, t);
+  osc.frequency.exponentialRampToValueAtTime(80, t + 0.2);
+  gain.gain.setValueAtTime(0.3, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+  osc.start(t); osc.stop(t + 0.3);
+}
+
+function playSwitch() {
+  const ac = getAudioCtx();
+  const t = ac.currentTime;
+  playClick(t, 0.12, 660, 0.025);
+}
+
+function playDeath() {
+  const ac = getAudioCtx();
+  const t = ac.currentTime;
+  for (let i = 0; i < 4; i++) {
+    playClick(t + i * 0.1, 0.4 - i * 0.08, 400 - i * 60, 0.08);
+  }
+}
+
+// ─── State ────────────────────────────────────────────────────────────────────
+const STATE = { START: 'start', PLAYING: 'playing', GAMEOVER: 'gameover' };
+let state = STATE.START;
+let score = 0;
+let bestScore = parseInt(localStorage.getItem('sandsync_best') || '0');
+let combo = 0;
+let hearts = 3;
+let hue = 30; // desert orange start
+
+// Difficulty
+let bpm = 72;
+let beatInterval = 0; // seconds per beat
+let trackTheta = 0; // current rotation of track
+let beatPhase = 0; // 0..1 within current beat
+let beatCount = 0;
+let gameTime = 0;
+
+// Player
+let playerLane = 0; // 0=inner, 1=outer
+let playerTrail = [];
+
+// Gates
+let gates = [];
+let gateId = 0;
+
+// Particles
+let particles = [];
+
+// Screen shake
+let shakeAmt = 0;
+let shakeDecay = 0.85;
+
+// Beat pulse
+let beatPulse = 0;
+
+// Freeze (death)
+let frozen = false;
+let frozenTimer = 0;
+
+// Metronome scheduling
+let nextBeatTime = 0;
+let scheduleAhead = 0.1; // seconds
+
+// Pattern state
+let patternQueue = [];
+let patternPos = 0;
+
+// Gust (mask upcoming gate)
+let gustActive = false;
+let gustBeats = 0;
+let lastGust = -10;
+
+// ─── Gate patterns ─────────────────────────────────────────────────────────
+// Each pattern is a sequence of gate specs: { lane, type }
+// lane: 0=inner, 1=outer; type: 'real' or 'decoy'
+const PATTERNS = [
+  // Simple alternating
+  [{l:0},{l:1},{l:0},{l:1}],
+  // Same lane x3
+  [{l:0},{l:0},{l:0}],
+  [{l:1},{l:1},{l:1}],
+  // Inner-outer double feel
+  [{l:0},{l:1},{l:1},{l:0}],
+  // Triple alternating
+  [{l:0},{l:1},{l:0}],
+];
+
+function getNextGateSpec() {
+  if (patternQueue.length === 0) {
+    refillPattern();
+  }
+  const spec = patternQueue.shift();
+  return spec;
+}
+
+function refillPattern() {
+  const pat = PATTERNS[Math.floor(Math.random() * PATTERNS.length)];
+  for (const s of pat) {
+    patternQueue.push({ lane: s.l, type: 'real' });
+  }
+  // Maybe inject a decoy
+  if (bpm > 90 && Math.random() < 0.25) {
+    const idx = Math.floor(Math.random() * (patternQueue.length + 1));
+    patternQueue.splice(idx, 0, { lane: Math.round(Math.random()), type: 'decoy' });
+  }
+}
+
+// ─── Spawn gates ──────────────────────────────────────────────────────────
+function spawnGate(beatOffset) {
+  const spec = getNextGateSpec();
+  // Gate appears at the "top" of the track (opposite of hit zone)
+  // We want it to travel to the hit zone in a certain number of beats
+  const beatsToTravel = getDifficulty().beatsAhead;
+  const angularSpeed = (2 * Math.PI) / (beatInterval * beatsToTravel / (1 / bpm * 60));
+
+  // Actually: gates rotate with the track, spawned at top = angle = -PI/2 in world space
+  // But the track rotates, so gates are anchored in track-space
+  // They start at top of track-space, which in world-space changes as track rotates
+
+  // Spawn angle in track-space: we want it to be at 'beatsAhead' beats worth of rotation from hit zone
+  // Track advances by 2*PI per cycle; we need gate to arrive when it crosses HIT_ANGLE
+  // In track-space, hit zone is at a fixed angle that we compute as HIT_ANGLE - trackTheta
+  const hitInTrack = HIT_ANGLE - trackTheta;
+  // spawn ahead by beatsAhead beats worth of angle
+  const beatsAheadVal = beatsToTravel;
+  const anglePerBeat = getAngularSpeed() * beatInterval;
+  const spawnAngle = hitInTrack - beatsAheadVal * anglePerBeat;
+
+  gates.push({
+    id: gateId++,
+    lane: spec.lane,
+    type: spec.type,
+    theta: spawnAngle, // track-space angle
+    hit: false,
+    missed: false,
+    shimmer: spec.type === 'decoy',
+    gustHidden: false,
+    alpha: 1,
+    scale: 1,
+    hitFlash: 0,
+  });
+}
+
+function getAngularSpeed() {
+  return bpm / 60 * (Math.PI * 0.5); // radians per second; full circle = 8 beats
+}
+
+function getDifficulty() {
+  const t = gameTime;
+  let beatsAhead = 4;
+  if (t > 15) beatsAhead = 3.5;
+  if (t > 30) beatsAhead = 3;
+  const hitWindow = Math.max(0.12, 0.22 - t * 0.002);
+  return { beatsAhead, hitWindow };
+}
+
+// ─── Particle system ─────────────────────────────────────────────────────
+function spawnParticles(x, y, count, hueBase, type = 'hit') {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = type === 'miss' ? (1 + Math.random() * 2) : (2 + Math.random() * 4);
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 1,
+      decay: 0.03 + Math.random() * 0.04,
+      size: type === 'miss' ? (2 + Math.random() * 3) : (1.5 + Math.random() * 3),
+      hue: hueBase + (Math.random() - 0.5) * 40,
+      sat: type === 'miss' ? 10 : 70,
+      lit: type === 'miss' ? 40 : 65,
+      type,
+    });
+  }
+}
+
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx * dt * 60;
+    p.y += p.vy * dt * 60;
+    p.vx *= 0.94;
+    p.vy *= 0.94;
+    p.life -= p.decay;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    ctx.save();
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = `hsl(${p.hue},${p.sat}%,${p.lit}%)`;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+// ─── Reset game ──────────────────────────────────────────────────────────
+function resetGame() {
+  score = 0;
+  combo = 0;
+  hearts = 3;
+  hue = 30;
+  bpm = 72;
+  beatInterval = 60 / bpm;
+  trackTheta = 0;
+  beatPhase = 0;
+  beatCount = 0;
+  gameTime = 0;
+  playerLane = 0;
+  playerTrail = [];
+  gates = [];
+  particles = [];
+  shakeAmt = 0;
+  beatPulse = 0;
+  frozen = false;
+  frozenTimer = 0;
+  patternQueue = [];
+  gustActive = false;
+  gustBeats = 0;
+  lastGust = -10;
+  gateId = 0;
+
+  const ac = getAudioCtx();
+  nextBeatTime = ac.currentTime + 0.1;
+}
+
+// ─── Input ───────────────────────────────────────────────────────────────
+function onAction() {
+  if (state === STATE.START) {
+    getAudioCtx(); // unlock audio
+    state = STATE.PLAYING;
+    resetGame();
+    return;
+  }
+  if (state === STATE.PLAYING) {
+    if (frozen) return;
+    toggleLane();
+    return;
+  }
+  if (state === STATE.GAMEOVER) {
+    state = STATE.PLAYING;
+    resetGame();
+    return;
+  }
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  onAction();
+});
+
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    onAction();
+  }
+});
+
+function toggleLane() {
+  playerLane = 1 - playerLane;
+  playSwitch();
+  // Add trail node
+  const pos = getPlayerPos();
+  playerTrail.push({ x: pos.x, y: pos.y, life: 1 });
+}
+
+function getPlayerPos() {
+  const r = playerLane === 0 ? INNER_R : OUTER_R;
+  return {
+    x: CX + Math.cos(HIT_ANGLE) * r,
+    y: CY + Math.sin(HIT_ANGLE) * r,
+  };
+}
+
+// ─── Beat scheduling ─────────────────────────────────────────────────────
+function scheduleBeat(beatTime) {
+  playClick(beatTime, 0.2, beatCount % 4 === 0 ? 1000 : 700, 0.03);
+}
+
+function onBeat() {
+  beatCount++;
+  beatPulse = 1;
+  hue = (hue + 2) % 360;
+
+  // Ramp difficulty
+  gameTime += beatInterval;
+  bpm = Math.min(140, 72 + gameTime * 0.8);
+  beatInterval = 60 / bpm;
+
+  // Spawn gate
+  spawnGate(beatCount);
+
+  // Gust logic: occasionally hide upcoming gate
+  if (!gustActive && beatCount - lastGust > 6 && bpm > 88 && Math.random() < 0.12) {
+    gustActive = true;
+    gustBeats = 2;
+    lastGust = beatCount;
+    // Mark the next real gate as gust-hidden (it will be revealed)
+    for (const g of gates) {
+      if (!g.hit && !g.missed && g.type === 'real' && !g.gustHidden) {
+        g.gustHidden = true;
+        break;
+      }
+    }
+  }
+  if (gustActive) {
+    gustBeats--;
+    if (gustBeats <= 0) {
+      gustActive = false;
+      for (const g of gates) g.gustHidden = false;
+    }
+  }
+
+  // Check for missed gates that passed the hit zone
+  checkMissedGates();
+}
+
+// ─── Hit detection ──────────────────────────────────────────────────────
+function checkHitGates() {
+  if (frozen) return;
+  const diff = getDifficulty();
+  const hitW = diff.hitWindow;
+  const angleSpeed = getAngularSpeed();
+
+  for (const g of gates) {
+    if (g.hit || g.missed || g.type === 'decoy') continue;
+    // Gate world angle
+    const worldAngle = g.theta + trackTheta;
+    // Angular difference to hit zone (normalized)
+    let diff2 = ((worldAngle - HIT_ANGLE) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+    if (diff2 > Math.PI) diff2 -= Math.PI * 2;
+    const absDiff = Math.abs(diff2);
+
+    if (absDiff < hitW) {
+      // In range — check lane
+      if (g.lane === playerLane) {
+        // HIT!
+        const perfect = absDiff < hitW * 0.45;
+        g.hit = true;
+        combo++;
+        const multiplier = combo >= 10 ? 5 : combo >= 6 ? 3 : combo >= 3 ? 2 : 1;
+        const basePoints = perfect ? 150 : 80;
+        const speedBonus = Math.floor(bpm / 72 * 20);
+        score += (basePoints + speedBonus) * multiplier;
+        if (score > bestScore) {
+          bestScore = score;
+          localStorage.setItem('sandsync_best', bestScore);
+        }
+        playHit(perfect);
+        const pos = getGateWorldPos(g);
+        spawnParticles(pos.x, pos.y, perfect ? 20 : 12, hue, 'hit');
+        if (perfect) shakeAmt = Math.max(shakeAmt, 3);
+        g.hitFlash = 1;
+      }
+    }
+  }
+}
+
+function checkMissedGates() {
+  const angleSpeed = getAngularSpeed();
+  for (const g of gates) {
+    if (g.hit || g.missed || g.type === 'decoy') continue;
+    const worldAngle = g.theta + trackTheta;
+    let diff2 = ((worldAngle - HIT_ANGLE) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+    if (diff2 > Math.PI) diff2 -= Math.PI * 2;
+    // Passed the hit zone (positive diff means passed)
+    if (diff2 < -getDifficulty().hitWindow * 1.5) {
+      g.missed = true;
+      combo = 0;
+      hearts--;
+      playMiss();
+      const pos = getGateWorldPos(g);
+      spawnParticles(pos.x, pos.y, 10, 0, 'miss');
+      shakeAmt = Math.max(shakeAmt, 6);
+      if (hearts <= 0) {
+        triggerDeath();
+      }
+    }
+  }
+}
+
+function getGateWorldPos(g) {
+  const r = g.lane === 0 ? INNER_R : OUTER_R;
+  const worldAngle = g.theta + trackTheta;
+  return {
+    x: CX + Math.cos(worldAngle) * r,
+    y: CY + Math.sin(worldAngle) * r,
+  };
+}
+
+function triggerDeath() {
+  frozen = true;
+  frozenTimer = 0.42;
+  shakeAmt = 18;
+  playDeath();
+}
+
+// ─── Update ──────────────────────────────────────────────────────────────
+let lastTime = null;
+
+function update(ts) {
+  const now = ts / 1000;
+  const dt = lastTime === null ? 0 : Math.min(now - lastTime, 0.033);
+  lastTime = now;
+
+  if (state !== STATE.PLAYING) {
+    render(dt);
+    requestAnimationFrame(update);
+    return;
+  }
+
+  // Frozen check
+  if (frozen) {
+    frozenTimer -= dt;
+    shakeAmt *= shakeDecay;
+    updateParticles(dt);
+    if (frozenTimer <= 0) {
+      frozen = false;
+      state = STATE.GAMEOVER;
+    }
+    render(dt);
+    requestAnimationFrame(update);
+    return;
+  }
+
+  // Beat scheduler
+  const ac = getAudioCtx();
+  while (nextBeatTime < ac.currentTime + scheduleAhead) {
+    scheduleBeat(nextBeatTime);
+    onBeat();
+    nextBeatTime += beatInterval;
+    beatInterval = 60 / bpm; // update for next
+  }
+
+  // Beat phase for visuals
+  const timeToBeat = nextBeatTime - ac.currentTime;
+  beatPhase = 1 - (timeToBeat / beatInterval);
+  beatPhase = Math.max(0, Math.min(1, beatPhase));
+
+  // Rotate track
+  trackTheta += getAngularSpeed() * dt;
+
+  // Decay beat pulse
+  beatPulse = Math.max(0, beatPulse - dt * 6);
+
+  // Shake decay
+  shakeAmt *= Math.pow(shakeDecay, dt * 60);
+
+  // Player trail
+  const pp = getPlayerPos();
+  playerTrail.push({ x: pp.x, y: pp.y, life: 1 });
+  for (let i = playerTrail.length - 1; i >= 0; i--) {
+    playerTrail[i].life -= dt * 8;
+    if (playerTrail[i].life <= 0) playerTrail.splice(i, 1);
+  }
+  if (playerTrail.length > 20) playerTrail.splice(0, playerTrail.length - 20);
+
+  // Hit detection (continuous, find gates near zone)
+  checkHitGates();
+
+  // Remove old gates
+  for (let i = gates.length - 1; i >= 0; i--) {
+    const g = gates[i];
+    if (g.hit) {
+      g.hitFlash -= dt * 3;
+      g.alpha = Math.max(0, g.hitFlash);
+      g.scale = 1 + (1 - g.alpha) * 0.5;
+      if (g.alpha <= 0) gates.splice(i, 1);
+    } else if (g.missed) {
+      g.alpha -= dt * 4;
+      if (g.alpha <= 0) gates.splice(i, 1);
+    }
+  }
+
+  updateParticles(dt);
+  render(dt);
+  requestAnimationFrame(update);
+}
+
+// ─── Render ──────────────────────────────────────────────────────────────
+function render(dt) {
+  ctx.clearRect(0, 0, W, H);
+
+  // Background gradient
+  const bgGrad = ctx.createRadialGradient(CX, CY, 0, CX, CY, Math.max(W, H));
+  const bgHue = state === STATE.PLAYING ? hue : 220;
+  bgGrad.addColorStop(0, `hsla(${bgHue}, 30%, 8%, 1)`);
+  bgGrad.addColorStop(1, `hsla(${bgHue + 20}, 20%, 4%, 1)`);
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Screen shake
+  let sx = 0, sy = 0;
+  if (shakeAmt > 0.5) {
+    sx = (Math.random() - 0.5) * shakeAmt;
+    sy = (Math.random() - 0.5) * shakeAmt;
+    ctx.save();
+    ctx.translate(sx, sy);
+  }
+
+  if (state === STATE.START) {
+    drawStartScreen();
+  } else if (state === STATE.PLAYING || frozen) {
+    drawGame();
+    drawHUD();
+  } else if (state === STATE.GAMEOVER) {
+    drawGame();
+    drawHUD();
+    drawGameOver();
+  }
+
+  if (shakeAmt > 0.5) ctx.restore();
+}
+
+function drawStartScreen() {
+  // Draw track (static)
+  ctx.save();
+  ctx.globalAlpha = 0.25;
+  drawTrackRings();
+  ctx.restore();
+
+  // Title
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  // Glow
+  ctx.shadowColor = `hsl(40, 80%, 60%)`;
+  ctx.shadowBlur = 30;
+  ctx.fillStyle = `hsl(40, 90%, 70%)`;
+  ctx.font = `bold ${Math.round(W * 0.1)}px 'Segoe UI', system-ui, sans-serif`;
+  ctx.fillText('SANDSYNC', CX, CY - H * 0.1);
+  ctx.font = `bold ${Math.round(W * 0.075)}px 'Segoe UI', system-ui, sans-serif`;
+  ctx.fillStyle = `hsl(200, 80%, 70%)`;
+  ctx.shadowColor = `hsl(200, 80%, 60%)`;
+  ctx.fillText('SPIN', CX, CY - H * 0.03);
+
+  ctx.shadowBlur = 0;
+  ctx.font = `${Math.round(W * 0.045)}px 'Segoe UI', system-ui, sans-serif`;
+  ctx.fillStyle = `rgba(220, 200, 180, 0.8)`;
+  ctx.fillText('Tap or press Space to play', CX, CY + H * 0.1);
+
+  ctx.font = `${Math.round(W * 0.035)}px 'Segoe UI', system-ui, sans-serif`;
+  ctx.fillStyle = `rgba(200, 180, 160, 0.6)`;
+  ctx.fillText(`Best: ${bestScore}`, CX, CY + H * 0.17);
+  ctx.restore();
+}
+
+function drawGame() {
+  drawParticles();
+  drawTrackRings();
+  drawBeatPulse();
+  drawGates();
+  drawPlayerTrail();
+  drawPlayer();
+}
+
+function drawTrackRings() {
+  // Outer glow ring
+  [INNER_R, OUTER_R].forEach((r, i) => {
+    const grad = ctx.createRadialGradient(CX, CY, r - 3, CX, CY, r + 3);
+    const h = hue + i * 30;
+    grad.addColorStop(0, `hsla(${h}, 60%, 50%, 0.15)`);
+    grad.addColorStop(0.5, `hsla(${h}, 70%, 60%, 0.35)`);
+    grad.addColorStop(1, `hsla(${h}, 60%, 50%, 0.15)`);
+    ctx.beginPath();
+    ctx.arc(CX, CY, r, 0, Math.PI * 2);
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+  });
+
+  // Tick marks on outer ring
+  const tickCount = 16;
+  for (let i = 0; i < tickCount; i++) {
+    const angle = (i / tickCount) * Math.PI * 2 + trackTheta;
+    const isMain = i % 4 === 0;
+    const r1 = OUTER_R + (isMain ? 8 : 4);
+    const r2 = OUTER_R + 2;
+    ctx.beginPath();
+    ctx.moveTo(CX + Math.cos(angle) * r2, CY + Math.sin(angle) * r2);
+    ctx.lineTo(CX + Math.cos(angle) * r1, CY + Math.sin(angle) * r1);
+    ctx.strokeStyle = `hsla(${hue + 20}, 60%, 65%, ${isMain ? 0.6 : 0.25})`;
+    ctx.lineWidth = isMain ? 2 : 1;
+    ctx.stroke();
+  }
+}
+
+function drawBeatPulse() {
+  if (beatPulse <= 0) return;
+  const alpha = beatPulse * 0.7;
+  const r = OUTER_R + 15 + (1 - beatPulse) * 20;
+  ctx.beginPath();
+  ctx.arc(CX, CY, r, 0, Math.PI * 2);
+  ctx.strokeStyle = `hsla(${hue + 180}, 80%, 70%, ${alpha})`;
+  ctx.lineWidth = 3 * beatPulse;
+  ctx.stroke();
+
+  // Hit zone indicator pulse
+  const hzR = (INNER_R + OUTER_R) / 2;
+  ctx.save();
+  ctx.globalAlpha = beatPulse * 0.8;
+  ctx.beginPath();
+  ctx.arc(
+    CX + Math.cos(HIT_ANGLE) * hzR,
+    CY + Math.sin(HIT_ANGLE) * hzR,
+    14 + beatPulse * 8, 0, Math.PI * 2
+  );
+  ctx.strokeStyle = `hsl(${hue + 180}, 90%, 75%)`;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawGates() {
+  for (const g of gates) {
+    if (g.alpha <= 0) continue;
+    const r = g.lane === 0 ? INNER_R : OUTER_R;
+    const worldAngle = g.theta + trackTheta;
+    const gx = CX + Math.cos(worldAngle) * r;
+    const gy = CY + Math.sin(worldAngle) * r;
+
+    ctx.save();
+    ctx.globalAlpha = g.gustHidden ? 0.15 * g.alpha : g.alpha;
+    ctx.translate(gx, gy);
+    ctx.scale(g.scale, g.scale);
+
+    if (g.type === 'decoy') {
+      // Shimmer decoy — dashed outline, faded
+      ctx.globalAlpha *= 0.45;
+      ctx.beginPath();
+      ctx.arc(0, 0, 9, 0, Math.PI * 2);
+      ctx.setLineDash([3, 3]);
+      ctx.strokeStyle = `hsl(${hue + 60}, 50%, 60%)`;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.setLineDash([]);
+    } else if (g.hit) {
+      // Flash
+      ctx.beginPath();
+      ctx.arc(0, 0, 11, 0, Math.PI * 2);
+      ctx.fillStyle = `hsl(${hue + 90}, 100%, 85%)`;
+      ctx.fill();
+    } else if (g.missed) {
+      ctx.beginPath();
+      ctx.arc(0, 0, 9, 0, Math.PI * 2);
+      ctx.fillStyle = `hsla(0, 60%, 50%, 0.6)`;
+      ctx.fill();
+    } else {
+      // Normal gate
+      const gHue = g.lane === 0 ? hue : hue + 40;
+      // Glow
+      ctx.shadowColor = `hsl(${gHue}, 80%, 60%)`;
+      ctx.shadowBlur = 12;
+
+      ctx.beginPath();
+      ctx.arc(0, 0, 9, 0, Math.PI * 2);
+      ctx.fillStyle = `hsl(${gHue}, 80%, 60%)`;
+      ctx.fill();
+
+      // Inner dot
+      ctx.shadowBlur = 0;
+      ctx.beginPath();
+      ctx.arc(0, 0, 4, 0, Math.PI * 2);
+      ctx.fillStyle = `hsl(${gHue}, 100%, 90%)`;
+      ctx.fill();
+
+      // Lane indicator line
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      const lineDir = g.lane === 0 ? -(OUTER_R - INNER_R) / 2 : (OUTER_R - INNER_R) / 2;
+      const perpAngle = worldAngle + Math.PI / 2;
+      ctx.lineTo(Math.cos(perpAngle) * 0, Math.sin(perpAngle) * 0);
+      ctx.strokeStyle = `hsla(${gHue}, 90%, 80%, 0.4)`;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+}
+
+function drawPlayerTrail() {
+  for (const t of playerTrail) {
+    ctx.save();
+    ctx.globalAlpha = t.life * 0.4;
+    ctx.beginPath();
+    ctx.arc(t.x, t.y, 5 * t.life, 0, Math.PI * 2);
+    ctx.fillStyle = `hsl(${hue + 160}, 80%, 70%)`;
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawPlayer() {
+  const pp = getPlayerPos();
+  const px = pp.x, py = pp.y;
+
+  // Glow
+  ctx.save();
+  ctx.shadowColor = `hsl(${hue + 160}, 90%, 70%)`;
+  ctx.shadowBlur = 20;
+
+  // Outer ring
+  ctx.beginPath();
+  ctx.arc(px, py, 11, 0, Math.PI * 2);
+  ctx.strokeStyle = `hsl(${hue + 160}, 80%, 65%)`;
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+
+  // Inner fill
+  ctx.beginPath();
+  ctx.arc(px, py, 7, 0, Math.PI * 2);
+  ctx.fillStyle = `hsl(${hue + 160}, 90%, 70%)`;
+  ctx.fill();
+
+  // Core
+  ctx.shadowBlur = 0;
+  ctx.beginPath();
+  ctx.arc(px, py, 3, 0, Math.PI * 2);
+  ctx.fillStyle = '#fff';
+  ctx.fill();
+  ctx.restore();
+
+  // Hit zone indicator arc
+  ctx.save();
+  ctx.globalAlpha = 0.3;
+  const midR = (INNER_R + OUTER_R) / 2;
+  const arcSpan = (OUTER_R - INNER_R) / midR * 0.55;
+  ctx.beginPath();
+  ctx.arc(CX, CY, playerLane === 0 ? INNER_R : OUTER_R, HIT_ANGLE - arcSpan, HIT_ANGLE + arcSpan);
+  ctx.strokeStyle = `hsl(${hue + 160}, 80%, 65%)`;
+  ctx.lineWidth = 4;
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawHUD() {
+  const comboMult = combo >= 10 ? 5 : combo >= 6 ? 3 : combo >= 3 ? 2 : 1;
+
+  // Score
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.font = `bold ${Math.round(W * 0.09)}px 'Segoe UI', system-ui, sans-serif`;
+  ctx.fillStyle = '#ffffff';
+  ctx.shadowColor = `hsl(${hue}, 80%, 60%)`;
+  ctx.shadowBlur = 10;
+  ctx.fillText(score, CX, 12);
+
+  // Combo
+  if (combo >= 2) {
+    ctx.shadowBlur = 0;
+    ctx.font = `${Math.round(W * 0.04)}px 'Segoe UI', system-ui, sans-serif`;
+    ctx.fillStyle = `hsl(${hue + 180}, 90%, 75%)`;
+    ctx.fillText(`x${comboMult} COMBO ×${combo}`, CX, 12 + W * 0.095);
+  }
+
+  // Hearts
+  const heartSize = 14;
+  const heartSpacing = 20;
+  const hStartX = W - 10 - hearts * heartSpacing;
+  for (let i = 0; i < 3; i++) {
+    ctx.font = `${heartSize}px serif`;
+    ctx.textBaseline = 'top';
+    ctx.textAlign = 'left';
+    ctx.globalAlpha = i < hearts ? 1 : 0.2;
+    ctx.fillStyle = i < hearts ? '#ff6666' : '#888';
+    ctx.shadowBlur = i < hearts ? 6 : 0;
+    ctx.shadowColor = '#ff4444';
+    ctx.fillText('♥', W - 10 - (2 - i) * heartSpacing - heartSize, 14);
+  }
+
+  // BPM indicator
+  ctx.globalAlpha = 0.5;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.font = `${Math.round(W * 0.03)}px monospace`;
+  ctx.fillStyle = `hsl(${hue + 40}, 70%, 65%)`;
+  ctx.shadowBlur = 0;
+  ctx.fillText(`${Math.round(bpm)} BPM`, 10, 14);
+
+  ctx.restore();
+}
+
+function drawGameOver() {
+  // Overlay
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.65)';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  // Game Over text
+  ctx.font = `bold ${Math.round(W * 0.12)}px 'Segoe UI', system-ui, sans-serif`;
+  ctx.fillStyle = '#ff6666';
+  ctx.shadowColor = '#ff2222';
+  ctx.shadowBlur = 20;
+  ctx.fillText('GAME OVER', CX, CY - H * 0.15);
+
+  ctx.shadowBlur = 0;
+  ctx.font = `${Math.round(W * 0.06)}px 'Segoe UI', system-ui, sans-serif`;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(`Score: ${score}`, CX, CY - H * 0.05);
+
+  ctx.font = `${Math.round(W * 0.045)}px 'Segoe UI', system-ui, sans-serif`;
+  ctx.fillStyle = `hsl(${hue + 40}, 80%, 70%)`;
+  ctx.fillText(`Best: ${bestScore}`, CX, CY + H * 0.03);
+
+  if (score >= bestScore && score > 0) {
+    ctx.font = `bold ${Math.round(W * 0.04)}px 'Segoe UI', system-ui, sans-serif`;
+    ctx.fillStyle = `hsl(50, 100%, 70%)`;
+    ctx.shadowColor = `hsl(50, 100%, 50%)`;
+    ctx.shadowBlur = 12;
+    ctx.fillText('NEW BEST!', CX, CY + H * 0.09);
+    ctx.shadowBlur = 0;
+  }
+
+  // Restart prompt
+  ctx.font = `${Math.round(W * 0.042)}px 'Segoe UI', system-ui, sans-serif`;
+  ctx.fillStyle = 'rgba(220, 200, 180, 0.8)';
+  ctx.fillText('Tap to restart', CX, CY + H * 0.18);
+
+  ctx.restore();
+}
+
+// ─── Start loop ──────────────────────────────────────────────────────────
+requestAnimationFrame(update);
+
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Hexa Twist - Free HTML5 Game</title>
+<meta name="description" content="Play Hexa Twist - Slide hexagonal puzzle pieces to complete patterns and earn chain combo bonuses.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0d0d1a">
+<link rel="canonical" href="https://balinti.github.io/hexa-twist/">
+
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="Hexa Twist - Free HTML5 Game">
+<meta property="og:description" content="Play Hexa Twist - Slide hexagonal puzzle pieces to complete patterns and earn chain combo bonuses.">
+<meta property="og:url" content="https://balinti.github.io/hexa-twist/">
+<meta property="og:image" content="https://balinti.github.io/hexa-twist/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Hexa Twist - Free HTML5 Game">
+<meta name="twitter:description" content="Play Hexa Twist - Slide hexagonal puzzle pieces to complete patterns and earn chain combo bonuses.">
+<meta name="twitter:image" content="https://balinti.github.io/hexa-twist/og-image.png">
+
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    background: #0d0d1a;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+  }
+  #wrap {
+    position: relative;
+    width: 100%;
+    max-width: 420px;
+    height: 100vh;
+    max-height: 750px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  canvas {
+    display: block;
+    touch-action: manipulation;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="c"></canvas></div>
+<script>
+'use strict';
+(function(){
+
+// ── Constants ────────────────────────────────────────────────────────────────
+const LS_KEY = 'hexaTwistBest';
+const GAME_DURATION = 28; // seconds
+const HEX_SIZE = 32;      // base hex radius
+const COLORS = 5;         // initial color count
+
+// Axial direction vectors (flat-top hex)
+const AX_DIRS = [
+  [1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]
+];
+
+// ── Canvas setup ─────────────────────────────────────────────────────────────
+const wrap = document.getElementById('wrap');
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W, H, DPR;
+
+function resize() {
+  const wr = wrap.getBoundingClientRect();
+  W = wr.width;
+  H = wr.height;
+  DPR = window.devicePixelRatio || 1;
+  canvas.width  = W * DPR;
+  canvas.height = H * DPR;
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+resize();
+window.addEventListener('resize', () => { resize(); });
+
+// ── Hex grid (axial coords, radius 2) ────────────────────────────────────────
+function hexInGrid(q, r) {
+  const s = -q - r;
+  return Math.max(Math.abs(q), Math.abs(r), Math.abs(s)) <= 2;
+}
+
+function axialToPixel(q, r, cx, cy, sz) {
+  const x = cx + sz * (3/2 * q);
+  const y = cy + sz * (Math.sqrt(3)/2 * q + Math.sqrt(3) * r);
+  return { x, y };
+}
+
+function getRing(radius) {
+  if (radius === 0) return [{q:0,r:0}];
+  const cells = [];
+  let q = radius, r = -radius;
+  // walk 6 sides, each radius steps
+  const dirs = [[0,1],[-1,1],[-1,0],[0,-1],[1,-1],[1,0]];
+  for (let side = 0; side < 6; side++) {
+    for (let step = 0; step < radius; step++) {
+      cells.push({q,r});
+      q += dirs[side][0];
+      r += dirs[side][1];
+    }
+  }
+  return cells;
+}
+
+// All 19 cells
+const RING0 = getRing(0); // [1]
+const RING1 = getRing(1); // [6]
+const RING2 = getRing(2); // [12]
+const ALL_CELLS = [...RING0, ...RING1, ...RING2];
+
+// Precompute all straight hex lines (length >=3) in 3 axes
+function getAllLines() {
+  const lines = [];
+  const key = (q,r) => `${q},${r}`;
+  const cellSet = new Set(ALL_CELLS.map(c => key(c.q,c.r)));
+  // 3 axes: (1,0), (0,1), (1,-1)
+  const axes = [[1,0],[0,1],[1,-1]];
+  const seen = new Set();
+  for (const cell of ALL_CELLS) {
+    for (const [dq,dr] of axes) {
+      // walk backward to find start
+      let sq = cell.q, sr = cell.r;
+      while (cellSet.has(key(sq-dq, sr-dr))) { sq -= dq; sr -= dr; }
+      // walk forward collecting line
+      const line = [];
+      let cq = sq, cr = sr;
+      while (cellSet.has(key(cq,cr))) {
+        line.push(key(cq,cr));
+        cq += dq; cr += dr;
+      }
+      if (line.length >= 3) {
+        const lk = line.join('|');
+        if (!seen.has(lk)) {
+          seen.add(lk);
+          lines.push(line);
+        }
+      }
+    }
+  }
+  return lines;
+}
+const ALL_LINES = getAllLines();
+
+// ── Color palette (HSL) ──────────────────────────────────────────────────────
+const BASE_HUES = [0, 60, 120, 200, 280, 340]; // 6 possible hues
+
+function getColor(id, hueShift) {
+  const h = (BASE_HUES[id] + hueShift) % 360;
+  return `hsl(${h},80%,60%)`;
+}
+function getColorDim(id, hueShift) {
+  const h = (BASE_HUES[id] + hueShift) % 360;
+  return `hsl(${h},60%,35%)`;
+}
+function getColorGlow(id, hueShift) {
+  const h = (BASE_HUES[id] + hueShift) % 360;
+  return `hsla(${h},90%,70%,0.5)`;
+}
+
+// ── Game state ────────────────────────────────────────────────────────────────
+let state = 'start'; // 'start' | 'playing' | 'gameover'
+let score = 0;
+let best = parseInt(localStorage.getItem(LS_KEY) || '0');
+let timeLeft = GAME_DURATION;
+let heat = 0;
+let hueShift = 0;
+let activeRing = 1; // 1 or 2
+let colorCount = 4;
+
+// Tile map: key -> color id (0..colorCount-1) or null
+let tiles = {};
+
+// Animations
+let particles = [];
+let shakeFrames = 0;
+let shakeAmp = 0;
+let snapAnim = null; // { ring, cells, offset, t } ring snap animation
+let spawnAnims = []; // [{key,t}]
+let popAnims = [];   // [{key,x,y,t}]
+let comboText = [];  // [{x,y,val,t}]
+let ringPulse = 0;   // 0..1 when ring changes
+
+// ── Init board ────────────────────────────────────────────────────────────────
+function initBoard() {
+  tiles = {};
+  for (const c of ALL_CELLS) {
+    tiles[`${c.q},${c.r}`] = Math.floor(Math.random() * colorCount);
+  }
+  // ensure no immediate matches on start
+  for (let i = 0; i < 5; i++) resolveMatches(false);
+  // refill any nulls
+  for (const k of Object.keys(tiles)) {
+    if (tiles[k] === null || tiles[k] === undefined) {
+      tiles[k] = Math.floor(Math.random() * colorCount);
+    }
+  }
+}
+
+// ── Ring rotation ─────────────────────────────────────────────────────────────
+function getRingCells(ring) {
+  return ring === 1 ? RING1 : RING2;
+}
+
+function rotateRing(ring) {
+  const cells = getRingCells(ring);
+  const keys = cells.map(c => `${c.q},${c.r}`);
+  // shift values one step clockwise (last -> first)
+  const vals = keys.map(k => tiles[k]);
+  const shifted = [vals[vals.length-1], ...vals.slice(0,-1)];
+  keys.forEach((k,i) => { tiles[k] = shifted[i]; });
+
+  // trigger snap animation
+  snapAnim = {
+    ring,
+    cells: cells.map(c => axialToPixel(c.q, c.r, 0, 0, HEX_SIZE)),
+    t: 0,
+    duration: 12 // frames
+  };
+}
+
+// ── Match resolution ──────────────────────────────────────────────────────────
+function resolveMatches(withEffects) {
+  let totalPopped = 0;
+  let cascade = 0;
+  let anyPopped = true;
+
+  while (anyPopped) {
+    anyPopped = false;
+    const toRemove = new Set();
+
+    for (const line of ALL_LINES) {
+      // check all same color, not null
+      const colorAtLine = tiles[line[0]];
+      if (colorAtLine === null || colorAtLine === undefined) continue;
+      let match = true;
+      for (const k of line) {
+        if (tiles[k] !== colorAtLine) { match = false; break; }
+      }
+      if (match) {
+        for (const k of line) toRemove.add(k);
+      }
+    }
+
+    if (toRemove.size > 0) {
+      anyPopped = true;
+      cascade++;
+      totalPopped += toRemove.size;
+
+      if (withEffects) {
+        for (const k of toRemove) {
+          const [q, r] = k.split(',').map(Number);
+          const {x, y} = axialToPixel(q, r, getCX(), getCY(), HEX_SIZE);
+          spawnPopParticles(x, y, tiles[k]);
+          popAnims.push({key: k, x, y, t: 0, colorId: tiles[k]});
+        }
+      }
+
+      // Remove matched tiles
+      for (const k of toRemove) tiles[k] = null;
+
+      // Gravity: pull outer tiles inward (simple: just refill)
+      // Actually in hex twist: refill from random, with spawn animation
+      for (const k of Object.keys(tiles)) {
+        if (tiles[k] === null) {
+          tiles[k] = Math.floor(Math.random() * colorCount);
+          if (withEffects) {
+            spawnAnims.push({key: k, t: 0});
+          }
+        }
+      }
+    }
+  }
+
+  return { popped: totalPopped, cascade: Math.max(0, cascade-1) };
+}
+
+// ── Particles ──────────────────────────────────────────────────────────────────
+function spawnPopParticles(x, y, colorId) {
+  const count = 10;
+  for (let i = 0; i < count; i++) {
+    const angle = (Math.PI * 2 / count) * i + Math.random() * 0.3;
+    const speed = 2 + Math.random() * 3;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 1,
+      decay: 0.04 + Math.random() * 0.03,
+      size: 3 + Math.random() * 4,
+      colorId,
+      type: Math.random() < 0.5 ? 'dot' : 'shard'
+    });
+  }
+}
+
+function updateParticles() {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vx *= 0.92;
+    p.vy *= 0.92;
+    p.vy += 0.12;
+    p.life -= p.decay;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    ctx.save();
+    ctx.globalAlpha = p.life;
+    if (p.type === 'dot') {
+      ctx.fillStyle = getColor(p.colorId, hueShift);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI*2);
+      ctx.fill();
+    } else {
+      ctx.fillStyle = getColor(p.colorId, hueShift);
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.vx * 0.5);
+      ctx.fillRect(-p.size/2, -p.size * 0.2, p.size, p.size * 0.4);
+    }
+    ctx.restore();
+  }
+}
+
+// ── Screen shake ──────────────────────────────────────────────────────────────
+function triggerShake(frames, amp) {
+  shakeFrames = frames;
+  shakeAmp = amp;
+}
+
+function getShakeOffset() {
+  if (shakeFrames <= 0) return {sx:0,sy:0};
+  const t = shakeFrames;
+  shakeFrames--;
+  return {
+    sx: (Math.random()-0.5) * shakeAmp * (t/10),
+    sy: (Math.random()-0.5) * shakeAmp * (t/10)
+  };
+}
+
+// ── Helper: center ────────────────────────────────────────────────────────────
+function getCX() { return W / 2; }
+function getCY() { return (H - 80) / 2 + 30; }
+
+// ── Draw hex ──────────────────────────────────────────────────────────────────
+function drawHex(x, y, size, fillColor, strokeColor, alpha) {
+  ctx.save();
+  ctx.globalAlpha = alpha !== undefined ? alpha : 1;
+  ctx.beginPath();
+  for (let i = 0; i < 6; i++) {
+    const angle = Math.PI / 180 * (60 * i);
+    const hx = x + size * Math.cos(angle);
+    const hy = y + size * Math.sin(angle);
+    if (i === 0) ctx.moveTo(hx, hy);
+    else ctx.lineTo(hx, hy);
+  }
+  ctx.closePath();
+  if (fillColor) {
+    ctx.fillStyle = fillColor;
+    ctx.fill();
+  }
+  if (strokeColor) {
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// ── Draw board ────────────────────────────────────────────────────────────────
+function drawBoard() {
+  const cx = getCX(), cy = getCY();
+  const spawnSet = new Set(spawnAnims.map(a=>a.key));
+  const popSet   = new Set(popAnims.map(a=>a.key));
+
+  for (const cell of ALL_CELLS) {
+    const k = `${cell.q},${cell.r}`;
+    const {x, y} = axialToPixel(cell.q, cell.r, cx, cy, HEX_SIZE);
+    const colorId = tiles[k];
+    const inRing = (RING1.some(c=>c.q===cell.q&&c.r===cell.r)) ? 1
+                 : (RING2.some(c=>c.q===cell.q&&c.r===cell.r)) ? 2 : 0;
+    const isActive = (inRing === activeRing);
+
+    // pop animation: shrink out
+    if (popSet.has(k)) {
+      const pa = popAnims.find(a=>a.key===k);
+      const prog = pa ? pa.t / 8 : 1;
+      const scale = 1 - prog;
+      if (scale > 0) {
+        drawHex(x, y, HEX_SIZE * scale * 0.88, getColor(pa.colorId, hueShift), null);
+      }
+      continue;
+    }
+
+    // spawn animation: scale in
+    let spawnScale = 1;
+    if (spawnSet.has(k)) {
+      const sa = spawnAnims.find(a=>a.key===k);
+      spawnScale = sa ? Math.min(1, sa.t / 10) : 1;
+    }
+
+    // background hex (dark)
+    drawHex(x, y, HEX_SIZE * 0.92, '#1a1a2e', isActive ? getColorGlow(colorId, hueShift) : '#2a2a40');
+
+    // active ring glow
+    if (isActive) {
+      ctx.save();
+      ctx.globalAlpha = 0.18 + 0.08 * Math.sin(Date.now()/300);
+      drawHex(x, y, HEX_SIZE * 0.88, getColorGlow(colorId, hueShift), null);
+      ctx.restore();
+    }
+
+    // tile
+    if (colorId !== null && colorId !== undefined) {
+      const sz = HEX_SIZE * 0.76 * spawnScale;
+      drawHex(x, y, sz, getColor(colorId, hueShift), null);
+      // inner highlight
+      ctx.save();
+      ctx.globalAlpha = 0.3 * spawnScale;
+      drawHex(x, y - sz*0.15, sz * 0.5, 'rgba(255,255,255,0.3)', null);
+      ctx.restore();
+    }
+
+    // ring indicator border
+    if (isActive) {
+      ctx.save();
+      ctx.globalAlpha = 0.5 + 0.3 * Math.sin(Date.now()/200);
+      ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const angle = Math.PI / 180 * (60 * i);
+        const hx = x + HEX_SIZE * 0.92 * Math.cos(angle);
+        const hy = y + HEX_SIZE * 0.92 * Math.sin(angle);
+        if (i===0) ctx.moveTo(hx, hy); else ctx.lineTo(hx, hy);
+      }
+      ctx.closePath();
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+}
+
+// ── Draw UI ───────────────────────────────────────────────────────────────────
+function drawUI() {
+  const pad = 16;
+
+  // Score
+  ctx.save();
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.font = 'bold 28px Segoe UI, system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText(score, W/2, pad + 28);
+  ctx.font = '13px Segoe UI, system-ui';
+  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  ctx.fillText('SCORE', W/2, pad + 46);
+  ctx.restore();
+
+  // Best
+  ctx.save();
+  ctx.fillStyle = 'rgba(255,220,80,0.85)';
+  ctx.font = '13px Segoe UI, system-ui';
+  ctx.textAlign = 'right';
+  ctx.fillText('BEST ' + best, W - pad, pad + 20);
+  ctx.restore();
+
+  // Time left
+  const timeColor = timeLeft < 8 ? `hsl(${(Date.now()/50)%360},90%,65%)` : 'rgba(255,255,255,0.7)';
+  ctx.save();
+  ctx.fillStyle = timeColor;
+  ctx.font = 'bold 18px Segoe UI, system-ui';
+  ctx.textAlign = 'left';
+  ctx.fillText(Math.ceil(timeLeft) + 's', pad, pad + 20);
+  ctx.restore();
+
+  // Heat bar
+  const bx = pad, by = H - 80 - 24, bw = W - pad*2, bh = 10;
+  ctx.save();
+  ctx.fillStyle = 'rgba(255,255,255,0.1)';
+  ctx.beginPath();
+  ctx.roundRect(bx, by, bw, bh, 5);
+  ctx.fill();
+  const heatColor = heat > 0.7 ? `hsl(${10 + heat*20},90%,55%)` : `hsl(${40 - heat*40},85%,55%)`;
+  const heatW = Math.min(1, heat) * bw;
+  if (heatW > 0) {
+    ctx.fillStyle = heatColor;
+    ctx.beginPath();
+    ctx.roundRect(bx, by, heatW, bh, 5);
+    ctx.fill();
+  }
+  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  ctx.font = '11px Segoe UI, system-ui';
+  ctx.textAlign = 'right';
+  ctx.fillText('HEAT', bx + bw, by - 4);
+  ctx.restore();
+
+  // Active ring label
+  ctx.save();
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.font = '12px Segoe UI, system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText(`RING ${activeRing} ACTIVE — TAP TO ROTATE`, W/2, H - 80 - 38);
+  ctx.restore();
+
+  // Combo text floaters
+  for (const ct of comboText) {
+    ctx.save();
+    ctx.globalAlpha = ct.t / 40;
+    ctx.fillStyle = `hsl(${60 + ct.val * 30},100%,70%)`;
+    ctx.font = `bold ${20 + ct.val * 4}px Segoe UI, system-ui`;
+    ctx.textAlign = 'center';
+    ctx.fillText(`+${ct.val} COMBO!`, ct.x, ct.y - (40 - ct.t));
+    ctx.restore();
+  }
+}
+
+// ── Draw background ───────────────────────────────────────────────────────────
+function drawBackground() {
+  const grad = ctx.createRadialGradient(W/2, H/2, 0, W/2, H/2, Math.max(W,H));
+  const h1 = (hueShift + 200) % 360;
+  const h2 = (hueShift + 240) % 360;
+  grad.addColorStop(0, `hsl(${h1},30%,8%)`);
+  grad.addColorStop(1, `hsl(${h2},20%,4%)`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+}
+
+// ── Start screen ──────────────────────────────────────────────────────────────
+function drawStart() {
+  drawBackground();
+
+  // Title
+  ctx.save();
+  const titleGrad = ctx.createLinearGradient(W/2 - 100, H/2 - 80, W/2 + 100, H/2 - 40);
+  const th = hueShift % 360;
+  titleGrad.addColorStop(0, `hsl(${th},90%,70%)`);
+  titleGrad.addColorStop(1, `hsl(${(th+60)%360},90%,70%)`);
+  ctx.fillStyle = titleGrad;
+  ctx.font = 'bold 52px Segoe UI, system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('HEXA', W/2, H/2 - 50);
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.font = 'bold 36px Segoe UI, system-ui';
+  ctx.fillText('TWIST', W/2, H/2 - 10);
+  ctx.restore();
+
+  // Animated hexagons decoration
+  const now = Date.now() / 1000;
+  for (let i = 0; i < 6; i++) {
+    const angle = (Math.PI*2/6)*i + now*0.4;
+    const r = 70;
+    const hx = W/2 + Math.cos(angle)*r;
+    const hy = H/2 - 30 + Math.sin(angle)*r * 0.5;
+    drawHex(hx, hy, 18, getColor(i % colorCount, hueShift), null, 0.5 + 0.3*Math.sin(now*2+i));
+  }
+
+  // Instruction
+  const pulse = 0.6 + 0.4 * Math.sin(Date.now()/400);
+  ctx.save();
+  ctx.globalAlpha = pulse;
+  ctx.fillStyle = 'white';
+  ctx.font = '18px Segoe UI, system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('Tap to Start', W/2, H/2 + 120);
+  ctx.restore();
+
+  // Best score
+  if (best > 0) {
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,220,80,0.7)';
+    ctx.font = '14px Segoe UI, system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('Best: ' + best, W/2, H/2 + 148);
+    ctx.restore();
+  }
+
+  // Instructions
+  ctx.save();
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.font = '13px Segoe UI, system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('Match 3+ hex in a line to score', W/2, H/2 + 180);
+  ctx.fillText('Tap to rotate the active ring', W/2, H/2 + 198);
+  ctx.restore();
+}
+
+// ── Game Over screen ──────────────────────────────────────────────────────────
+function drawGameOver() {
+  drawBackground();
+  drawBoard();
+  drawParticles();
+
+  // Overlay
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillRect(0, 0, W, H);
+  ctx.restore();
+
+  ctx.save();
+  ctx.fillStyle = 'rgba(255,80,80,0.9)';
+  ctx.font = 'bold 42px Segoe UI, system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('GAME OVER', W/2, H/2 - 60);
+
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.font = 'bold 32px Segoe UI, system-ui';
+  ctx.fillText(score, W/2, H/2 - 10);
+  ctx.font = '16px Segoe UI, system-ui';
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.fillText('SCORE', W/2, H/2 + 14);
+
+  ctx.fillStyle = 'rgba(255,220,80,0.9)';
+  ctx.font = '20px Segoe UI, system-ui';
+  ctx.fillText('Best: ' + best, W/2, H/2 + 50);
+
+  const pulse = 0.6 + 0.4 * Math.sin(Date.now()/400);
+  ctx.globalAlpha = pulse;
+  ctx.fillStyle = 'white';
+  ctx.font = '18px Segoe UI, system-ui';
+  ctx.fillText('Tap to Retry', W/2, H/2 + 100);
+  ctx.restore();
+}
+
+// ── Game logic ────────────────────────────────────────────────────────────────
+let lastTime = 0;
+let lastTapTime = 0;
+
+function startGame() {
+  score = 0;
+  timeLeft = GAME_DURATION;
+  heat = 0;
+  hueShift = 0;
+  activeRing = 1;
+  colorCount = 4;
+  particles = [];
+  snapAnim = null;
+  spawnAnims = [];
+  popAnims = [];
+  comboText = [];
+  shakeFrames = 0;
+  ringPulse = 0;
+  initBoard();
+  state = 'playing';
+}
+
+function onTap(evt) {
+  if (evt && evt.preventDefault) evt.preventDefault();
+
+  const now = Date.now();
+  if (now - lastTapTime < 120) return; // debounce
+  lastTapTime = now;
+
+  if (state === 'start') {
+    startGame();
+    return;
+  }
+  if (state === 'gameover') {
+    startGame();
+    return;
+  }
+  if (state !== 'playing') return;
+
+  // Determine tap area: tap left half = ring1, right half = ring2
+  // Actually: alternate ring on each tap, or tap side
+  // Simple: toggle active ring each 2 taps, or based on X position
+  // Let's use: left side of canvas -> ring 1, right side -> ring 2
+  let tapX = W / 2;
+  if (evt && evt.clientX !== undefined) {
+    const rect = canvas.getBoundingClientRect();
+    tapX = evt.clientX - rect.left;
+  } else if (evt && evt.touches && evt.touches[0]) {
+    const rect = canvas.getBoundingClientRect();
+    tapX = evt.touches[0].clientX - rect.left;
+  }
+
+  // Switch active ring based on tap side
+  const newRing = tapX < W/2 ? 1 : 2;
+  if (newRing !== activeRing) {
+    activeRing = newRing;
+    ringPulse = 1;
+    return; // first tap on new side just switches ring
+  }
+
+  // Rotate the active ring
+  rotateRing(activeRing);
+
+  // Resolve matches after rotation
+  const {popped, cascade} = resolveMatches(true);
+
+  if (popped > 0) {
+    const pts = popped * (cascade + 1) * 10;
+    score += pts;
+    heat = Math.max(0, heat - 0.08 * (cascade + 1));
+    if (cascade >= 2) {
+      triggerShake(8, 4);
+      comboText.push({x: W/2, y: getCY() - 60, val: cascade, t: 40});
+    }
+  } else {
+    // Dead twist: increase heat
+    heat += 0.06 + (1 - timeLeft/GAME_DURATION) * 0.06;
+    triggerShake(3, 2);
+  }
+
+  // Late game: junk tiles chance
+  if (timeLeft < 10 && Math.random() < 0.15) {
+    const keys = Object.keys(tiles);
+    const k = keys[Math.floor(Math.random() * keys.length)];
+    tiles[k] = Math.floor(Math.random() * colorCount);
+  }
+}
+
+canvas.addEventListener('pointerdown', onTap, { passive: false });
+
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    if (state === 'playing') {
+      // Space = rotate ring1, Enter = rotate ring2
+      if (e.code === 'Space') activeRing = 1;
+      else activeRing = 2;
+      onTap(null);
+    } else {
+      onTap(null);
+    }
+  }
+  if (state === 'playing' && (e.code === 'KeyQ' || e.code === 'ArrowLeft')) {
+    activeRing = 1;
+  }
+  if (state === 'playing' && (e.code === 'KeyE' || e.code === 'ArrowRight')) {
+    activeRing = 2;
+  }
+});
+
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space') e.preventDefault();
+});
+
+// ── Main loop ─────────────────────────────────────────────────────────────────
+function loop(ts) {
+  requestAnimationFrame(loop);
+
+  const dt = Math.min((ts - lastTime) / 1000, 0.05);
+  lastTime = ts;
+
+  // Hue shift over time
+  hueShift = (hueShift + 30 * dt) % 360;
+
+  if (state === 'playing') {
+    // Time
+    timeLeft -= dt;
+    if (timeLeft < 0) timeLeft = 0;
+
+    // Difficulty ramp
+    const progress = 1 - timeLeft / GAME_DURATION;
+    colorCount = Math.min(6, 4 + Math.floor(progress * 3));
+    heat += 0.003 * dt * 60 * (1 + progress * 1.5);
+
+    // Pop anim update
+    for (let i = popAnims.length - 1; i >= 0; i--) {
+      popAnims[i].t++;
+      if (popAnims[i].t > 8) popAnims.splice(i, 1);
+    }
+    // Spawn anim update
+    for (let i = spawnAnims.length - 1; i >= 0; i--) {
+      spawnAnims[i].t++;
+      if (spawnAnims[i].t > 10) spawnAnims.splice(i, 1);
+    }
+    // Snap anim
+    if (snapAnim) {
+      snapAnim.t++;
+      if (snapAnim.t >= snapAnim.duration) snapAnim = null;
+    }
+    // Combo text
+    for (let i = comboText.length - 1; i >= 0; i--) {
+      comboText[i].t--;
+      if (comboText[i].t <= 0) comboText.splice(i, 1);
+    }
+    // Ring pulse
+    if (ringPulse > 0) ringPulse = Math.max(0, ringPulse - 0.1);
+
+    // Game over conditions
+    if (heat >= 1 || timeLeft <= 0) {
+      if (score > best) {
+        best = score;
+        localStorage.setItem(LS_KEY, best);
+      }
+      triggerShake(20, 8);
+      // big particle burst
+      const cx = getCX(), cy = getCY();
+      for (let i = 0; i < 30; i++) {
+        spawnPopParticles(cx + (Math.random()-0.5)*80, cy + (Math.random()-0.5)*80, Math.floor(Math.random()*6));
+      }
+      state = 'gameover';
+    }
+  }
+
+  // Update particles
+  updateParticles();
+
+  // Shake offset
+  const {sx, sy} = getShakeOffset();
+
+  // Draw
+  ctx.save();
+  ctx.translate(sx, sy);
+
+  if (state === 'start') {
+    drawStart();
+  } else if (state === 'playing') {
+    drawBackground();
+    drawBoard();
+    drawParticles();
+    drawUI();
+  } else if (state === 'gameover') {
+    drawGameOver();
+  }
+
+  ctx.restore();
+}
+
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

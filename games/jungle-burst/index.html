@@ -1,0 +1,978 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Jungle Burst - Free HTML5 Game</title>
+<meta name="description" content="Play Jungle Burst - Tap to shoot targets before multiplying vines block your shots.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#1a2e1a">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Jungle Burst - Free HTML5 Game">
+<meta property="og:description" content="Tap to snap vines before they reach the center idol! Chain reactions score big. How long can you last?">
+<meta property="og:url" content="https://balinti.github.io/jungle-burst/">
+<meta property="og:image" content="https://balinti.github.io/jungle-burst/preview.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Jungle Burst - Free HTML5 Game">
+<meta name="twitter:description" content="Tap to snap vines before they reach the center idol! Chain reactions score big.">
+<meta name="twitter:image" content="https://balinti.github.io/jungle-burst/preview.png">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#0d1f0d;display:flex;align-items:center;justify-content:center;overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif}
+#wrap{position:relative;width:min(420px,100vw);height:min(750px,100vh);touch-action:none;user-select:none;-webkit-user-select:none}
+canvas{display:block;width:100%;height:100%;cursor:pointer}
+#seo-text{position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden}
+</style>
+</head>
+<body>
+<div id="wrap">
+<canvas id="c"></canvas>
+<div id="seo-text">
+<h1>Jungle Burst - Vine Snap Game</h1>
+<p>Jungle Burst is a free hyper-casual HTML5 canvas game. Vines grow from the edges of the screen toward the center idol. Tap or press Space/Enter to command the ring-saw to cut the nearest vine. Time your tap when the sap pulse is in the snap window to trigger a chain reaction that cuts multiple vines at once! Each segment cut scores points, and chain reactions multiply your score. The game gets harder over time with faster vines, branching, thick vines requiring multiple cuts, and poison vines. How long can you protect the idol?</p>
+<p>Controls: Tap on mobile, click or press Space/Enter on desktop. Cut vines before they reach the center. Snap timing for big combos!</p>
+</div>
+</div>
+<script>
+(function(){
+'use strict';
+
+// ── Canvas setup ──────────────────────────────────────────────────────────────
+const wrap = document.getElementById('wrap');
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+let W, H, CX, CY, DPR;
+function resize(){
+  const rect = wrap.getBoundingClientRect();
+  W = rect.width; H = rect.height;
+  CX = W/2; CY = H/2;
+  DPR = Math.min(window.devicePixelRatio||1, 2);
+  canvas.width = W*DPR; canvas.height = H*DPR;
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ── Persistent high score ─────────────────────────────────────────────────────
+const LS_KEY = 'jungle_burst_best';
+let bestScore = parseInt(localStorage.getItem(LS_KEY)||'0',10);
+
+// ── Game state ────────────────────────────────────────────────────────────────
+let state = 'start'; // 'start' | 'playing' | 'gameover'
+let score = 0;
+let elapsed = 0; // seconds since game start
+let lastTime = 0;
+let shakeAmt = 0, shakeDur = 0;
+let flashAmt = 0;
+let bgHue = 110; // slowly shifts
+let particles = [];
+let vines = [];
+let nextVineId = 0;
+let laneAngles = [];
+let idolPulse = 0; // heartbeat phase
+let lastLaneSpawn = 0;
+let gameOverTimer = 0;
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+const IDOL_R = 22;
+const SEGMENT_LEN = 28;
+const MAX_SEGS = 26; // max segments before hitting center
+const SNAP_WINDOW = 0.30; // fraction of pulse cycle
+const THICK_HP = 2;
+const CHAIN_DECAY = 0.18; // seconds between chain jumps
+const LANE_ANGLES_BASE = [0, Math.PI/2, Math.PI, 3*Math.PI/2];
+
+// ── Utility ───────────────────────────────────────────────────────────────────
+function lerp(a,b,t){return a+(b-a)*t}
+function clamp(v,lo,hi){return v<lo?lo:v>hi?hi:v}
+function rng(min,max){return min+(max-min)*Math.random()}
+function pick(arr){return arr[Math.floor(Math.random()*arr.length)]}
+function dist(ax,ay,bx,by){return Math.hypot(ax-bx,ay-by)}
+
+// Shake offset
+function shakeOffset(){
+  if(shakeAmt<=0)return{x:0,y:0};
+  return{x:(Math.random()-0.5)*shakeAmt*2,y:(Math.random()-0.5)*shakeAmt*2};
+}
+
+// ── Particle system ───────────────────────────────────────────────────────────
+function spawnParticles(x,y,type,count,hue){
+  for(let i=0;i<count;i++){
+    const angle = Math.random()*Math.PI*2;
+    const speed = rng(type==='sap'?60:40, type==='sap'?180:120);
+    const life = rng(0.4,0.9);
+    particles.push({
+      x,y,
+      vx:Math.cos(angle)*speed,
+      vy:Math.sin(angle)*speed,
+      life, maxLife:life,
+      r: rng(type==='leaf'?3:2, type==='leaf'?7:5),
+      hue: hue+(Math.random()-0.5)*40,
+      type,
+      rot:Math.random()*Math.PI*2,
+      rotV:(Math.random()-0.5)*8
+    });
+  }
+}
+
+function updateParticles(dt){
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    p.x+=p.vx*dt; p.y+=p.vy*dt;
+    p.vx*=0.88; p.vy*=0.88;
+    p.vy+=30*dt; // gentle gravity
+    p.rot+=p.rotV*dt;
+    p.life-=dt;
+    if(p.life<=0)particles.splice(i,1);
+  }
+}
+
+function drawParticles(){
+  particles.forEach(p=>{
+    const t=p.life/p.maxLife;
+    ctx.save();
+    ctx.globalAlpha=t*0.9;
+    ctx.translate(p.x,p.y);
+    ctx.rotate(p.rot);
+    if(p.type==='leaf'){
+      ctx.fillStyle=`hsl(${p.hue},70%,45%)`;
+      ctx.beginPath();
+      ctx.ellipse(0,0,p.r,p.r*0.5,0,0,Math.PI*2);
+      ctx.fill();
+    } else if(p.type==='sap'){
+      ctx.fillStyle=`hsl(${p.hue},90%,65%)`;
+      ctx.beginPath();
+      ctx.arc(0,0,p.r*t,0,Math.PI*2);
+      ctx.fill();
+    } else { // ring
+      ctx.strokeStyle=`hsl(${p.hue},80%,60%)`;
+      ctx.lineWidth=2*t;
+      ctx.beginPath();
+      ctx.arc(0,0,p.r*(2-t)*8,0,Math.PI*2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  });
+}
+
+// ── Vine system ───────────────────────────────────────────────────────────────
+// A vine: series of segments from edge toward center
+// Each segment is a node at position along the angle
+// Vine state: segments[], angle, speed, type, sap pulse, thick hp, poison
+function segPos(vine, idx){
+  // Edge of the screen along angle, minus idx*SEGMENT_LEN
+  const edgeDist = Math.min(CX,CY)*1.45; // start just outside
+  const d = edgeDist - idx*SEGMENT_LEN;
+  return {
+    x: CX + Math.cos(vine.angle)*d,
+    y: CY + Math.sin(vine.angle)*d
+  };
+}
+
+// Compute wiggle offset for a segment
+function wiggleOffset(vine, idx, t){
+  const phase = t*1.8 + vine.id*2.3 + idx*0.7;
+  const amp = 4 + idx*0.5;
+  const perp = vine.angle + Math.PI/2;
+  const w = Math.sin(phase)*amp;
+  return{x:Math.cos(perp)*w, y:Math.sin(perp)*w};
+}
+
+function createVine(angle, difficulty){
+  const isThick = difficulty >= 2 && Math.random()<0.3;
+  const isPoison = difficulty >= 4 && Math.random()<0.2;
+  const baseSpeed = lerp(0.3, 1.8, clamp((difficulty-1)/6,0,1));
+  const speed = baseSpeed * rng(0.85,1.15);
+  // angle offset to avoid exact cardinal overlap
+  const finalAngle = angle + rng(-0.15,0.15);
+  return{
+    id: nextVineId++,
+    angle: finalAngle,
+    growth: 0,      // number of segments fully grown (float)
+    speed,
+    type: isPoison?'poison':isThick?'thick':'normal',
+    hp: isThick ? THICK_HP : 1,
+    sapPhase: Math.random(), // 0..1
+    sapSpeed: rng(0.6,1.2),
+    hue: isPoison?270:(isThick?30:rng(90,145)),
+    dead: false,
+    chainTarget: false,
+    // For elastic whip-back on cut
+    cutting: false,
+    cutFrom: 0,
+    cutAlpha: 1,
+    // Bud branch (30s+)
+    buds: [],
+    budTimer: rng(8,15),
+  };
+}
+
+function difficultyLevel(){
+  if(elapsed<10) return 1;
+  if(elapsed<30) return 2;
+  if(elapsed<60) return 3;
+  if(elapsed<90) return 4;
+  return 5;
+}
+
+function laneCount(){
+  const d=difficultyLevel();
+  if(d<=1)return 2;
+  if(d<=2)return 3;
+  if(d<=3)return 4;
+  return clamp(4+Math.floor((elapsed-90)/30),4,6);
+}
+
+function growthSpeed(){
+  const d=difficultyLevel();
+  return lerp(0.4,2.2,clamp((d-1)/4,0,1));
+}
+
+function snapWindow(){
+  const d=difficultyLevel();
+  if(d<=1)return 0.38;
+  if(d<=2)return 0.30;
+  if(d<=3)return 0.24;
+  if(d<=4)return 0.18;
+  return 0.14;
+}
+
+function getVineLength(vine){
+  return vine.growth;
+}
+
+function vineReachedCenter(vine){
+  // How many segments needed to reach center
+  const edgeDist = Math.min(CX,CY)*1.45;
+  const segsToCenter = (edgeDist - IDOL_R) / SEGMENT_LEN;
+  return vine.growth >= segsToCenter;
+}
+
+function getNearestUrgentVine(){
+  // Vine closest to center (highest growth), not dead/cutting
+  let best = null, bestG = -1;
+  vines.forEach(v=>{
+    if(!v.dead && !v.cutting && v.growth > bestG){
+      bestG = v.growth;
+      best = v;
+    }
+  });
+  return best;
+}
+
+function isInSnapWindow(vine){
+  // Sap pulse position 0..1 along vine
+  const pulsePos = (vine.sapPhase % 1);
+  // Snap window centered around ~0.85 (near tip = near center)
+  const sw = snapWindow();
+  const center = 0.82;
+  const lo = center - sw/2, hi = center + sw/2;
+  return pulsePos>=lo && pulsePos<=hi;
+}
+
+// ── Cutting logic ─────────────────────────────────────────────────────────────
+function cutVine(vine, isChain){
+  if(vine.dead || vine.cutting) return 0;
+  vine.hp--;
+  if(vine.hp>0) {
+    // Thick vine: just damage, no cut yet
+    const tipPos = segPos(vine, Math.floor(vine.growth));
+    const wo = wiggleOffset(vine, Math.floor(vine.growth), elapsed);
+    spawnParticles(tipPos.x+wo.x, tipPos.y+wo.y, 'leaf', 5, vine.hue);
+    triggerShake(3, 0.08);
+    return 1;
+  }
+  // Cut!
+  vine.cutting = true;
+  vine.cutFrom = vine.growth;
+  vine.cutAlpha = 1;
+  vine.dead = true;
+
+  // Particles
+  const tipPos = segPos(vine, Math.floor(vine.growth));
+  const wo = wiggleOffset(vine, Math.floor(vine.growth), elapsed);
+  spawnParticles(tipPos.x+wo.x, tipPos.y+wo.y, 'leaf', isChain?12:8, vine.hue);
+  if(isChain){
+    spawnParticles(tipPos.x+wo.x, tipPos.y+wo.y, 'sap', 10, vine.hue);
+    spawnParticles(tipPos.x+wo.x, tipPos.y+wo.y, 'ring', 3, vine.hue);
+  }
+
+  const segsScored = Math.floor(vine.growth);
+  let pts = segsScored;
+  triggerShake(isChain?8:4, isChain?0.18:0.1);
+
+  return pts;
+}
+
+// ── Chain reaction ────────────────────────────────────────────────────────────
+let chainQueue = [];
+let chainBonus = 0;
+
+function triggerChain(sourceVine){
+  // Find adjacent vines in nearby angles
+  chainBonus = 0;
+  chainQueue = [];
+  vines.forEach(v=>{
+    if(v===sourceVine||v.dead||v.cutting)return;
+    const angleDiff = Math.abs(((v.angle-sourceVine.angle)+Math.PI)%(Math.PI*2)-Math.PI);
+    if(angleDiff < Math.PI/2){ // within 90 deg
+      chainQueue.push({vine:v, delay:angleDiff*CHAIN_DECAY});
+    }
+  });
+  chainQueue.sort((a,b)=>a.delay-b.delay);
+  // Flash overlay
+  flashAmt = 0.7;
+  spawnParticles(CX,CY,'ring',5,sourceVine.hue);
+}
+
+function processChainQueue(dt){
+  for(let i=chainQueue.length-1;i>=0;i--){
+    chainQueue[i].delay -= dt;
+    if(chainQueue[i].delay<=0){
+      const pts = cutVine(chainQueue[i].vine, true);
+      score += pts*2; // chain multiplier
+      chainBonus += pts*2;
+      chainQueue.splice(i,1);
+    }
+  }
+}
+
+// ── Screen shake ──────────────────────────────────────────────────────────────
+function triggerShake(amt, dur){
+  shakeAmt = Math.max(shakeAmt, amt);
+  shakeDur = Math.max(shakeDur, dur);
+}
+
+// ── Main tap handler ──────────────────────────────────────────────────────────
+function handleTap(){
+  if(state==='start'){
+    startGame(); return;
+  }
+  if(state==='gameover'){
+    if(gameOverTimer>0.5){ startGame(); } return;
+  }
+  // Playing: cut nearest vine
+  const target = getNearestUrgentVine();
+  if(!target) return;
+
+  const snap = isInSnapWindow(target);
+  const pts = cutVine(target, snap);
+  score += pts;
+
+  if(snap){
+    triggerChain(target);
+    score += 5; // snap bonus
+    spawnParticles(CX,CY,'sap',15,target.hue);
+    flashAmt = 0.5;
+  }
+}
+
+// ── Game lifecycle ────────────────────────────────────────────────────────────
+function startGame(){
+  state = 'playing';
+  score = 0;
+  elapsed = 0;
+  lastTime = performance.now();
+  particles = [];
+  vines = [];
+  chainQueue = [];
+  shakeAmt = 0; shakeDur = 0;
+  flashAmt = 0;
+  lastLaneSpawn = -999;
+  gameOverTimer = 0;
+  idolPulse = 0;
+  bgHue = 110;
+  laneAngles = [0, Math.PI/2, Math.PI, 3*Math.PI/2];
+  // Spawn initial vines
+  spawnInitialVines();
+}
+
+function spawnInitialVines(){
+  const cnt = laneCount();
+  const step = (Math.PI*2)/cnt;
+  for(let i=0;i<cnt;i++){
+    const angle = step*i + rng(-0.1,0.1);
+    setTimeout(()=>{
+      if(state==='playing') vines.push(createVine(angle, difficultyLevel()));
+    }, i*400);
+  }
+}
+
+function gameOver(){
+  state = 'gameover';
+  gameOverTimer = 0;
+  if(score>bestScore){
+    bestScore=score;
+    localStorage.setItem(LS_KEY, bestScore);
+  }
+  triggerShake(18, 0.6);
+  flashAmt = 0.9;
+  spawnParticles(CX,CY,'sap',30,110);
+  spawnParticles(CX,CY,'ring',8,110);
+  spawnParticles(CX,CY,'leaf',20,110);
+}
+
+// ── Spawn manager ─────────────────────────────────────────────────────────────
+function spawnInterval(){
+  const d = difficultyLevel();
+  if(d<=1) return 4.5;
+  if(d<=2) return 3.2;
+  if(d<=3) return 2.4;
+  if(d<=4) return 1.8;
+  return 1.3;
+}
+
+function manageSpawns(dt){
+  // Remove dead vines that finished their animation
+  vines = vines.filter(v=>!v.dead||v.cutAlpha>0);
+
+  // Spawn new lane if needed
+  const now = elapsed;
+  if(now - lastLaneSpawn >= spawnInterval()){
+    lastLaneSpawn = now;
+    const cnt = laneCount();
+    const step = (Math.PI*2)/cnt;
+    const i = Math.floor(Math.random()*cnt);
+    const angle = step*i + rng(-0.2,0.2);
+    // Avoid spawning too close to existing live vine angles
+    const tooClose = vines.some(v=>!v.dead&&Math.abs(((v.angle-angle)+Math.PI)%(Math.PI*2)-Math.PI)<0.3);
+    if(!tooClose){
+      vines.push(createVine(angle, difficultyLevel()));
+    }
+  }
+
+  // Buds (30s+)
+  if(elapsed>=30){
+    vines.forEach(v=>{
+      if(v.dead)return;
+      v.budTimer -= dt;
+      if(v.budTimer<=0 && v.growth>4 && v.buds.length<2){
+        v.budTimer = rng(10,20);
+        // Spawn a branch vine at slight angle offset
+        const bAngle = v.angle + (Math.random()<0.5?1:-1)*rng(0.3,0.7);
+        const bud = createVine(bAngle, difficultyLevel());
+        bud.growth = Math.max(0, v.growth - 3); // start a bit behind
+        v.buds.push(bud.id);
+        vines.push(bud);
+      }
+    });
+  }
+}
+
+// ── Update ────────────────────────────────────────────────────────────────────
+function update(dt){
+  elapsed += dt;
+  bgHue = (110 + elapsed*1.5 + score*0.05) % 360;
+
+  // Shake decay
+  if(shakeDur>0){
+    shakeDur -= dt;
+    if(shakeDur<=0){shakeAmt=0;}
+  }
+  // Flash decay
+  flashAmt = Math.max(0, flashAmt - dt*3);
+
+  // Update vines
+  const gs = growthSpeed();
+  vines.forEach(v=>{
+    if(v.cutting){
+      v.cutAlpha -= dt*3;
+      return;
+    }
+    if(v.dead)return;
+    v.growth += gs * v.speed * dt;
+    v.sapPhase = (v.sapPhase + v.sapSpeed * dt) % 1;
+
+    // Check if reached center
+    if(vineReachedCenter(v)){
+      gameOver();
+    }
+  });
+
+  updateParticles(dt);
+  processChainQueue(dt);
+  manageSpawns(dt);
+
+  // Idol heartbeat
+  const nearest = getNearestUrgentVine();
+  const danger = nearest ? clamp(nearest.growth / MAX_SEGS, 0, 1) : 0;
+  idolPulse += dt * (1 + danger*4);
+}
+
+// ── Draw ──────────────────────────────────────────────────────────────────────
+function drawBackground(){
+  const g = ctx.createLinearGradient(0,0,W,H);
+  g.addColorStop(0,`hsl(${bgHue},30%,8%)`);
+  g.addColorStop(1,`hsl(${(bgHue+60)%360},25%,12%)`);
+  ctx.fillStyle = g;
+  ctx.fillRect(0,0,W,H);
+
+  // Subtle grid lines
+  ctx.strokeStyle = `hsla(${bgHue},40%,20%,0.15)`;
+  ctx.lineWidth = 1;
+  const step = 40;
+  for(let x=0;x<W;x+=step){
+    ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke();
+  }
+  for(let y=0;y<H;y+=step){
+    ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke();
+  }
+}
+
+function drawVines(){
+  vines.forEach(v=>{
+    if(v.cutting && v.cutAlpha<=0) return;
+    const alpha = v.cutting ? v.cutAlpha : 1;
+    const segs = Math.floor(v.growth);
+    if(segs<1) return;
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+
+    // Vine color
+    let vineColor, pulseColor;
+    if(v.type==='poison'){
+      vineColor=`hsl(270,60%,35%)`;
+      pulseColor=`hsl(290,90%,70%)`;
+    } else if(v.type==='thick'){
+      vineColor=`hsl(30,55%,30%)`;
+      pulseColor=`hsl(45,95%,65%)`;
+    } else {
+      vineColor=`hsl(${v.hue},55%,32%)`;
+      pulseColor=`hsl(${v.hue+20},90%,65%)`;
+    }
+
+    // Draw segments as connected path with wiggle
+    ctx.strokeStyle = vineColor;
+    ctx.lineWidth = v.type==='thick'?6:v.type==='poison'?4:3;
+    ctx.lineCap='round';
+    ctx.lineJoin='round';
+    ctx.shadowColor = vineColor;
+    ctx.shadowBlur = 6;
+
+    ctx.beginPath();
+    for(let i=0;i<=segs;i++){
+      const pos = segPos(v, i);
+      const wo = wiggleOffset(v, i, elapsed);
+      const px = pos.x + wo.x;
+      const py = pos.y + wo.y;
+      if(i===0) ctx.moveTo(px,py);
+      else ctx.lineTo(px,py);
+    }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // Sap pulse dot
+    if(!v.cutting){
+      const pulseT = v.sapPhase % 1; // 0=edge, 1=tip
+      const pulseIdx = pulseT * segs;
+      const pi = Math.floor(pulseIdx);
+      const pf = pulseIdx - pi;
+      if(pi < segs){
+        const posA = segPos(v, pi); const woA = wiggleOffset(v,pi,elapsed);
+        const posB = segPos(v, pi+1); const woB = wiggleOffset(v,pi+1,elapsed);
+        const px2 = lerp(posA.x+woA.x, posB.x+woB.x, pf);
+        const py2 = lerp(posA.y+woA.y, posB.y+woB.y, pf);
+
+        // Highlight snap window
+        const inSnap = isInSnapWindow(v);
+        const pulseR = inSnap ? 7 : 5;
+        const snapAlpha = inSnap ? 1 : 0.7;
+
+        ctx.globalAlpha = alpha * snapAlpha;
+        ctx.shadowColor = pulseColor;
+        ctx.shadowBlur = inSnap ? 18 : 8;
+        ctx.beginPath();
+        ctx.arc(px2,py2,pulseR,0,Math.PI*2);
+        ctx.fillStyle = pulseColor;
+        ctx.fill();
+        ctx.shadowBlur=0;
+
+        // Snap window ring
+        if(inSnap){
+          ctx.globalAlpha = alpha*0.5;
+          ctx.strokeStyle = pulseColor;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(px2,py2,12+Math.sin(elapsed*10)*3,0,Math.PI*2);
+          ctx.stroke();
+        }
+      }
+    }
+
+    // HP indicator for thick vines
+    if(v.type==='thick' && v.hp>1){
+      const tipPos = segPos(v, segs);
+      const wo = wiggleOffset(v,segs,elapsed);
+      ctx.globalAlpha=alpha*0.9;
+      ctx.fillStyle='#ff9900';
+      ctx.font='bold 10px sans-serif';
+      ctx.textAlign='center';
+      ctx.fillText('x'+v.hp, tipPos.x+wo.x, tipPos.y+wo.y-10);
+    }
+
+    ctx.restore();
+  });
+}
+
+function drawRingSaw(){
+  // The ring-saw at center, targeting nearest vine
+  const target = getNearestUrgentVine();
+  const sawR = IDOL_R + 14;
+  const spin = elapsed * 3.5;
+
+  ctx.save();
+  ctx.translate(CX,CY);
+
+  // Glow
+  const sawGlow = ctx.createRadialGradient(0,0,IDOL_R,0,0,sawR+10);
+  sawGlow.addColorStop(0,'rgba(180,255,100,0.15)');
+  sawGlow.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=sawGlow;
+  ctx.beginPath();
+  ctx.arc(0,0,sawR+10,0,Math.PI*2);
+  ctx.fill();
+
+  // Ring
+  ctx.strokeStyle=`hsl(80,80%,55%)`;
+  ctx.lineWidth=2.5;
+  ctx.shadowColor='rgba(120,255,0,0.6)';
+  ctx.shadowBlur=10;
+  ctx.beginPath();
+  ctx.arc(0,0,sawR,0,Math.PI*2);
+  ctx.stroke();
+  ctx.shadowBlur=0;
+
+  // Teeth
+  const teeth=12;
+  ctx.strokeStyle='rgba(180,255,80,0.8)';
+  ctx.lineWidth=2;
+  for(let i=0;i<teeth;i++){
+    const a=spin+(Math.PI*2/teeth)*i;
+    const r1=sawR-4, r2=sawR+5;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(a)*r1,Math.sin(a)*r1);
+    ctx.lineTo(Math.cos(a)*r2,Math.sin(a)*r2);
+    ctx.stroke();
+  }
+
+  // Targeting line to nearest vine
+  if(target){
+    const tipPos = segPos(target, Math.floor(target.growth));
+    const wo = wiggleOffset(target, Math.floor(target.growth), elapsed);
+    const tx = tipPos.x+wo.x-CX, ty = tipPos.y+wo.y-CY;
+    const tDist = Math.hypot(tx,ty);
+    const nx = tx/tDist, ny = ty/tDist;
+    const lineEnd = sawR+2;
+    ctx.strokeStyle=`hsla(80,90%,60%,${0.3+Math.sin(elapsed*6)*0.2})`;
+    ctx.lineWidth=1;
+    ctx.setLineDash([4,6]);
+    ctx.beginPath();
+    ctx.moveTo(nx*lineEnd,ny*lineEnd);
+    ctx.lineTo(tx,ty);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  ctx.restore();
+}
+
+function drawIdol(){
+  const nearest = getNearestUrgentVine();
+  const danger = nearest ? clamp(nearest.growth / MAX_SEGS, 0, 1) : 0;
+  const beat = 0.92 + Math.abs(Math.sin(idolPulse*(1+danger*3)))*0.18*(1+danger);
+
+  ctx.save();
+  ctx.translate(CX,CY);
+  ctx.scale(beat,beat);
+
+  // Outer glow
+  const glow = ctx.createRadialGradient(0,0,IDOL_R*0.5,0,0,IDOL_R*2.5);
+  const glowColor = danger>0.6 ? `hsla(0,80%,50%,${danger*0.4})` : `hsla(${bgHue},60%,50%,0.15)`;
+  glow.addColorStop(0, glowColor);
+  glow.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=glow;
+  ctx.beginPath();
+  ctx.arc(0,0,IDOL_R*2.5,0,Math.PI*2);
+  ctx.fill();
+
+  // Body
+  const idolG = ctx.createRadialGradient(-4,-4,2,0,0,IDOL_R);
+  idolG.addColorStop(0,'#d4a843');
+  idolG.addColorStop(0.6,'#8b6914');
+  idolG.addColorStop(1,'#4a3208');
+  ctx.fillStyle=idolG;
+  ctx.shadowColor = danger>0.5?'rgba(255,50,50,0.8)':'rgba(255,180,0,0.5)';
+  ctx.shadowBlur = 15;
+  ctx.beginPath();
+  ctx.arc(0,0,IDOL_R,0,Math.PI*2);
+  ctx.fill();
+  ctx.shadowBlur=0;
+
+  // Idol face details
+  ctx.fillStyle='rgba(0,0,0,0.4)';
+  // Eyes
+  ctx.beginPath();
+  ctx.ellipse(-7,-5,3,4,0,0,Math.PI*2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(7,-5,3,4,0,0,Math.PI*2);
+  ctx.fill();
+  // Eye glow
+  const eyeColor = danger>0.5?'#ff4400':'#ffcc00';
+  ctx.fillStyle=eyeColor;
+  ctx.shadowColor=eyeColor; ctx.shadowBlur=8;
+  ctx.beginPath();
+  ctx.arc(-7,-5,1.5,0,Math.PI*2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(7,-5,1.5,0,Math.PI*2);
+  ctx.fill();
+  ctx.shadowBlur=0;
+  // Mouth
+  ctx.strokeStyle='rgba(0,0,0,0.5)';
+  ctx.lineWidth=2;
+  ctx.lineCap='round';
+  ctx.beginPath();
+  if(danger>0.6){
+    // Worried mouth
+    ctx.arc(0,6,5,Math.PI*0.1,Math.PI*0.9);
+  } else {
+    ctx.arc(0,3,5,0.1,Math.PI-0.1);
+  }
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function drawHUD(){
+  // Score
+  ctx.save();
+  ctx.font='bold 28px sans-serif';
+  ctx.fillStyle='rgba(255,255,255,0.95)';
+  ctx.textAlign='center';
+  ctx.shadowColor='rgba(0,0,0,0.5)';
+  ctx.shadowBlur=6;
+  ctx.fillText(score, CX, 44);
+  ctx.shadowBlur=0;
+
+  // Best
+  ctx.font='13px sans-serif';
+  ctx.fillStyle='rgba(255,255,255,0.5)';
+  ctx.fillText('BEST ' + bestScore, CX, 62);
+
+  // Elapsed
+  ctx.textAlign='left';
+  ctx.font='11px sans-serif';
+  ctx.fillStyle='rgba(255,255,255,0.3)';
+  ctx.fillText(Math.floor(elapsed)+'s', 12, H-12);
+
+  // Difficulty label
+  const d=difficultyLevel();
+  const labels=['','EASY','MEDIUM','HARD','INTENSE','DANGER'];
+  const dlabel=labels[d]||'DANGER';
+  const dcolors=['','#4caf50','#ffeb3b','#ff9800','#f44336','#9c27b0'];
+  ctx.textAlign='right';
+  ctx.fillStyle=dcolors[d]||'#9c27b0';
+  ctx.font='bold 11px sans-serif';
+  ctx.fillText(dlabel, W-12, H-12);
+
+  ctx.restore();
+}
+
+function drawFlash(){
+  if(flashAmt<=0)return;
+  ctx.save();
+  ctx.globalAlpha=flashAmt*0.4;
+  ctx.fillStyle=`hsl(${bgHue+30},80%,60%)`;
+  ctx.fillRect(0,0,W,H);
+  ctx.restore();
+}
+
+function drawVignette(){
+  const nearest = getNearestUrgentVine();
+  const danger = nearest ? clamp(nearest.growth / MAX_SEGS, 0, 1) : 0;
+  if(danger<0.3)return;
+  const alpha = (danger-0.3)/0.7*0.4;
+  const g=ctx.createRadialGradient(CX,CY,H*0.2,CX,CY,H*0.7);
+  g.addColorStop(0,'rgba(0,0,0,0)');
+  g.addColorStop(1,`rgba(200,0,0,${alpha})`);
+  ctx.save();
+  ctx.globalAlpha=1;
+  ctx.fillStyle=g;
+  ctx.fillRect(0,0,W,H);
+  ctx.restore();
+}
+
+function drawStartScreen(){
+  // Background
+  drawBackground();
+
+  // Title
+  ctx.save();
+  ctx.textAlign='center';
+
+  // Big title
+  ctx.font='bold 52px sans-serif';
+  const titleGrad = ctx.createLinearGradient(CX-150,CY-80,CX+150,CY-40);
+  titleGrad.addColorStop(0,'#7fff00');
+  titleGrad.addColorStop(0.5,'#aaff55');
+  titleGrad.addColorStop(1,'#55cc00');
+  ctx.fillStyle=titleGrad;
+  ctx.shadowColor='rgba(0,200,0,0.5)';
+  ctx.shadowBlur=20;
+  ctx.fillText('JUNGLE', CX, CY-60);
+  ctx.fillText('BURST', CX, CY-5);
+  ctx.shadowBlur=0;
+
+  // Subtitle
+  ctx.font='16px sans-serif';
+  ctx.fillStyle='rgba(180,255,120,0.8)';
+  ctx.fillText('VINE SNAP SURVIVAL', CX, CY+30);
+
+  // Instructions
+  ctx.font='14px sans-serif';
+  ctx.fillStyle='rgba(255,255,255,0.6)';
+  ctx.fillText('Protect the idol from the vines', CX, CY+80);
+  ctx.fillText('Tap when the sap pulse glows', CX, CY+100);
+  ctx.fillText('for a chain SNAP!', CX, CY+120);
+
+  // Tap to start
+  const pulse = 0.7 + Math.sin(performance.now()/400)*0.3;
+  ctx.globalAlpha = pulse;
+  ctx.font='bold 20px sans-serif';
+  ctx.fillStyle='#ffffff';
+  ctx.fillText('TAP TO START', CX, CY+190);
+  ctx.globalAlpha=1;
+
+  // Best score
+  if(bestScore>0){
+    ctx.font='13px sans-serif';
+    ctx.fillStyle='rgba(255,220,80,0.7)';
+    ctx.fillText('BEST: '+bestScore, CX, CY+220);
+  }
+
+  ctx.restore();
+}
+
+function drawGameOverScreen(){
+  // Dim overlay
+  ctx.save();
+  ctx.fillStyle='rgba(0,0,0,0.7)';
+  ctx.fillRect(0,0,W,H);
+
+  ctx.textAlign='center';
+
+  // Game Over text
+  ctx.font='bold 44px sans-serif';
+  ctx.fillStyle='#ff4444';
+  ctx.shadowColor='rgba(255,0,0,0.6)';
+  ctx.shadowBlur=20;
+  ctx.fillText('GAME OVER', CX, CY-80);
+  ctx.shadowBlur=0;
+
+  // Score
+  ctx.font='bold 56px sans-serif';
+  ctx.fillStyle='#ffffff';
+  ctx.fillText(score, CX, CY-10);
+
+  ctx.font='16px sans-serif';
+  ctx.fillStyle='rgba(255,255,255,0.6)';
+  ctx.fillText('SCORE', CX, CY+18);
+
+  // Best
+  if(score>=bestScore && score>0){
+    ctx.font='bold 16px sans-serif';
+    ctx.fillStyle='#ffcc00';
+    ctx.shadowColor='rgba(255,200,0,0.5)';
+    ctx.shadowBlur=10;
+    ctx.fillText('NEW BEST!', CX, CY+50);
+    ctx.shadowBlur=0;
+  } else {
+    ctx.font='14px sans-serif';
+    ctx.fillStyle='rgba(255,220,80,0.7)';
+    ctx.fillText('BEST: '+bestScore, CX, CY+50);
+  }
+
+  // Tap to retry
+  if(gameOverTimer>0.5){
+    const pulse = 0.7+Math.sin(performance.now()/400)*0.3;
+    ctx.globalAlpha=pulse;
+    ctx.font='bold 20px sans-serif';
+    ctx.fillStyle='#ffffff';
+    ctx.fillText('TAP TO RETRY', CX, CY+120);
+    ctx.globalAlpha=1;
+  }
+
+  ctx.restore();
+}
+
+// ── Main loop ─────────────────────────────────────────────────────────────────
+function frame(now){
+  requestAnimationFrame(frame);
+
+  const dt = Math.min((now - lastTime)/1000, 0.05);
+  lastTime = now;
+
+  if(state==='playing'){
+    update(dt);
+  } else if(state==='gameover'){
+    gameOverTimer += dt;
+    shakeAmt = Math.max(0, shakeAmt - dt*30);
+    flashAmt = Math.max(0, flashAmt - dt*2);
+    updateParticles(dt);
+  }
+
+  // Apply shake transform
+  const sk = shakeOffset();
+  ctx.save();
+  ctx.translate(sk.x, sk.y);
+
+  if(state==='start'){
+    drawStartScreen();
+  } else if(state==='playing'){
+    drawBackground();
+    drawVignette();
+    drawVines();
+    drawRingSaw();
+    drawIdol();
+    drawParticles();
+    drawFlash();
+    drawHUD();
+  } else if(state==='gameover'){
+    drawBackground();
+    drawVines();
+    drawIdol();
+    drawParticles();
+    drawFlash();
+    drawGameOverScreen();
+  }
+
+  ctx.restore();
+}
+
+// ── Input ─────────────────────────────────────────────────────────────────────
+canvas.addEventListener('pointerdown', e=>{
+  e.preventDefault();
+  handleTap();
+});
+
+window.addEventListener('keydown', e=>{
+  if(e.code==='Space'||e.code==='Enter'){
+    e.preventDefault();
+    handleTap();
+  }
+});
+
+// Prevent context menu on long press (mobile)
+canvas.addEventListener('contextmenu', e=>e.preventDefault());
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+lastTime = performance.now();
+requestAnimationFrame(frame);
+
+})();
+</script>
+</body>
+</html>

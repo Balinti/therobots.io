@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Ash Pile - Free HTML5 Game</title>
+<meta name="description" content="Play Ash Pile - Stack layers of volcanic ash while avoiding increasing falling debris hazards.">
+<meta name="theme-color" content="#1a1a2e">
+<link rel="canonical" href="https://balinti.github.io/ash-pile/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Ash Pile - Free HTML5 Game">
+<meta property="og:description" content="Play Ash Pile - Stack layers of volcanic ash while avoiding increasing falling debris hazards.">
+<meta property="og:url" content="https://balinti.github.io/ash-pile/">
+<meta property="og:image" content="https://balinti.github.io/ash-pile/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Ash Pile - Free HTML5 Game">
+<meta name="twitter:description" content="Play Ash Pile - Stack layers of volcanic ash while avoiding increasing falling debris hazards.">
+<meta name="twitter:image" content="https://balinti.github.io/ash-pile/og-image.png">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#0d0d1a;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;touch-action:none;user-select:none;-webkit-user-select:none}
+#game-container{position:relative;width:100%;max-width:420px;height:100vh;max-height:750px;margin:0 auto;overflow:hidden;background:linear-gradient(180deg,#0d0d1a 0%,#1a1a2e 40%,#2d1b3d 100%)}
+canvas{display:block;width:100%;height:100%}
+#hud{position:absolute;top:0;left:0;right:0;padding:12px 16px;display:flex;justify-content:space-between;align-items:flex-start;pointer-events:none;z-index:10}
+.hud-left,.hud-right{display:flex;flex-direction:column;gap:4px}
+.hud-right{align-items:flex-end}
+.hud-label{font-size:10px;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:1px}
+.hud-value{font-size:22px;font-weight:700;color:#fff;text-shadow:0 2px 8px rgba(0,0,0,0.5)}
+.hud-small{font-size:13px;font-weight:600;color:rgba(255,255,255,0.7)}
+#heat-bar{width:80px;height:6px;background:rgba(255,255,255,0.1);border-radius:3px;overflow:hidden;margin-top:2px}
+#heat-fill{width:0%;height:100%;background:linear-gradient(90deg,#ff6b35,#ff3535);border-radius:3px;transition:width 0.2s}
+#shield-display{font-size:13px;color:#7df9ff;font-weight:600}
+#overlay{position:absolute;top:0;left:0;right:0;bottom:0;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:20;pointer-events:auto}
+.overlay-card{background:rgba(13,13,26,0.92);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:36px 32px;text-align:center;max-width:300px;width:85%;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+.overlay-card h1{font-size:32px;font-weight:800;color:#fff;margin-bottom:4px;letter-spacing:-0.5px}
+.overlay-card .subtitle{font-size:13px;color:#ff6b35;margin-bottom:20px;font-weight:600;letter-spacing:2px;text-transform:uppercase}
+.overlay-card .score-line{font-size:18px;color:rgba(255,255,255,0.8);margin-bottom:6px}
+.overlay-card .score-line span{color:#fff;font-weight:700}
+.overlay-card .hint{font-size:12px;color:rgba(255,255,255,0.35);margin-top:18px;animation:pulse-hint 2s ease-in-out infinite}
+@keyframes pulse-hint{0%,100%{opacity:0.35}50%{opacity:0.7}}
+.hidden{display:none !important}
+</style>
+</head>
+<body>
+<div id="game-container">
+  <canvas id="gameCanvas"></canvas>
+  <div id="hud" class="hidden">
+    <div class="hud-left">
+      <div class="hud-label">Score</div>
+      <div class="hud-value" id="score-display">0</div>
+      <div class="hud-small" id="multiplier-display">x1.0</div>
+    </div>
+    <div class="hud-right">
+      <div class="hud-label">Best</div>
+      <div class="hud-small" id="best-display">0</div>
+      <div id="heat-bar"><div id="heat-fill"></div></div>
+      <div id="shield-display"></div>
+    </div>
+  </div>
+  <div id="overlay">
+    <div class="overlay-card" id="start-card">
+      <h1>Ash Pile</h1>
+      <div class="subtitle">Temper Tap</div>
+      <p style="color:rgba(255,255,255,0.6);font-size:13px;line-height:1.5;margin-bottom:8px">Stack slabs with precision. Perfect drops build Heat and earn shields. Survive the Cinder Waves.</p>
+      <div class="hint">Tap anywhere or press Space / Enter</div>
+    </div>
+    <div class="overlay-card hidden" id="gameover-card">
+      <h1 style="font-size:24px">Tower Collapsed</h1>
+      <div class="score-line">Score: <span id="final-score">0</span></div>
+      <div class="score-line">Best: <span id="final-best">0</span></div>
+      <div class="score-line" id="final-height-line">Height: <span id="final-height">0</span></div>
+      <div class="hint">Tap anywhere or press Space / Enter</div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const container = document.getElementById('game-container');
+const hud = document.getElementById('hud');
+const overlay = document.getElementById('overlay');
+const startCard = document.getElementById('start-card');
+const gameoverCard = document.getElementById('gameover-card');
+const scoreDisplay = document.getElementById('score-display');
+const bestDisplay = document.getElementById('best-display');
+const multiplierDisplay = document.getElementById('multiplier-display');
+const heatFill = document.getElementById('heat-fill');
+const shieldDisplay = document.getElementById('shield-display');
+const finalScore = document.getElementById('final-score');
+const finalBest = document.getElementById('final-best');
+const finalHeight = document.getElementById('final-height');
+
+// Canvas sizing
+let W, H, dpr;
+function resize() {
+  const rect = container.getBoundingClientRect();
+  dpr = Math.min(window.devicePixelRatio || 1, 3);
+  W = rect.width;
+  H = rect.height;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+// Constants
+const SLAB_HEIGHT = 18;
+const BASE_SPEED = 120;
+const BASE_WIDTH = W * 0.55;
+const MIN_SLAB_WIDTH = 14;
+const PERFECT_BASE = 0.18;
+const PERFECT_MIN = 0.06;
+const GRAVITY = 800;
+const WAVE_START_INTERVAL = 12;
+const WAVE_MIN_INTERVAL = 7;
+const WAVE_TRIM_FACTOR = 0.82;
+const SHIELD_CAP = 2;
+const PERFECTS_FOR_SHIELD = 3;
+const LS_KEY = 'ashpile_best';
+
+// State
+let state = 'start'; // start, playing, gameover
+let score, bestScore, heat, shields, perfectStreak;
+let stack, movingSlab, fallingPieces, particles;
+let cameraY, targetCameraY;
+let slabCount, waveCounter, waveInterval;
+let waveActive, waveTelegraph, waveTimer;
+let shakeX, shakeY, shakeDecay;
+let gameoverTimer;
+
+bestScore = parseInt(localStorage.getItem(LS_KEY)) || 0;
+
+function initGame() {
+  score = 0;
+  heat = 0;
+  shields = 0;
+  perfectStreak = 0;
+  slabCount = 0;
+  waveCounter = 0;
+  waveInterval = WAVE_START_INTERVAL;
+  waveActive = false;
+  waveTelegraph = 0;
+  waveTimer = 0;
+  shakeX = 0;
+  shakeY = 0;
+  shakeDecay = 0;
+  gameoverTimer = 0;
+  fallingPieces = [];
+  particles = [];
+  cameraY = 0;
+  targetCameraY = 0;
+
+  const baseW = Math.min(BASE_WIDTH, W * 0.55);
+  stack = [{
+    x: W / 2 - baseW / 2,
+    y: H - SLAB_HEIGHT - 20,
+    w: baseW,
+    h: SLAB_HEIGHT,
+    hue: 20
+  }];
+
+  spawnMovingSlab();
+}
+
+function spawnMovingSlab() {
+  const top = stack[stack.length - 1];
+  const speed = BASE_SPEED + slabCount * 3.5;
+  const dir = slabCount % 2 === 0 ? 1 : -1;
+  const startX = dir === 1 ? -top.w : W;
+  const hue = (20 + slabCount * 8) % 360;
+  movingSlab = {
+    x: startX,
+    y: top.y - SLAB_HEIGHT,
+    w: top.w,
+    h: SLAB_HEIGHT,
+    speed: speed * dir,
+    hue: hue
+  };
+}
+
+function getPerfectZone() {
+  const top = stack[stack.length - 1];
+  const ratio = Math.max(PERFECT_MIN, PERFECT_BASE - slabCount * 0.003);
+  const zoneW = top.w * ratio;
+  const center = top.x + top.w / 2;
+  return { left: center - zoneW / 2, right: center + zoneW / 2, w: zoneW };
+}
+
+function dropSlab() {
+  if (!movingSlab) return;
+  const top = stack[stack.length - 1];
+  const ms = movingSlab;
+
+  // Calculate overlap
+  const overlapLeft = Math.max(ms.x, top.x);
+  const overlapRight = Math.min(ms.x + ms.w, top.x + top.w);
+  const overlapW = overlapRight - overlapLeft;
+
+  if (overlapW <= 0) {
+    // Missed entirely
+    fallingPieces.push({ x: ms.x, y: ms.y, w: ms.w, h: ms.h, vy: 0, hue: ms.hue });
+    triggerGameOver();
+    return;
+  }
+
+  // Place trimmed slab
+  const placed = {
+    x: overlapLeft,
+    y: ms.y,
+    w: overlapW,
+    h: SLAB_HEIGHT,
+    hue: ms.hue
+  };
+
+  // Falling trimmed piece
+  const trimLeft = ms.x < top.x ? top.x - ms.x : 0;
+  const trimRight = (ms.x + ms.w) > (top.x + top.w) ? (ms.x + ms.w) - (top.x + top.w) : 0;
+
+  if (trimLeft > 1) {
+    fallingPieces.push({ x: ms.x, y: ms.y, w: trimLeft, h: SLAB_HEIGHT, vy: 0, hue: ms.hue });
+    spawnDustParticles(ms.x + trimLeft, ms.y + SLAB_HEIGHT, 6);
+  }
+  if (trimRight > 1) {
+    fallingPieces.push({ x: top.x + top.w, y: ms.y, w: trimRight, h: SLAB_HEIGHT, vy: 0, hue: ms.hue });
+    spawnDustParticles(top.x + top.w, ms.y + SLAB_HEIGHT, 6);
+  }
+
+  // Check perfect
+  const pz = getPerfectZone();
+  const slabCenter = placed.x + placed.w / 2;
+  const isPerfect = slabCenter >= pz.left && slabCenter <= pz.right && (trimLeft + trimRight) < placed.w * 0.08;
+
+  if (isPerfect) {
+    // Snap to top slab width/position for perfect
+    placed.x = top.x;
+    placed.w = top.w;
+    heat = Math.min(1, heat + 0.15);
+    perfectStreak++;
+    if (perfectStreak % PERFECTS_FOR_SHIELD === 0 && shields < SHIELD_CAP) {
+      shields++;
+    }
+    spawnPerfectParticles(placed.x + placed.w / 2, placed.y);
+    addShake(2);
+  } else {
+    heat = Math.max(0, heat - 0.08);
+    perfectStreak = 0;
+    addShake(1.5);
+  }
+
+  stack.push(placed);
+  slabCount++;
+
+  // Score
+  const multiplier = 1 + heat * 3;
+  const pts = Math.round(10 * multiplier);
+  score += pts;
+
+  // Check too thin
+  if (placed.w < MIN_SLAB_WIDTH) {
+    triggerGameOver();
+    return;
+  }
+
+  // Cinder wave check
+  waveCounter++;
+  waveInterval = Math.max(WAVE_MIN_INTERVAL, WAVE_START_INTERVAL - Math.floor(slabCount / 8));
+  if (waveCounter >= waveInterval) {
+    waveCounter = 0;
+    triggerCinderWave();
+  }
+
+  // Camera
+  targetCameraY = Math.max(0, (stack.length - 1) * SLAB_HEIGHT - H * 0.55);
+
+  movingSlab = null;
+  setTimeout(() => {
+    if (state === 'playing') spawnMovingSlab();
+  }, 80);
+
+  updateHUD();
+}
+
+function triggerCinderWave() {
+  waveTelegraph = 1.0;
+  waveTimer = 0.8;
+  waveActive = true;
+}
+
+function applyCinderWave() {
+  const top = stack[stack.length - 1];
+  if (shields > 0) {
+    shields--;
+    spawnShieldParticles(top.x + top.w / 2, top.y);
+    addShake(3);
+  } else {
+    const newW = top.w * WAVE_TRIM_FACTOR;
+    const diff = top.w - newW;
+    top.x += diff / 2;
+    top.w = newW;
+    spawnCinderParticles(top.x + top.w / 2, top.y);
+    addShake(5);
+    if (top.w < MIN_SLAB_WIDTH) {
+      triggerGameOver();
+    }
+  }
+  if (movingSlab) {
+    movingSlab.w = stack[stack.length - 1].w;
+  }
+  updateHUD();
+}
+
+function triggerGameOver() {
+  state = 'gameover';
+  movingSlab = null;
+  addShake(10);
+  if (score > bestScore) {
+    bestScore = score;
+    localStorage.setItem(LS_KEY, bestScore);
+  }
+  finalScore.textContent = score;
+  finalBest.textContent = bestScore;
+  finalHeight.textContent = slabCount;
+  gameoverTimer = 0.6;
+  spawnGameOverParticles();
+}
+
+function addShake(intensity) {
+  shakeDecay = Math.max(shakeDecay, intensity);
+}
+
+// Particles
+function spawnDustParticles(x, y, count) {
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x, y,
+      vx: (Math.random() - 0.5) * 80,
+      vy: -Math.random() * 60 - 20,
+      life: 0.6 + Math.random() * 0.4,
+      maxLife: 0.6 + Math.random() * 0.4,
+      size: 2 + Math.random() * 3,
+      hue: 30,
+      type: 'dust'
+    });
+  }
+}
+
+function spawnPerfectParticles(x, y) {
+  for (let i = 0; i < 16; i++) {
+    const a = (Math.PI * 2 / 16) * i;
+    particles.push({
+      x, y,
+      vx: Math.cos(a) * (60 + Math.random() * 40),
+      vy: Math.sin(a) * (60 + Math.random() * 40),
+      life: 0.7 + Math.random() * 0.3,
+      maxLife: 0.7 + Math.random() * 0.3,
+      size: 2 + Math.random() * 2,
+      hue: 45,
+      type: 'perfect'
+    });
+  }
+}
+
+function spawnShieldParticles(x, y) {
+  for (let i = 0; i < 20; i++) {
+    const a = (Math.PI * 2 / 20) * i;
+    particles.push({
+      x, y,
+      vx: Math.cos(a) * (80 + Math.random() * 50),
+      vy: Math.sin(a) * (80 + Math.random() * 50),
+      life: 0.8,
+      maxLife: 0.8,
+      size: 3 + Math.random() * 2,
+      hue: 190,
+      type: 'shield'
+    });
+  }
+}
+
+function spawnCinderParticles(x, y) {
+  for (let i = 0; i < 24; i++) {
+    particles.push({
+      x: x + (Math.random() - 0.5) * 100,
+      y: y + (Math.random() - 0.5) * 10,
+      vx: (Math.random() - 0.5) * 120,
+      vy: -Math.random() * 100 - 30,
+      life: 0.8 + Math.random() * 0.4,
+      maxLife: 0.8 + Math.random() * 0.4,
+      size: 2 + Math.random() * 4,
+      hue: 10,
+      type: 'cinder'
+    });
+  }
+}
+
+function spawnGameOverParticles() {
+  const top = stack[stack.length - 1];
+  if (!top) return;
+  const cx = top.x + top.w / 2;
+  const cy = top.y;
+  for (let i = 0; i < 40; i++) {
+    particles.push({
+      x: cx + (Math.random() - 0.5) * top.w,
+      y: cy,
+      vx: (Math.random() - 0.5) * 200,
+      vy: -Math.random() * 150 - 50,
+      life: 1.0 + Math.random() * 0.5,
+      maxLife: 1.0 + Math.random() * 0.5,
+      size: 3 + Math.random() * 4,
+      hue: 0,
+      type: 'dust'
+    });
+  }
+}
+
+function updateHUD() {
+  scoreDisplay.textContent = score;
+  bestDisplay.textContent = bestScore;
+  const mult = (1 + heat * 3).toFixed(1);
+  multiplierDisplay.textContent = 'x' + mult;
+  heatFill.style.width = (heat * 100) + '%';
+  if (shields > 0) {
+    let s = '';
+    for (let i = 0; i < shields; i++) s += '\u25C6';
+    shieldDisplay.textContent = s + ' Shield';
+    shieldDisplay.style.display = '';
+  } else {
+    shieldDisplay.style.display = 'none';
+  }
+}
+
+// Game loop
+let lastTime = 0;
+function loop(ts) {
+  requestAnimationFrame(loop);
+  const dt = Math.min((ts - lastTime) / 1000, 0.05);
+  lastTime = ts;
+
+  resize();
+  update(dt);
+  draw();
+}
+
+function update(dt) {
+  // Heat decay
+  if (state === 'playing') {
+    heat = Math.max(0, heat - dt * 0.02);
+  }
+
+  // Moving slab
+  if (movingSlab && state === 'playing') {
+    movingSlab.x += movingSlab.speed * dt;
+    // Bounce
+    if (movingSlab.speed > 0 && movingSlab.x + movingSlab.w > W) {
+      movingSlab.x = W - movingSlab.w;
+      movingSlab.speed *= -1;
+    } else if (movingSlab.speed < 0 && movingSlab.x < 0) {
+      movingSlab.x = 0;
+      movingSlab.speed *= -1;
+    }
+  }
+
+  // Falling pieces
+  for (let i = fallingPieces.length - 1; i >= 0; i--) {
+    const p = fallingPieces[i];
+    p.vy += GRAVITY * dt;
+    p.y += p.vy * dt;
+    if (p.y > H + cameraY + 100) {
+      fallingPieces.splice(i, 1);
+    }
+  }
+
+  // Particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy += 120 * dt;
+    p.life -= dt;
+    if (p.life <= 0) {
+      particles.splice(i, 1);
+    }
+  }
+
+  // Camera smooth follow
+  cameraY += (targetCameraY - cameraY) * Math.min(1, dt * 5);
+
+  // Shake decay
+  if (shakeDecay > 0) {
+    shakeX = (Math.random() - 0.5) * shakeDecay * 2;
+    shakeY = (Math.random() - 0.5) * shakeDecay * 2;
+    shakeDecay *= Math.pow(0.05, dt);
+    if (shakeDecay < 0.1) { shakeDecay = 0; shakeX = 0; shakeY = 0; }
+  }
+
+  // Cinder wave
+  if (waveActive) {
+    waveTelegraph = Math.max(0, waveTelegraph - dt * 1.2);
+    waveTimer -= dt;
+    if (waveTimer <= 0) {
+      waveActive = false;
+      waveTelegraph = 0;
+      applyCinderWave();
+    }
+  }
+
+  // Gameover delay
+  if (state === 'gameover' && gameoverTimer > 0) {
+    gameoverTimer -= dt;
+    if (gameoverTimer <= 0) {
+      overlay.classList.remove('hidden');
+      gameoverCard.classList.remove('hidden');
+      startCard.classList.add('hidden');
+    }
+  }
+
+  updateHUD();
+}
+
+function draw() {
+  ctx.save();
+  ctx.clearRect(0, 0, W, H);
+
+  // Background gradient
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, '#0d0d1a');
+  grad.addColorStop(0.5, '#1a1a2e');
+  grad.addColorStop(1, '#2d1b3d');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Cinder wave telegraph glow
+  if (waveTelegraph > 0) {
+    ctx.save();
+    ctx.globalAlpha = waveTelegraph * 0.25;
+    ctx.fillStyle = '#ff3500';
+    ctx.fillRect(0, 0, W, H);
+    // Sweep line
+    const sweepX = (1 - waveTelegraph) * W;
+    const sweepGrad = ctx.createLinearGradient(sweepX - 40, 0, sweepX + 40, 0);
+    sweepGrad.addColorStop(0, 'rgba(255,100,0,0)');
+    sweepGrad.addColorStop(0.5, 'rgba(255,200,50,0.6)');
+    sweepGrad.addColorStop(1, 'rgba(255,100,0,0)');
+    ctx.globalAlpha = waveTelegraph;
+    ctx.fillStyle = sweepGrad;
+    ctx.fillRect(sweepX - 40, 0, 80, H);
+    ctx.restore();
+  }
+
+  // Apply shake + camera
+  ctx.translate(shakeX, shakeY - cameraY);
+
+  // Draw stack
+  for (let i = 0; i < stack.length; i++) {
+    const s = stack[i];
+    drawSlab(s.x, s.y, s.w, s.h, s.hue, i === 0);
+  }
+
+  // Perfect zone indicator on top slab
+  if (state === 'playing' && stack.length > 0) {
+    const top = stack[stack.length - 1];
+    const pz = getPerfectZone();
+    ctx.save();
+    ctx.globalAlpha = 0.3 + heat * 0.3;
+    ctx.fillStyle = `hsl(45, 100%, 65%)`;
+    ctx.fillRect(pz.left, top.y, pz.w, top.h);
+    ctx.restore();
+  }
+
+  // Moving slab
+  if (movingSlab) {
+    drawSlab(movingSlab.x, movingSlab.y, movingSlab.w, movingSlab.h, movingSlab.hue, false);
+    // Shadow/guide lines
+    ctx.save();
+    ctx.globalAlpha = 0.12;
+    ctx.strokeStyle = '#fff';
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(movingSlab.x, movingSlab.y + movingSlab.h);
+    ctx.lineTo(movingSlab.x, H + cameraY);
+    ctx.moveTo(movingSlab.x + movingSlab.w, movingSlab.y + movingSlab.h);
+    ctx.lineTo(movingSlab.x + movingSlab.w, H + cameraY);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Falling pieces
+  for (const fp of fallingPieces) {
+    ctx.save();
+    ctx.globalAlpha = 0.7;
+    drawSlab(fp.x, fp.y, fp.w, fp.h, fp.hue, false);
+    ctx.restore();
+  }
+
+  // Particles
+  for (const p of particles) {
+    const alpha = Math.max(0, p.life / p.maxLife);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    if (p.type === 'perfect') {
+      ctx.fillStyle = `hsl(${p.hue}, 100%, 70%)`;
+    } else if (p.type === 'shield') {
+      ctx.fillStyle = `hsl(${p.hue}, 80%, 60%)`;
+    } else if (p.type === 'cinder') {
+      ctx.fillStyle = `hsl(${p.hue}, 90%, 55%)`;
+    } else {
+      ctx.fillStyle = `hsl(${p.hue}, 30%, 60%)`;
+    }
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size * alpha, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Shield indicator on tower
+  if (shields > 0 && stack.length > 0) {
+    const top = stack[stack.length - 1];
+    ctx.save();
+    ctx.strokeStyle = `rgba(125, 249, 255, ${0.3 + Math.sin(Date.now() / 300) * 0.15})`;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 3]);
+    ctx.strokeRect(top.x - 2, top.y - 2, top.w + 4, top.h + 4);
+    ctx.restore();
+  }
+
+  ctx.restore();
+}
+
+function drawSlab(x, y, w, h, hue, isBase) {
+  // Base color: dark basalt with heat-based lava tint on edges
+  const lightness = isBase ? 22 : 18 + heat * 8;
+  const sat = 10 + heat * 40;
+  ctx.fillStyle = `hsl(${hue}, ${sat}%, ${lightness}%)`;
+  ctx.fillRect(x, y, w, h);
+
+  // Top highlight
+  ctx.fillStyle = `hsla(${hue}, ${sat + 10}%, ${lightness + 12}%, 0.5)`;
+  ctx.fillRect(x, y, w, 3);
+
+  // Lava edge glow based on heat
+  if (heat > 0.1) {
+    const edgeAlpha = heat * 0.6;
+    ctx.save();
+    ctx.globalAlpha = edgeAlpha;
+    ctx.strokeStyle = `hsl(${15 + heat * 20}, 100%, 50%)`;
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    ctx.restore();
+  }
+
+  // Outline
+  ctx.strokeStyle = `hsla(0, 0%, 100%, 0.08)`;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x, y, w, h);
+}
+
+// Input
+function handleInput() {
+  if (state === 'start') {
+    state = 'playing';
+    initGame();
+    hud.classList.remove('hidden');
+    overlay.classList.add('hidden');
+    updateHUD();
+  } else if (state === 'playing') {
+    dropSlab();
+  } else if (state === 'gameover' && gameoverTimer <= 0) {
+    state = 'playing';
+    initGame();
+    gameoverCard.classList.add('hidden');
+    overlay.classList.add('hidden');
+    hud.classList.remove('hidden');
+    updateHUD();
+  }
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  handleInput();
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    handleInput();
+  }
+});
+
+// Prevent double-tap zoom on mobile
+document.addEventListener('touchstart', (e) => {
+  if (e.touches.length > 1) e.preventDefault();
+}, { passive: false });
+
+// Start game loop
+bestDisplay.textContent = bestScore;
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

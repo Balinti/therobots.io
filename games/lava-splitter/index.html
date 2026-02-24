@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Lava Splitter - Free HTML5 Game</title>
+  <meta name="description" content="Play Lava Splitter - Swipe to split your character into two and dodge falling lava rocks.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#1a0a00">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Lava Splitter - Free HTML5 Game">
+  <meta property="og:description" content="Play Lava Splitter - Swipe to split your character into two and dodge falling lava rocks.">
+  <meta property="og:url" content="https://balinti.github.io/lava-splitter/">
+  <meta property="og:image" content="https://balinti.github.io/lava-splitter/preview.png">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Lava Splitter - Free HTML5 Game">
+  <meta name="twitter:description" content="Play Lava Splitter - Swipe to split your character into two and dodge falling lava rocks.">
+  <meta name="twitter:image" content="https://balinti.github.io/lava-splitter/preview.png">
+
+  <link rel="canonical" href="https://balinti.github.io/lava-splitter/">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #0d0500;
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    #wrap {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      height: 100%;
+      max-height: 750px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: pointer;
+      touch-action: none;
+    }
+  </style>
+</head>
+<body>
+<div id="wrap"><canvas id="c"></canvas></div>
+
+<script>
+(function(){
+'use strict';
+
+// ── CANVAS / HI-DPI ───────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+const DPR    = Math.min(window.devicePixelRatio || 1, 2);
+const W_CSS  = 420, H_CSS = 750;
+
+function resize(){
+  const wrap = document.getElementById('wrap');
+  const rect = wrap.getBoundingClientRect();
+  const scale = Math.min(rect.width / W_CSS, rect.height / H_CSS);
+  const cw = W_CSS * scale, ch = H_CSS * scale;
+  canvas.style.width  = cw + 'px';
+  canvas.style.height = ch + 'px';
+  canvas.width  = cw * DPR;
+  canvas.height = ch * DPR;
+  ctx.setTransform(scale * DPR, 0, 0, scale * DPR, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ── CONSTANTS ─────────────────────────────────────────────────────────────
+const W = W_CSS, H = H_CSS;
+const LANE_COUNT = 5;
+const LANE_W     = W / LANE_COUNT;
+const BLOB_Y     = H - 90;
+const BLOB_R     = 22;
+const SPLIT_GAP  = 64;  // each half offset from center
+const ROCK_R     = 20;
+const CUT_HALF   = 60;  // half-height of active cut line
+const SLICE_TOL  = 18;  // horizontal tolerance for slice
+const LS_KEY     = 'lavaSplitter_best';
+const MAX_PART   = 300;
+
+// ── STATE ─────────────────────────────────────────────────────────────────
+let state = 'start'; // start | playing | gameover
+let score = 0, best = parseInt(localStorage.getItem(LS_KEY) || '0');
+let combo = 1, comboTimer = 0;
+let elapsed = 0;  // seconds in play
+let hue = 0;      // global HSL cycle
+let holding = false;
+let shakeAmt = 0, shakeDecay = 0.85;
+let redFlash = 0;
+let goScore = 0;
+
+// ── PARTICLES ─────────────────────────────────────────────────────────────
+const particles = [];
+function addParticle(x, y, vx, vy, r, life, h, s, l, type){
+  if(particles.length >= MAX_PART) return;
+  particles.push({x, y, vx, vy, r, life, maxLife: life, h, s, l, type});
+}
+function spawnSparks(x, y, count, h){
+  for(let i=0; i<count; i++){
+    const a = Math.random()*Math.PI*2;
+    const sp = 1.5 + Math.random()*3.5;
+    addParticle(x, y, Math.cos(a)*sp, Math.sin(a)*sp,
+      1.5+Math.random()*2, 0.4+Math.random()*0.4,
+      h, 100, 60+Math.random()*20, 'spark');
+  }
+}
+function spawnChunks(x, y, count, h){
+  for(let i=0; i<count; i++){
+    const a = Math.random()*Math.PI*2;
+    const sp = 2 + Math.random()*5;
+    addParticle(x, y, Math.cos(a)*sp, Math.sin(a)*sp,
+      4+Math.random()*5, 0.7+Math.random()*0.6,
+      h, 90, 50+Math.random()*20, 'chunk');
+  }
+}
+function spawnEmbers(x, y, count){
+  for(let i=0; i<count; i++){
+    const vx = (Math.random()-0.5)*0.6;
+    const vy = -(0.3 + Math.random()*0.8);
+    addParticle(x, y, vx, vy,
+      1+Math.random()*1.5, 1+Math.random()*2,
+      20+Math.random()*30, 100, 60+Math.random()*20, 'ember');
+  }
+}
+
+// ── ROCKS ─────────────────────────────────────────────────────────────────
+const rocks = [];
+const telegraphs = [];
+
+function laneX(lane){ return LANE_W*lane + LANE_W/2; }
+
+function spawnRock(lane, armored){
+  rocks.push({
+    x: laneX(lane),
+    y: -ROCK_R,
+    lane,
+    r: armored ? ROCK_R+4 : ROCK_R,
+    hp: armored ? 2 : 1,
+    armored: !!armored,
+    sliced: false,
+    dying: 0,
+    hue: 10 + Math.random()*20
+  });
+}
+
+function spawnTelegraph(lane, delay){
+  telegraphs.push({
+    lane,
+    x: laneX(lane),
+    timer: delay,
+    maxTimer: delay,
+    armored: false
+  });
+}
+function spawnTelegraphArmored(lane, delay){
+  telegraphs.push({
+    lane,
+    x: laneX(lane),
+    timer: delay,
+    maxTimer: delay,
+    armored: true
+  });
+}
+
+// ── DIFFICULTY / SCHEDULER ────────────────────────────────────────────────
+let spawnTimer = 0;
+let fallSpeed = 160;   // px/s
+let spawnInterval = 2.2;
+let telegraphTime = 1.2;
+let heatWave = false;
+let heatTimer = 0;
+
+function getDifficulty(){
+  const t = elapsed;
+  if(t < 10){
+    fallSpeed = 160 + t*4;
+    spawnInterval = 2.2;
+    telegraphTime = 1.2;
+  } else if(t < 25){
+    fallSpeed = 200 + (t-10)*5;
+    spawnInterval = Math.max(1.4, 2.2 - (t-10)*0.05);
+    telegraphTime = Math.max(0.9, 1.2 - (t-10)*0.01);
+  } else if(t < 45){
+    fallSpeed = 275 + (t-25)*4;
+    spawnInterval = Math.max(1.0, 1.4 - (t-25)*0.02);
+    telegraphTime = Math.max(0.7, 0.9 - (t-25)*0.005);
+  } else {
+    fallSpeed = Math.min(500, 355 + (t-45)*3);
+    spawnInterval = Math.max(0.7, 1.0 - (t-45)*0.005);
+    telegraphTime = 0.65;
+  }
+}
+
+function triggerHeatWave(){
+  heatWave = true;
+  heatTimer = 5;
+}
+
+function schedulerTick(dt){
+  getDifficulty();
+  if(elapsed > 45 && !heatWave){
+    // chance per second
+    if(Math.random() < dt * 0.04) triggerHeatWave();
+  }
+  if(heatWave){
+    heatTimer -= dt;
+    if(heatTimer <= 0) heatWave = false;
+  }
+  const eff = heatWave ? spawnInterval * 0.35 : spawnInterval;
+  spawnTimer -= dt;
+  if(spawnTimer <= 0){
+    spawnTimer = eff;
+    doSpawn();
+  }
+}
+
+function doSpawn(){
+  const t = elapsed;
+  // pick pattern
+  const r = Math.random();
+  if(t < 10){
+    // single
+    const lane = Math.floor(Math.random()*LANE_COUNT);
+    spawnTelegraph(lane, telegraphTime);
+  } else if(t < 25){
+    if(r < 0.35){
+      // double
+      const l1 = Math.floor(Math.random()*LANE_COUNT);
+      let l2 = l1;
+      while(l2 === l1) l2 = Math.floor(Math.random()*LANE_COUNT);
+      spawnTelegraph(l1, telegraphTime);
+      spawnTelegraph(l2, telegraphTime + 0.1);
+    } else {
+      const lane = Math.floor(Math.random()*LANE_COUNT);
+      spawnTelegraph(lane, telegraphTime);
+    }
+  } else if(t < 45){
+    if(r < 0.2){
+      // armored
+      const lane = Math.floor(Math.random()*LANE_COUNT);
+      spawnTelegraphArmored(lane, telegraphTime);
+    } else if(r < 0.5){
+      const l1 = Math.floor(Math.random()*LANE_COUNT);
+      let l2 = l1;
+      while(l2 === l1) l2 = Math.floor(Math.random()*LANE_COUNT);
+      spawnTelegraph(l1, telegraphTime);
+      spawnTelegraph(l2, telegraphTime);
+    } else {
+      spawnTelegraph(Math.floor(Math.random()*LANE_COUNT), telegraphTime);
+    }
+  } else {
+    // full mix
+    if(r < 0.15){
+      // triple
+      const lanes = shuffle([0,1,2,3,4]).slice(0,3);
+      lanes.forEach((l,i)=> spawnTelegraph(l, telegraphTime + i*0.05));
+    } else if(r < 0.35){
+      const lane = Math.floor(Math.random()*LANE_COUNT);
+      spawnTelegraphArmored(lane, telegraphTime);
+    } else if(r < 0.6){
+      const l1 = Math.floor(Math.random()*LANE_COUNT);
+      let l2 = l1; while(l2===l1) l2=Math.floor(Math.random()*LANE_COUNT);
+      spawnTelegraph(l1, telegraphTime);
+      spawnTelegraph(l2, telegraphTime);
+    } else {
+      spawnTelegraph(Math.floor(Math.random()*LANE_COUNT), telegraphTime);
+    }
+  }
+}
+
+function shuffle(a){
+  const b = a.slice();
+  for(let i=b.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    [b[i],b[j]]=[b[j],b[i]];
+  }
+  return b;
+}
+
+// ── BACKGROUND EMBERS ────────────────────────────────────────────────────
+const bgEmbers = [];
+for(let i=0;i<40;i++){
+  bgEmbers.push({
+    x: Math.random()*W,
+    y: Math.random()*H,
+    r: 0.5+Math.random()*1.5,
+    vy: -(0.2+Math.random()*0.5),
+    alpha: Math.random(),
+    h: 15+Math.random()*25
+  });
+}
+function updateEmbers(dt){
+  bgEmbers.forEach(e=>{
+    e.y += e.vy * 60 * dt;
+    e.alpha -= dt * 0.15;
+    if(e.alpha <= 0){
+      e.x = Math.random()*W;
+      e.y = H + 5;
+      e.alpha = 0.3+Math.random()*0.7;
+      e.h = 15+Math.random()*25;
+    }
+  });
+}
+
+// ── SCORE SHARDS (floating text) ─────────────────────────────────────────
+const scoreShards = [];
+function addScoreShard(x, y, val){
+  scoreShards.push({x, y, vy:-1.5, alpha:1, val, timer:0.9});
+}
+
+// ── INIT / RESET ─────────────────────────────────────────────────────────
+function resetGame(){
+  rocks.length = 0;
+  telegraphs.length = 0;
+  particles.length = 0;
+  scoreShards.length = 0;
+  score = 0; combo = 1; comboTimer = 0;
+  elapsed = 0; hue = 0;
+  holding = false;
+  shakeAmt = 0; redFlash = 0;
+  spawnTimer = 0;
+  heatWave = false; heatTimer = 0;
+  fallSpeed = 160; spawnInterval = 2.2; telegraphTime = 1.2;
+}
+
+// ── INPUT ─────────────────────────────────────────────────────────────────
+let pointerDown = false;
+
+function onDown(e){
+  e.preventDefault();
+  pointerDown = true;
+  if(state === 'start'){
+    state = 'playing';
+    resetGame();
+    return;
+  }
+  if(state === 'gameover'){
+    state = 'playing';
+    resetGame();
+    return;
+  }
+  if(state === 'playing') holding = true;
+}
+function onUp(e){
+  e.preventDefault();
+  pointerDown = false;
+  if(state === 'playing') holding = false;
+}
+
+canvas.addEventListener('pointerdown', onDown);
+canvas.addEventListener('pointerup',   onUp);
+canvas.addEventListener('pointercancel', onUp);
+canvas.setPointerCapture && canvas.addEventListener('pointerdown', e=> canvas.setPointerCapture(e.pointerId));
+
+window.addEventListener('keydown', e=>{
+  if(e.code === 'Space' || e.code === 'Enter'){
+    e.preventDefault();
+    if(state === 'playing'){ holding = true; return; }
+    onDown(e);
+  }
+});
+window.addEventListener('keyup', e=>{
+  if(e.code === 'Space' || e.code === 'Enter'){
+    if(state === 'playing') holding = false;
+  }
+});
+window.addEventListener('touchstart', e=>{ if(e.cancelable) e.preventDefault(); }, {passive:false});
+window.addEventListener('touchmove',  e=>{ if(e.cancelable) e.preventDefault(); }, {passive:false});
+
+// ── GAME LOGIC ────────────────────────────────────────────────────────────
+function triggerGameOver(){
+  state = 'gameover';
+  goScore = score;
+  if(score > best){ best = score; localStorage.setItem(LS_KEY, best); }
+  shakeAmt = 16;
+  redFlash = 1.0;
+  holding = false;
+  spawnChunks(W/2, BLOB_Y, 20, 10);
+}
+
+function checkSlice(){
+  const cutX = W/2;
+  const cutTop    = BLOB_Y - CUT_HALF;
+  const cutBottom = BLOB_Y + CUT_HALF;
+
+  let slicedAny = false;
+  rocks.forEach(rock=>{
+    if(rock.sliced || rock.dying > 0) return;
+    // is rock overlapping cut line?
+    const inY = rock.y + rock.r >= cutTop && rock.y - rock.r <= cutBottom;
+    if(!inY) return;
+    const dx = Math.abs(rock.x - cutX);
+    if(dx <= rock.r + SLICE_TOL){
+      // SLICE!
+      slicedAny = true;
+      // perfect slice check for armored
+      const perfect = dx < ROCK_R * 0.5;
+      if(rock.armored && rock.hp > 1 && !(perfect && combo >= 3)){
+        rock.hp--;
+        spawnSparks(rock.x, rock.y, 12, hue+30);
+        addScoreShard(rock.x, rock.y, Math.floor(5*combo));
+        score += Math.floor(5*combo);
+      } else {
+        rock.sliced = true;
+        rock.dying = 0.5;
+        const pts = rock.armored ? Math.floor(25*combo) : Math.floor(15*combo);
+        score += pts;
+        addScoreShard(rock.x, rock.y, pts);
+        combo = Math.min(combo + 1, 9);
+        comboTimer = 3.5;
+        spawnChunks(rock.x, rock.y, 14, rock.hue);
+        spawnSparks(rock.x, rock.y, 18, hue);
+        shakeAmt = Math.max(shakeAmt, 3);
+      }
+    } else if(dx <= rock.r + SLICE_TOL + 30){
+      // near-cut bonus
+      score += 1;
+      spawnSparks(rock.x, rock.y, 3, 50);
+    }
+  });
+  return slicedAny;
+}
+
+function checkDamage(){
+  if(holding) return; // safe while split
+  rocks.forEach(rock=>{
+    if(rock.sliced || rock.dying > 0) return;
+    const dx = rock.x - W/2;
+    const dy = rock.y - BLOB_Y;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    if(dist < rock.r + BLOB_R - 4){
+      triggerGameOver();
+    }
+  });
+}
+
+// ── SHARE ─────────────────────────────────────────────────────────────────
+function shareScore(){
+  const txt = `I scored ${goScore} in Lava Splitter! Can you beat me? https://balinti.github.io/lava-splitter/`;
+  if(navigator.share){
+    navigator.share({title:'Lava Splitter', text:txt, url:'https://balinti.github.io/lava-splitter/'}).catch(()=>{});
+  } else {
+    navigator.clipboard && navigator.clipboard.writeText(txt).then(()=>{ shareBtn.flash=true; });
+  }
+}
+
+const shareBtn = { x:W/2, y:0, w:180, h:44, flash:false, flashTimer:0 };
+
+// ── UPDATE ────────────────────────────────────────────────────────────────
+let last = 0;
+function update(ts){
+  const rawDt = Math.min((ts - last) / 1000, 0.033);
+  last = ts;
+  hue = (hue + rawDt*18) % 360;
+
+  if(state !== 'playing'){
+    updateEmbers(rawDt);
+    if(shakeAmt > 0.1) shakeAmt *= shakeDecay; else shakeAmt = 0;
+    if(redFlash > 0) redFlash -= rawDt*2;
+    if(shareBtn.flash){ shareBtn.flashTimer += rawDt; if(shareBtn.flashTimer>0.8){shareBtn.flash=false;shareBtn.flashTimer=0;} }
+    return;
+  }
+
+  const dt = rawDt;
+  elapsed += dt;
+  score += dt * 2 * combo; // survival points
+
+  // combo decay
+  if(comboTimer > 0){
+    comboTimer -= dt;
+    if(comboTimer <= 0){ combo = Math.max(1, combo-1); comboTimer = 0; }
+  }
+
+  updateEmbers(dt);
+  schedulerTick(dt);
+
+  // telegraph countdown → spawn rock
+  for(let i = telegraphs.length-1; i>=0; i--){
+    const tg = telegraphs[i];
+    tg.timer -= dt;
+    if(tg.timer <= 0){
+      spawnRock(tg.lane, tg.armored);
+      telegraphs.splice(i,1);
+    }
+  }
+
+  // move rocks
+  for(let i = rocks.length-1; i>=0; i--){
+    const rock = rocks[i];
+    if(rock.dying > 0){
+      rock.dying -= dt;
+      if(rock.dying <= 0) rocks.splice(i,1);
+      continue;
+    }
+    rock.y += fallSpeed * dt;
+    if(rock.y - rock.r > H){
+      // missed — soft combo penalty
+      if(holding){ combo = Math.max(1, combo-1); }
+      rocks.splice(i,1);
+    }
+  }
+
+  // slice detection (continuous while holding)
+  if(holding) checkSlice();
+
+  // damage detection
+  checkDamage();
+
+  // particles
+  for(let i = particles.length-1; i>=0; i--){
+    const p = particles[i];
+    p.life -= dt;
+    if(p.life <= 0){ particles.splice(i,1); continue; }
+    p.x += p.vx * 60 * dt;
+    p.y += p.vy * 60 * dt;
+    p.vy += (p.type === 'spark' ? 0.05 : 0.08) * 60 * dt;
+    p.vx *= (p.type==='spark'? 0.98 : 0.97);
+  }
+
+  // score shards
+  for(let i = scoreShards.length-1; i>=0; i--){
+    const s = scoreShards[i];
+    s.timer -= dt;
+    s.y += s.vy * 60 * dt;
+    s.alpha = s.timer / 0.9;
+    if(s.timer <= 0) scoreShards.splice(i,1);
+  }
+
+  // shake
+  if(shakeAmt > 0.1) shakeAmt *= shakeDecay; else shakeAmt = 0;
+  if(redFlash > 0) redFlash -= dt * 3;
+}
+
+// ── DRAW HELPERS ──────────────────────────────────────────────────────────
+function drawBg(){
+  // gradient bg
+  const grad = ctx.createLinearGradient(0,0,0,H);
+  grad.addColorStop(0, '#0d0500');
+  grad.addColorStop(0.5, '#1a0800');
+  grad.addColorStop(1, '#2a0e00');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0,0,W,H);
+
+  // lane dividers
+  ctx.strokeStyle = 'rgba(255,80,0,0.07)';
+  ctx.lineWidth = 1;
+  for(let l=1; l<LANE_COUNT; l++){
+    ctx.beginPath(); ctx.moveTo(l*LANE_W,0); ctx.lineTo(l*LANE_W,H); ctx.stroke();
+  }
+
+  // bg embers
+  bgEmbers.forEach(e=>{
+    ctx.beginPath();
+    ctx.arc(e.x, e.y, e.r, 0, Math.PI*2);
+    ctx.fillStyle = `hsla(${e.h},100%,65%,${e.alpha*0.6})`;
+    ctx.fill();
+  });
+}
+
+function drawTelegraphs(){
+  telegraphs.forEach(tg=>{
+    const frac = 1 - tg.timer / tg.maxTimer;
+    const alpha = 0.15 + frac * 0.65;
+    const col = tg.armored ? `rgba(120,180,255,${alpha})` : `rgba(255,120,0,${alpha})`;
+    // glow column
+    const g = ctx.createLinearGradient(tg.x - LANE_W/2, 0, tg.x + LANE_W/2, 0);
+    g.addColorStop(0,'transparent');
+    g.addColorStop(0.5, col);
+    g.addColorStop(1,'transparent');
+    ctx.fillStyle = g;
+    ctx.fillRect(tg.x - LANE_W/2, 0, LANE_W, H*0.4*frac);
+
+    // pulsing top indicator
+    const pulseR = 8 + Math.sin(Date.now()/100)*3;
+    ctx.beginPath();
+    ctx.arc(tg.x, 20, pulseR, 0, Math.PI*2);
+    ctx.fillStyle = tg.armored ? `rgba(160,200,255,${alpha})` : `rgba(255,140,0,${alpha+0.2})`;
+    ctx.fill();
+  });
+}
+
+function drawRocks(){
+  rocks.forEach(rock=>{
+    if(rock.dying > 0){
+      const frac = rock.dying / 0.5;
+      ctx.globalAlpha = frac;
+      // explode scale
+      const sc = 1 + (1-frac)*2;
+      ctx.save();
+      ctx.translate(rock.x, rock.y);
+      ctx.scale(sc, sc);
+      drawRockShape(rock, 1-frac);
+      ctx.restore();
+      ctx.globalAlpha = 1;
+      return;
+    }
+    drawRockShape(rock, 1);
+  });
+}
+
+function drawRockShape(rock, alpha){
+  const r = rock.r;
+  ctx.globalAlpha = alpha;
+
+  if(rock.armored){
+    // steel-blue armored look
+    const g = ctx.createRadialGradient(rock.x-r*0.3, rock.y-r*0.3, r*0.1, rock.x, rock.y, r);
+    const hp2 = rock.hp >= 2;
+    g.addColorStop(0, hp2 ? '#b0d8ff' : '#7090a0');
+    g.addColorStop(0.6, hp2 ? '#4080b0' : '#304050');
+    g.addColorStop(1, '#102030');
+    ctx.beginPath(); ctx.arc(rock.x, rock.y, r, 0, Math.PI*2);
+    ctx.fillStyle = g; ctx.fill();
+    // crack if hp==1
+    if(!hp2){
+      ctx.strokeStyle = 'rgba(255,200,100,0.6)'; ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(rock.x-r*0.4, rock.y-r*0.5); ctx.lineTo(rock.x+r*0.2, rock.y+r*0.6);
+      ctx.moveTo(rock.x+r*0.1, rock.y-r*0.3); ctx.lineTo(rock.x-r*0.1, rock.y+r*0.4);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = 'rgba(100,180,255,0.5)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(rock.x, rock.y, r, 0, Math.PI*2); ctx.stroke();
+  } else {
+    // lava rock
+    const g = ctx.createRadialGradient(rock.x-r*0.3, rock.y-r*0.4, r*0.1, rock.x, rock.y, r);
+    g.addColorStop(0, `hsl(${rock.hue+20},100%,75%)`);
+    g.addColorStop(0.4, `hsl(${rock.hue},100%,55%)`);
+    g.addColorStop(1, `hsl(${rock.hue-5},80%,25%)`);
+    ctx.beginPath(); ctx.arc(rock.x, rock.y, r, 0, Math.PI*2);
+    ctx.fillStyle = g; ctx.fill();
+    // glow
+    ctx.shadowColor = `hsl(${rock.hue+10},100%,60%)`;
+    ctx.shadowBlur = 18;
+    ctx.beginPath(); ctx.arc(rock.x, rock.y, r, 0, Math.PI*2);
+    ctx.strokeStyle = `hsl(${rock.hue+15},100%,75%)`; ctx.lineWidth = 2; ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawBlob(){
+  if(holding){
+    // two halves
+    const lx = W/2 - SPLIT_GAP;
+    const rx = W/2 + SPLIT_GAP;
+
+    [lx, rx].forEach(bx=>{
+      const g = ctx.createRadialGradient(bx-BLOB_R*0.3, BLOB_Y-BLOB_R*0.3, BLOB_R*0.1, bx, BLOB_Y, BLOB_R);
+      g.addColorStop(0, `hsl(${hue+20},100%,80%)`);
+      g.addColorStop(0.5, `hsl(${hue},100%,60%)`);
+      g.addColorStop(1, `hsl(${hue-10},90%,35%)`);
+      ctx.beginPath(); ctx.arc(bx, BLOB_Y, BLOB_R*0.85, 0, Math.PI*2);
+      ctx.shadowColor = `hsl(${hue},100%,60%)`;
+      ctx.shadowBlur = 20;
+      ctx.fillStyle = g; ctx.fill();
+      ctx.shadowBlur = 0;
+    });
+
+    drawCutLine();
+  } else {
+    // merged blob
+    const g = ctx.createRadialGradient(W/2-BLOB_R*0.3, BLOB_Y-BLOB_R*0.3, BLOB_R*0.1, W/2, BLOB_Y, BLOB_R);
+    g.addColorStop(0, `hsl(${hue+20},100%,80%)`);
+    g.addColorStop(0.5, `hsl(${hue},100%,60%)`);
+    g.addColorStop(1, `hsl(${hue-10},90%,35%)`);
+    ctx.beginPath(); ctx.arc(W/2, BLOB_Y, BLOB_R, 0, Math.PI*2);
+    ctx.shadowColor = `hsl(${hue},100%,60%)`;
+    ctx.shadowBlur = 25;
+    ctx.fillStyle = g; ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // combo aura
+    if(combo >= 4){
+      const auraAlpha = 0.15 + (combo-4)*0.05;
+      ctx.beginPath();
+      ctx.arc(W/2, BLOB_Y, BLOB_R + 8 + combo*2, 0, Math.PI*2);
+      ctx.strokeStyle = `hsla(${hue+60},100%,70%,${auraAlpha})`;
+      ctx.lineWidth = combo;
+      ctx.stroke();
+    }
+  }
+}
+
+function drawCutLine(){
+  const cx = W/2;
+  const top    = BLOB_Y - CUT_HALF - 10;
+  const bottom = BLOB_Y + CUT_HALF + 10;
+
+  // afterimage glow passes
+  for(let pass=3; pass>=0; pass--){
+    const a = 0.15 + (3-pass)*0.2;
+    const w = 1 + (3-pass)*2;
+    ctx.strokeStyle = `hsla(${hue+40},100%,85%,${a})`;
+    ctx.lineWidth = w;
+    ctx.shadowColor = `hsl(${hue+40},100%,80%)`;
+    ctx.shadowBlur = (3-pass)*10;
+    ctx.beginPath(); ctx.moveTo(cx, top); ctx.lineTo(cx, bottom); ctx.stroke();
+  }
+  ctx.shadowBlur = 0;
+
+  // bright core
+  ctx.strokeStyle = `hsla(${hue+50},100%,95%,0.95)`;
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(cx, top); ctx.lineTo(cx, bottom); ctx.stroke();
+
+  // end caps
+  [top, bottom].forEach(y=>{
+    ctx.beginPath();
+    ctx.arc(cx, y, 4, 0, Math.PI*2);
+    ctx.fillStyle = `hsl(${hue+50},100%,90%)`;
+    ctx.shadowColor = `hsl(${hue+50},100%,80%)`;
+    ctx.shadowBlur = 12;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  });
+}
+
+function drawParticles(){
+  particles.forEach(p=>{
+    const frac = p.life / p.maxLife;
+    ctx.globalAlpha = frac * (p.type==='ember'?0.7:0.9);
+    ctx.fillStyle = `hsl(${p.h},${p.s}%,${p.l}%)`;
+    ctx.shadowColor = ctx.fillStyle;
+    ctx.shadowBlur = p.type==='chunk' ? 8 : 4;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r * frac, 0, Math.PI*2);
+    ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+  ctx.shadowBlur = 0;
+}
+
+function drawScoreShards(){
+  scoreShards.forEach(s=>{
+    ctx.globalAlpha = s.alpha;
+    ctx.fillStyle = `hsl(${hue+30},100%,85%)`;
+    ctx.font = 'bold 16px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('+' + Math.floor(s.val), s.x, s.y);
+  });
+  ctx.globalAlpha = 1;
+}
+
+function drawHUD(){
+  // Score
+  ctx.textAlign = 'center';
+  ctx.shadowColor = `hsl(${hue},100%,60%)`;
+  ctx.shadowBlur = 10;
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 32px monospace';
+  ctx.fillText(Math.floor(score), W/2, 55);
+  ctx.shadowBlur = 0;
+
+  // Best
+  ctx.fillStyle = 'rgba(255,200,100,0.7)';
+  ctx.font = '13px monospace';
+  ctx.fillText('BEST ' + Math.floor(best), W/2, 74);
+
+  // Combo
+  if(combo >= 2){
+    const a = 0.5 + Math.sin(Date.now()/150)*0.3;
+    ctx.globalAlpha = 0.7 + (combo>=6 ? 0.3 : 0);
+    ctx.fillStyle = `hsl(${hue+60},100%,75%)`;
+    ctx.font = `bold ${14 + combo}px monospace`;
+    ctx.fillText(`x${combo} COMBO`, W/2, 95);
+    ctx.globalAlpha = 1;
+  }
+
+  // Heat wave indicator
+  if(heatWave){
+    ctx.fillStyle = `hsla(${hue},100%,65%,0.9)`;
+    ctx.font = 'bold 14px monospace';
+    ctx.fillText('⚡ HEAT WAVE ⚡', W/2, H - 20);
+  }
+}
+
+function drawStart(){
+  drawBg();
+  updateEmbers(0);
+
+  // Title glow
+  ctx.textAlign = 'center';
+  ctx.shadowColor = `hsl(${hue},100%,60%)`;
+  ctx.shadowBlur = 30;
+  ctx.fillStyle = `hsl(${hue+20},100%,80%)`;
+  ctx.font = 'bold 52px monospace';
+  ctx.fillText('LAVA', W/2, H/2 - 80);
+  ctx.fillStyle = `hsl(${hue+40},100%,70%)`;
+  ctx.font = 'bold 44px monospace';
+  ctx.fillText('SPLITTER', W/2, H/2 - 30);
+  ctx.shadowBlur = 0;
+
+  // Subtitle
+  ctx.fillStyle = 'rgba(255,200,150,0.8)';
+  ctx.font = '16px monospace';
+  ctx.fillText('Hold to Split • Slice the rocks!', W/2, H/2 + 20);
+
+  // Tap to start
+  const pulse = 0.7 + Math.sin(Date.now()/400)*0.3;
+  ctx.globalAlpha = pulse;
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 20px monospace';
+  ctx.fillText('TAP TO START', W/2, H/2 + 90);
+  ctx.globalAlpha = 1;
+
+  // mini instructions
+  ctx.fillStyle = 'rgba(255,180,100,0.5)';
+  ctx.font = '12px monospace';
+  ctx.fillText('Hold = Split Mode  |  Release = Merge', W/2, H/2 + 125);
+}
+
+function drawGameOver(){
+  // dim overlay
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillRect(0,0,W,H);
+
+  ctx.textAlign = 'center';
+
+  // GAME OVER
+  ctx.shadowColor = `hsl(${hue},100%,50%)`;
+  ctx.shadowBlur = 20;
+  ctx.fillStyle = `hsl(${hue+10},100%,70%)`;
+  ctx.font = 'bold 44px monospace';
+  ctx.fillText('GAME OVER', W/2, H/2 - 100);
+  ctx.shadowBlur = 0;
+
+  // Score
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 36px monospace';
+  ctx.fillText(Math.floor(goScore), W/2, H/2 - 40);
+
+  ctx.fillStyle = 'rgba(255,200,100,0.8)';
+  ctx.font = '14px monospace';
+  ctx.fillText(`BEST: ${Math.floor(best)}`, W/2, H/2 - 10);
+
+  // new best badge
+  if(goScore >= best && best > 0){
+    ctx.fillStyle = `hsl(${hue+60},100%,75%)`;
+    ctx.font = 'bold 16px monospace';
+    ctx.fillText('NEW BEST!', W/2, H/2 + 20);
+  }
+
+  // Tap to retry
+  const pulse = 0.7 + Math.sin(Date.now()/400)*0.3;
+  ctx.globalAlpha = pulse;
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 20px monospace';
+  ctx.fillText('TAP TO RETRY', W/2, H/2 + 70);
+  ctx.globalAlpha = 1;
+
+  // Share button
+  shareBtn.y = H/2 + 125;
+  const bx = shareBtn.x - shareBtn.w/2;
+  const by = shareBtn.y - shareBtn.h/2;
+  ctx.fillStyle = shareBtn.flash ? 'rgba(100,255,100,0.4)' : 'rgba(255,120,0,0.25)';
+  ctx.strokeStyle = shareBtn.flash ? 'rgba(100,255,100,0.8)' : `hsl(${hue},100%,60%)`;
+  ctx.lineWidth = 2;
+  roundRect(ctx, bx, by, shareBtn.w, shareBtn.h, 10);
+  ctx.fill(); ctx.stroke();
+  ctx.fillStyle = shareBtn.flash ? '#8f8' : '#fff';
+  ctx.font = '15px monospace';
+  ctx.fillText(shareBtn.flash ? 'LINK COPIED!' : 'SHARE SCORE', W/2, shareBtn.y + 5);
+}
+
+function roundRect(ctx, x, y, w, h, r){
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.lineTo(x+w-r, y); ctx.arcTo(x+w, y, x+w, y+r, r);
+  ctx.lineTo(x+w, y+h-r); ctx.arcTo(x+w, y+h, x+w-r, y+h, r);
+  ctx.lineTo(x+r, y+h); ctx.arcTo(x, y+h, x, y+h-r, r);
+  ctx.lineTo(x, y+r); ctx.arcTo(x, y, x+r, y, r);
+  ctx.closePath();
+}
+
+// check share button tap
+canvas.addEventListener('pointerdown', e=>{
+  if(state !== 'gameover') return;
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = W / rect.width;
+  const scaleY = H / rect.height;
+  const cx = (e.clientX - rect.left) * scaleX;
+  const cy = (e.clientY - rect.top) * scaleY;
+  const bx = shareBtn.x - shareBtn.w/2;
+  const by = shareBtn.y - shareBtn.h/2;
+  if(cx >= bx && cx <= bx+shareBtn.w && cy >= by && cy <= by+shareBtn.h){
+    shareScore();
+    e.stopPropagation();
+  }
+}, true);
+
+// ── MAIN LOOP ─────────────────────────────────────────────────────────────
+function frame(ts){
+  requestAnimationFrame(frame);
+  update(ts);
+
+  // shake transform
+  const sx = shakeAmt > 0 ? (Math.random()-0.5)*shakeAmt*2 : 0;
+  const sy = shakeAmt > 0 ? (Math.random()-0.5)*shakeAmt*2 : 0;
+
+  ctx.save();
+  ctx.translate(sx, sy);
+
+  if(state === 'start'){
+    drawStart();
+  } else if(state === 'playing'){
+    drawBg();
+    drawTelegraphs();
+    drawRocks();
+    drawBlob();
+    drawParticles();
+    drawScoreShards();
+    drawHUD();
+  } else if(state === 'gameover'){
+    drawBg();
+    drawTelegraphs();
+    drawRocks();
+    drawBlob();
+    drawParticles();
+    drawGameOver();
+  }
+
+  // red flash overlay
+  if(redFlash > 0){
+    ctx.fillStyle = `rgba(255,0,0,${Math.min(redFlash*0.4, 0.4)})`;
+    ctx.fillRect(0,0,W,H);
+  }
+
+  ctx.restore();
+}
+
+requestAnimationFrame(frame);
+
+})();
+</script>
+</body>
+</html>

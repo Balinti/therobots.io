@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Circle Drift - Free HTML5 Game</title>
+  <meta name="description" content="Play Circle Drift - Tap to jump between orbiting circles while gates rotate around the rims. Time your snap perfectly to build combos!">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a0a1a">
+  <!-- Open Graph -->
+  <meta property="og:title" content="Circle Drift - Free HTML5 Game">
+  <meta property="og:description" content="Tap to snap between orbiting circles. Hit the glowing gate or die. How far can you drift?">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://balinti.github.io/circle-drift/">
+  <meta property="og:image" content="https://balinti.github.io/circle-drift/preview.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Circle Drift">
+  <meta name="twitter:description" content="Tap to snap between orbiting circles. Time the gate perfectly!">
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #060612;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: flex-start;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      overflow: hidden;
+      touch-action: manipulation;
+    }
+    #ad-top {
+      width: 100%; max-width: 420px;
+      min-height: 90px;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(255,255,255,0.03);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      flex-shrink: 0;
+    }
+    #game-wrap {
+      width: 100%; max-width: 420px;
+      flex: 1 1 auto;
+      display: flex; align-items: center; justify-content: center;
+      position: relative;
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+      touch-action: none;
+      image-rendering: auto;
+    }
+    #ad-bottom {
+      width: 100%; max-width: 420px;
+      min-height: 90px;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(255,255,255,0.03);
+      border-top: 1px solid rgba(255,255,255,0.06);
+      flex-shrink: 0;
+    }
+    #how-to-play {
+      width: 100%; max-width: 420px;
+      padding: 16px 20px;
+      color: rgba(255,255,255,0.4);
+      font-size: 12px;
+      line-height: 1.6;
+      text-align: center;
+      display: none;
+    }
+    @media (min-height: 700px) {
+      #how-to-play { display: block; }
+    }
+    #how-to-play h2 { font-size: 13px; color: rgba(255,255,255,0.6); margin-bottom: 6px; }
+    #how-to-play p { margin-bottom: 4px; }
+  </style>
+</head>
+<body>
+
+<div id="ad-top">
+  <ins class="adsbygoogle" style="display:block;width:320px;height:50px"
+       data-ad-client="ca-pub-4099346100621490"
+       data-ad-slot="auto"
+       data-ad-format="horizontal"></ins>
+</div>
+
+<div id="game-wrap">
+  <canvas id="c"></canvas>
+</div>
+
+<div id="ad-bottom">
+  <ins class="adsbygoogle" style="display:block;width:320px;height:50px"
+       data-ad-client="ca-pub-4099346100621490"
+       data-ad-slot="auto"
+       data-ad-format="horizontal"></ins>
+</div>
+
+<section id="how-to-play">
+  <h2>How to Play Circle Drift</h2>
+  <p>&#8226; Tap or press Space/Enter to launch your dot toward the next circle.</p>
+  <p>&#8226; Land on the <strong>glowing gate arc</strong> to snap into orbit and score.</p>
+  <p>&#8226; Hit the rim outside the gate &mdash; instant fail. Miss entirely &mdash; fail.</p>
+  <p>&#8226; Land near the gate center for a <strong>Perfect</strong> and build your combo!</p>
+  <p>&#8226; Collect coins along the path for bonus points.</p>
+</section>
+
+<script>
+(function() {
+'use strict';
+
+// ─── Canvas & DPR setup ───────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const wrap = document.getElementById('game-wrap');
+
+let W, H, DPR;
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  const rect = wrap.getBoundingClientRect();
+  W = rect.width;
+  H = rect.height;
+  canvas.width  = W * DPR;
+  canvas.height = H * DPR;
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  if (state !== 'start') initGame();
+}
+window.addEventListener('resize', resize);
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+const TAU = Math.PI * 2;
+const lerp = (a, b, t) => a + (b - a) * t;
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const rnd = (a, b) => a + Math.random() * (b - a);
+const rndInt = (a, b) => Math.floor(rnd(a, b + 1));
+
+// ─── Persistence ──────────────────────────────────────────────────────────────
+let bestScore = parseInt(localStorage.getItem('cd_best') || '0', 10);
+function saveBest(s) {
+  if (s > bestScore) { bestScore = s; localStorage.setItem('cd_best', s); }
+}
+
+// ─── State machine ────────────────────────────────────────────────────────────
+let state = 'start';  // 'start' | 'playing' | 'gameover'
+let score, combo, comboTimer, bgHue, shakeAmt, shakeDur, shakeTimer;
+let circles = [], player, trail, particles, coins;
+let difficulty, frameCount;
+
+// ─── Circle factory ───────────────────────────────────────────────────────────
+function makeCircle(x, y, r, gateStart, gateSize, gateSpeed, hue) {
+  return { x, y, r, gateStart, gateSize, gateSpeed, hue, orbSpeed: 0 };
+}
+
+function spawnNextCircle(prev) {
+  const minDist = prev.r + rnd(120, 180);
+  const maxDist = prev.r + rnd(180, 240);
+  const dist = rnd(minDist, maxDist);
+  const ang = rnd(0, TAU);
+  const x = clamp(prev.x + Math.cos(ang) * dist, 70, W - 70);
+  const y = clamp(prev.y + Math.sin(ang) * dist, 70, H - 70);
+  const r = rnd(40, 60);
+
+  const gateSize = Math.max(0.35, 0.7 - difficulty * 0.04); // shrinks with difficulty
+  const gateSpeed = (rnd(0.6, 1.2) + difficulty * 0.08) * (Math.random() < 0.5 ? 1 : -1);
+  const hue = (prev.hue + rndInt(40, 140)) % 360;
+  return makeCircle(x, y, r, rnd(0, TAU), gateSize, gateSpeed, hue);
+}
+
+// ─── Init / reset ─────────────────────────────────────────────────────────────
+function initGame() {
+  score = 0; combo = 1; comboTimer = 0;
+  bgHue = rnd(200, 260);
+  shakeAmt = 0; shakeDur = 0; shakeTimer = 0;
+  difficulty = 0; frameCount = 0;
+  trail = []; particles = []; coins = [];
+
+  // Build initial chain
+  circles = [];
+  const c0 = makeCircle(W / 2, H / 2, 55, 0, 0.75, 0.8, 200);
+  circles.push(c0);
+  for (let i = 0; i < 3; i++) circles.push(spawnNextCircle(circles[circles.length - 1]));
+
+  // Player starts on circle 0
+  player = {
+    onCircle: 0,
+    angle: circles[0].gateStart,  // start inside the gate
+    orbAngle: 0,
+    // flight
+    flying: false,
+    fx: 0, fy: 0,
+    vx: 0, vy: 0,
+    // cosmetics
+    hue: 200,
+    pulseT: 0,
+  };
+  placePlayerOnCircle(0, circles[0].gateStart);
+
+  // Coins
+  spawnCoins();
+}
+
+function placePlayerOnCircle(ci, angle) {
+  const c = circles[ci];
+  player.onCircle = ci;
+  player.angle = angle;
+  player.orbSpeed = (c.gateSpeed > 0 ? -1 : 1) * (0.018 + difficulty * 0.003);
+  player.flying = false;
+  player.x = c.x + Math.cos(angle) * c.r;
+  player.y = c.y + Math.sin(angle) * c.r;
+}
+
+function spawnCoins() {
+  coins = [];
+  const ci = player ? player.onCircle : 0;
+  if (ci + 1 >= circles.length) return;
+  const a = circles[ci], b = circles[ci + 1];
+  const steps = rndInt(1, 3);
+  for (let i = 1; i <= steps; i++) {
+    const t = i / (steps + 1);
+    coins.push({ x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t), r: 6, collected: false });
+  }
+}
+
+// ─── Shake ────────────────────────────────────────────────────────────────────
+function triggerShake(amt, dur) {
+  shakeAmt = amt; shakeDur = dur; shakeTimer = dur;
+}
+
+// ─── Particles ────────────────────────────────────────────────────────────────
+function burst(x, y, hue, count, speed, life) {
+  for (let i = 0; i < count; i++) {
+    const ang = rnd(0, TAU), spd = rnd(speed * 0.4, speed);
+    particles.push({
+      x, y,
+      vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd,
+      life, maxLife: life,
+      r: rnd(2, 5), hue,
+      type: 'dot',
+    });
+  }
+}
+
+function shockwave(x, y, hue) {
+  particles.push({ x, y, r: 0, maxR: 80, life: 30, maxLife: 30, hue, type: 'ring' });
+}
+
+function sparks(x, y, hue) {
+  for (let i = 0; i < 8; i++) {
+    const ang = rnd(0, TAU);
+    particles.push({
+      x, y,
+      vx: Math.cos(ang) * rnd(1, 4), vy: Math.sin(ang) * rnd(1, 4),
+      life: 20, maxLife: 20,
+      r: rnd(1, 3), hue,
+      type: 'spark',
+    });
+  }
+}
+
+// ─── Input ────────────────────────────────────────────────────────────────────
+function handleInput() {
+  if (state === 'start') { state = 'playing'; initGame(); return; }
+  if (state === 'gameover') { state = 'playing'; initGame(); return; }
+  if (state === 'playing') doTap();
+}
+
+canvas.addEventListener('pointerdown', (e) => { e.preventDefault(); handleInput(); });
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); handleInput(); }
+});
+
+// ─── Tap / launch ─────────────────────────────────────────────────────────────
+function doTap() {
+  if (player.flying) return;
+  const ci = player.onCircle;
+  const target = circles[ci + 1];
+  if (!target) return;
+
+  // Launch direction: current pos → target center
+  const dx = target.x - player.x;
+  const dy = target.y - player.y;
+  const dist = Math.hypot(dx, dy);
+  const speed = 6 + difficulty * 0.3;
+  player.vx = (dx / dist) * speed;
+  player.vy = (dy / dist) * speed;
+  player.fx = player.x;
+  player.fy = player.y;
+  player.flying = true;
+  player.targetCircle = ci + 1;
+}
+
+// ─── Angle helper ─────────────────────────────────────────────────────────────
+function angleDiff(a, b) {
+  let d = (b - a + TAU) % TAU;
+  if (d > Math.PI) d -= TAU;
+  return Math.abs(d);
+}
+
+function isInGate(circle, angle) {
+  const half = circle.gateSize / 2;
+  const gate = circle.gateStart % TAU;
+  const a = ((angle % TAU) + TAU) % TAU;
+  const g = ((gate % TAU) + TAU) % TAU;
+  let diff = Math.abs(a - g);
+  if (diff > Math.PI) diff = TAU - diff;
+  return diff < half;
+}
+
+function gateProximity(circle, angle) {
+  // 0 = center of gate, 1 = edge
+  const half = circle.gateSize / 2;
+  const gate = circle.gateStart % TAU;
+  const a = ((angle % TAU) + TAU) % TAU;
+  const g = ((gate % TAU) + TAU) % TAU;
+  let diff = Math.abs(a - g);
+  if (diff > Math.PI) diff = TAU - diff;
+  return diff / half;
+}
+
+// ─── Main update ──────────────────────────────────────────────────────────────
+function update() {
+  frameCount++;
+  difficulty = Math.min(score * 0.15, 10);
+
+  // Update gates
+  for (const c of circles) {
+    c.gateStart += (c.gateSpeed * 0.016);
+  }
+
+  // Combo timer
+  if (comboTimer > 0) comboTimer--;
+  if (comboTimer === 0 && combo > 1) combo = 1;
+
+  // Shake
+  if (shakeTimer > 0) {
+    shakeTimer--;
+    shakeAmt = shakeAmt * (shakeTimer / shakeDur);
+  }
+
+  // Player on circle: orbit
+  if (!player.flying) {
+    const c = circles[player.onCircle];
+    player.angle += player.orbSpeed;
+    player.x = c.x + Math.cos(player.angle) * c.r;
+    player.y = c.y + Math.sin(player.angle) * c.r;
+    player.pulseT = (player.pulseT + 0.08) % TAU;
+  }
+
+  // Player in flight
+  if (player.flying) {
+    // Trail
+    trail.push({ x: player.fx, y: player.fy, life: 18, hue: player.hue });
+    if (trail.length > 30) trail.shift();
+
+    player.fx += player.vx;
+    player.fy += player.vy;
+
+    // Check coin collection
+    for (const coin of coins) {
+      if (!coin.collected && Math.hypot(player.fx - coin.x, player.fy - coin.y) < coin.r + 8) {
+        coin.collected = true;
+        score++;
+        burst(coin.x, coin.y, 55, 8, 3, 20);
+      }
+    }
+
+    // Check target circle collision
+    const tgt = circles[player.targetCircle];
+    if (tgt) {
+      const dist = Math.hypot(player.fx - tgt.x, player.fy - tgt.y);
+      const rimTolerance = 12;
+
+      if (Math.abs(dist - tgt.r) < rimTolerance) {
+        // Hit the rim — check if in gate
+        const hitAngle = Math.atan2(player.fy - tgt.y, player.fx - tgt.x);
+        if (isInGate(tgt, hitAngle)) {
+          // SUCCESS
+          const prox = gateProximity(tgt, hitAngle);
+          score++;
+          let isPerfect = prox < 0.25;
+
+          if (isPerfect) {
+            combo = Math.min(combo + 1, 3);
+            comboTimer = 90;
+            score += combo - 1; // bonus
+            shockwave(player.fx, player.fy, tgt.hue);
+            triggerShake(4, 12);
+          } else {
+            combo = 1;
+            comboTimer = 0;
+          }
+
+          burst(player.fx, player.fy, tgt.hue, 18, 5, 28);
+          saveBest(score);
+          bgHue = (bgHue + 20) % 360;
+          player.hue = tgt.hue;
+
+          placePlayerOnCircle(player.targetCircle, hitAngle);
+          trail = [];
+
+          // Advance chain
+          circles.push(spawnNextCircle(circles[circles.length - 1]));
+          if (circles.length > player.onCircle + 6) circles.splice(0, 1), player.onCircle--;
+
+          spawnCoins();
+
+        } else {
+          // FAIL — hit rim outside gate
+          fail(player.fx, player.fy, tgt.hue);
+        }
+
+      } else if (dist < tgt.r - rimTolerance) {
+        // Overshot center — fail
+        fail(player.fx, player.fy, tgt.hue || 0);
+      }
+
+      // Flew past (out of bounds)
+      if (player.fx < -50 || player.fx > W + 50 || player.fy < -50 || player.fy > H + 50) {
+        fail(W / 2, H / 2, 0);
+      }
+    }
+  }
+
+  // Update particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.life--;
+    if (p.life <= 0) { particles.splice(i, 1); continue; }
+    if (p.type === 'dot' || p.type === 'spark') {
+      p.x += p.vx; p.y += p.vy;
+      p.vy += 0.08;
+      p.vx *= 0.97; p.vy *= 0.97;
+    }
+    if (p.type === 'ring') {
+      p.r = lerp(0, p.maxR, 1 - p.life / p.maxLife);
+    }
+  }
+
+  // Update trail
+  for (let i = trail.length - 1; i >= 0; i--) {
+    trail[i].life--;
+    if (trail[i].life <= 0) trail.splice(i, 1);
+  }
+}
+
+function fail(x, y, hue) {
+  player.flying = false;
+  sparks(x, y, hue);
+  burst(x, y, 0, 12, 4, 22);
+  triggerShake(10, 25);
+  saveBest(score);
+  state = 'gameover';
+}
+
+// ─── Draw ─────────────────────────────────────────────────────────────────────
+function drawBackground() {
+  const grad = ctx.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, Math.max(W, H));
+  grad.addColorStop(0, `hsl(${bgHue},40%,8%)`);
+  grad.addColorStop(1, `hsl(${(bgHue + 40) % 360},30%,3%)`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+}
+
+function drawCircle(c, isTarget) {
+  const t = Date.now() / 1000;
+  const pulseR = c.r + Math.sin(t * 2 + c.hue) * 1.5;
+
+  // Circle outline
+  ctx.beginPath();
+  ctx.arc(c.x, c.y, pulseR, 0, TAU);
+  ctx.strokeStyle = `hsla(${c.hue},60%,40%,0.35)`;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Deadly rim highlight (thin)
+  ctx.beginPath();
+  ctx.arc(c.x, c.y, pulseR, 0, TAU);
+  ctx.strokeStyle = `hsla(${c.hue},70%,55%,0.15)`;
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // Gate arc (glowing)
+  const half = c.gateSize / 2;
+  const g = c.gateStart;
+  ctx.beginPath();
+  ctx.arc(c.x, c.y, pulseR, g - half, g + half);
+  const glow = 0.7 + Math.sin(t * 4) * 0.3;
+  ctx.strokeStyle = `hsla(${c.hue},100%,75%,${glow})`;
+  ctx.lineWidth = 5;
+  ctx.shadowColor = `hsl(${c.hue},100%,70%)`;
+  ctx.shadowBlur = 14;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Gate center tick
+  const cx = c.x + Math.cos(g) * (pulseR - 6);
+  const cy = c.y + Math.sin(g) * (pulseR - 6);
+  ctx.beginPath();
+  ctx.arc(cx, cy, 3, 0, TAU);
+  ctx.fillStyle = `hsla(${c.hue},100%,95%,0.9)`;
+  ctx.fill();
+
+  // Circle center dot
+  ctx.beginPath();
+  ctx.arc(c.x, c.y, 4, 0, TAU);
+  ctx.fillStyle = `hsla(${c.hue},60%,60%,0.4)`;
+  ctx.fill();
+}
+
+function drawTrail() {
+  for (const t of trail) {
+    const a = t.life / 18;
+    ctx.beginPath();
+    ctx.arc(t.x, t.y, 3 * a, 0, TAU);
+    ctx.fillStyle = `hsla(${t.hue},90%,70%,${a * 0.7})`;
+    ctx.fill();
+  }
+}
+
+function drawCoins() {
+  for (const coin of coins) {
+    if (coin.collected) continue;
+    const t = Date.now() / 1000;
+    const scale = 0.9 + Math.sin(t * 3 + coin.x) * 0.1;
+    ctx.save();
+    ctx.translate(coin.x, coin.y);
+    ctx.scale(scale, scale);
+    ctx.beginPath();
+    ctx.arc(0, 0, coin.r, 0, TAU);
+    ctx.fillStyle = `hsla(50,100%,65%,0.9)`;
+    ctx.shadowColor = `hsl(50,100%,70%)`;
+    ctx.shadowBlur = 8;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = `rgba(0,0,0,0.4)`;
+    ctx.font = `bold ${coin.r * 1.2}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('$', 0, 0.5);
+    ctx.restore();
+  }
+}
+
+function drawPlayer() {
+  const r = 8 + Math.sin(player.pulseT) * 1.5;
+  const px = player.flying ? player.fx : player.x;
+  const py = player.flying ? player.fy : player.y;
+
+  // Glow
+  ctx.beginPath();
+  ctx.arc(px, py, r + 4, 0, TAU);
+  ctx.fillStyle = `hsla(${player.hue},100%,70%,0.2)`;
+  ctx.fill();
+
+  // Body
+  ctx.beginPath();
+  ctx.arc(px, py, r, 0, TAU);
+  const pg = ctx.createRadialGradient(px - 2, py - 2, 1, px, py, r);
+  pg.addColorStop(0, `hsl(${player.hue},100%,90%)`);
+  pg.addColorStop(1, `hsl(${player.hue},80%,60%)`);
+  ctx.fillStyle = pg;
+  ctx.shadowColor = `hsl(${player.hue},100%,70%)`;
+  ctx.shadowBlur = 12;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    const a = p.life / p.maxLife;
+    if (p.type === 'dot') {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r * a, 0, TAU);
+      ctx.fillStyle = `hsla(${p.hue},90%,70%,${a})`;
+      ctx.fill();
+    } else if (p.type === 'spark') {
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(p.x - p.vx * 3, p.y - p.vy * 3);
+      ctx.strokeStyle = `hsla(${p.hue},100%,80%,${a})`;
+      ctx.lineWidth = p.r;
+      ctx.stroke();
+    } else if (p.type === 'ring') {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, TAU);
+      ctx.strokeStyle = `hsla(${p.hue},100%,75%,${a * 0.8})`;
+      ctx.lineWidth = 3 * a;
+      ctx.stroke();
+    }
+  }
+}
+
+function drawHUD() {
+  // Score
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.font = `bold 36px system-ui`;
+  ctx.shadowColor = 'rgba(0,0,0,0.5)';
+  ctx.shadowBlur = 6;
+  ctx.fillText(score, W / 2, 14);
+  ctx.shadowBlur = 0;
+
+  // Best
+  ctx.font = '13px system-ui';
+  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  ctx.fillText('BEST ' + bestScore, W / 2, 54);
+
+  // Combo
+  if (combo > 1) {
+    const cx2 = W / 2;
+    const cy2 = 75;
+    const colors = ['', '#f0f', '#0ff', '#ff0'];
+    ctx.font = `bold 20px system-ui`;
+    ctx.fillStyle = colors[combo] || '#fff';
+    ctx.shadowColor = colors[combo] || '#fff';
+    ctx.shadowBlur = 10;
+    ctx.fillText(`x${combo} COMBO!`, cx2, cy2);
+    ctx.shadowBlur = 0;
+  }
+}
+
+function drawStartScreen() {
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  // Title
+  const t = Date.now() / 1000;
+  const hue = (t * 40) % 360;
+  ctx.font = `bold 52px system-ui`;
+  ctx.fillStyle = `hsl(${hue},100%,70%)`;
+  ctx.shadowColor = `hsl(${hue},100%,60%)`;
+  ctx.shadowBlur = 20;
+  ctx.fillText('Circle', W / 2, H / 2 - 50);
+  ctx.fillText('Drift', W / 2, H / 2 + 10);
+  ctx.shadowBlur = 0;
+
+  // Subtitle
+  ctx.font = '18px system-ui';
+  ctx.fillStyle = `rgba(255,255,255,${0.6 + Math.sin(t * 2) * 0.3})`;
+  ctx.fillText('Tap to Start', W / 2, H / 2 + 70);
+
+  ctx.font = '13px system-ui';
+  ctx.fillStyle = 'rgba(255,255,255,0.3)';
+  ctx.fillText('Hit the glowing gate. Miss = die.', W / 2, H / 2 + 100);
+}
+
+function drawGameOver() {
+  ctx.fillStyle = 'rgba(0,0,0,0.65)';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  ctx.font = `bold 28px system-ui`;
+  ctx.fillStyle = '#ff5566';
+  ctx.shadowColor = '#ff2244';
+  ctx.shadowBlur = 12;
+  ctx.fillText('GAME OVER', W / 2, H / 2 - 80);
+  ctx.shadowBlur = 0;
+
+  ctx.font = `bold 64px system-ui`;
+  ctx.fillStyle = '#fff';
+  ctx.fillText(score, W / 2, H / 2 - 20);
+
+  ctx.font = '18px system-ui';
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.fillText('BEST  ' + bestScore, W / 2, H / 2 + 40);
+
+  const t = Date.now() / 1000;
+  ctx.font = '20px system-ui';
+  ctx.fillStyle = `rgba(255,255,255,${0.6 + Math.sin(t * 2.5) * 0.35})`;
+  ctx.fillText('Tap to Retry', W / 2, H / 2 + 85);
+}
+
+// ─── Main loop ────────────────────────────────────────────────────────────────
+function loop() {
+  requestAnimationFrame(loop);
+
+  // Background
+  bgHue = (bgHue + 0.02) % 360;
+  drawBackground();
+
+  if (state === 'start') {
+    drawStartScreen();
+    return;
+  }
+
+  // Shake offset
+  let sx = 0, sy = 0;
+  if (shakeTimer > 0) {
+    sx = rnd(-shakeAmt, shakeAmt);
+    sy = rnd(-shakeAmt, shakeAmt);
+  }
+
+  ctx.save();
+  ctx.translate(sx, sy);
+
+  if (state === 'playing') update();
+
+  // Draw circles (skip oldest if too far back)
+  const visibleFrom = player ? Math.max(0, player.onCircle - 1) : 0;
+  for (let i = visibleFrom; i < circles.length; i++) {
+    drawCircle(circles[i], i === (player ? player.onCircle + 1 : 0));
+  }
+
+  drawCoins();
+  drawTrail();
+  drawParticles();
+  drawPlayer();
+  drawHUD();
+
+  if (state === 'gameover') drawGameOver();
+
+  ctx.restore();
+}
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+resize();
+loop();
+
+})();
+</script>
+</body>
+</html>
