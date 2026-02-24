@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0f0f23"/>
+      <stop offset="50%" stop-color="#1a1a3a"/>
+      <stop offset="100%" stop-color="#0f0f23"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <!-- Lane backgrounds -->
+  <rect x="0" y="180" width="1200" height="120" fill="rgba(255,255,255,0.03)"/>
+  <rect x="0" y="340" width="1200" height="120" fill="rgba(255,255,255,0.03)"/>
+  <!-- Red gate top -->
+  <rect x="700" y="180" width="24" height="120" fill="hsl(0,80%,55%)" opacity="0.5"/>
+  <rect x="700" y="180" width="24" height="4" fill="hsl(0,80%,55%)"/>
+  <rect x="700" y="296" width="24" height="4" fill="hsl(0,80%,55%)"/>
+  <!-- Green gate bottom -->
+  <rect x="700" y="340" width="24" height="120" fill="hsl(140,65%,45%)" opacity="0.5"/>
+  <rect x="700" y="340" width="24" height="4" fill="hsl(140,65%,45%)"/>
+  <rect x="700" y="456" width="24" height="4" fill="hsl(140,65%,45%)"/>
+  <!-- Perfect stripes -->
+  <rect x="700" y="236" width="24" height="8" fill="rgba(255,255,220,0.85)"/>
+  <rect x="700" y="396" width="24" height="8" fill="rgba(255,255,220,0.85)"/>
+  <!-- Blue gate top -->
+  <rect x="900" y="180" width="24" height="120" fill="hsl(220,75%,55%)" opacity="0.5"/>
+  <rect x="900" y="180" width="24" height="4" fill="hsl(220,75%,55%)"/>
+  <rect x="900" y="296" width="24" height="4" fill="hsl(220,75%,55%)"/>
+  <!-- Red gate bottom -->
+  <rect x="900" y="340" width="24" height="120" fill="hsl(0,80%,55%)" opacity="0.5"/>
+  <rect x="900" y="340" width="24" height="4" fill="hsl(0,80%,55%)"/>
+  <rect x="900" y="456" width="24" height="4" fill="hsl(0,80%,55%)"/>
+  <!-- Perfect stripes -->
+  <rect x="900" y="236" width="24" height="8" fill="rgba(255,255,220,0.85)"/>
+  <rect x="900" y="396" width="24" height="8" fill="rgba(255,255,220,0.85)"/>
+  <!-- Player glow -->
+  <circle cx="350" cy="240" r="50" fill="hsl(0,80%,55%)" opacity="0.15"/>
+  <!-- Player body -->
+  <circle cx="350" cy="240" r="20" fill="hsl(0,80%,55%)"/>
+  <!-- Player triangle pattern -->
+  <polygon points="350,228 340,248 360,248" fill="none" stroke="white" stroke-width="2" opacity="0.8"/>
+  <!-- Shield ring -->
+  <circle cx="350" cy="240" r="28" fill="none" stroke="rgba(255,255,100,0.7)" stroke-width="3"/>
+  <!-- Particles -->
+  <circle cx="310" cy="245" r="4" fill="hsl(0,80%,55%)" opacity="0.6"/>
+  <circle cx="320" cy="250" r="3" fill="hsl(0,55%,30%)" opacity="0.4"/>
+  <circle cx="325" cy="235" r="2.5" fill="hsl(0,85%,70%)" opacity="0.5"/>
+  <circle cx="305" cy="238" r="3.5" fill="#ffffaa" opacity="0.45"/>
+  <!-- Title -->
+  <text x="600" y="80" font-family="Segoe UI, system-ui, sans-serif" font-weight="bold" font-size="52" fill="white" text-anchor="middle">COLOR DASH</text>
+  <text x="600" y="120" font-family="Segoe UI, system-ui, sans-serif" font-size="22" fill="hsl(280,70%,65%)" text-anchor="middle" letter-spacing="6">P A I N T L I N E</text>
+  <!-- Bottom text -->
+  <text x="600" y="560" font-family="Segoe UI, system-ui, sans-serif" font-size="20" fill="rgba(255,255,255,0.5)" text-anchor="middle">Tap to switch color &amp; lane. Match gates. Hit the center for Perfect!</text>
+  <text x="600" y="600" font-family="Segoe UI, system-ui, sans-serif" font-size="16" fill="rgba(255,255,255,0.3)" text-anchor="middle">balinti.github.io/color-dash</text>
+</svg>

@@ -1,576 +1,1025 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>The Robots - Games & Apps</title>
-    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490"
-       crossorigin="anonymous"></script>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TheRobots.io — Play 200+ Free Browser Games</title>
+  <meta name="description" content="Play 200+ free browser games instantly. Action, arcade, puzzle, rhythm and more. No downloads, no installs. Just play.">
+  <meta name="robots" content="index, follow">
+  <meta property="og:title" content="TheRobots.io — 200+ Free Browser Games">
+  <meta property="og:description" content="Play 200+ free browser games instantly. No downloads required.">
+  <meta property="og:type" content="website">
 
-        body {
-            font-family: 'Arial', sans-serif;
-            line-height: 1.6;
-            color: white;
-            background: linear-gradient(135deg, #2d1b69 0%, #11001c 100%);
-            min-height: 100vh;
-        }
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4099346100621490" crossorigin="anonymous"></script>
 
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 0 20px;
-        }
+  <!-- Fonts: Orbitron for headings (gaming), Inter for body (clean) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
 
-        header {
-            background: rgba(0, 0, 0, 0.8);
-            backdrop-filter: blur(10px);
-            padding: 1rem 0;
-            position: fixed;
-            width: 100%;
-            top: 0;
-            z-index: 1000;
-            border-bottom: 2px solid #4a2c7a;
-        }
+  <style>
+    :root {
+      --bg:        #07070f;
+      --bg2:       #0d0d1a;
+      --bg3:       #121224;
+      --purple:    #9d4edd;
+      --purple-lt: #c77dff;
+      --cyan:      #00d4ff;
+      --coral:     #ff6b6b;
+      --gold:      #ffd60a;
+      --border:    rgba(157,78,221,0.18);
+      --border-h:  rgba(157,78,221,0.55);
+      --text:      #e8e8f0;
+      --text-dim:  #888899;
+      --radius:    14px;
+      --nav-h:     68px;
+    }
 
-        nav {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
-        .logo {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            text-decoration: none;
-            transition: transform 0.3s;
-        }
+    html { scroll-behavior: smooth; }
 
-        .logo:hover {
-            transform: scale(1.05);
-        }
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
 
-        .logo-img {
-            width: 50px;
-            height: 50px;
-            object-fit: contain;
-            border-radius: 8px;
-        }
+    /* ── STARFIELD ── */
+    #stars-canvas {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      opacity: 0.5;
+    }
 
-        .logo-text {
-            font-size: 1.8rem;
-            font-weight: bold;
-            color: white;
-        }
+    /* ── NAV ── */
+    nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: var(--nav-h);
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 clamp(1rem, 4vw, 2.5rem);
+      background: rgba(7,7,15,0.5);
+      backdrop-filter: blur(20px) saturate(160%);
+      -webkit-backdrop-filter: blur(20px) saturate(160%);
+      border-bottom: 1px solid var(--border);
+      transition: background 0.4s;
+    }
+    nav.scrolled { background: rgba(7,7,15,0.88); }
 
-        .nav-links {
-            display: flex;
-            list-style: none;
-            gap: 2rem;
-        }
+    .nav-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+    }
+    .nav-logo img { width: 36px; height: 36px; object-fit: contain; border-radius: 8px; }
+    .nav-logo-text {
+      font-family: 'Orbitron', monospace;
+      font-weight: 900;
+      font-size: 1.1rem;
+      color: #fff;
+      letter-spacing: 0.03em;
+    }
+    .nav-logo-text span { color: var(--purple-lt); }
 
-        .nav-links a {
-            color: white;
-            text-decoration: none;
-            font-weight: 500;
-            transition: color 0.3s;
-        }
+    .nav-badge {
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--cyan);
+      border: 1px solid rgba(0,212,255,0.3);
+      padding: 3px 10px;
+      border-radius: 20px;
+      background: rgba(0,212,255,0.08);
+    }
 
-        .nav-links a:hover {
-            color: #9d4edd;
-        }
+    /* ── HERO ── */
+    .hero {
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: var(--nav-h) 1.5rem 4rem;
+    }
 
-        main {
-            margin-top: 80px;
-            padding: 4rem 0;
-        }
+    .hero-eyebrow {
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--cyan);
+      margin-bottom: 1.5rem;
+      opacity: 0;
+      animation: fadeUp 0.7s 0.2s forwards;
+    }
 
-        .hero {
-            text-align: center;
-            color: white;
-            margin-bottom: 4rem;
-            padding: 3rem 2rem;
-        }
+    .hero-title {
+      font-family: 'Orbitron', monospace;
+      font-weight: 900;
+      font-size: clamp(2.8rem, 8vw, 6.5rem);
+      line-height: 1.05;
+      letter-spacing: -0.01em;
+      margin-bottom: 1.5rem;
+      opacity: 0;
+      animation: fadeUp 0.7s 0.35s forwards;
+    }
+    .hero-title .line1 { display: block; color: #fff; }
+    .hero-title .line2 {
+      display: block;
+      background: linear-gradient(90deg, var(--purple), var(--cyan) 60%, var(--purple-lt));
+      background-size: 200% auto;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: gradMove 4s linear infinite, fadeUp 0.7s 0.35s forwards;
+    }
 
-        .hero-logo {
-            width: 150px;
-            height: 150px;
-            margin: 0 auto 2rem;
-            animation: float 3s ease-in-out infinite;
-            object-fit: contain;
-        }
+    .hero-sub {
+      max-width: 540px;
+      font-size: clamp(1rem, 2.5vw, 1.2rem);
+      color: var(--text-dim);
+      line-height: 1.7;
+      margin-bottom: 2.5rem;
+      opacity: 0;
+      animation: fadeUp 0.7s 0.5s forwards;
+    }
 
-        @keyframes float {
-            0%, 100% { transform: translateY(0px); }
-            50% { transform: translateY(-20px); }
-        }
+    .hero-stats {
+      display: flex;
+      gap: clamp(1.5rem, 4vw, 3.5rem);
+      justify-content: center;
+      margin-bottom: 3rem;
+      opacity: 0;
+      animation: fadeUp 0.7s 0.65s forwards;
+    }
+    .stat { text-align: center; }
+    .stat-num {
+      font-family: 'Orbitron', monospace;
+      font-size: clamp(1.8rem, 4vw, 2.8rem);
+      font-weight: 900;
+      color: #fff;
+      line-height: 1;
+    }
+    .stat-num span { color: var(--purple-lt); }
+    .stat-label {
+      font-size: 0.72rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-top: 4px;
+    }
+    .stat-divider { width: 1px; background: var(--border); align-self: stretch; }
 
-        .hero h1 {
-            font-size: 3.5rem;
-            margin-bottom: 1rem;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
-            color: white;
-        }
+    .hero-cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: linear-gradient(135deg, var(--purple), #5a189a);
+      color: #fff;
+      font-size: 1rem;
+      font-weight: 600;
+      padding: 14px 32px;
+      border-radius: 50px;
+      text-decoration: none;
+      box-shadow: 0 0 30px rgba(157,78,221,0.35), 0 4px 20px rgba(0,0,0,0.4);
+      transition: transform 0.25s, box-shadow 0.25s;
+      opacity: 0;
+      animation: fadeUp 0.7s 0.8s forwards;
+    }
+    .hero-cta:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 0 50px rgba(157,78,221,0.5), 0 8px 30px rgba(0,0,0,0.4);
+    }
+    .hero-cta svg { flex-shrink: 0; }
 
-        .gradient-text {
-            background: linear-gradient(45deg, #9d4edd, #c77dff, #e0aaff);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            animation: gradientShift 3s ease infinite;
-            background-size: 200% auto;
-        }
+    .hero-scroll-hint {
+      position: absolute;
+      bottom: 2rem;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      opacity: 0;
+      animation: fadeIn 1s 1.5s forwards;
+    }
+    .hero-scroll-hint span {
+      font-size: 0.65rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+    }
+    .scroll-arrow {
+      width: 20px;
+      height: 20px;
+      border-right: 2px solid var(--text-dim);
+      border-bottom: 2px solid var(--text-dim);
+      transform: rotate(45deg);
+      animation: bounce 1.5s ease-in-out infinite;
+    }
 
-        @keyframes gradientShift {
-            0%, 100% { background-position: 0% 50%; }
-            50% { background-position: 100% 50%; }
-        }
+    /* ── MAIN CONTENT ── */
+    .content {
+      position: relative;
+      z-index: 1;
+      padding: 0 clamp(1rem, 4vw, 2.5rem) 6rem;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
 
-        .hero p {
-            font-size: 1.2rem;
-            margin-bottom: 2rem;
-            opacity: 0.9;
-            color: white;
-        }
+    /* ── SEARCH & FILTER BAR ── */
+    .controls {
+      position: sticky;
+      top: var(--nav-h);
+      z-index: 90;
+      padding: 1rem 0;
+      background: rgba(7,7,15,0.85);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 2.5rem;
+    }
 
-        .cta-buttons {
-            display: flex;
-            gap: 1.5rem;
-            justify-content: center;
-            flex-wrap: wrap;
-        }
+    .controls-inner {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
+    }
 
-        .cta-button {
-            background: linear-gradient(45deg, #9d4edd, #7209b7);
-            color: white;
-            padding: 15px 30px;
-            border: none;
-            border-radius: 50px;
-            font-size: 1.1rem;
-            font-weight: bold;
-            cursor: pointer;
-            text-decoration: none;
-            display: inline-block;
-            transition: transform 0.3s, box-shadow 0.3s;
-            box-shadow: 0 4px 15px rgba(157, 78, 221, 0.4);
-        }
+    .search-wrap {
+      position: relative;
+      flex: 1;
+      min-width: 200px;
+    }
+    .search-icon {
+      position: absolute;
+      left: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-dim);
+      pointer-events: none;
+    }
+    #search {
+      width: 100%;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 14px 10px 42px;
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    #search::placeholder { color: var(--text-dim); }
+    #search:focus {
+      border-color: var(--purple);
+      box-shadow: 0 0 0 3px rgba(157,78,221,0.15);
+    }
 
-        .cta-button:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 6px 25px rgba(157, 78, 221, 0.6);
-        }
+    .filters {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .filter-btn {
+      font-family: 'Inter', sans-serif;
+      font-size: 0.78rem;
+      font-weight: 500;
+      letter-spacing: 0.04em;
+      padding: 7px 16px;
+      border-radius: 30px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-dim);
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .filter-btn:hover { border-color: var(--border-h); color: var(--text); }
+    .filter-btn.active {
+      border-color: var(--purple);
+      background: rgba(157,78,221,0.15);
+      color: var(--purple-lt);
+    }
 
-        .cta-button.secondary {
-            background: transparent;
-            border: 2px solid #9d4edd;
-        }
+    .results-count {
+      margin-left: auto;
+      font-size: 0.78rem;
+      color: var(--text-dim);
+      white-space: nowrap;
+    }
+    .results-count strong { color: var(--text); }
 
-        .cta-button.secondary:hover {
-            background: rgba(157, 78, 221, 0.2);
-        }
+    /* ── GAME GRID ── */
+    #games-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+      gap: 1.25rem;
+    }
 
-        /* Section heading */
-        .section-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 2rem;
-        }
+    .game-card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      text-decoration: none;
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      transition: transform 0.25s cubic-bezier(0.34,1.56,0.64,1),
+                  border-color 0.25s, box-shadow 0.25s;
+      opacity: 0;
+      transform: translateY(24px);
+    }
+    .game-card.visible {
+      opacity: 1;
+      transform: translateY(0);
+      transition: opacity 0.45s ease, transform 0.45s ease,
+                  border-color 0.25s, box-shadow 0.25s;
+    }
+    .game-card:hover {
+      transform: translateY(-6px) scale(1.02);
+      border-color: var(--border-h);
+    }
 
-        .section-header h2 {
-            font-size: 2rem;
-            color: white;
-        }
+    .game-card-thumb {
+      height: 130px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    .game-card-thumb::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(to bottom, transparent 60%, rgba(0,0,0,0.6));
+    }
+    .game-card-thumb .emoji {
+      font-size: 3.2rem;
+      line-height: 1;
+      position: relative;
+      z-index: 1;
+      filter: drop-shadow(0 0 12px currentColor);
+      transition: transform 0.3s;
+    }
+    .game-card:hover .emoji { transform: scale(1.15); }
 
-        .section-header a {
-            color: #9d4edd;
-            text-decoration: none;
-            font-weight: 500;
-            transition: color 0.3s;
-        }
+    .game-card-body {
+      padding: 1rem 1rem 1.1rem;
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+    }
+    .game-card-name {
+      font-size: 0.95rem;
+      font-weight: 600;
+      margin-bottom: 0.4rem;
+      color: #fff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .game-card-desc {
+      font-size: 0.78rem;
+      color: var(--text-dim);
+      line-height: 1.55;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      flex: 1;
+    }
+    .game-card-foot {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 0.75rem;
+    }
+    .cat-badge {
+      font-size: 0.65rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 3px 10px;
+      border-radius: 20px;
+    }
+    .play-arrow {
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      color: var(--text-dim);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      transition: color 0.2s, gap 0.2s;
+    }
+    .game-card:hover .play-arrow { color: var(--purple-lt); gap: 7px; }
 
-        .section-header a:hover {
-            color: #c77dff;
-        }
+    /* Category color palettes */
+    .theme-fire   { background: linear-gradient(135deg,#1a0500,#2d0a00); }
+    .theme-fire .emoji { color: #ff6b00; }
+    .theme-fire .cat-badge { background: rgba(255,69,0,0.15); color: #ff8c42; border: 1px solid rgba(255,69,0,0.3); }
+    .theme-fire .game-card-thumb { background: linear-gradient(135deg, #1f0800, #3d1000); }
 
-        /* Game featured card */
-        .game-featured {
-            background: rgba(0, 0, 0, 0.7);
-            border: 2px solid #4a2c7a;
-            border-radius: 20px;
-            overflow: hidden;
-            transition: transform 0.3s, border-color 0.3s;
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            text-decoration: none;
-            color: white;
-            margin-bottom: 4rem;
-        }
+    .theme-ocean  { background: linear-gradient(135deg,#001a26,#002233); }
+    .theme-ocean .emoji { color: #00bcd4; }
+    .theme-ocean .cat-badge { background: rgba(0,188,212,0.12); color: #4dd0e1; border: 1px solid rgba(0,188,212,0.3); }
+    .theme-ocean .game-card-thumb { background: linear-gradient(135deg, #001520, #002a3d); }
 
-        .game-featured:hover {
-            transform: translateY(-5px);
-            border-color: #9d4edd;
-            box-shadow: 0 10px 30px rgba(157, 78, 221, 0.3);
-        }
+    .theme-space  { background: linear-gradient(135deg,#0d0020,#1a003d); }
+    .theme-space .emoji { color: #c77dff; }
+    .theme-space .cat-badge { background: rgba(157,78,221,0.15); color: #c77dff; border: 1px solid rgba(157,78,221,0.3); }
+    .theme-space .game-card-thumb { background: linear-gradient(135deg, #0a0015, #1a0035); }
 
-        .game-featured-preview {
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 300px;
-            padding: 2rem;
-        }
+    .theme-neon   { background: linear-gradient(135deg,#001a10,#002215); }
+    .theme-neon .emoji { color: #00ff88; }
+    .theme-neon .cat-badge { background: rgba(0,255,136,0.12); color: #00ff88; border: 1px solid rgba(0,255,136,0.3); }
+    .theme-neon .game-card-thumb { background: linear-gradient(135deg, #001208, #001a0d); }
 
-        .game-preview-icon {
-            font-size: 6rem;
-            text-align: center;
-        }
+    .theme-forest { background: linear-gradient(135deg,#051205,#091509); }
+    .theme-forest .emoji { color: #66bb6a; }
+    .theme-forest .cat-badge { background: rgba(76,175,80,0.12); color: #81c784; border: 1px solid rgba(76,175,80,0.3); }
+    .theme-forest .game-card-thumb { background: linear-gradient(135deg, #040d04, #081208); }
 
-        .game-preview-icon p {
-            font-size: 1rem;
-            color: #aaa;
-            margin-top: 1rem;
-        }
+    .theme-ice    { background: linear-gradient(135deg,#001520,#001d2e); }
+    .theme-ice .emoji { color: #80deea; }
+    .theme-ice .cat-badge { background: rgba(77,208,225,0.12); color: #80deea; border: 1px solid rgba(77,208,225,0.3); }
+    .theme-ice .game-card-thumb { background: linear-gradient(135deg, #001018, #001825); }
 
-        .game-featured-info {
-            padding: 2.5rem;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-        }
+    .theme-candy  { background: linear-gradient(135deg,#200010,#2d0015); }
+    .theme-candy .emoji { color: #f06292; }
+    .theme-candy .cat-badge { background: rgba(240,98,146,0.12); color: #f48fb1; border: 1px solid rgba(240,98,146,0.3); }
+    .theme-candy .game-card-thumb { background: linear-gradient(135deg, #180008, #220012); }
 
-        .game-featured-info h3 {
-            font-size: 2rem;
-            margin-bottom: 1rem;
-        }
+    .theme-desert { background: linear-gradient(135deg,#1a1200,#221800); }
+    .theme-desert .emoji { color: #ffd54f; }
+    .theme-desert .cat-badge { background: rgba(255,213,79,0.12); color: #ffe082; border: 1px solid rgba(255,213,79,0.3); }
+    .theme-desert .game-card-thumb { background: linear-gradient(135deg, #120d00, #1a1200); }
 
-        .game-featured-info p {
-            font-size: 1rem;
-            color: #cccccc;
-            margin-bottom: 1.5rem;
-            line-height: 1.7;
-        }
+    .theme-rhythm { background: linear-gradient(135deg,#150020,#1e0030); }
+    .theme-rhythm .emoji { color: #e040fb; }
+    .theme-rhythm .cat-badge { background: rgba(224,64,251,0.12); color: #ea80fc; border: 1px solid rgba(224,64,251,0.3); }
+    .theme-rhythm .game-card-thumb { background: linear-gradient(135deg, #100018, #180025); }
 
-        .game-tag {
-            display: inline-block;
-            padding: 6px 16px;
-            border-radius: 20px;
-            font-size: 0.8rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            background: rgba(255, 107, 107, 0.2);
-            color: #ff6b6b;
-            border: 1px solid rgba(255, 107, 107, 0.3);
-            width: fit-content;
-        }
+    .theme-pixel  { background: linear-gradient(135deg,#001520,#002240); }
+    .theme-pixel .emoji { color: #00d4ff; }
+    .theme-pixel .cat-badge { background: rgba(0,212,255,0.12); color: #4dd9ff; border: 1px solid rgba(0,212,255,0.3); }
+    .theme-pixel .game-card-thumb { background: linear-gradient(135deg, #000d14, #001828); }
 
-        /* App cards grid */
-        .cards-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            gap: 1.5rem;
-            margin-bottom: 4rem;
-        }
+    .theme-default { background: linear-gradient(135deg,#0f0a1e,#150d28); }
+    .theme-default .emoji { color: #c77dff; }
+    .theme-default .cat-badge { background: rgba(157,78,221,0.12); color: #c77dff; border: 1px solid rgba(157,78,221,0.3); }
+    .theme-default .game-card-thumb { background: linear-gradient(135deg, #0a0618, #100820); }
 
-        .card {
-            background: rgba(0, 0, 0, 0.7);
-            border: 2px solid #4a2c7a;
-            border-radius: 20px;
-            overflow: hidden;
-            transition: transform 0.3s, border-color 0.3s;
-            cursor: pointer;
-            text-decoration: none;
-            color: white;
-            display: block;
-        }
+    /* ── EMPTY STATE ── */
+    #empty-state {
+      display: none;
+      text-align: center;
+      padding: 5rem 1rem;
+      color: var(--text-dim);
+    }
+    #empty-state .es-icon { font-size: 3rem; margin-bottom: 1rem; }
+    #empty-state h3 { font-size: 1.2rem; color: var(--text); margin-bottom: 0.5rem; }
 
-        .card:hover {
-            transform: translateY(-8px);
-            border-color: #9d4edd;
-            box-shadow: 0 10px 30px rgba(157, 78, 221, 0.3);
-        }
+    /* ── FOOTER ── */
+    footer {
+      position: relative;
+      z-index: 1;
+      border-top: 1px solid var(--border);
+      padding: 2.5rem clamp(1rem, 4vw, 2.5rem);
+      text-align: center;
+      color: var(--text-dim);
+      font-size: 0.82rem;
+    }
+    footer a { color: var(--purple-lt); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
 
-        .card-img {
-            width: 100%;
-            height: 180px;
-            object-fit: cover;
-            background: linear-gradient(135deg, #3a1f7a, #1a0a3e);
-        }
+    /* ── ANIMATIONS ── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+    @keyframes gradMove {
+      from { background-position: 0% center; }
+      to   { background-position: 200% center; }
+    }
+    @keyframes bounce {
+      0%, 100% { transform: rotate(45deg) translateY(0); }
+      50%       { transform: rotate(45deg) translateY(5px); }
+    }
 
-        .card-body {
-            padding: 1.25rem;
-        }
+    /* ── RESPONSIVE ── */
+    @media (max-width: 600px) {
+      .hero-stats { gap: 1.2rem; }
+      .stat-divider { display: none; }
+      #games-grid { grid-template-columns: repeat(2, 1fr); gap: 0.85rem; }
+      .game-card-thumb { height: 100px; }
+      .game-card-thumb .emoji { font-size: 2.5rem; }
+      .controls-inner { flex-direction: column; align-items: stretch; }
+      .filters { gap: 0.4rem; }
+      .results-count { margin-left: 0; }
+    }
 
-        .card-body h3 {
-            font-size: 1.1rem;
-            margin-bottom: 0.5rem;
-        }
-
-        .card-body p {
-            font-size: 0.9rem;
-            color: #cccccc;
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
-        }
-
-        .card-tag {
-            display: inline-block;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            margin-top: 0.75rem;
-        }
-
-        .tag-ai {
-            background: rgba(157, 78, 221, 0.2);
-            color: #c77dff;
-            border: 1px solid rgba(157, 78, 221, 0.3);
-        }
-
-        .tag-productivity {
-            background: rgba(69, 170, 242, 0.2);
-            color: #45aaf2;
-            border: 1px solid rgba(69, 170, 242, 0.3);
-        }
-
-        .tag-education {
-            background: rgba(38, 222, 129, 0.2);
-            color: #26de81;
-            border: 1px solid rgba(38, 222, 129, 0.3);
-        }
-
-        .tag-wellness {
-            background: rgba(252, 196, 25, 0.2);
-            color: #fcc419;
-            border: 1px solid rgba(252, 196, 25, 0.3);
-        }
-
-        .tag-finance {
-            background: rgba(32, 191, 107, 0.2);
-            color: #20bf6b;
-            border: 1px solid rgba(32, 191, 107, 0.3);
-        }
-
-        .tag-social {
-            background: rgba(252, 92, 125, 0.2);
-            color: #fc5c7d;
-            border: 1px solid rgba(252, 92, 125, 0.3);
-        }
-
-        .tag-game {
-            background: rgba(255, 107, 107, 0.2);
-            color: #ff6b6b;
-            border: 1px solid rgba(255, 107, 107, 0.3);
-        }
-
-        /* Browse all banner */
-        .browse-banner {
-            background: rgba(0, 0, 0, 0.7);
-            border: 2px solid #4a2c7a;
-            border-radius: 20px;
-            padding: 3rem;
-            text-align: center;
-            margin: 2rem 0 3rem;
-        }
-
-        .browse-banner h2 {
-            font-size: 2rem;
-            margin-bottom: 1rem;
-            color: white;
-        }
-
-        .browse-banner p {
-            color: #cccccc;
-            margin-bottom: 2rem;
-            font-size: 1.1rem;
-        }
-
-        footer {
-            background: rgba(0, 0, 0, 0.9);
-            color: white;
-            text-align: center;
-            padding: 2rem 0;
-            margin-top: 4rem;
-            border-top: 2px solid #4a2c7a;
-        }
-
-        @media (max-width: 768px) {
-            .hero h1 {
-                font-size: 2.5rem;
-            }
-
-            .nav-links {
-                flex-direction: column;
-                gap: 1rem;
-            }
-
-            .game-featured {
-                grid-template-columns: 1fr;
-            }
-
-            .game-featured-preview {
-                min-height: 200px;
-            }
-
-            .section-header {
-                flex-direction: column;
-                gap: 0.5rem;
-                text-align: center;
-            }
-
-            .cards-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-    </style>
+    @media (min-width: 1200px) {
+      #games-grid { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); }
+    }
+  </style>
 </head>
 <body>
-    <header>
-        <nav class="container">
-            <a href="index.html" class="logo">
-                <img src="images/bot-logo.png" alt="The Robots Logo" class="logo-img">
-                <span class="logo-text">The Robots</span>
-            </a>
-            <ul class="nav-links">
-                <li><a href="index.html">Home</a></li>
-                <li><a href="#games-section">Games</a></li>
-                <li><a href="apps.html">Apps</a></li>
-            </ul>
-        </nav>
-    </header>
 
-    <main class="container">
-        <section class="hero">
-            <img src="images/mark-logo.png" alt="The Robots TR Logo" class="hero-logo">
-            <h1>Discover <span class="gradient-text">Games & Apps</span></h1>
-            <p>Play 16 games and explore 164+ apps built for fun, learning, and productivity</p>
-            <div class="cta-buttons">
-                <a href="#games-section" class="cta-button">Browse Games</a>
-                <a href="apps.html" class="cta-button secondary">Browse Apps</a>
-            </div>
-        </section>
+  <canvas id="stars-canvas"></canvas>
 
-        <!-- Games Section -->
-        <section id="games-section">
-            <div class="section-header">
-                <h2>Games</h2>
-            </div>
-            <div class="cards-grid" id="games-grid"></div>
-        </section>
+  <!-- NAV -->
+  <nav id="navbar">
+    <a href="/" class="nav-logo">
+      <img src="images/bot-logo.png" alt="TheRobots.io">
+      <span class="nav-logo-text">The<span>Robots</span>.io</span>
+    </a>
+    <span class="nav-badge">200+ Free Games</span>
+  </nav>
 
-        <!-- Featured Apps -->
-        <section>
-            <div class="section-header">
-                <h2>Featured Apps</h2>
-                <a href="apps.html">View all apps &rarr;</a>
-            </div>
-            <div class="cards-grid" id="apps-grid"></div>
-        </section>
+  <!-- HERO -->
+  <section class="hero">
+    <p class="hero-eyebrow">&#9679; Browser Games — No Download Required</p>
+    <h1 class="hero-title">
+      <span class="line1">Play Instantly.</span>
+      <span class="line2">No Install Needed.</span>
+    </h1>
+    <p class="hero-sub">Over 200 free games — action, arcade, puzzle, rhythm and more. Open a game and start playing in seconds.</p>
 
-        <!-- Browse All Banner -->
-        <section class="browse-banner">
-            <h2>Ready to explore everything?</h2>
-            <p>Browse our full directory with search, filters, ratings, and more</p>
-            <a href="apps.html" class="cta-button">Open Apps Directory</a>
-        </section>
-    </main>
+    <div class="hero-stats">
+      <div class="stat">
+        <div class="stat-num" id="stat-games">0<span>+</span></div>
+        <div class="stat-label">Games</div>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat">
+        <div class="stat-num">5<span>+</span></div>
+        <div class="stat-label">Categories</div>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat">
+        <div class="stat-num">0<span>MB</span></div>
+        <div class="stat-label">Download</div>
+      </div>
+    </div>
 
-    <footer>
-        <div class="container">
-            <p>&copy; 2025 The Robots. All rights reserved.</p>
+    <a href="#games" class="hero-cta">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      Browse All Games
+    </a>
+
+    <div class="hero-scroll-hint">
+      <span>Scroll</span>
+      <div class="scroll-arrow"></div>
+    </div>
+  </section>
+
+  <!-- GAMES SECTION -->
+  <section id="games" class="content">
+    <div class="controls">
+      <div class="controls-inner">
+        <div class="search-wrap">
+          <svg class="search-icon" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+          </svg>
+          <input id="search" type="search" placeholder="Search games…" autocomplete="off" spellcheck="false">
         </div>
-    </footer>
+        <div class="filters">
+          <button class="filter-btn active" data-cat="all">All</button>
+          <button class="filter-btn" data-cat="action">Action</button>
+          <button class="filter-btn" data-cat="arcade">Arcade</button>
+          <button class="filter-btn" data-cat="puzzle">Puzzle</button>
+          <button class="filter-btn" data-cat="rhythm">Rhythm</button>
+        </div>
+        <div class="results-count"><strong id="count">217</strong> games</div>
+      </div>
+    </div>
 
-    <script>
-        const games = [
-            { name: "Stack Tower", slug: "stack-tower-game", description: "Stack blocks as high as you can. Time your taps to align each block and build the tallest tower.", emoji: "\u{1F3D7}\u{FE0F}" },
-            { name: "Zigzag Dash", slug: "zigzag-dash", description: "Navigate through zigzag paths at high speed. Quick reflexes are key to survival.", emoji: "\u26A1" },
-            { name: "Neon Bounce", slug: "neon-bounce", description: "Bounce a glowing ball between neon platforms. Platforms get narrower as your score increases.", emoji: "\u{1F4A1}" },
-            { name: "Color Dash", slug: "color-dash", description: "Run through color gates matching your current color. Tap to switch colors. Speed increases every 10 points.", emoji: "\u{1F3A8}" },
-            { name: "Gravity Flip", slug: "gravity-flip", description: "Tap to flip gravity up/down while dodging obstacles from both sides. Collect stars for bonus points.", emoji: "\u{1F504}" },
-            { name: "Cosmic Chain", slug: "cosmic-chain", description: "Swipe to link planets in a chain as obstacles spawn and multiply rapidly.", emoji: "\u{1FA90}" },
-            { name: "Canopy Rush", slug: "canopy-rush", description: "Leap between towering trees and catch random powerups for extra jumps.", emoji: "\u{1F333}" },
-            { name: "Lava Sprint", slug: "lava-sprint", description: "Dodge multiplying volcanic rocks in an endless blazing lava run.", emoji: "\u{1F30B}" },
-            { name: "Gear Rhythm", slug: "gear-rhythm", description: "Tap matching gears on a rotating clockwork wheel as speed escalates.", emoji: "\u2699\u{FE0F}" },
-            { name: "Steampile Spin", slug: "steampile-spin", description: "Stack quirky steampunk contraptions as the entire screen rotates unpredictably.", emoji: "\u{1F529}" },
-            { name: "Tide Twist", slug: "tide-twist", description: "Bounce to reverse gravity and connect ocean creatures of matching colors during tidal flows.", emoji: "\u{1F30A}" },
-            { name: "Turbo Cog", slug: "turbo-cog", description: "Tap to toggle direction along a narrow, spinning cog path before your time expires.", emoji: "\u{1F504}" },
-            { name: "Vine Blur", slug: "vine-blur", description: "Swing rapidly between vines, avoiding multiplying logs and spikes.", emoji: "\u{1F33F}" },
-            { name: "Vine Switch", slug: "vine-switch", description: "Swipe to flip gravity while swinging on jungle vines that change colors instantly.", emoji: "\u{1F343}" },
-            { name: "Wave Chain", slug: "wave-chain", description: "Tap to chain oceanic dots while the screen rotates in sync with rolling waves.", emoji: "\u{1F517}" },
-            { name: "Wave Connect", slug: "wave-connect", description: "Swipe to link dots as gravity randomly changes directions in a vaporwave cityscape.", emoji: "\u{1F306}" },
-        ];
+    <div id="games-grid"></div>
+    <div id="empty-state">
+      <div class="es-icon">🎮</div>
+      <h3>No games found</h3>
+      <p>Try a different search term or category.</p>
+    </div>
+  </section>
 
-        function renderGameCard(game) {
-            return `
-                <a href="games/${game.slug}/" class="card">
-                    <div class="card-img" style="display:flex;align-items:center;justify-content:center;font-size:3.5rem;">
-                        ${game.emoji}
-                    </div>
-                    <div class="card-body">
-                        <h3>${game.name}</h3>
-                        <p>${game.description}</p>
-                        <span class="card-tag tag-game">Game</span>
-                    </div>
-                </a>
-            `;
+  <footer>
+    <p>&copy; 2025 TheRobots.io &nbsp;·&nbsp; <a href="/auth/login.html">Sign In</a> &nbsp;·&nbsp; All games free to play in your browser.</p>
+  </footer>
+
+  <script>
+    // ── STARFIELD CANVAS ──
+    (function() {
+      const c = document.getElementById('stars-canvas');
+      const ctx = c.getContext('2d');
+      let stars = [];
+
+      function resize() {
+        c.width = window.innerWidth;
+        c.height = window.innerHeight;
+      }
+      function init() {
+        stars = [];
+        for (let i = 0; i < 180; i++) {
+          stars.push({
+            x: Math.random() * c.width,
+            y: Math.random() * c.height,
+            r: Math.random() * 1.2 + 0.2,
+            o: Math.random() * 0.8 + 0.1,
+            s: Math.random() * 0.4 + 0.05
+          });
         }
+      }
+      function draw() {
+        ctx.clearRect(0, 0, c.width, c.height);
+        stars.forEach(s => {
+          s.o += s.s * 0.02;
+          if (s.o > 1 || s.o < 0.05) s.s *= -1;
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(200,180,255,${s.o})`;
+          ctx.fill();
+        });
+        requestAnimationFrame(draw);
+      }
+      resize();
+      init();
+      draw();
+      window.addEventListener('resize', () => { resize(); init(); });
+    })();
 
-        document.getElementById('games-grid').innerHTML = games.map(renderGameCard).join('');
+    // ── NAVBAR SCROLL ──
+    window.addEventListener('scroll', () => {
+      document.getElementById('navbar').classList.toggle('scrolled', window.scrollY > 20);
+    });
 
-        const featuredApps = [
-            { name: "AI Tutor Kids", url: "https://ai-tutor-kids.vercel.app", description: "Child-friendly AI tutor that makes learning fun. Interactive lessons, quizzes, and adaptive content for young learners.", category: "ai" },
-            { name: "Streak Vault", url: "https://streak-vault.vercel.app", description: "Secure storage for all your habit streaks and achievements. Track multiple goals and celebrate your consistency.", category: "productivity" },
-            { name: "Study Fizz", url: "https://study-fizz.vercel.app", description: "Make studying fun with gamified learning sessions. Earn rewards and track progress.", category: "education" },
-            { name: "Social Anxiety Practice Lab", url: "https://social-anxiety-practice-lab.vercel.app", description: "Safe space to practice social interactions through simulated scenarios. Build confidence at your own pace.", category: "wellness" },
-            { name: "Budget Battle Arena", url: "https://budget-battle-arena.vercel.app", description: "Gamify your budgeting! Compete with friends to achieve savings goals and earn rewards.", category: "finance" },
-            { name: "Focus Timer App", url: "https://focus-timer-app.vercel.app", description: "Simple yet powerful focus timer with Pomodoro and custom intervals. Stay productive.", category: "productivity" },
-            { name: "Code Bite Mini", url: "https://code-bite-mini.vercel.app", description: "Bite-sized coding lessons for beginners. Learn programming in small, digestible chunks.", category: "education" },
-            { name: "Knit Community Hub", url: "https://knit-community-hub.vercel.app", description: "Connect with fellow knitting enthusiasts. Share patterns, get tips, and join virtual knitting circles.", category: "social" },
-        ];
+    // ── STAT COUNTER ──
+    (function() {
+      const el = document.getElementById('stat-games');
+      let cur = 0;
+      const target = 217;
+      const step = Math.ceil(target / 40);
+      const timer = setInterval(() => {
+        cur = Math.min(cur + step, target);
+        el.innerHTML = cur + '<span>+</span>';
+        if (cur >= target) clearInterval(timer);
+      }, 30);
+    })();
 
-        function toSlug(name) {
-            return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-        }
+    // ── GAME DATA ──
+    // [slug, name, description, category, theme]
+    const GAMES = [
+      ["stack-tower-game","Stack Tower","Stack blocks as high as you can. Time your taps to align each block and build the tallest tower.","arcade","default"],
+      ["zigzag-dash","Zigzag Dash","Navigate through zigzag paths at high speed. Quick reflexes are key to survival.","action","neon"],
+      ["aqua-shrink","Aqua Shrink","Dodge rising walls in shrinking aquatic pools. Survive the squeeze.","action","ocean"],
+      ["ash-flight","Ash Flight","Soar through volcanic ash clouds, dodging falling debris at increasing speeds.","action","fire"],
+      ["ash-hopper","Ash Hopper","Hop across glowing ash platforms as they crumble beneath your feet.","arcade","fire"],
+      ["ash-pile","Ash Pile","Stack falling ash blocks into a steady tower before the volcano erupts.","arcade","fire"],
+      ["astro-glide","Astro Glide","Glide through asteroid fields, collecting stardust while avoiding collisions.","action","space"],
+      ["astro-split","Astro Split","Split your spaceship to dodge dual obstacle streams in deep space.","arcade","space"],
+      ["bark-rush","Bark Rush","Rush through a forest, leaping over bark obstacles and fallen logs at high speed.","action","forest"],
+      ["beam-shift","Beam Shift","Shift between laser beams in a neon grid. One wrong move ends it all.","action","neon"],
+      ["beam-sprint","Beam Sprint","Sprint along shifting energy beams, jumping gaps before they disappear.","action","neon"],
+      ["beat-breaker","Beat Breaker","Break rhythmic blocks to the beat. Match the tempo to score big.","rhythm","rhythm"],
+      ["beat-chase","Beat Chase","Chase the beat — tap in rhythm as the tempo accelerates and patterns multiply.","rhythm","rhythm"],
+      ["block-bouncer","Block Bouncer","Bounce blocks off platforms in a chain reaction. Clear the board to win.","arcade","default"],
+      ["block-racer","Block Racer","Race colored blocks down a track, switching lanes to avoid crashes.","action","neon"],
+      ["branch-sprint","Branch Sprint","Sprint across tree branches at treetop speed, leaping gaps and swinging on vines.","action","forest"],
+      ["bubble-break","Bubble Break","Pop bubbles in the right order before they float away. Speed counts.","arcade","ocean"],
+      ["bubble-glide","Bubble Glide","Glide through a stream of bubbles, collecting the right colors while avoiding others.","action","ocean"],
+      ["bubble-merge","Bubble Merge","Merge matching bubbles to score points as the board fills up. Think fast.","puzzle","ocean"],
+      ["cactus-clash","Cactus Clash","Clash against flying cacti in the desert sun. Dodge, weave, and survive.","action","desert"],
+      ["cactus-glide","Cactus Glide","Glide over a cactus field with shrinking hover-power. Land softly or burst.","action","desert"],
+      ["candy-shrink","Candy Shrink","A candy world is shrinking! Jump platforms before they melt away.","arcade","candy"],
+      ["candy-split","Candy Split","Split candy streams to match colors as they pour faster and faster.","puzzle","candy"],
+      ["canopy-rush","Canopy Rush","Leap between towering trees and catch random powerups for extra jumps.","action","forest"],
+      ["circle-drift","Circle Drift","Drift a circle along a winding path, never touching the walls.","action","default"],
+      ["circuit-coil","Circuit Coil","Coil through electric circuits, completing loops before the power cuts out.","puzzle","neon"],
+      ["cloud-match","Cloud Match","Match cloud shapes as they drift by. Faster rounds, harder matches.","puzzle","default"],
+      ["cloud-shift","Cloud Shift","Shift between cloud platforms as they move and vanish in the sky.","action","default"],
+      ["cog-climb","Cog Climb","Climb a tower of turning cogs without getting crushed by the gears.","arcade","default"],
+      ["color-dash","Color Dash","Run through color gates matching your current color. Tap to switch. Speed increases every 10 points.","action","neon"],
+      ["color-grove","Color Grove","Navigate a colorful grove, painting your path and matching hues.","puzzle","forest"],
+      ["coral-droplet","Coral Droplet","Drop through coral reefs, collecting ocean gems while avoiding sea creatures.","action","ocean"],
+      ["cosmic-chain","Cosmic Chain","Swipe to link planets in a chain as obstacles spawn and multiply rapidly.","puzzle","space"],
+      ["cosmo-sprint","Cosmo Sprint","Sprint through a cosmos of floating rocks and stars at light speed.","action","space"],
+      ["crater-twist","Crater Twist","Twist through crater mazes on an alien planet, avoiding lava pits.","action","fire"],
+      ["cube-catch","Cube Catch","Catch falling cubes on a rotating platform. Miss one and it's over.","arcade","default"],
+      ["cube-drift","Cube Drift","Drift a cube along narrow floating paths over a vast void. Don't fall.","action","default"],
+      ["current-spin","Current Spin","Spin with ocean currents, riding waves and avoiding underwater hazards.","action","ocean"],
+      ["dot-drift","Dot Drift","Drift a dot through a maze of moving obstacles without touching the walls.","action","neon"],
+      ["dot-sprint","Dot Sprint","Sprint a glowing dot along a path that shifts and narrows without warning.","action","neon"],
+      ["dual-drift","Dual Drift","Control two objects simultaneously drifting through mirrored obstacle courses.","action","default"],
+      ["dune-climber","Dune Climber","Climb shifting sand dunes that crumble under your weight. Reach the top.","action","desert"],
+      ["dune-spinner","Dune Spinner","Spin across desert dunes, building momentum to fly over massive gaps.","action","desert"],
+      ["dusk-dart","Dusk Dart","Dart through a twilight sky, dodging birds and clouds at sunset speed.","action","default"],
+      ["dusk-dash","Dusk Dash","Dash through the fading light as obstacles multiply with the setting sun.","action","default"],
+      ["dusk-defense","Dusk Defense","Defend your base at dusk as waves of enemies close in from all sides.","action","default"],
+      ["dusk-drift","Dusk Drift","Drift through a moody dusk landscape, collecting fireflies before dark falls.","action","default"],
+      ["dusk-pulse","Dusk Pulse","Pulse through dusk energy waves, syncing your rhythm to the fading light.","rhythm","rhythm"],
+      ["echo-drift","Echo Drift","Drift through echoing caverns where walls appear and disappear with sound.","action","rhythm"],
+      ["echo-flap","Echo Flap","Flap upward through an echo chamber, riding sound waves to stay aloft.","arcade","rhythm"],
+      ["echo-spin","Echo Spin","Spin through concentric sound rings, hitting the right notes to advance.","rhythm","rhythm"],
+      ["flip-fathom","Flip Fathom","Flip gravity and plunge through deep ocean layers, avoiding sea life.","action","ocean"],
+      ["flip-vines","Flip Vines","Flip between vine paths in the jungle, matching the color of each vine.","action","forest"],
+      ["frostfall-stack","Frostfall Stack","Stack icy blocks as they fall faster in a snowstorm. Keep the tower balanced.","arcade","ice"],
+      ["frost-flap","Frost Flap","Flap through a frozen tundra, riding icy gusts to stay airborne.","arcade","ice"],
+      ["frost-flip","Frost Flip","Flip gravity in a frost world — the floor becomes the ceiling in an instant.","action","ice"],
+      ["frost-split","Frost Split","Split icy beams to clear a path through a glacier cave system.","puzzle","ice"],
+      ["galaxy-fuse","Galaxy Fuse","Fuse stars together to create supernovas. Chain reactions score massive points.","puzzle","space"],
+      ["gear-glide","Gear Glide","Glide across spinning gear platforms, timing your jumps perfectly.","action","default"],
+      ["gear-pong","Gear Pong","Bounce a ball between clockwork gears in a steampunk twist on classic pong.","arcade","default"],
+      ["gear-rhythm","Gear Rhythm","Tap matching gears on a rotating clockwork wheel as speed escalates.","rhythm","rhythm"],
+      ["geo-flux","Geo Flux","Navigate geometric shapes through a shifting flux field that warps reality.","action","default"],
+      ["glacier-escape","Glacier Escape","Escape a collapsing glacier — jump between ice blocks before they sink.","action","ice"],
+      ["glacier-glide","Glacier Glide","Glide across a glacier surface, gaining speed on downhill runs.","action","ice"],
+      ["glide-catch","Glide Catch","Glide through the air, catching falling objects on a shrinking landing zone.","arcade","default"],
+      ["glitch-beam","Glitch Beam","Navigate glitching laser beams in a corrupted digital world. Timing is all.","action","neon"],
+      ["glitch-sprint","Glitch Sprint","Sprint through a glitching world where the ground disappears without warning.","action","neon"],
+      ["glow-beam","Glow Beam","Ride a glowing beam of light, collecting energy orbs before the beam fades.","action","neon"],
+      ["glow-divide","Glow Divide","Divide glowing particles into matching groups before the screen overflows.","puzzle","neon"],
+      ["glow-drift","Glow Drift","Drift a glowing orb through dark passages, lighting the way forward.","action","neon"],
+      ["glow-drop","Glow Drop","Drop glowing balls into the right slots in this fast-paced puzzle game.","puzzle","neon"],
+      ["glow-escape","Glow Escape","Escape a glowing maze that reconfigures every time you approach the exit.","action","neon"],
+      ["glow-glide","Glow Glide","Glide on streams of neon light, avoiding obstacles in a luminous world.","action","neon"],
+      ["gravity-canopy","Gravity Canopy","Navigate a forest canopy where gravity shifts randomly. Hold on tight.","action","forest"],
+      ["gravity-chain","Gravity Chain","Chain gravity-affected objects to create platforms and pathways.","puzzle","default"],
+      ["gravity-flip","Gravity Flip","Tap to flip gravity up/down while dodging obstacles from both sides. Collect stars for bonus points.","action","space"],
+      ["gravity-loop","Gravity Loop","Loop through gravity wells, using their pull to slingshot past obstacles.","action","space"],
+      ["gravity-veil","Gravity Veil","Pierce through gravitational veils in space, collecting energy behind each barrier.","action","space"],
+      ["gum-pop","Gum Pop","Pop gum bubbles in the correct sequence before they stick to the screen.","arcade","candy"],
+      ["hexa-twist","Hexa Twist","Twist hexagonal grids to align colors in this fast-paced spatial puzzle.","puzzle","default"],
+      ["hue-walk","Hue Walk","Walk a path that shifts hue — match your color to pass each segment.","puzzle","neon"],
+      ["icebound-rush","Icebound Rush","Rush across a frozen tundra while ice platforms crack beneath you.","action","ice"],
+      ["jelly-jam","Jelly Jam","Jam jelly blocks together to match flavors before the jar overflows.","puzzle","candy"],
+      ["jungle-burst","Jungle Burst","Burst through jungle walls at high speed, smashing obstacles in your path.","action","forest"],
+      ["jungle-juggle","Jungle Juggle","Juggle fruit in the jungle canopy, keeping multiple balls in the air.","arcade","forest"],
+      ["jungle-link","Jungle Link","Link jungle creatures in a chain to create combos for massive points.","puzzle","forest"],
+      ["jungle-orbit","Jungle Orbit","Orbit around jungle trees, swinging to each one before your energy runs out.","action","forest"],
+      ["jungle-sprint","Jungle Sprint","Sprint through a dense jungle, leaping obstacles and sliding under vines.","action","forest"],
+      ["lava-bloom","Lava Bloom","Bloom through lava fields, collecting rare fire flowers before they wilt.","action","fire"],
+      ["lava-catch","Lava Catch","Catch glowing lava drops in a bucket that shrinks with each miss.","arcade","fire"],
+      ["lava-leap","Lava Leap","Leap between erupting lava rocks as the floor melts away beneath you.","action","fire"],
+      ["lava-rush","Lava Rush","Rush through a volcanic corridor as lava walls close in from both sides.","action","fire"],
+      ["lava-splitter","Lava Splitter","Split streams of lava to protect your base from the volcanic flood.","action","fire"],
+      ["lava-sprint","Lava Sprint","Dodge multiplying volcanic rocks in an endless blazing lava run.","action","fire"],
+      ["leaf-pyramid","Leaf Pyramid","Build a pyramid of falling leaves, stacking them before the wind blows them away.","arcade","forest"],
+      ["lollipop-flip","Lollipop Flip","Flip lollipops to match their flavors in a sugary, fast-paced matching game.","arcade","candy"],
+      ["lollipop-leap","Lollipop Leap","Leap between giant lollipops as they spin and melt. Collect candy along the way.","action","candy"],
+      ["lollipop-loop","Lollipop Loop","Loop the lollipop through spiral candy tracks without touching the edges.","action","candy"],
+      ["magma-beat","Magma Beat","Beat rhythms on magma drums as the lava rises. Stay on tempo to survive.","rhythm","fire"],
+      ["magma-drift","Magma Drift","Drift a magma ball through underground tunnels without touching the walls.","action","fire"],
+      ["magma-link","Magma Link","Link magma nodes together to channel heat and power through volcanic vents.","puzzle","fire"],
+      ["magma-pulse","Magma Pulse","Pulse energy through magma channels in sync with seismic waves.","rhythm","fire"],
+      ["magma-shift","Magma Shift","Shift between magma streams in a volcanic chamber. One wrong move is fatal.","action","fire"],
+      ["magnet-glow","Magnet Glow","Use magnetic forces to attract glowing orbs while repelling obstacles.","puzzle","neon"],
+      ["magnetic-cumulus","Magnetic Cumulus","Navigate storm clouds magnetically, attracting lightning bolts and raindrops.","action","default"],
+      ["magnet-maze","Magnet Maze","Navigate a maze using magnetic attraction and repulsion to guide your path.","puzzle","default"],
+      ["magnet-melt","Magnet Melt","Melt metallic barriers using focused magnetic heat beams to clear the path.","puzzle","default"],
+      ["mini-drop","Mini Drop","Drop miniature objects into targets that shrink with every successful hit.","arcade","default"],
+      ["molten-spin","Molten Spin","Spin through molten rock chambers, staying on the platform as it shrinks.","action","fire"],
+      ["molten-tower","Molten Tower","Build a tower with molten blocks before they solidify. Stack them fast.","arcade","fire"],
+      ["moss-merge","Moss Merge","Merge moss patches together to cover the ground before it dries out.","puzzle","forest"],
+      ["mushroom-pulse","Mushroom Pulse","Pulse between mushrooms in sync with forest rhythms. Miss a beat and fall.","rhythm","forest"],
+      ["narrow-trace","Narrow Trace","Trace a path through increasingly narrow corridors without touching the walls.","action","default"],
+      ["nebula-swipe","Nebula Swipe","Swipe through nebula clouds to collect star matter before the void expands.","action","space"],
+      ["neon-bounce","Neon Bounce","Bounce a glowing ball between neon platforms. Platforms get narrower as your score increases.","arcade","neon"],
+      ["neon-coil","Neon Coil","Coil a neon wire through electrified obstacles without shorting the circuit.","puzzle","neon"],
+      ["nimbus-path","Nimbus Path","Follow the nimbus cloud path through storm systems, collecting rain as you go.","action","default"],
+      ["oasis-combo","Oasis Combo","Combo-chain water droplets in the desert to keep your oasis alive.","puzzle","desert"],
+      ["oasis-hop","Oasis Hop","Hop between oasis pools in the desert as they shrink under the blazing sun.","action","desert"],
+      ["orbit-drift","Orbit Drift","Drift in orbit around a planet, avoiding space debris and satellites.","action","space"],
+      ["orbit-fade","Orbit Fade","Fade between orbital paths before your signal disappears into deep space.","action","space"],
+      ["orbit-flip","Orbit Flip","Flip your orbiting craft to switch between two parallel orbital rings.","action","space"],
+      ["orbit-leap","Orbit Leap","Leap between planetary orbits, using gravitational assists to travel further.","action","space"],
+      ["orbit-roots","Orbit Roots","Root your orbit in planetary gravity wells, swinging between celestial bodies.","puzzle","space"],
+      ["orbit-shift","Orbit Shift","Shift orbital paths to avoid collisions as space traffic intensifies.","action","space"],
+      ["orbit-spiral","Orbit Spiral","Spiral inward through planetary rings, collecting fuel before hitting the core.","action","space"],
+      ["orbit-stack","Orbit Stack","Stack orbiting satellites in perfect formation before the window closes.","arcade","space"],
+      ["pipe-align","Pipe Align","Align pipe segments to create a flow path before the pressure blows.","puzzle","default"],
+      ["pixel-coil","Pixel Coil","Coil pixel segments into a growing snake without colliding with yourself.","arcade","pixel"],
+      ["pixel-drift","Pixel Drift","Drift pixel blocks through a digital maze in retro 8-bit style.","action","pixel"],
+      ["pixel-plunge","Pixel Plunge","Plunge through pixel layers in a retro platformer with old-school charm.","action","pixel"],
+      ["pixel-pulse","Pixel Pulse","Pulse through a pixelated world, matching frequencies to open each gate.","rhythm","pixel"],
+      ["pixel-soar","Pixel Soar","Soar through 8-bit skies, dodging retro obstacles at increasing speed.","action","pixel"],
+      ["pixel-surge","Pixel Surge","Surge through a pixel storm, collecting power-ups while avoiding corruption.","action","pixel"],
+      ["polar-bounce","Polar Bounce","Bounce across polar ice caps, avoiding cracks and obstacles.","arcade","ice"],
+      ["polar-glide","Polar Glide","Glide across frozen polar surfaces, gaining speed on ice and losing it on snow.","action","ice"],
+      ["prism-drift","Prism Drift","Drift through a prism of light, splitting colors to unlock hidden paths.","action","neon"],
+      ["prism-rise","Prism Rise","Rise through a prism tower, collecting each color of the rainbow in order.","action","neon"],
+      ["pulse-bound","Pulse Bound","Bound to the pulse — jump only when the beat hits to clear obstacles.","rhythm","rhythm"],
+      ["pulse-chase","Pulse Chase","Chase the pulse through neon corridors as it accelerates and splits.","rhythm","rhythm"],
+      ["pulse-collector","Pulse Collector","Collect energy pulses before they dissipate in this fast-paced arcade game.","arcade","rhythm"],
+      ["pulse-flicker","Pulse Flicker","Flicker between pulse frequencies to stay visible in an unstable dimension.","rhythm","rhythm"],
+      ["pulse-glide","Pulse Glide","Glide on energy pulses, riding waves of sound through electric skies.","action","rhythm"],
+      ["pulse-grove","Pulse Grove","Navigate a bio-electric grove that pulses with energy. Stay in sync.","rhythm","forest"],
+      ["pulse-orbit","Pulse Orbit","Orbit in sync with a pulsing star, collecting energy without getting burned.","rhythm","space"],
+      ["pulse-path","Pulse Path","Follow the pulsing path through a maze that changes with every heartbeat.","rhythm","rhythm"],
+      ["pulse-slide","Pulse Slide","Slide along energy pulse waves, timing your moves to the rhythm.","rhythm","rhythm"],
+      ["pulse-split","Pulse Split","Split energy pulses into channels to power different systems simultaneously.","puzzle","rhythm"],
+      ["pulse-swing","Pulse Swing","Swing to the pulse — time your arc to the beat for maximum distance.","rhythm","rhythm"],
+      ["pulse-trace","Pulse Trace","Trace pulse patterns in the correct sequence before the signal fades.","rhythm","rhythm"],
+      ["reef-rush","Reef Rush","Rush through a coral reef, dodging sea creatures and collecting ocean gems.","action","ocean"],
+      ["retro-rebound","Retro Rebound","Rebound a ball in retro style, breaking blocks in a classic arcade revival.","arcade","pixel"],
+      ["root-roll","Root Roll","Roll through root systems underground, collecting nutrients before they dry up.","action","forest"],
+      ["root-rush","Root Rush","Rush through tangled root mazes, finding the exit before time runs out.","action","forest"],
+      ["sand-surge","Sand Surge","Surge through desert sandstorms, using the wind to propel yourself forward.","action","desert"],
+      ["sandsync-spin","Sandsync Spin","Spin in sync with sand vortexes, matching their rotation to pass through safely.","rhythm","desert"],
+      ["shape-rally","Shape Rally","Rally shapes together, matching pairs before the screen overflows.","puzzle","default"],
+      ["shape-surge","Shape Surge","Surge through a field of geometric shapes, collecting matching ones for combos.","action","default"],
+      ["shrinking-vines","Shrinking Vines","Swing on vines that shrink over time. Reach the next one before they vanish.","action","forest"],
+      ["shrink-link","Shrink Link","Link shrinking objects together before they disappear from the screen.","puzzle","default"],
+      ["slide-flux","Slide Flux","Slide through flux zones where physics change unpredictably.","action","neon"],
+      ["spin-warp","Spin Warp","Warp through spinning portals, timing your entry to avoid the barriers.","action","space"],
+      ["splash-dash","Splash Dash","Dash across water surfaces, collecting splashes before you sink.","action","ocean"],
+      ["split-ascent","Split Ascent","Split into two characters and ascend parallel paths simultaneously.","action","default"],
+      ["split-ember","Split Ember","Split ember streams to extinguish fires before they spread out of control.","action","fire"],
+      ["split-snacker","Split Snacker","Split your snacker to collect food from two lanes at the same time.","arcade","default"],
+      ["steampile-spin","Steampile Spin","Stack quirky steampunk contraptions as the entire screen rotates unpredictably.","arcade","default"],
+      ["steam-pulse","Steam Pulse","Pulse steam through pipes in sync with the boiler rhythm to power the engine.","puzzle","default"],
+      ["steam-spin","Steam Spin","Spin steam turbines at the right speed to generate power without overheating.","puzzle","default"],
+      ["sugar-rush","Sugar Rush","Rush through a candy world collecting sweet treats before the sugar crash hits.","action","candy"],
+      ["sugar-slide","Sugar Slide","Slide across sugary surfaces that melt as you move. Reach the exit fast.","action","candy"],
+      ["sunset-collector","Sunset Collector","Collect the colors of the sunset before night falls and the colors fade.","arcade","default"],
+      ["sunset-drift","Sunset Drift","Drift through a sunset sky, riding thermal currents and collecting light.","action","default"],
+      ["sunset-hopper","Sunset Hopper","Hop across sunset cloud platforms as they dissolve in the evening light.","arcade","default"],
+      ["sunset-leap","Sunset Leap","Leap between silhouetted platforms against a stunning sunset backdrop.","action","default"],
+      ["sunset-scoop","Sunset Scoop","Scoop up sunset colors in a bucket game that gets harder as the sky darkens.","arcade","default"],
+      ["sweet-pulse","Sweet Pulse","Pulse sweet energy through candy circuits in this confectionery adventure.","rhythm","candy"],
+      ["sweet-serve","Sweet Serve","Serve sweet treats to customers in a fast-paced restaurant rush game.","arcade","candy"],
+      ["sweet-swap","Sweet Swap","Swap sweets to match three in a row in this candy-matching puzzle game.","puzzle","candy"],
+      ["sweet-sway","Sweet Sway","Sway between sweet hanging platforms, timing your swings to collect candy.","action","candy"],
+      ["swing-drift","Swing Drift","Drift on a swing through obstacle courses, using momentum to dodge hazards.","action","default"],
+      ["swing-nebula","Swing Nebula","Swing through a nebula on cosmic vines, collecting star matter.","action","space"],
+      ["swing-rush","Swing Rush","Rush across platforms by swinging on ropes at high speed.","action","default"],
+      ["swing-shift","Swing Shift","Shift your swing angle in mid-air to change direction and avoid obstacles.","action","default"],
+      ["synth-catch","Synth Catch","Catch synthesized music notes as they rain down in this rhythmic arcade game.","arcade","rhythm"],
+      ["synth-glide","Synth Glide","Glide through a synthwave world on electronic currents of light.","action","neon"],
+      ["synth-shots","Synth Shots","Shoot synthesizer pulses at incoming enemies in this musical shooter.","action","rhythm"],
+      ["tide-loop","Tide Loop","Loop through ocean tide patterns, riding waves without being pulled under.","action","ocean"],
+      ["tide-tap","Tide Tap","Tap the tide — match wave patterns to surf safely to shore.","rhythm","ocean"],
+      ["tide-titan","Tide Titan","Battle as the tide titan, growing stronger with each wave you conquer.","action","ocean"],
+      ["tide-twins","Tide Twins","Control twin surfers riding the tide simultaneously on mirrored wave paths.","action","ocean"],
+      ["tide-twist","Tide Twist","Bounce to reverse gravity and connect ocean creatures of matching colors during tidal flows.","puzzle","ocean"],
+      ["time-mirage","Time Mirage","Navigate through time mirages that duplicate reality with slight delays.","action","space"],
+      ["time-tether","Time Tether","Tether to time anchors, rewinding segments to solve temporal puzzles.","puzzle","space"],
+      ["trail-runner","Trail Runner","Run an endless trail, jumping obstacles and collecting power-ups.","action","forest"],
+      ["trail-tally","Trail Tally","Tally your trail score by collecting markers along a winding mountain path.","action","forest"],
+      ["trap-trek","Trap Trek","Trek through a field of traps, timing your steps carefully to survive.","action","default"],
+      ["tribal-loop","Tribal Loop","Loop through tribal patterns, following the rhythm of ancient drums.","rhythm","rhythm"],
+      ["turbo-cog","Turbo Cog","Tap to toggle direction along a narrow, spinning cog path before your time expires.","action","default"],
+      ["turbo-tether","Turbo Tether","Tether to turbo boost pads and slingshot through obstacle courses.","action","default"],
+      ["twig-break","Twig Break","Break twigs to create platforms before your character falls into the abyss.","puzzle","forest"],
+      ["twig-magnet","Twig Magnet","Use magnetic twigs to attract and repel obstacles in this nature-themed puzzler.","puzzle","forest"],
+      ["twilight-tap","Twilight Tap","Tap with the twilight rhythm, matching firefly patterns as night falls.","rhythm","default"],
+      ["twin-glow","Twin Glow","Control twin glowing orbs, guiding both to their targets simultaneously.","puzzle","neon"],
+      ["twin-leap","Twin Leap","Leap as twin characters in sync, solving platforming puzzles with coordination.","action","default"],
+      ["twin-trails","Twin Trails","Navigate twin trails simultaneously, collecting items on both paths at once.","action","default"],
+      ["twix-twist","Twix Twist","Twist through double-layered corridors in this sweet arcade adventure.","action","candy"],
+      ["valve-flux","Valve Flux","Adjust valves to control flux pressure in this engineering puzzle game.","puzzle","default"],
+      ["vine-blur","Vine Blur","Swing rapidly between vines, avoiding multiplying logs and spikes.","action","forest"],
+      ["vine-switch","Vine Switch","Swipe to flip gravity while swinging on jungle vines that change colors instantly.","action","forest"],
+      ["vine-vault","Vine Vault","Vault over obstacles using vines as springboards in the jungle.","action","forest"],
+      ["wave-chain","Wave Chain","Tap to chain oceanic dots while the screen rotates in sync with rolling waves.","puzzle","ocean"],
+      ["wave-connect","Wave Connect","Swipe to link dots as gravity randomly changes directions in a vaporwave cityscape.","puzzle","ocean"],
+      ["wave-flicker","Wave Flicker","Flicker between wave frequencies to stay in phase with the oscillating world.","action","ocean"],
+      ["zoom-drift","Zoom Drift","Drift at zoom speed through a neon tunnel, avoiding walls as speed increases.","action","neon"],
+      ["zoom-orb","Zoom Orb","Zoom an orb through a gauntlet, collecting rings before the timer expires.","arcade","neon"],
+      ["zoom-pong","Zoom Pong","Pong at zoom speed — the ball gets faster with every successful hit.","arcade","neon"],
+    ];
 
-        function getTagClass(category) {
-            const map = {
-                ai: 'tag-ai',
-                productivity: 'tag-productivity',
-                education: 'tag-education',
-                wellness: 'tag-wellness',
-                finance: 'tag-finance',
-                social: 'tag-social',
-            };
-            return map[category] || 'tag-ai';
-        }
+    // Emoji map by theme
+    const THEME_EMOJI = {
+      fire:    ['🌋','🔥','💥','⚡','🌡️'],
+      ocean:   ['🌊','🐚','💧','🐠','🌀'],
+      space:   ['🚀','⭐','🌌','🪐','💫'],
+      neon:    ['💡','⚡','🔆','🎯','💠'],
+      forest:  ['🌿','🍃','🌲','🦋','🌱'],
+      ice:     ['❄️','🧊','⛄','🌨️','💎'],
+      candy:   ['🍭','🍬','🧁','🍫','🍡'],
+      desert:  ['🏜️','☀️','🌵','🐪','💛'],
+      rhythm:  ['🎵','🎶','🥁','🎸','🎹'],
+      pixel:   ['👾','🕹️','🎮','🔲','📺'],
+      default: ['🎮','⚡','💜','🌟','🎯'],
+    };
 
-        function renderCard(app) {
-            const slug = toSlug(app.name);
-            return `
-                <a href="${app.url}" target="_blank" rel="noopener" class="card">
-                    <img class="card-img" src="images/apps/${slug}-1.webp" alt="${app.name}" onerror="this.style.display='none'">
-                    <div class="card-body">
-                        <h3>${app.name}</h3>
-                        <p>${app.description}</p>
-                        <span class="card-tag ${getTagClass(app.category)}">${app.category}</span>
-                    </div>
-                </a>
-            `;
-        }
+    function getEmoji(slug, theme) {
+      const arr = THEME_EMOJI[theme] || THEME_EMOJI.default;
+      let hash = 0;
+      for (const ch of slug) hash = (hash * 31 + ch.charCodeAt(0)) & 0xffffffff;
+      return arr[Math.abs(hash) % arr.length];
+    }
 
-        document.getElementById('apps-grid').innerHTML = featuredApps.map(renderCard).join('');
-    </script>
+    const CAT_LABEL = { action: 'Action', arcade: 'Arcade', puzzle: 'Puzzle', rhythm: 'Rhythm' };
+
+    function buildCard(g) {
+      const [slug, name, desc, cat, theme] = g;
+      const emoji = getEmoji(slug, theme);
+      const catLabel = CAT_LABEL[cat] || cat;
+      return `<a class="game-card theme-${theme}" href="/games/${slug}/" data-cat="${cat}" data-name="${name.toLowerCase()}" data-desc="${desc.toLowerCase()}">
+        <div class="game-card-thumb">
+          <span class="emoji" aria-hidden="true">${emoji}</span>
+        </div>
+        <div class="game-card-body">
+          <div class="game-card-name">${name}</div>
+          <div class="game-card-desc">${desc}</div>
+          <div class="game-card-foot">
+            <span class="cat-badge">${catLabel}</span>
+            <span class="play-arrow">Play <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
+          </div>
+        </div>
+      </a>`;
+    }
+
+    const grid = document.getElementById('games-grid');
+    const empty = document.getElementById('empty-state');
+    const countEl = document.getElementById('count');
+    const searchEl = document.getElementById('search');
+    const filterBtns = document.querySelectorAll('.filter-btn');
+
+    let activeCat = 'all';
+    let searchTerm = '';
+
+    function render() {
+      const q = searchTerm.trim().toLowerCase();
+      const filtered = GAMES.filter(g => {
+        const [slug, name, desc, cat] = g;
+        if (activeCat !== 'all' && cat !== activeCat) return false;
+        if (q && !name.toLowerCase().includes(q) && !desc.toLowerCase().includes(q) && !slug.includes(q)) return false;
+        return true;
+      });
+
+      countEl.textContent = filtered.length;
+
+      if (filtered.length === 0) {
+        grid.style.display = 'none';
+        empty.style.display = 'block';
+        return;
+      }
+      grid.style.display = 'grid';
+      empty.style.display = 'none';
+      grid.innerHTML = filtered.map(buildCard).join('');
+
+      // Scroll reveal
+      const cards = grid.querySelectorAll('.game-card');
+      const obs = new IntersectionObserver((entries) => {
+        entries.forEach((e, i) => {
+          if (e.isIntersecting) {
+            setTimeout(() => e.target.classList.add('visible'), i * 18);
+            obs.unobserve(e.target);
+          }
+        });
+      }, { rootMargin: '0px 0px -30px 0px', threshold: 0.05 });
+      cards.forEach(c => obs.observe(c));
+    }
+
+    // Search (debounced)
+    let searchTimer;
+    searchEl.addEventListener('input', () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => {
+        searchTerm = searchEl.value;
+        render();
+      }, 180);
+    });
+
+    // Filter buttons
+    filterBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        filterBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        activeCat = btn.dataset.cat;
+        render();
+      });
+    });
+
+    // Initial render
+    render();
+  </script>
 </body>
 </html>
