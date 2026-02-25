@@ -361,9 +361,6 @@
 
     .game-card-thumb {
       height: 130px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
       position: relative;
       overflow: hidden;
       flex-shrink: 0;
@@ -372,17 +369,12 @@
       content: '';
       position: absolute;
       inset: 0;
-      background: linear-gradient(to bottom, transparent 60%, rgba(0,0,0,0.6));
-    }
-    .game-card-thumb .emoji {
-      font-size: 3.2rem;
-      line-height: 1;
-      position: relative;
+      background: linear-gradient(to bottom, transparent 55%, rgba(0,0,0,0.55));
+      pointer-events: none;
       z-index: 1;
-      filter: drop-shadow(0 0 12px currentColor);
-      transition: transform 0.3s;
     }
-    .game-card:hover .emoji { transform: scale(1.15); }
+    .game-card-thumb svg { transition: transform 0.4s ease; }
+    .game-card:hover .game-card-thumb svg { transform: scale(1.08); }
 
     .game-card-body {
       padding: 1rem 1rem 1.1rem;
@@ -1217,16 +1209,18 @@
       const [slug, name, desc, cat, theme] = g;
       const emoji = getEmoji(slug, theme);
       const catLabel = CAT_LABEL[cat] || cat;
+      const thumb = makeThumb(slug, theme);
       return `<div class="game-card theme-${theme}" role="button" tabindex="0" onclick="openModal(${idx})" onkeydown="if(event.key==='Enter')openModal(${idx})" data-cat="${cat}" data-name="${name.toLowerCase()}" data-desc="${desc.toLowerCase()}">
-        <div class="game-card-thumb">
-          <span class="emoji" aria-hidden="true">${emoji}</span>
+        <div class="game-card-thumb" style="background:none;overflow:hidden;">
+          ${thumb}
+          <span style="position:absolute;bottom:8px;right:10px;font-size:1.5rem;z-index:2;filter:drop-shadow(0 0 6px rgba(0,0,0,0.8));" aria-hidden="true">${emoji}</span>
         </div>
         <div class="game-card-body">
           <div class="game-card-name">${name}</div>
           <div class="game-card-desc">${desc}</div>
           <div class="game-card-foot">
             <span class="cat-badge">${catLabel}</span>
-            <span class="play-arrow">Info + Play <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
+            <span class="play-arrow">Details + Play <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
           </div>
         </div>
       </div>`;
@@ -1298,6 +1292,291 @@
 
     // Initial render
     render();
+
+    // ── PROCEDURAL SVG THUMB GENERATOR ──
+    function makeThumb(slug, theme) {
+      // Seeded PRNG from slug — same slug always produces same art
+      let s = 0;
+      for (let i = 0; i < slug.length; i++) s = (Math.imul(s, 31) + slug.charCodeAt(i)) | 0;
+      s = Math.abs(s) || 99991;
+      const next = () => { s ^= s << 13; s ^= s >> 17; s ^= s << 5; return (s >>> 0) / 0x100000000; };
+      const ri  = (a, b) => Math.floor(next() * (b - a + 1)) + a;
+      const rf  = (a, b) => (next() * (b - a) + a).toFixed(2);
+      const uid = slug.replace(/-/g, '');
+      const W = 280, H = 130;
+
+      const gen = {
+        fire() {
+          let o = `<defs>
+            <linearGradient id="bg-${uid}" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="hsl(${ri(8,22)},85%,12%)"/>
+              <stop offset="100%" stop-color="hsl(0,70%,4%)"/>
+            </linearGradient>
+            <filter id="bl-${uid}"><feGaussianBlur stdDeviation="4"/></filter>
+          </defs>
+          <rect width="${W}" height="${H}" fill="url(#bg-${uid})"/>`;
+          // Flame glow base
+          o += `<ellipse cx="${ri(80,200)}" cy="${H}" rx="${ri(60,100)}" ry="${ri(20,40)}" fill="hsl(${ri(10,30)},100%,40%)" opacity="0.25" filter="url(#bl-${uid})"/>`;
+          // Flames
+          for (let i = 0; i < ri(3,5); i++) {
+            const x = ri(30, W-30), bh = ri(45, 95), bw = ri(14,30);
+            const h = ri(0, 360);
+            const cp1x = (x+ri(-bw,bw)).toFixed(0), cp1y = (H-bh*0.4).toFixed(0);
+            const cp2x = (x+ri(-bw/2,bw/2)).toFixed(0), cp2y = (H-bh*0.75).toFixed(0);
+            const tx = (x+ri(-8,8)).toFixed(0), ty = (H-bh).toFixed(0);
+            o += `<path d="M${x-bw/2} ${H} Q${cp1x} ${cp1y} ${cp2x} ${cp2y} Q${cp2x} ${cp2y} ${tx} ${ty} Q${cp2x} ${cp2y} ${x+bw/2} ${H}Z" fill="hsl(${ri(0,38)},95%,${ri(42,62)}%)" opacity="${rf(0.45,0.85)}"/>`;
+          }
+          // Embers
+          for (let i = 0; i < ri(5,10); i++)
+            o += `<circle cx="${ri(0,W)}" cy="${ri(10,H-10)}" r="${ri(1,3)}" fill="hsl(${ri(25,55)},100%,75%)" opacity="${rf(0.4,1)}"/>`;
+          return o;
+        },
+
+        ocean() {
+          let o = `<defs>
+            <linearGradient id="bg-${uid}" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="hsl(${ri(195,215)},65%,14%)"/>
+              <stop offset="100%" stop-color="hsl(210,80%,6%)"/>
+            </linearGradient>
+          </defs>
+          <rect width="${W}" height="${H}" fill="url(#bg-${uid})"/>`;
+          // Waves (3 layers)
+          [0.65,0.75,0.88].forEach((yf, wi) => {
+            const y = H*yf, amp = ri(8,22);
+            const hue = ri(180,215), l = ri(28,46);
+            o += `<path d="M0 ${y} Q${ri(40,80)} ${y-amp} ${ri(100,140)} ${y} Q${ri(170,200)} ${y+amp} ${ri(220,260)} ${y} Q${ri(250,275)} ${y-amp/2} ${W} ${y} L${W} ${H} L0 ${H}Z" fill="hsl(${hue},${ri(50,75)}%,${l}%)" opacity="${rf(0.25,0.55)}"/>`;
+          });
+          // Bubbles
+          for (let i = 0; i < ri(6,12); i++) {
+            const r = ri(2,7);
+            o += `<circle cx="${ri(r,W-r)}" cy="${ri(r,H-15)}" r="${r}" fill="none" stroke="hsl(195,65%,72%)" stroke-width="1" opacity="${rf(0.25,0.65)}"/>`;
+          }
+          return o;
+        },
+
+        space() {
+          let o = `<defs>
+            <linearGradient id="bg-${uid}" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="hsl(${ri(240,265)},55%,7%)"/>
+              <stop offset="100%" stop-color="hsl(260,80%,3%)"/>
+            </linearGradient>
+            <filter id="gl-${uid}"><feGaussianBlur stdDeviation="5"/></filter>
+          </defs>
+          <rect width="${W}" height="${H}" fill="url(#bg-${uid})"/>`;
+          // Stars
+          for (let i = 0; i < ri(22,38); i++) {
+            const big = next() < 0.15;
+            o += `<circle cx="${ri(0,W)}" cy="${ri(0,H)}" r="${big ? ri(2,3) : 1}" fill="white" opacity="${rf(0.25,1)}"/>`;
+          }
+          // Nebula glow
+          o += `<circle cx="${ri(20,W/2)}" cy="${ri(10,H-10)}" r="${ri(35,70)}" fill="hsl(${ri(255,310)},70%,35%)" opacity="0.07" filter="url(#gl-${uid})"/>`;
+          // Planet
+          const ph = ri(190,340), px = ri(W*0.55,W*0.88), py = ri(15,55), pr = ri(18,38);
+          o += `<circle cx="${px}" cy="${py}" r="${pr*1.3}" fill="hsl(${ph},55%,22%)" opacity="0.5" filter="url(#gl-${uid})"/>`;
+          o += `<circle cx="${px}" cy="${py}" r="${pr}" fill="hsl(${ph},55%,28%)"/>`;
+          // Ring
+          o += `<ellipse cx="${px}" cy="${py}" rx="${(pr*1.65).toFixed(1)}" ry="${(pr*0.28).toFixed(1)}" fill="none" stroke="hsl(${ph},50%,55%)" stroke-width="1.5" opacity="0.45"/>`;
+          return o;
+        },
+
+        neon() {
+          const ah = ri(100,210);
+          let o = `<rect width="${W}" height="${H}" fill="hsl(230,40%,3%)"/>`;
+          // Grid
+          for (let x = 0; x < W; x += ri(28,46)) o += `<line x1="${x}" y1="0" x2="${x}" y2="${H}" stroke="hsl(${ah},90%,55%)" stroke-width="0.3" opacity="0.12"/>`;
+          for (let y = 0; y < H; y += ri(18,30)) o += `<line x1="0" y1="${y}" x2="${W}" y2="${y}" stroke="hsl(${ah},90%,55%)" stroke-width="0.3" opacity="0.12"/>`;
+          // Nodes & connections
+          const nodes = Array.from({length: ri(4,7)}, () => ({x: ri(15,W-15), y: ri(12,H-12)}));
+          nodes.forEach((n,i) => {
+            if (i > 0) o += `<line x1="${nodes[i-1].x}" y1="${nodes[i-1].y}" x2="${n.x}" y2="${n.y}" stroke="hsl(${ah},90%,60%)" stroke-width="1" opacity="0.45"/>`;
+          });
+          nodes.forEach(n => {
+            o += `<circle cx="${n.x}" cy="${n.y}" r="5" fill="hsl(${ah},100%,65%)" opacity="0.2"/>`;
+            o += `<circle cx="${n.x}" cy="${n.y}" r="2.5" fill="hsl(${ah},100%,75%)" opacity="0.95"/>`;
+          });
+          // Big glow
+          o += `<circle cx="${ri(50,W-50)}" cy="${ri(20,H-20)}" r="${ri(22,42)}" fill="hsl(${ah},100%,55%)" opacity="0.06"/>`;
+          return o;
+        },
+
+        forest() {
+          let o = `<defs>
+            <linearGradient id="bg-${uid}" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="hsl(${ri(108,128)},40%,7%)"/>
+              <stop offset="100%" stop-color="hsl(120,50%,3%)"/>
+            </linearGradient>
+          </defs>
+          <rect width="${W}" height="${H}" fill="url(#bg-${uid})"/>`;
+          // Ground curve
+          o += `<path d="M0 ${H} Q${W/2} ${H-ri(8,22)} ${W} ${H}Z" fill="hsl(120,28%,9%)"/>`;
+          // Trees
+          for (let i = 0; i < ri(3,6); i++) {
+            const tx = ri(10,W-10), ty = H-ri(18,48), tw = ri(18,46), th = ri(38,78);
+            const th2 = ri(100,140);
+            o += `<polygon points="${tx},${ty} ${tx-tw/2},${ty+th} ${tx+tw/2},${ty+th}" fill="hsl(${th2},${ri(25,45)}%,${ri(10,20)}%)"/>`;
+          }
+          // Fireflies
+          for (let i = 0; i < ri(5,10); i++)
+            o += `<circle cx="${ri(0,W)}" cy="${ri(0,H-18)}" r="${ri(1,3)}" fill="hsl(${ri(70,130)},80%,72%)" opacity="${rf(0.2,0.75)}"/>`;
+          // Moon
+          const mh = ri(40,65);
+          o += `<circle cx="${ri(W*0.65,W*0.9)}" cy="${ri(5,22)}" r="${ri(7,14)}" fill="hsl(${mh},50%,82%)" opacity="0.28"/>`;
+          return o;
+        },
+
+        ice() {
+          let o = `<defs>
+            <linearGradient id="bg-${uid}" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="hsl(${ri(185,205)},48%,13%)"/>
+              <stop offset="100%" stop-color="hsl(200,58%,6%)"/>
+            </linearGradient>
+          </defs>
+          <rect width="${W}" height="${H}" fill="url(#bg-${uid})"/>`;
+          // Large snowflake(s)
+          for (let sf = 0; sf < ri(1,2); sf++) {
+            const cx = ri(30,W-30), cy = ri(15,H-18), r = ri(18,38);
+            for (let a = 0; a < 6; a++) {
+              const angle = a*60*Math.PI/180;
+              const ex = (cx+r*Math.cos(angle)).toFixed(1), ey = (cy+r*Math.sin(angle)).toFixed(1);
+              o += `<line x1="${cx}" y1="${cy}" x2="${ex}" y2="${ey}" stroke="hsl(195,60%,75%)" stroke-width="1.5" opacity="0.45"/>`;
+              const mx = cx+r*0.55*Math.cos(angle), my = cy+r*0.55*Math.sin(angle);
+              const ba = angle+Math.PI/2;
+              o += `<line x1="${mx.toFixed(1)}" y1="${my.toFixed(1)}" x2="${(mx+r*0.18*Math.cos(ba)).toFixed(1)}" y2="${(my+r*0.18*Math.sin(ba)).toFixed(1)}" stroke="hsl(195,60%,75%)" stroke-width="1" opacity="0.35"/>`;
+            }
+            o += `<circle cx="${cx}" cy="${cy}" r="2.5" fill="hsl(195,80%,80%)" opacity="0.65"/>`;
+          }
+          // Snow dots
+          for (let i = 0; i < ri(12,22); i++)
+            o += `<circle cx="${ri(0,W)}" cy="${ri(0,H)}" r="${ri(1,2)}" fill="white" opacity="${rf(0.15,0.55)}"/>`;
+          // Ice shards
+          for (let i = 0; i < ri(2,4); i++) {
+            const x = ri(5,W-5), y = ri(H*0.55,H);
+            o += `<polygon points="${x},${y-ri(8,28)} ${x-ri(4,10)},${y} ${x+ri(4,10)},${y}" fill="hsl(195,58%,${ri(38,58)}%)" opacity="0.18"/>`;
+          }
+          return o;
+        },
+
+        candy() {
+          const h1 = ri(290,350), h2 = ri(0,55);
+          let o = `<defs>
+            <linearGradient id="bg-${uid}" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="hsl(${h1},55%,9%)"/>
+              <stop offset="100%" stop-color="hsl(${h2},48%,7%)"/>
+            </linearGradient>
+          </defs>
+          <rect width="${W}" height="${H}" fill="url(#bg-${uid})"/>`;
+          // Lollipop
+          const lx = ri(W*0.18,W*0.4), ly = ri(25,48), lr = ri(16,26);
+          o += `<line x1="${lx}" y1="${ly+lr}" x2="${lx}" y2="${H}" stroke="hsl(0,0%,55%)" stroke-width="3" opacity="0.35"/>`;
+          o += `<circle cx="${lx}" cy="${ly}" r="${lr}" fill="hsl(${ri(290,360)},75%,28%)" opacity="0.85"/>`;
+          o += `<circle cx="${lx}" cy="${ly}" r="${lr*0.55}" fill="hsl(${ri(0,55)},75%,38%)" opacity="0.7"/>`;
+          // Candy scatter
+          for (let i = 0; i < ri(7,14); i++)
+            o += `<circle cx="${ri(0,W)}" cy="${ri(0,H)}" r="${ri(3,7)}" fill="hsl(${ri(0,360)},68%,${ri(38,58)}%)" opacity="${rf(0.25,0.65)}"/>`;
+          // Swirl
+          o += `<path d="M${ri(W*0.5,W*0.65)} ${ri(15,45)} Q${ri(W*0.6,W*0.9)} ${ri(35,75)} ${ri(W*0.72,W)} ${ri(55,H)}" fill="none" stroke="hsl(${ri(280,340)},68%,58%)" stroke-width="2" opacity="0.28"/>`;
+          return o;
+        },
+
+        desert() {
+          let o = `<defs>
+            <linearGradient id="bg-${uid}" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="hsl(${ri(28,48)},55%,9%)"/>
+              <stop offset="100%" stop-color="hsl(${ri(18,32)},65%,4%)"/>
+            </linearGradient>
+          </defs>
+          <rect width="${W}" height="${H}" fill="url(#bg-${uid})"/>`;
+          // Stars
+          for (let i = 0; i < ri(6,12); i++)
+            o += `<circle cx="${ri(0,W)}" cy="${ri(0,H/2)}" r="1" fill="white" opacity="${rf(0.18,0.55)}"/>`;
+          // Sun
+          const sx = ri(W*0.58,W*0.88), sy = ri(8,28), sr = ri(13,24);
+          o += `<circle cx="${sx}" cy="${sy}" r="${sr*1.45}" fill="hsl(42,85%,62%)" opacity="0.08"/>`;
+          o += `<circle cx="${sx}" cy="${sy}" r="${sr}" fill="hsl(42,90%,65%)" opacity="0.48"/>`;
+          // Dunes
+          [ri(55,75),ri(70,88),ri(85,H)].forEach((by, di) => {
+            o += `<path d="M0 ${H} Q${ri(W*0.1,W*0.4)} ${by-ri(18,48)} ${ri(W*0.3,W*0.65)} ${by} Q${ri(W*0.6,W*0.85)} ${by-ri(8,28)} ${W} ${H}Z" fill="hsl(${ri(23,38)},${ri(35,55)}%,${ri(10,18)}%)" opacity="${rf(0.5,0.9)}"/>`;
+          });
+          return o;
+        },
+
+        rhythm() {
+          const rh = ri(255,325);
+          let o = `<defs>
+            <linearGradient id="bg-${uid}" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="hsl(${rh},55%,9%)"/>
+              <stop offset="100%" stop-color="hsl(${rh},75%,3%)"/>
+            </linearGradient>
+          </defs>
+          <rect width="${W}" height="${H}" fill="url(#bg-${uid})"/>`;
+          // Equalizer bars
+          const nb = ri(8,13), bw = Math.floor(W/nb)-3;
+          for (let i = 0; i < nb; i++) {
+            const bh = ri(12, H*0.82), bx = i*(W/nb)+1, by = H-bh;
+            const bhu = rh+ri(-28,28);
+            o += `<rect x="${bx}" y="${by}" width="${bw}" height="${bh}" rx="2" fill="hsl(${bhu},78%,${ri(32,52)}%)" opacity="${rf(0.5,0.9)}"/>`;
+            o += `<rect x="${bx}" y="${by}" width="${bw}" height="2.5" rx="1" fill="hsl(${bhu},100%,78%)" opacity="0.85"/>`;
+          }
+          // Wave overlay
+          o += `<path d="M0 ${ri(28,55)} Q${W*0.25} ${ri(8,48)} ${W*0.5} ${ri(28,55)} Q${W*0.75} ${ri(8,48)} ${W} ${ri(28,55)}" fill="none" stroke="hsl(${rh},88%,68%)" stroke-width="1.5" opacity="0.28"/>`;
+          return o;
+        },
+
+        pixel() {
+          const ph = ri(155,215);
+          let o = `<defs>
+            <linearGradient id="bg-${uid}" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="hsl(${ph},48%,7%)"/>
+              <stop offset="100%" stop-color="hsl(${ph},58%,3%)"/>
+            </linearGradient>
+          </defs>
+          <rect width="${W}" height="${H}" fill="url(#bg-${uid})"/>`;
+          // Scanlines
+          for (let y = 0; y < H; y += 4) o += `<line x1="0" y1="${y}" x2="${W}" y2="${y}" stroke="black" stroke-width="0.5" opacity="0.08"/>`;
+          // Pixel art character (8×5 symmetric)
+          const cols=8, rows=5, pw=22, phh=20;
+          const sx=(W-cols*pw)/2, sy=(H-rows*phh)/2;
+          const pat = Array.from({length:rows}, ()=>Array.from({length:cols}, ()=>next()>0.42));
+          for (let r=0;r<rows;r++) for (let c=0;c<Math.floor(cols/2);c++) pat[r][cols-1-c]=pat[r][c];
+          for (let r=0;r<rows;r++) for (let c=0;c<cols;c++) {
+            if (pat[r][c]) {
+              const phu = ph+ri(-38,38);
+              o += `<rect x="${sx+c*pw}" y="${sy+r*phh}" width="${pw-2}" height="${phh-2}" fill="hsl(${phu},78%,${ri(38,58)}%)"/>`;
+            }
+          }
+          return o;
+        },
+
+        default() {
+          const dh = ri(238,302);
+          let o = `<defs>
+            <linearGradient id="bg-${uid}" x1="0" y1="1" x2="1" y2="0">
+              <stop offset="0%" stop-color="hsl(${dh},48%,7%)"/>
+              <stop offset="100%" stop-color="hsl(${dh+38},55%,4%)"/>
+            </linearGradient>
+          </defs>
+          <rect width="${W}" height="${H}" fill="url(#bg-${uid})"/>`;
+          // Geometric shapes
+          for (let i = 0; i < ri(3,6); i++) {
+            const sides=[3,4,6][ri(0,2)], cx=ri(18,W-18), cy=ri(13,H-13), r=ri(13,38);
+            const shu = dh+ri(-55,55);
+            let pts='';
+            for (let s=0;s<sides;s++) { const a=(s/sides)*Math.PI*2-Math.PI/2; pts+=`${(cx+r*Math.cos(a)).toFixed(1)},${(cy+r*Math.sin(a)).toFixed(1)} `; }
+            o += `<polygon points="${pts}" fill="none" stroke="hsl(${shu},68%,${ri(38,58)}%)" stroke-width="${ri(1,2)}" opacity="${rf(0.18,0.48)}"/>`;
+          }
+          // Glow blobs
+          for (let i = 0; i < ri(2,3); i++)
+            o += `<circle cx="${ri(0,W)}" cy="${ri(0,H)}" r="${ri(20,48)}" fill="hsl(${dh+ri(-28,55)},80%,50%)" opacity="0.05"/>`;
+          // Dots
+          for (let i = 0; i < ri(5,10); i++)
+            o += `<circle cx="${ri(0,W)}" cy="${ri(0,H)}" r="${ri(1,3)}" fill="hsl(${dh},80%,70%)" opacity="${rf(0.28,0.68)}"/>`;
+          return o;
+        }
+      };
+
+      const inner = (gen[theme] || gen.default)();
+      return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid slice" style="width:100%;height:100%;display:block">${inner}</svg>`;
+    }
 
     // ── MODAL CONTENT ENGINE ──
     const STEPS = {
