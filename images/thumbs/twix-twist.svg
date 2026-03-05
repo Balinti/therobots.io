@@ -1,87 +1,56 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 130" width="280" height="130">
-  <defs>
-    <linearGradient id="bgtwix-twist" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#200614"/>
-      <stop offset="100%" stop-color="#0e0308"/>
-    </linearGradient>
-    <radialGradient id="gltwix-twist" cx="76%" cy="38%" r="44%">
-      <stop offset="0%" stop-color="#ff66cc" stop-opacity="0.2"/>
-      <stop offset="100%" stop-color="#ff66cc" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="tftwix-twist" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="rgba(0,0,0,0.78)"/>
-      <stop offset="52%" stop-color="rgba(0,0,0,0.45)"/>
-      <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
-    </linearGradient>
-    <linearGradient id="bftwix-twist" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="rgba(0,0,0,0)"/>
-      <stop offset="100%" stop-color="rgba(0,0,0,0.82)"/>
-    </linearGradient>
-    <linearGradient id="altwix-twist" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#ff66cc"/>
-      <stop offset="60%" stop-color="#ff66cc" stop-opacity="0.5"/>
-      <stop offset="100%" stop-color="#ff66cc" stop-opacity="0"/>
-    </linearGradient>
-  </defs>
+<defs>
+  <linearGradient id="btwixtwist" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0%" stop-color="#200614"/>
+    <stop offset="100%" stop-color="#0e0308"/>
+  </linearGradient>
+  <radialGradient id="gtwixtwist" cx="50%" cy="45%" r="55%">
+    <stop offset="0%" stop-color="#ff66cc" stop-opacity="0.18"/>
+    <stop offset="100%" stop-color="#ff66cc" stop-opacity="0"/>
+  </radialGradient>
+  <linearGradient id="ttwixtwist" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="40%" stop-color="rgba(0,0,0,0)"/>
+    <stop offset="100%" stop-color="rgba(0,0,0,0.88)"/>
+  </linearGradient>
+  <linearGradient id="ltwixtwist" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0%" stop-color="#ff66cc"/>
+    <stop offset="65%" stop-color="#ff44aa" stop-opacity="0.5"/>
+    <stop offset="100%" stop-color="#ff66cc" stop-opacity="0"/>
+  </linearGradient>
+  <clipPath id="cliptwixtwist"><rect width="280" height="130"/></clipPath>
+</defs>
 
-  <rect width="280" height="130" fill="url(#bgtwix-twist)"/>
-  <rect width="280" height="130" fill="url(#gltwix-twist)"/>
+<rect width="280" height="130" fill="url(#btwixtwist)"/>
+<rect width="280" height="130" fill="url(#gtwixtwist)"/>
 
-  
-  <g>
-    <!-- Lollipop stick -->
-    <line x1="232" y1="96" x2="232" y2="125" stroke="#ff66cc" stroke-width="6" stroke-linecap="round"/>
-    <!-- Spinning lollipop -->
-    <g>
-      <animateTransform attributeName="transform" type="rotate"
-        values="0 232 55;360 232 55" dur="4s" repeatCount="indefinite"/>
-      <circle cx="232" cy="55" r="30" fill="#ff66cc" opacity="0.1"/>
-      <circle cx="232" cy="55" r="26" fill="none" stroke="#ff66cc" stroke-width="8" stroke-dasharray="20 11" opacity="0.32"/>
-      <circle cx="232" cy="55" r="18" fill="#ff66cc" opacity="0.18"/>
-      <circle cx="232" cy="55" r="11" fill="#ff66cc" opacity="0.32"/>
-      <circle cx="232" cy="55" r="5" fill="#ff44aa" opacity="0.7"/>
-    </g>
-    <!-- Bouncing candy A -->
-    <g>
-      <animateTransform attributeName="transform" type="translate" values="0,0;0,-10;0,0" dur="0.85s" repeatCount="indefinite"/>
-      <circle cx="168" cy="36" r="8" fill="#ff66cc" opacity="0.42"/>
-      <circle cx="168" cy="36" r="4" fill="white" opacity="0.25"/>
-    </g>
-    <!-- Bouncing candy B -->
-    <g>
-      <animateTransform attributeName="transform" type="translate" values="0,0;0,-8;0,0" dur="1.05s" begin="0.32s" repeatCount="indefinite"/>
-      <circle cx="262" cy="24" r="6" fill="#ff44aa" opacity="0.4"/>
-    </g>
-    <!-- Bouncing candy C -->
-    <g>
-      <animateTransform attributeName="transform" type="translate" values="0,0;0,-6;0,0" dur="1.2s" begin="0.65s" repeatCount="indefinite"/>
-      <circle cx="154" cy="68" r="5" fill="#ff66cc" opacity="0.35"/>
-    </g>
-    <!-- Sparkle -->
-    <circle cx="202" cy="18" r="2.5" fill="#ff44aa" opacity="0.5">
-      <animate attributeName="r" values="2.5;4;2.5" dur="0.75s" repeatCount="indefinite"/>
-      <animate attributeName="opacity" values="0.5;1;0.5" dur="0.75s" repeatCount="indefinite"/>
-    </circle>
-    <circle cx="272" cy="78" r="2" fill="white" opacity="0.4">
-      <animate attributeName="opacity" values="0.4;0.9;0.4" dur="1.1s" begin="0.4s" repeatCount="indefinite"/>
-    </circle>
-  </g>
+<g clip-path="url(#cliptwixtwist)"><circle r="4.78037826921334" fill="#ff66cc" opacity="0.51">
+      <animateMotion dur="3.20s" repeatCount="indefinite"
+        path="M153.35775609206357,38.43613629891447 A18.116895614219107,18.116895614219107 0 0,1 117.12396486362535,38.43613629891447 A18.116895614219107,18.116895614219107 0 0,1 153.35775609206357,38.43613629891447"/>
+    </circle><circle r="5.569081667244686" fill="#ff44aa" opacity="0.56">
+      <animateMotion dur="4.16s" repeatCount="indefinite"
+        path="M169.5795320210931,38.43613629891447 A34.33867154324862,34.33867154324862 0 0,0 100.90218893459583,38.43613629891447 A34.33867154324862,34.33867154324862 0 0,0 169.5795320210931,38.43613629891447"/>
+    </circle><circle r="7.660299816089752" fill="#ff66cc" opacity="0.65">
+      <animateMotion dur="5.12s" repeatCount="indefinite"
+        path="M187.6435936506939,38.43613629891447 A52.40273317284946,52.40273317284946 0 0,1 82.838127304995,38.43613629891447 A52.40273317284946,52.40273317284946 0 0,1 187.6435936506939,38.43613629891447"/>
+    </circle><circle r="7.2398071752953825" fill="#ff44aa" opacity="0.60">
+      <animateMotion dur="6.08s" repeatCount="indefinite"
+        path="M195.93666774498686,38.43613629891447 A60.69580726714241,60.69580726714241 0 0,0 74.54505321070204,38.43613629891447 A60.69580726714241,60.69580726714241 0 0,0 195.93666774498686,38.43613629891447"/>
+    </circle></g>
 
-  <rect width="280" height="130" fill="url(#tftwix-twist)"/>
-  <rect width="280" height="130" fill="url(#bftwix-twist)"/>
+<rect width="280" height="130" fill="url(#ttwixtwist)"/>
 
-  <text x="12" y="96"
-    font-family="Inter, system-ui, sans-serif"
-    font-size="21" font-weight="800" fill="white"
-    paint-order="stroke" stroke="rgba(0,0,0,0.6)" stroke-width="3" stroke-linejoin="round"
-  >Twix Twist</text>
-  
+<text x="140" y="106"
+  font-family="Inter,system-ui,sans-serif" font-size="20" font-weight="800"
+  fill="white" text-anchor="middle"
+  paint-order="stroke" stroke="rgba(0,0,0,0.7)" stroke-width="4" stroke-linejoin="round"
+>Twix Twist</text>
 
-  <rect x="12" y="113" width="59" height="14" fill="#aa1166" opacity="0.92" rx="2.5"/>
-  <text x="19" y="123.5"
-    font-family="Inter, system-ui, sans-serif"
-    font-size="8" font-weight="700" letter-spacing="1" fill="white"
-  >ACTION</text>
 
-  <rect y="128" width="280" height="2.5" fill="url(#altwix-twist)"/>
+<rect x="110.6" y="116" width="58.8" height="13" fill="#aa1166" opacity="0.92" rx="3"/>
+<text x="140" y="125.5"
+  font-family="Inter,system-ui,sans-serif" font-size="7.5" font-weight="700"
+  letter-spacing="1.2" fill="white" text-anchor="middle"
+>ACTION</text>
+
+<rect y="127.5" width="280" height="2.5" fill="url(#ltwixtwist)"/>
 </svg>

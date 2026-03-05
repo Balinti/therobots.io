@@ -1,112 +1,76 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 130" width="280" height="130">
-  <defs>
-    <linearGradient id="bggear-rhythm" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#120318"/>
-      <stop offset="100%" stop-color="#080110"/>
-    </linearGradient>
-    <radialGradient id="glgear-rhythm" cx="76%" cy="38%" r="44%">
-      <stop offset="0%" stop-color="#cc44ff" stop-opacity="0.2"/>
-      <stop offset="100%" stop-color="#cc44ff" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="tfgear-rhythm" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="rgba(0,0,0,0.78)"/>
-      <stop offset="52%" stop-color="rgba(0,0,0,0.45)"/>
-      <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
-    </linearGradient>
-    <linearGradient id="bfgear-rhythm" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="rgba(0,0,0,0)"/>
-      <stop offset="100%" stop-color="rgba(0,0,0,0.82)"/>
-    </linearGradient>
-    <linearGradient id="algear-rhythm" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#cc44ff"/>
-      <stop offset="60%" stop-color="#cc44ff" stop-opacity="0.5"/>
-      <stop offset="100%" stop-color="#cc44ff" stop-opacity="0"/>
-    </linearGradient>
-  </defs>
+<defs>
+  <linearGradient id="bgearrhythm" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0%" stop-color="#120318"/>
+    <stop offset="100%" stop-color="#080110"/>
+  </linearGradient>
+  <radialGradient id="ggearrhythm" cx="50%" cy="45%" r="55%">
+    <stop offset="0%" stop-color="#cc44ff" stop-opacity="0.18"/>
+    <stop offset="100%" stop-color="#cc44ff" stop-opacity="0"/>
+  </radialGradient>
+  <linearGradient id="tgearrhythm" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="40%" stop-color="rgba(0,0,0,0)"/>
+    <stop offset="100%" stop-color="rgba(0,0,0,0.88)"/>
+  </linearGradient>
+  <linearGradient id="lgearrhythm" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0%" stop-color="#cc44ff"/>
+    <stop offset="65%" stop-color="#aa22ee" stop-opacity="0.5"/>
+    <stop offset="100%" stop-color="#cc44ff" stop-opacity="0"/>
+  </linearGradient>
+  <clipPath id="clipgearrhythm"><rect width="280" height="130"/></clipPath>
+</defs>
 
-  <rect width="280" height="130" fill="url(#bggear-rhythm)"/>
-  <rect width="280" height="130" fill="url(#glgear-rhythm)"/>
+<rect width="280" height="130" fill="url(#bgearrhythm)"/>
+<rect width="280" height="130" fill="url(#ggearrhythm)"/>
 
-  
-  <g>
-    <rect x="150" y="95" width="9" height="35"
-      fill="#cc44ff" opacity="0.55" rx="2">
-      <animate attributeName="height" values="35;6;57;35" dur="0.48s" repeatCount="indefinite"/>
-      <animate attributeName="y" values="95;124;73;95" dur="0.48s" repeatCount="indefinite"/>
-    </rect><rect x="162" y="62" width="9" height="68"
-      fill="#aa22ee" opacity="0.55" rx="2">
-      <animate attributeName="height" values="68;36;90;68" dur="0.38s" repeatCount="indefinite"/>
-      <animate attributeName="y" values="62;94;40;62" dur="0.38s" repeatCount="indefinite"/>
-    </rect><rect x="174" y="84" width="9" height="46"
-      fill="#cc44ff" opacity="0.55" rx="2">
-      <animate attributeName="height" values="46;14;68;46" dur="0.6s" repeatCount="indefinite"/>
-      <animate attributeName="y" values="84;116;62;84" dur="0.6s" repeatCount="indefinite"/>
-    </rect><rect x="186" y="42" width="9" height="88"
-      fill="#aa22ee" opacity="0.55" rx="2">
-      <animate attributeName="height" values="88;56;105;88" dur="0.33s" repeatCount="indefinite"/>
-      <animate attributeName="y" values="42;74;25;42" dur="0.33s" repeatCount="indefinite"/>
-    </rect><rect x="198" y="74" width="9" height="56"
-      fill="#cc44ff" opacity="0.55" rx="2">
-      <animate attributeName="height" values="56;24;78;56" dur="0.44s" repeatCount="indefinite"/>
-      <animate attributeName="y" values="74;106;52;74" dur="0.44s" repeatCount="indefinite"/>
-    </rect><rect x="210" y="52" width="9" height="78"
-      fill="#aa22ee" opacity="0.55" rx="2">
-      <animate attributeName="height" values="78;46;100;78" dur="0.5s" repeatCount="indefinite"/>
-      <animate attributeName="y" values="52;84;30;52" dur="0.5s" repeatCount="indefinite"/>
-    </rect><rect x="222" y="88" width="9" height="42"
-      fill="#cc44ff" opacity="0.55" rx="2">
-      <animate attributeName="height" values="42;10;64;42" dur="0.52s" repeatCount="indefinite"/>
-      <animate attributeName="y" values="88;120;66;88" dur="0.52s" repeatCount="indefinite"/>
-    </rect><rect x="234" y="32" width="9" height="98"
-      fill="#aa22ee" opacity="0.55" rx="2">
-      <animate attributeName="height" values="98;66;105;98" dur="0.36s" repeatCount="indefinite"/>
-      <animate attributeName="y" values="32;64;25;32" dur="0.36s" repeatCount="indefinite"/>
-    </rect><rect x="246" y="78" width="9" height="52"
-      fill="#cc44ff" opacity="0.55" rx="2">
-      <animate attributeName="height" values="52;20;74;52" dur="0.42s" repeatCount="indefinite"/>
-      <animate attributeName="y" values="78;110;56;78" dur="0.42s" repeatCount="indefinite"/>
-    </rect><rect x="258" y="58" width="9" height="72"
-      fill="#aa22ee" opacity="0.55" rx="2">
-      <animate attributeName="height" values="72;40;94;72" dur="0.46s" repeatCount="indefinite"/>
-      <animate attributeName="y" values="58;90;36;58" dur="0.46s" repeatCount="indefinite"/>
-    </rect><rect x="270" y="90" width="9" height="40"
-      fill="#cc44ff" opacity="0.55" rx="2">
-      <animate attributeName="height" values="40;8;62;40" dur="0.54s" repeatCount="indefinite"/>
-      <animate attributeName="y" values="90;122;68;90" dur="0.54s" repeatCount="indefinite"/>
-    </rect>
-    <!-- Pulse rings -->
-    <circle cx="192" cy="42" r="14" fill="none" stroke="#cc44ff" stroke-width="2.5" opacity="0.35">
-      <animate attributeName="r" values="14;22;14" dur="1s" repeatCount="indefinite"/>
-      <animate attributeName="opacity" values="0.35;0;0.35" dur="1s" repeatCount="indefinite"/>
-    </circle>
-    <circle cx="192" cy="42" r="7" fill="#cc44ff" opacity="0.5">
-      <animate attributeName="opacity" values="0.5;0.9;0.5" dur="1s" repeatCount="indefinite"/>
-      <animate attributeName="r" values="7;9;7" dur="1s" repeatCount="indefinite"/>
-    </circle>
-    <!-- Sound waves -->
-    <path d="M205,42 Q210,34 215,42 Q220,50 225,42" fill="none" stroke="#aa22ee" stroke-width="2" opacity="0.5">
-      <animate attributeName="opacity" values="0.5;0.9;0.5" dur="1s" repeatCount="indefinite"/>
-    </path>
-    <path d="M203,42 Q210,29 217,42 Q224,55 231,42" fill="none" stroke="#cc44ff" stroke-width="1.5" opacity="0.35">
-      <animate attributeName="opacity" values="0.35;0.7;0.35" dur="1s" begin="0.1s" repeatCount="indefinite"/>
-    </path>
-  </g>
+<g clip-path="url(#clipgearrhythm)"><line x1="280" y1="14.5" x2="307.1" y2="14.5"
+      stroke="#cc44ff" stroke-width="2.1" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-312.14812416167655,0" dur="0.97s" begin="1.31s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.68;0.68;0" dur="0.97s" begin="1.31s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="31.4" x2="325.4" y2="31.4"
+      stroke="#aa22ee" stroke-width="3.7" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-330.43867916810296,0" dur="1.04s" begin="0.22s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.66;0.66;0" dur="1.04s" begin="0.22s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="43.4" x2="333.0" y2="43.4"
+      stroke="#cc44ff" stroke-width="2.7" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-338.0055606942637,0" dur="1.08s" begin="0.80s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.37;0.37;0" dur="1.08s" begin="0.80s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="55.2" x2="348.0" y2="55.2"
+      stroke="#aa22ee" stroke-width="2.4" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-353.0111700629376,0" dur="0.99s" begin="0.65s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.66;0.66;0" dur="0.99s" begin="0.65s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="69.4" x2="323.1" y2="69.4"
+      stroke="#cc44ff" stroke-width="1.4" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-328.12945090190726,0" dur="1.18s" begin="0.37s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.55;0.55;0" dur="1.18s" begin="0.37s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="78.8" x2="360.3" y2="78.8"
+      stroke="#aa22ee" stroke-width="1.9" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-365.31567221398365,0" dur="0.66s" begin="0.95s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.72;0.72;0" dur="0.66s" begin="0.95s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="99.1" x2="341.8" y2="99.1"
+      stroke="#cc44ff" stroke-width="2.4" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-346.82956824471,0" dur="0.63s" begin="0.74s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.80;0.80;0" dur="0.63s" begin="0.74s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="108.0" x2="343.0" y2="108.0"
+      stroke="#aa22ee" stroke-width="3.7" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-347.9732612469171,0" dur="0.93s" begin="1.38s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.30;0.30;0" dur="0.93s" begin="1.38s" repeatCount="indefinite"/>
+    </line></g>
 
-  <rect width="280" height="130" fill="url(#tfgear-rhythm)"/>
-  <rect width="280" height="130" fill="url(#bfgear-rhythm)"/>
+<rect width="280" height="130" fill="url(#tgearrhythm)"/>
 
-  <text x="12" y="96"
-    font-family="Inter, system-ui, sans-serif"
-    font-size="21" font-weight="800" fill="white"
-    paint-order="stroke" stroke="rgba(0,0,0,0.6)" stroke-width="3" stroke-linejoin="round"
-  >Gear Rhythm</text>
-  
+<text x="140" y="106"
+  font-family="Inter,system-ui,sans-serif" font-size="20" font-weight="800"
+  fill="white" text-anchor="middle"
+  paint-order="stroke" stroke="rgba(0,0,0,0.7)" stroke-width="4" stroke-linejoin="round"
+>Gear Rhythm</text>
 
-  <rect x="12" y="113" width="59" height="14" fill="#770099" opacity="0.92" rx="2.5"/>
-  <text x="19" y="123.5"
-    font-family="Inter, system-ui, sans-serif"
-    font-size="8" font-weight="700" letter-spacing="1" fill="white"
-  >RHYTHM</text>
 
-  <rect y="128" width="280" height="2.5" fill="url(#algear-rhythm)"/>
+<rect x="110.6" y="116" width="58.8" height="13" fill="#770099" opacity="0.92" rx="3"/>
+<text x="140" y="125.5"
+  font-family="Inter,system-ui,sans-serif" font-size="7.5" font-weight="700"
+  letter-spacing="1.2" fill="white" text-anchor="middle"
+>RHYTHM</text>
+
+<rect y="127.5" width="280" height="2.5" fill="url(#lgearrhythm)"/>
 </svg>

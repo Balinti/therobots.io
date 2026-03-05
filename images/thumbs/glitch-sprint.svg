@@ -1,76 +1,80 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 130" width="280" height="130">
-  <defs>
-    <linearGradient id="bgglitch-sprint" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#020a1c"/>
-      <stop offset="100%" stop-color="#010510"/>
-    </linearGradient>
-    <radialGradient id="glglitch-sprint" cx="76%" cy="38%" r="44%">
-      <stop offset="0%" stop-color="#00e5ff" stop-opacity="0.2"/>
-      <stop offset="100%" stop-color="#00e5ff" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="tfglitch-sprint" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="rgba(0,0,0,0.78)"/>
-      <stop offset="52%" stop-color="rgba(0,0,0,0.45)"/>
-      <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
-    </linearGradient>
-    <linearGradient id="bfglitch-sprint" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="rgba(0,0,0,0)"/>
-      <stop offset="100%" stop-color="rgba(0,0,0,0.82)"/>
-    </linearGradient>
-    <linearGradient id="alglitch-sprint" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#00e5ff"/>
-      <stop offset="60%" stop-color="#00e5ff" stop-opacity="0.5"/>
-      <stop offset="100%" stop-color="#00e5ff" stop-opacity="0"/>
-    </linearGradient>
-  </defs>
+<defs>
+  <linearGradient id="bglitchsprint" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0%" stop-color="#020a1c"/>
+    <stop offset="100%" stop-color="#010510"/>
+  </linearGradient>
+  <radialGradient id="gglitchsprint" cx="50%" cy="45%" r="55%">
+    <stop offset="0%" stop-color="#00e5ff" stop-opacity="0.18"/>
+    <stop offset="100%" stop-color="#00e5ff" stop-opacity="0"/>
+  </radialGradient>
+  <linearGradient id="tglitchsprint" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="40%" stop-color="rgba(0,0,0,0)"/>
+    <stop offset="100%" stop-color="rgba(0,0,0,0.88)"/>
+  </linearGradient>
+  <linearGradient id="lglitchsprint" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0%" stop-color="#00e5ff"/>
+    <stop offset="65%" stop-color="#00aacc" stop-opacity="0.5"/>
+    <stop offset="100%" stop-color="#00e5ff" stop-opacity="0"/>
+  </linearGradient>
+  <clipPath id="clipglitchsprint"><rect width="280" height="130"/></clipPath>
+</defs>
 
-  <rect width="280" height="130" fill="url(#bgglitch-sprint)"/>
-  <rect width="280" height="130" fill="url(#glglitch-sprint)"/>
+<rect width="280" height="130" fill="url(#bglitchsprint)"/>
+<rect width="280" height="130" fill="url(#gglitchsprint)"/>
 
-  
-  <g>
-    <line x1="148" y1="0" x2="148" y2="130" stroke="#00e5ff" stroke-width="0.5" opacity="0.2"/><line x1="168" y1="0" x2="168" y2="130" stroke="#00e5ff" stroke-width="0.5" opacity="0.2"/><line x1="188" y1="0" x2="188" y2="130" stroke="#00e5ff" stroke-width="0.5" opacity="0.2"/><line x1="208" y1="0" x2="208" y2="130" stroke="#00e5ff" stroke-width="0.5" opacity="0.2"/><line x1="228" y1="0" x2="228" y2="130" stroke="#00e5ff" stroke-width="0.5" opacity="0.2"/><line x1="248" y1="0" x2="248" y2="130" stroke="#00e5ff" stroke-width="0.5" opacity="0.2"/><line x1="268" y1="0" x2="268" y2="130" stroke="#00e5ff" stroke-width="0.5" opacity="0.2"/><line x1="148" y1="0" x2="280" y2="0" stroke="#00e5ff" stroke-width="0.5" opacity="0.2"/><line x1="148" y1="16" x2="280" y2="16" stroke="#00e5ff" stroke-width="0.5" opacity="0.2"/><line x1="148" y1="32" x2="280" y2="32" stroke="#00e5ff" stroke-width="0.5" opacity="0.2"/><line x1="148" y1="48" x2="280" y2="48" stroke="#00e5ff" stroke-width="0.5" opacity="0.2"/><line x1="148" y1="64" x2="280" y2="64" stroke="#00e5ff" stroke-width="0.5" opacity="0.2"/><line x1="148" y1="80" x2="280" y2="80" stroke="#00e5ff" stroke-width="0.5" opacity="0.2"/><line x1="148" y1="96" x2="280" y2="96" stroke="#00e5ff" stroke-width="0.5" opacity="0.2"/><line x1="148" y1="112" x2="280" y2="112" stroke="#00e5ff" stroke-width="0.5" opacity="0.2"/><line x1="148" y1="128" x2="280" y2="128" stroke="#00e5ff" stroke-width="0.5" opacity="0.2"/>
-    <!-- Nodes -->
-    <circle cx="173" cy="30" r="5.5" fill="#00e5ff" opacity="0.7">
-      <animate attributeName="r" values="5.5;8;5.5" dur="1.4s" repeatCount="indefinite"/>
-      <animate attributeName="opacity" values="0.7;1;0.7" dur="1.4s" repeatCount="indefinite"/>
-    </circle>
-    <circle cx="228" cy="68" r="5.5" fill="#00e5ff" opacity="0.7">
-      <animate attributeName="r" values="5.5;8;5.5" dur="1.1s" begin="0.4s" repeatCount="indefinite"/>
-      <animate attributeName="opacity" values="0.7;1;0.7" dur="1.1s" begin="0.4s" repeatCount="indefinite"/>
-    </circle>
-    <circle cx="262" cy="30" r="4.5" fill="#00e5ff" opacity="0.6">
-      <animate attributeName="r" values="4.5;7;4.5" dur="1.7s" begin="0.8s" repeatCount="indefinite"/>
-    </circle>
-    <!-- Circuit trace -->
-    <path d="M173,30 L228,30 L228,68 L262,68" fill="none" stroke="#00e5ff" stroke-width="2" opacity="0.45"/>
-    <!-- Travelling glow dot -->
-    <circle r="4.5" fill="#00e5ff" opacity="0.95">
-      <animateMotion dur="2s" repeatCount="indefinite"
-        path="M173,30 L228,30 L228,68 L262,68"/>
-      <animate attributeName="opacity" values="0.95;0.3;0.95" dur="2s" repeatCount="indefinite"/>
-    </circle>
-    <!-- Scanline -->
-    <rect x="148" y="-4" width="132" height="4" fill="#00e5ff" opacity="0.07">
-      <animateTransform attributeName="transform" type="translate" values="0,0;0,134" dur="2.8s" repeatCount="indefinite"/>
-    </rect>
-  </g>
+<g clip-path="url(#clipglitchsprint)"><line x1="280" y1="16.3" x2="361.3" y2="16.3"
+      stroke="#00e5ff" stroke-width="3.9" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-366.3269597842188,0" dur="0.81s" begin="0.46s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.59;0.59;0" dur="0.81s" begin="0.46s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="32.1" x2="334.3" y2="32.1"
+      stroke="#00aacc" stroke-width="3.5" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-339.251936173358,0" dur="1.12s" begin="0.99s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.54;0.54;0" dur="1.12s" begin="0.99s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="45.0" x2="334.7" y2="45.0"
+      stroke="#00e5ff" stroke-width="1.7" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-339.65106225797234,0" dur="0.83s" begin="1.27s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.66;0.66;0" dur="0.83s" begin="1.27s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="57.2" x2="316.4" y2="57.2"
+      stroke="#00aacc" stroke-width="2.4" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-321.37044276841226,0" dur="0.50s" begin="0.27s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.41;0.41;0" dur="0.50s" begin="0.27s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="70.1" x2="305.3" y2="70.1"
+      stroke="#00e5ff" stroke-width="1.3" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-310.27569748933325,0" dur="0.96s" begin="1.16s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.73;0.73;0" dur="0.96s" begin="1.16s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="85.8" x2="328.2" y2="85.8"
+      stroke="#00aacc" stroke-width="3.6" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-333.24263049365084,0" dur="0.66s" begin="1.49s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.70;0.70;0" dur="0.66s" begin="1.49s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="99.0" x2="331.8" y2="99.0"
+      stroke="#00e5ff" stroke-width="2.6" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-336.7630727139216,0" dur="0.94s" begin="0.41s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.63;0.63;0" dur="0.94s" begin="0.41s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="112.4" x2="330.5" y2="112.4"
+      stroke="#00aacc" stroke-width="3.8" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-335.4515424383459,0" dur="0.53s" begin="0.35s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.50;0.50;0" dur="0.53s" begin="0.35s" repeatCount="indefinite"/>
+    </line></g>
 
-  <rect width="280" height="130" fill="url(#tfglitch-sprint)"/>
-  <rect width="280" height="130" fill="url(#bfglitch-sprint)"/>
+<rect width="280" height="130" fill="url(#tglitchsprint)"/>
 
-  <text x="12" y="96"
-    font-family="Inter, system-ui, sans-serif"
-    font-size="21" font-weight="800" fill="white"
-    paint-order="stroke" stroke="rgba(0,0,0,0.6)" stroke-width="3" stroke-linejoin="round"
-  >Glitch Sprint</text>
-  
+<text x="140" y="100"
+  font-family="Inter,system-ui,sans-serif" font-size="18" font-weight="800"
+  fill="white" text-anchor="middle"
+  paint-order="stroke" stroke="rgba(0,0,0,0.7)" stroke-width="4" stroke-linejoin="round"
+>Glitch</text>
+<text x="140" y="123.4"
+  font-family="Inter,system-ui,sans-serif" font-size="18" font-weight="800"
+  fill="white" text-anchor="middle"
+  paint-order="stroke" stroke="rgba(0,0,0,0.7)" stroke-width="4" stroke-linejoin="round"
+>Sprint</text>
 
-  <rect x="12" y="113" width="59" height="14" fill="#006688" opacity="0.92" rx="2.5"/>
-  <text x="19" y="123.5"
-    font-family="Inter, system-ui, sans-serif"
-    font-size="8" font-weight="700" letter-spacing="1" fill="white"
-  >ACTION</text>
+<rect x="110.6" y="116" width="58.8" height="13" fill="#006688" opacity="0.92" rx="3"/>
+<text x="140" y="125.5"
+  font-family="Inter,system-ui,sans-serif" font-size="7.5" font-weight="700"
+  letter-spacing="1.2" fill="white" text-anchor="middle"
+>ACTION</text>
 
-  <rect y="128" width="280" height="2.5" fill="url(#alglitch-sprint)"/>
+<rect y="127.5" width="280" height="2.5" fill="url(#lglitchsprint)"/>
 </svg>

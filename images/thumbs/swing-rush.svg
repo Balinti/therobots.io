@@ -1,77 +1,80 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 130" width="280" height="130">
-  <defs>
-    <linearGradient id="bgswing-rush" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#08060f"/>
-      <stop offset="100%" stop-color="#040408"/>
-    </linearGradient>
-    <radialGradient id="glswing-rush" cx="76%" cy="38%" r="44%">
-      <stop offset="0%" stop-color="#9d4edd" stop-opacity="0.2"/>
-      <stop offset="100%" stop-color="#9d4edd" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="tfswing-rush" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="rgba(0,0,0,0.78)"/>
-      <stop offset="52%" stop-color="rgba(0,0,0,0.45)"/>
-      <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
-    </linearGradient>
-    <linearGradient id="bfswing-rush" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="rgba(0,0,0,0)"/>
-      <stop offset="100%" stop-color="rgba(0,0,0,0.82)"/>
-    </linearGradient>
-    <linearGradient id="alswing-rush" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#9d4edd"/>
-      <stop offset="60%" stop-color="#9d4edd" stop-opacity="0.5"/>
-      <stop offset="100%" stop-color="#9d4edd" stop-opacity="0"/>
-    </linearGradient>
-  </defs>
+<defs>
+  <linearGradient id="bswingrush" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0%" stop-color="#08060f"/>
+    <stop offset="100%" stop-color="#040408"/>
+  </linearGradient>
+  <radialGradient id="gswingrush" cx="50%" cy="45%" r="55%">
+    <stop offset="0%" stop-color="#9d4edd" stop-opacity="0.18"/>
+    <stop offset="100%" stop-color="#9d4edd" stop-opacity="0"/>
+  </radialGradient>
+  <linearGradient id="tswingrush" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="40%" stop-color="rgba(0,0,0,0)"/>
+    <stop offset="100%" stop-color="rgba(0,0,0,0.88)"/>
+  </linearGradient>
+  <linearGradient id="lswingrush" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0%" stop-color="#9d4edd"/>
+    <stop offset="65%" stop-color="#7b2fbe" stop-opacity="0.5"/>
+    <stop offset="100%" stop-color="#9d4edd" stop-opacity="0"/>
+  </linearGradient>
+  <clipPath id="clipswingrush"><rect width="280" height="130"/></clipPath>
+</defs>
 
-  <rect width="280" height="130" fill="url(#bgswing-rush)"/>
-  <rect width="280" height="130" fill="url(#glswing-rush)"/>
+<rect width="280" height="130" fill="url(#bswingrush)"/>
+<rect width="280" height="130" fill="url(#gswingrush)"/>
 
-  
-  <g>
-    <!-- Gear 1 - clockwise -->
-    <g>
-      <animateTransform attributeName="transform" type="rotate"
-        values="0 238 58;360 238 58" dur="5s" repeatCount="indefinite"/>
-      <circle cx="238" cy="58" r="23" fill="none" stroke="#9d4edd" stroke-width="2.5" opacity="0.45"/>
-      <circle cx="238" cy="58" r="10" fill="#9d4edd" opacity="0.15"/>
-      <circle cx="238" cy="58" r="5" fill="#9d4edd" opacity="0.55"/>
-      <rect x="258.0" y="54.0" width="6" height="8" fill="#9d4edd" opacity="0.45" rx="1" transform="rotate(0 261.0 58.0)"/><rect x="253.6" y="67.5" width="6" height="8" fill="#9d4edd" opacity="0.45" rx="1" transform="rotate(36 256.6 71.5)"/><rect x="242.1" y="75.9" width="6" height="8" fill="#9d4edd" opacity="0.45" rx="1" transform="rotate(72 245.1 79.9)"/><rect x="227.9" y="75.9" width="6" height="8" fill="#9d4edd" opacity="0.45" rx="1" transform="rotate(108 230.9 79.9)"/><rect x="216.4" y="67.5" width="6" height="8" fill="#9d4edd" opacity="0.45" rx="1" transform="rotate(144 219.4 71.5)"/><rect x="212.0" y="54.0" width="6" height="8" fill="#9d4edd" opacity="0.45" rx="1" transform="rotate(180 215.0 58.0)"/><rect x="216.4" y="40.5" width="6" height="8" fill="#9d4edd" opacity="0.45" rx="1" transform="rotate(216 219.4 44.5)"/><rect x="227.9" y="32.1" width="6" height="8" fill="#9d4edd" opacity="0.45" rx="1" transform="rotate(252 230.9 36.1)"/><rect x="242.1" y="32.1" width="6" height="8" fill="#9d4edd" opacity="0.45" rx="1" transform="rotate(288 245.1 36.1)"/><rect x="253.6" y="40.5" width="6" height="8" fill="#9d4edd" opacity="0.45" rx="1" transform="rotate(324 256.6 44.5)"/>
-    </g>
-    <!-- Gear 2 - counter-clockwise -->
-    <g>
-      <animateTransform attributeName="transform" type="rotate"
-        values="0 213 85;-360 213 85" dur="3.2s" repeatCount="indefinite"/>
-      <circle cx="213" cy="85" r="15" fill="none" stroke="#9d4edd" stroke-width="2" opacity="0.38"/>
-      <circle cx="213" cy="85" r="6" fill="#9d4edd" opacity="0.45"/>
-      <rect x="225.5" y="81.5" width="5" height="7" fill="#9d4edd" opacity="0.38" rx="1" transform="rotate(0 228.0 85.0)"/><rect x="221.1" y="92.1" width="5" height="7" fill="#9d4edd" opacity="0.38" rx="1" transform="rotate(45 223.6 95.6)"/><rect x="210.5" y="96.5" width="5" height="7" fill="#9d4edd" opacity="0.38" rx="1" transform="rotate(90 213.0 100.0)"/><rect x="199.9" y="92.1" width="5" height="7" fill="#9d4edd" opacity="0.38" rx="1" transform="rotate(135 202.4 95.6)"/><rect x="195.5" y="81.5" width="5" height="7" fill="#9d4edd" opacity="0.38" rx="1" transform="rotate(180 198.0 85.0)"/><rect x="199.9" y="70.9" width="5" height="7" fill="#9d4edd" opacity="0.38" rx="1" transform="rotate(225 202.4 74.4)"/><rect x="210.5" y="66.5" width="5" height="7" fill="#9d4edd" opacity="0.38" rx="1" transform="rotate(270 213.0 70.0)"/><rect x="221.1" y="70.9" width="5" height="7" fill="#9d4edd" opacity="0.38" rx="1" transform="rotate(315 223.6 74.4)"/>
-    </g>
-    <!-- Hexagon pulsing -->
-    <polygon points="172,38 188,29 204,38 204,56 188,65 172,56"
-      fill="none" stroke="#9d4edd" stroke-width="1.8" opacity="0.38">
-      <animate attributeName="opacity" values="0.38;0.7;0.38" dur="2.2s" repeatCount="indefinite"/>
-    </polygon>
-    <polygon points="172,38 188,29 204,38 204,56 188,65 172,56"
-      fill="#9d4edd" opacity="0.06">
-      <animate attributeName="opacity" values="0.06;0.16;0.06" dur="2.2s" repeatCount="indefinite"/>
-    </polygon>
-  </g>
+<g clip-path="url(#clipswingrush)"><line x1="280" y1="13.4" x2="353.9" y2="13.4"
+      stroke="#9d4edd" stroke-width="3.3" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-358.86513914188026,0" dur="1.20s" begin="0.31s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.61;0.61;0" dur="1.20s" begin="0.31s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="27.9" x2="361.8" y2="27.9"
+      stroke="#7b2fbe" stroke-width="1.1" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-366.79698784295397,0" dur="0.50s" begin="1.26s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.41;0.41;0" dur="0.50s" begin="1.26s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="40.2" x2="350.4" y2="40.2"
+      stroke="#9d4edd" stroke-width="4.0" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-355.41651432528545,0" dur="1.17s" begin="0.01s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.72;0.72;0" dur="1.17s" begin="0.01s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="49.1" x2="322.3" y2="49.1"
+      stroke="#7b2fbe" stroke-width="1.6" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-327.27827412478587,0" dur="0.89s" begin="0.72s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.74;0.74;0" dur="0.89s" begin="0.72s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="66.4" x2="343.4" y2="66.4"
+      stroke="#9d4edd" stroke-width="1.5" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-348.44336404428896,0" dur="0.67s" begin="1.08s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.65;0.65;0" dur="0.67s" begin="1.08s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="74.9" x2="319.5" y2="74.9"
+      stroke="#7b2fbe" stroke-width="2.9" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-324.51064921322063,0" dur="1.11s" begin="1.22s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.38;0.38;0" dur="1.11s" begin="1.22s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="86.2" x2="342.4" y2="86.2"
+      stroke="#9d4edd" stroke-width="2.6" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-347.42893510438245,0" dur="1.11s" begin="1.01s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.38;0.38;0" dur="1.11s" begin="1.01s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="99.7" x2="312.3" y2="99.7"
+      stroke="#7b2fbe" stroke-width="2.6" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-317.2526818623889,0" dur="1.02s" begin="0.24s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.47;0.47;0" dur="1.02s" begin="0.24s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="111.5" x2="330.2" y2="111.5"
+      stroke="#9d4edd" stroke-width="3.5" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-335.1718276983993,0" dur="0.62s" begin="0.63s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.57;0.57;0" dur="0.62s" begin="0.63s" repeatCount="indefinite"/>
+    </line></g>
 
-  <rect width="280" height="130" fill="url(#tfswing-rush)"/>
-  <rect width="280" height="130" fill="url(#bfswing-rush)"/>
+<rect width="280" height="130" fill="url(#tswingrush)"/>
 
-  <text x="12" y="96"
-    font-family="Inter, system-ui, sans-serif"
-    font-size="21" font-weight="800" fill="white"
-    paint-order="stroke" stroke="rgba(0,0,0,0.6)" stroke-width="3" stroke-linejoin="round"
-  >Swing Rush</text>
-  
+<text x="140" y="106"
+  font-family="Inter,system-ui,sans-serif" font-size="20" font-weight="800"
+  fill="white" text-anchor="middle"
+  paint-order="stroke" stroke="rgba(0,0,0,0.7)" stroke-width="4" stroke-linejoin="round"
+>Swing Rush</text>
 
-  <rect x="12" y="113" width="59" height="14" fill="#5a189a" opacity="0.92" rx="2.5"/>
-  <text x="19" y="123.5"
-    font-family="Inter, system-ui, sans-serif"
-    font-size="8" font-weight="700" letter-spacing="1" fill="white"
-  >ACTION</text>
 
-  <rect y="128" width="280" height="2.5" fill="url(#alswing-rush)"/>
+<rect x="110.6" y="116" width="58.8" height="13" fill="#5a189a" opacity="0.92" rx="3"/>
+<text x="140" y="125.5"
+  font-family="Inter,system-ui,sans-serif" font-size="7.5" font-weight="700"
+  letter-spacing="1.2" fill="white" text-anchor="middle"
+>ACTION</text>
+
+<rect y="127.5" width="280" height="2.5" fill="url(#lswingrush)"/>
 </svg>

@@ -1,112 +1,62 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 130" width="280" height="130">
-  <defs>
-    <linearGradient id="bgdusk-pulse" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#120318"/>
-      <stop offset="100%" stop-color="#080110"/>
-    </linearGradient>
-    <radialGradient id="gldusk-pulse" cx="76%" cy="38%" r="44%">
-      <stop offset="0%" stop-color="#cc44ff" stop-opacity="0.2"/>
-      <stop offset="100%" stop-color="#cc44ff" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="tfdusk-pulse" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="rgba(0,0,0,0.78)"/>
-      <stop offset="52%" stop-color="rgba(0,0,0,0.45)"/>
-      <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
-    </linearGradient>
-    <linearGradient id="bfdusk-pulse" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="rgba(0,0,0,0)"/>
-      <stop offset="100%" stop-color="rgba(0,0,0,0.82)"/>
-    </linearGradient>
-    <linearGradient id="aldusk-pulse" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#cc44ff"/>
-      <stop offset="60%" stop-color="#cc44ff" stop-opacity="0.5"/>
-      <stop offset="100%" stop-color="#cc44ff" stop-opacity="0"/>
-    </linearGradient>
-  </defs>
+<defs>
+  <linearGradient id="bduskpulse" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0%" stop-color="#120318"/>
+    <stop offset="100%" stop-color="#080110"/>
+  </linearGradient>
+  <radialGradient id="gduskpulse" cx="50%" cy="45%" r="55%">
+    <stop offset="0%" stop-color="#cc44ff" stop-opacity="0.18"/>
+    <stop offset="100%" stop-color="#cc44ff" stop-opacity="0"/>
+  </radialGradient>
+  <linearGradient id="tduskpulse" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="40%" stop-color="rgba(0,0,0,0)"/>
+    <stop offset="100%" stop-color="rgba(0,0,0,0.88)"/>
+  </linearGradient>
+  <linearGradient id="lduskpulse" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0%" stop-color="#cc44ff"/>
+    <stop offset="65%" stop-color="#aa22ee" stop-opacity="0.5"/>
+    <stop offset="100%" stop-color="#cc44ff" stop-opacity="0"/>
+  </linearGradient>
+  <clipPath id="clipduskpulse"><rect width="280" height="130"/></clipPath>
+</defs>
 
-  <rect width="280" height="130" fill="url(#bgdusk-pulse)"/>
-  <rect width="280" height="130" fill="url(#gldusk-pulse)"/>
+<rect width="280" height="130" fill="url(#bduskpulse)"/>
+<rect width="280" height="130" fill="url(#gduskpulse)"/>
 
-  
-  <g>
-    <rect x="150" y="95" width="9" height="35"
-      fill="#cc44ff" opacity="0.55" rx="2">
-      <animate attributeName="height" values="35;6;57;35" dur="0.48s" repeatCount="indefinite"/>
-      <animate attributeName="y" values="95;124;73;95" dur="0.48s" repeatCount="indefinite"/>
-    </rect><rect x="162" y="62" width="9" height="68"
-      fill="#aa22ee" opacity="0.55" rx="2">
-      <animate attributeName="height" values="68;36;90;68" dur="0.38s" repeatCount="indefinite"/>
-      <animate attributeName="y" values="62;94;40;62" dur="0.38s" repeatCount="indefinite"/>
-    </rect><rect x="174" y="84" width="9" height="46"
-      fill="#cc44ff" opacity="0.55" rx="2">
-      <animate attributeName="height" values="46;14;68;46" dur="0.6s" repeatCount="indefinite"/>
-      <animate attributeName="y" values="84;116;62;84" dur="0.6s" repeatCount="indefinite"/>
-    </rect><rect x="186" y="42" width="9" height="88"
-      fill="#aa22ee" opacity="0.55" rx="2">
-      <animate attributeName="height" values="88;56;105;88" dur="0.33s" repeatCount="indefinite"/>
-      <animate attributeName="y" values="42;74;25;42" dur="0.33s" repeatCount="indefinite"/>
-    </rect><rect x="198" y="74" width="9" height="56"
-      fill="#cc44ff" opacity="0.55" rx="2">
-      <animate attributeName="height" values="56;24;78;56" dur="0.44s" repeatCount="indefinite"/>
-      <animate attributeName="y" values="74;106;52;74" dur="0.44s" repeatCount="indefinite"/>
-    </rect><rect x="210" y="52" width="9" height="78"
-      fill="#aa22ee" opacity="0.55" rx="2">
-      <animate attributeName="height" values="78;46;100;78" dur="0.5s" repeatCount="indefinite"/>
-      <animate attributeName="y" values="52;84;30;52" dur="0.5s" repeatCount="indefinite"/>
-    </rect><rect x="222" y="88" width="9" height="42"
-      fill="#cc44ff" opacity="0.55" rx="2">
-      <animate attributeName="height" values="42;10;64;42" dur="0.52s" repeatCount="indefinite"/>
-      <animate attributeName="y" values="88;120;66;88" dur="0.52s" repeatCount="indefinite"/>
-    </rect><rect x="234" y="32" width="9" height="98"
-      fill="#aa22ee" opacity="0.55" rx="2">
-      <animate attributeName="height" values="98;66;105;98" dur="0.36s" repeatCount="indefinite"/>
-      <animate attributeName="y" values="32;64;25;32" dur="0.36s" repeatCount="indefinite"/>
-    </rect><rect x="246" y="78" width="9" height="52"
-      fill="#cc44ff" opacity="0.55" rx="2">
-      <animate attributeName="height" values="52;20;74;52" dur="0.42s" repeatCount="indefinite"/>
-      <animate attributeName="y" values="78;110;56;78" dur="0.42s" repeatCount="indefinite"/>
-    </rect><rect x="258" y="58" width="9" height="72"
-      fill="#aa22ee" opacity="0.55" rx="2">
-      <animate attributeName="height" values="72;40;94;72" dur="0.46s" repeatCount="indefinite"/>
-      <animate attributeName="y" values="58;90;36;58" dur="0.46s" repeatCount="indefinite"/>
-    </rect><rect x="270" y="90" width="9" height="40"
-      fill="#cc44ff" opacity="0.55" rx="2">
-      <animate attributeName="height" values="40;8;62;40" dur="0.54s" repeatCount="indefinite"/>
-      <animate attributeName="y" values="90;122;68;90" dur="0.54s" repeatCount="indefinite"/>
-    </rect>
-    <!-- Pulse rings -->
-    <circle cx="192" cy="42" r="14" fill="none" stroke="#cc44ff" stroke-width="2.5" opacity="0.35">
-      <animate attributeName="r" values="14;22;14" dur="1s" repeatCount="indefinite"/>
-      <animate attributeName="opacity" values="0.35;0;0.35" dur="1s" repeatCount="indefinite"/>
-    </circle>
-    <circle cx="192" cy="42" r="7" fill="#cc44ff" opacity="0.5">
-      <animate attributeName="opacity" values="0.5;0.9;0.5" dur="1s" repeatCount="indefinite"/>
-      <animate attributeName="r" values="7;9;7" dur="1s" repeatCount="indefinite"/>
-    </circle>
-    <!-- Sound waves -->
-    <path d="M205,42 Q210,34 215,42 Q220,50 225,42" fill="none" stroke="#aa22ee" stroke-width="2" opacity="0.5">
-      <animate attributeName="opacity" values="0.5;0.9;0.5" dur="1s" repeatCount="indefinite"/>
-    </path>
-    <path d="M203,42 Q210,29 217,42 Q224,55 231,42" fill="none" stroke="#cc44ff" stroke-width="1.5" opacity="0.35">
-      <animate attributeName="opacity" values="0.35;0.7;0.35" dur="1s" begin="0.1s" repeatCount="indefinite"/>
-    </path>
-  </g>
+<g clip-path="url(#clipduskpulse)"><circle cx="110.28708883335048" cy="50.0676960800932" r="8" fill="none" stroke="#cc44ff" stroke-width="2.5" opacity="0">
+      <animate attributeName="r" values="8;50.00023188302299" dur="1.12s" begin="0.00s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.8;0" dur="1.12s" begin="0.00s" repeatCount="indefinite"/>
+    </circle><circle cx="110.28708883335048" cy="50.0676960800932" r="8" fill="none" stroke="#cc44ff" stroke-width="2.5" opacity="0">
+      <animate attributeName="r" values="8;40.69257268232586" dur="1.12s" begin="0.22s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.8;0" dur="1.12s" begin="0.22s" repeatCount="indefinite"/>
+    </circle><circle cx="110.28708883335048" cy="50.0676960800932" r="8" fill="none" stroke="#cc44ff" stroke-width="2.5" opacity="0">
+      <animate attributeName="r" values="8;49.265139505561706" dur="1.12s" begin="0.45s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.8;0" dur="1.12s" begin="0.45s" repeatCount="indefinite"/>
+    </circle><circle cx="110.28708883335048" cy="50.0676960800932" r="8" fill="none" stroke="#cc44ff" stroke-width="2.5" opacity="0">
+      <animate attributeName="r" values="8;41.05326382933493" dur="1.12s" begin="0.67s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.8;0" dur="1.12s" begin="0.67s" repeatCount="indefinite"/>
+    </circle><circle cx="110.28708883335048" cy="50.0676960800932" r="8" fill="none" stroke="#cc44ff" stroke-width="2.5" opacity="0">
+      <animate attributeName="r" values="8;48.6964749937636" dur="1.12s" begin="0.90s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.8;0" dur="1.12s" begin="0.90s" repeatCount="indefinite"/>
+    </circle><circle cx="110.28708883335048" cy="50.0676960800932" r="7" fill="#cc44ff" opacity="0.7">
+    <animate attributeName="r" values="7;9;7" dur="0.56s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0.7;1;0.7" dur="0.56s" repeatCount="indefinite"/>
+  </circle></g>
 
-  <rect width="280" height="130" fill="url(#tfdusk-pulse)"/>
-  <rect width="280" height="130" fill="url(#bfdusk-pulse)"/>
+<rect width="280" height="130" fill="url(#tduskpulse)"/>
 
-  <text x="12" y="96"
-    font-family="Inter, system-ui, sans-serif"
-    font-size="21" font-weight="800" fill="white"
-    paint-order="stroke" stroke="rgba(0,0,0,0.6)" stroke-width="3" stroke-linejoin="round"
-  >Dusk Pulse</text>
-  
+<text x="140" y="106"
+  font-family="Inter,system-ui,sans-serif" font-size="20" font-weight="800"
+  fill="white" text-anchor="middle"
+  paint-order="stroke" stroke="rgba(0,0,0,0.7)" stroke-width="4" stroke-linejoin="round"
+>Dusk Pulse</text>
 
-  <rect x="12" y="113" width="59" height="14" fill="#770099" opacity="0.92" rx="2.5"/>
-  <text x="19" y="123.5"
-    font-family="Inter, system-ui, sans-serif"
-    font-size="8" font-weight="700" letter-spacing="1" fill="white"
-  >RHYTHM</text>
 
-  <rect y="128" width="280" height="2.5" fill="url(#aldusk-pulse)"/>
+<rect x="110.6" y="116" width="58.8" height="13" fill="#770099" opacity="0.92" rx="3"/>
+<text x="140" y="125.5"
+  font-family="Inter,system-ui,sans-serif" font-size="7.5" font-weight="700"
+  letter-spacing="1.2" fill="white" text-anchor="middle"
+>RHYTHM</text>
+
+<rect y="127.5" width="280" height="2.5" fill="url(#lduskpulse)"/>
 </svg>

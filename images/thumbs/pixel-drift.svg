@@ -1,94 +1,124 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 130" width="280" height="130">
-  <defs>
-    <linearGradient id="bgpixel-drift" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#050520"/>
-      <stop offset="100%" stop-color="#020210"/>
-    </linearGradient>
-    <radialGradient id="glpixel-drift" cx="76%" cy="38%" r="44%">
-      <stop offset="0%" stop-color="#4466ff" stop-opacity="0.2"/>
-      <stop offset="100%" stop-color="#4466ff" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="tfpixel-drift" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="rgba(0,0,0,0.78)"/>
-      <stop offset="52%" stop-color="rgba(0,0,0,0.45)"/>
-      <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
-    </linearGradient>
-    <linearGradient id="bfpixel-drift" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="rgba(0,0,0,0)"/>
-      <stop offset="100%" stop-color="rgba(0,0,0,0.82)"/>
-    </linearGradient>
-    <linearGradient id="alpixel-drift" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#4466ff"/>
-      <stop offset="60%" stop-color="#4466ff" stop-opacity="0.5"/>
-      <stop offset="100%" stop-color="#4466ff" stop-opacity="0"/>
-    </linearGradient>
-  </defs>
+<defs>
+  <linearGradient id="bpixeldrift" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0%" stop-color="#050520"/>
+    <stop offset="100%" stop-color="#020210"/>
+  </linearGradient>
+  <radialGradient id="gpixeldrift" cx="50%" cy="45%" r="55%">
+    <stop offset="0%" stop-color="#4466ff" stop-opacity="0.18"/>
+    <stop offset="100%" stop-color="#4466ff" stop-opacity="0"/>
+  </radialGradient>
+  <linearGradient id="tpixeldrift" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="40%" stop-color="rgba(0,0,0,0)"/>
+    <stop offset="100%" stop-color="rgba(0,0,0,0.88)"/>
+  </linearGradient>
+  <linearGradient id="lpixeldrift" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0%" stop-color="#4466ff"/>
+    <stop offset="65%" stop-color="#2244dd" stop-opacity="0.5"/>
+    <stop offset="100%" stop-color="#4466ff" stop-opacity="0"/>
+  </linearGradient>
+  <clipPath id="clippixeldrift"><rect width="280" height="130"/></clipPath>
+</defs>
 
-  <rect width="280" height="130" fill="url(#bgpixel-drift)"/>
-  <rect width="280" height="130" fill="url(#glpixel-drift)"/>
+<rect width="280" height="130" fill="url(#bpixeldrift)"/>
+<rect width="280" height="130" fill="url(#gpixeldrift)"/>
 
-  
-  <g>
-    <rect x="152" y="0" width="10" height="10" fill="#4466ff" opacity="0.07" rx="1"/><rect x="152" y="28" width="10" height="10" fill="#4466ff" opacity="0.07" rx="1"/><rect x="152" y="56" width="10" height="10" fill="#4466ff" opacity="0.07" rx="1"/><rect x="152" y="84" width="10" height="10" fill="#4466ff" opacity="0.07" rx="1"/><rect x="178" y="0" width="10" height="10" fill="#4466ff" opacity="0.07" rx="1"/><rect x="178" y="28" width="10" height="10" fill="#4466ff" opacity="0.07" rx="1"/><rect x="178" y="56" width="10" height="10" fill="#4466ff" opacity="0.07" rx="1"/><rect x="178" y="84" width="10" height="10" fill="#4466ff" opacity="0.07" rx="1"/><rect x="204" y="0" width="10" height="10" fill="#4466ff" opacity="0.07" rx="1"/><rect x="204" y="28" width="10" height="10" fill="#4466ff" opacity="0.07" rx="1"/><rect x="204" y="56" width="10" height="10" fill="#4466ff" opacity="0.07" rx="1"/><rect x="204" y="84" width="10" height="10" fill="#4466ff" opacity="0.07" rx="1"/><rect x="230" y="0" width="10" height="10" fill="#4466ff" opacity="0.07" rx="1"/><rect x="230" y="28" width="10" height="10" fill="#4466ff" opacity="0.07" rx="1"/><rect x="230" y="56" width="10" height="10" fill="#4466ff" opacity="0.07" rx="1"/><rect x="230" y="84" width="10" height="10" fill="#4466ff" opacity="0.07" rx="1"/><rect x="256" y="0" width="10" height="10" fill="#4466ff" opacity="0.07" rx="1"/><rect x="256" y="28" width="10" height="10" fill="#4466ff" opacity="0.07" rx="1"/><rect x="256" y="56" width="10" height="10" fill="#4466ff" opacity="0.07" rx="1"/><rect x="256" y="84" width="10" height="10" fill="#4466ff" opacity="0.07" rx="1"/>
-    <!-- Robot walking left-to-right then back -->
-    <g>
-      <animateTransform attributeName="transform" type="translate"
-        values="148,28;272,44;148,28" dur="4s" repeatCount="indefinite"/>
-      <!-- Body -->
-      <rect x="-13" y="0" width="26" height="24" fill="#4466ff" opacity="0.55" rx="2"/>
-      <!-- Head -->
-      <rect x="-11" y="-20" width="22" height="17" fill="#4466ff" opacity="0.6" rx="1"/>
-      <!-- Eyes: left blinks -->
-      <rect x="-7" y="-16" width="6" height="7" fill="#2244dd" opacity="0.9"/>
-      <rect x="2" y="-16" width="6" height="7" fill="#2244dd" opacity="0.9">
-        <animate attributeName="height" values="7;1;7" dur="0.18s" begin="1.5s" repeatCount="indefinite"/>
-        <animate attributeName="y" values="-16;-13;-16" dur="0.18s" begin="1.5s" repeatCount="indefinite"/>
-      </rect>
-      <!-- Left leg alternates -->
-      <rect x="-9" y="24" width="9" height="14" fill="#4466ff" opacity="0.5" rx="1">
-        <animate attributeName="height" values="14;6;14" dur="0.42s" repeatCount="indefinite"/>
-        <animate attributeName="y" values="24;32;24" dur="0.42s" repeatCount="indefinite"/>
-      </rect>
-      <!-- Right leg alternates -->
-      <rect x="2" y="24" width="9" height="14" fill="#4466ff" opacity="0.5" rx="1">
-        <animate attributeName="height" values="6;14;6" dur="0.42s" repeatCount="indefinite"/>
-        <animate attributeName="y" values="32;24;32" dur="0.42s" repeatCount="indefinite"/>
-      </rect>
-      <!-- Arms swing -->
-      <rect x="-20" y="2" width="9" height="7" fill="#4466ff" opacity="0.45" rx="1">
-        <animate attributeName="y" values="2;6;2" dur="0.42s" repeatCount="indefinite"/>
-      </rect>
-      <rect x="13" y="6" width="9" height="7" fill="#4466ff" opacity="0.45" rx="1">
-        <animate attributeName="y" values="6;2;6" dur="0.42s" repeatCount="indefinite"/>
-      </rect>
-    </g>
-    <!-- Pixel score dots -->
-    <rect x="152" y="8" width="8" height="8" fill="#4466ff" opacity="0.45" rx="1">
-      <animate attributeName="opacity" values="0.45;0.9;0.45" dur="1s" repeatCount="indefinite"/>
-    </rect>
-    <rect x="165" y="8" width="8" height="8" fill="#2244dd" opacity="0.35" rx="1">
-      <animate attributeName="opacity" values="0.35;0.8;0.35" dur="1.3s" begin="0.3s" repeatCount="indefinite"/>
-    </rect>
-    <rect x="178" y="8" width="8" height="8" fill="#4466ff" opacity="0.3" rx="1">
-      <animate attributeName="opacity" values="0.3;0.7;0.3" dur="0.9s" begin="0.6s" repeatCount="indefinite"/>
-    </rect>
-  </g>
+<g clip-path="url(#clippixeldrift)"><rect x="88.9" y="50.2" width="14.9" height="14.9" fill="#4466ff" opacity="0.2" rx="1">
+      <animate attributeName="opacity" values="0.2;0.8;0.2" dur="1.32s" begin="1.76s" repeatCount="indefinite"/>
+    </rect><rect x="105.7" y="50.2" width="14.9" height="14.9" fill="#2244dd" opacity="0.2" rx="1">
+      <animate attributeName="opacity" values="0.2;0.8;0.2" dur="1.28s" begin="1.54s" repeatCount="indefinite"/>
+    </rect><rect x="122.6" y="50.2" width="14.9" height="14.9" fill="#1133aa" opacity="0.2" rx="1">
+      <animate attributeName="opacity" values="0.2;0.8;0.2" dur="2.00s" begin="0.26s" repeatCount="indefinite"/>
+    </rect><rect x="139.5" y="50.2" width="14.9" height="14.9" fill="rgba(255,255,255,0.15)" opacity="0.2" rx="1">
+      <animate attributeName="opacity" values="0.2;0.8;0.2" dur="1.40s" begin="0.10s" repeatCount="indefinite"/>
+    </rect><rect x="156.4" y="50.2" width="14.9" height="14.9" fill="#4466ff" opacity="0.2" rx="1">
+      <animate attributeName="opacity" values="0.2;0.8;0.2" dur="2.28s" begin="0.78s" repeatCount="indefinite"/>
+    </rect><rect x="173.3" y="50.2" width="14.9" height="14.9" fill="#2244dd" opacity="0.2" rx="1">
+      <animate attributeName="opacity" values="0.2;0.8;0.2" dur="1.60s" begin="0.28s" repeatCount="indefinite"/>
+    </rect><rect x="190.2" y="50.2" width="14.9" height="14.9" fill="#1133aa" opacity="0.2" rx="1">
+      <animate attributeName="opacity" values="0.2;0.8;0.2" dur="1.84s" begin="0.66s" repeatCount="indefinite"/>
+    </rect><rect x="207.0" y="50.2" width="14.9" height="14.9" fill="rgba(255,255,255,0.15)" opacity="0.2" rx="1">
+      <animate attributeName="opacity" values="0.2;0.8;0.2" dur="2.00s" begin="0.66s" repeatCount="indefinite"/>
+    </rect><rect x="88.9" y="67.1" width="14.9" height="14.9" fill="#4466ff" opacity="0.2" rx="1">
+      <animate attributeName="opacity" values="0.2;0.8;0.2" dur="2.68s" begin="0.06s" repeatCount="indefinite"/>
+    </rect><rect x="105.7" y="67.1" width="14.9" height="14.9" fill="#2244dd" opacity="0.2" rx="1">
+      <animate attributeName="opacity" values="0.2;0.8;0.2" dur="3.08s" begin="1.10s" repeatCount="indefinite"/>
+    </rect><rect x="122.6" y="67.1" width="14.9" height="14.9" fill="#1133aa" opacity="0.2" rx="1">
+      <animate attributeName="opacity" values="0.2;0.8;0.2" dur="2.92s" begin="1.79s" repeatCount="indefinite"/>
+    </rect><rect x="139.5" y="67.1" width="14.9" height="14.9" fill="rgba(255,255,255,0.15)" opacity="0.2" rx="1">
+      <animate attributeName="opacity" values="0.2;0.8;0.2" dur="1.40s" begin="1.23s" repeatCount="indefinite"/>
+    </rect><rect x="156.4" y="67.1" width="14.9" height="14.9" fill="#4466ff" opacity="0.2" rx="1">
+      <animate attributeName="opacity" values="0.2;0.8;0.2" dur="2.68s" begin="1.27s" repeatCount="indefinite"/>
+    </rect><rect x="173.3" y="67.1" width="14.9" height="14.9" fill="#2244dd" opacity="0.2" rx="1">
+      <animate attributeName="opacity" values="0.2;0.8;0.2" dur="1.28s" begin="1.25s" repeatCount="indefinite"/>
+    </rect><rect x="190.2" y="67.1" width="14.9" height="14.9" fill="#1133aa" opacity="0.2" rx="1">
+      <animate attributeName="opacity" values="0.2;0.8;0.2" dur="2.60s" begin="0.49s" repeatCount="indefinite"/>
+    </rect><rect x="207.0" y="67.1" width="14.9" height="14.9" fill="rgba(255,255,255,0.15)" opacity="0.2" rx="1">
+      <animate attributeName="opacity" values="0.2;0.8;0.2" dur="1.64s" begin="0.93s" repeatCount="indefinite"/>
+    </rect><rect x="88.9" y="83.9" width="14.9" height="14.9" fill="#4466ff" opacity="0.2" rx="1">
+      <animate attributeName="opacity" values="0.2;0.8;0.2" dur="2.12s" begin="0.26s" repeatCount="indefinite"/>
+    </rect><rect x="105.7" y="83.9" width="14.9" height="14.9" fill="#2244dd" opacity="0.2" rx="1">
+      <animate attributeName="opacity" values="0.2;0.8;0.2" dur="1.88s" begin="1.82s" repeatCount="indefinite"/>
+    </rect><rect x="122.6" y="83.9" width="14.9" height="14.9" fill="#1133aa" opacity="0.2" rx="1">
+      <animate attributeName="opacity" values="0.2;0.8;0.2" dur="1.96s" begin="1.88s" repeatCount="indefinite"/>
+    </rect><rect x="139.5" y="83.9" width="14.9" height="14.9" fill="rgba(255,255,255,0.15)" opacity="0.2" rx="1">
+      <animate attributeName="opacity" values="0.2;0.8;0.2" dur="2.76s" begin="1.52s" repeatCount="indefinite"/>
+    </rect><rect x="156.4" y="83.9" width="14.9" height="14.9" fill="#4466ff" opacity="0.2" rx="1">
+      <animate attributeName="opacity" values="0.2;0.8;0.2" dur="2.48s" begin="1.41s" repeatCount="indefinite"/>
+    </rect><rect x="173.3" y="83.9" width="14.9" height="14.9" fill="#2244dd" opacity="0.2" rx="1">
+      <animate attributeName="opacity" values="0.2;0.8;0.2" dur="2.08s" begin="1.83s" repeatCount="indefinite"/>
+    </rect><rect x="190.2" y="83.9" width="14.9" height="14.9" fill="#1133aa" opacity="0.2" rx="1">
+      <animate attributeName="opacity" values="0.2;0.8;0.2" dur="2.64s" begin="0.55s" repeatCount="indefinite"/>
+    </rect><rect x="207.0" y="83.9" width="14.9" height="14.9" fill="rgba(255,255,255,0.15)" opacity="0.2" rx="1">
+      <animate attributeName="opacity" values="0.2;0.8;0.2" dur="1.64s" begin="0.88s" repeatCount="indefinite"/>
+    </rect><rect x="88.9" y="100.8" width="14.9" height="14.9" fill="#4466ff" opacity="0.2" rx="1">
+      <animate attributeName="opacity" values="0.2;0.8;0.2" dur="1.60s" begin="0.59s" repeatCount="indefinite"/>
+    </rect><rect x="105.7" y="100.8" width="14.9" height="14.9" fill="#2244dd" opacity="0.2" rx="1">
+      <animate attributeName="opacity" values="0.2;0.8;0.2" dur="3.20s" begin="1.95s" repeatCount="indefinite"/>
+    </rect><rect x="122.6" y="100.8" width="14.9" height="14.9" fill="#1133aa" opacity="0.2" rx="1">
+      <animate attributeName="opacity" values="0.2;0.8;0.2" dur="1.76s" begin="0.23s" repeatCount="indefinite"/>
+    </rect><rect x="139.5" y="100.8" width="14.9" height="14.9" fill="rgba(255,255,255,0.15)" opacity="0.2" rx="1">
+      <animate attributeName="opacity" values="0.2;0.8;0.2" dur="1.40s" begin="0.03s" repeatCount="indefinite"/>
+    </rect><rect x="156.4" y="100.8" width="14.9" height="14.9" fill="#4466ff" opacity="0.2" rx="1">
+      <animate attributeName="opacity" values="0.2;0.8;0.2" dur="2.20s" begin="0.74s" repeatCount="indefinite"/>
+    </rect><rect x="173.3" y="100.8" width="14.9" height="14.9" fill="#2244dd" opacity="0.2" rx="1">
+      <animate attributeName="opacity" values="0.2;0.8;0.2" dur="2.32s" begin="1.90s" repeatCount="indefinite"/>
+    </rect><rect x="190.2" y="100.8" width="14.9" height="14.9" fill="#1133aa" opacity="0.2" rx="1">
+      <animate attributeName="opacity" values="0.2;0.8;0.2" dur="3.12s" begin="0.30s" repeatCount="indefinite"/>
+    </rect><rect x="207.0" y="100.8" width="14.9" height="14.9" fill="rgba(255,255,255,0.15)" opacity="0.2" rx="1">
+      <animate attributeName="opacity" values="0.2;0.8;0.2" dur="2.32s" begin="1.80s" repeatCount="indefinite"/>
+    </rect><rect x="88.9" y="117.7" width="14.9" height="14.9" fill="#4466ff" opacity="0.2" rx="1">
+      <animate attributeName="opacity" values="0.2;0.8;0.2" dur="2.44s" begin="0.07s" repeatCount="indefinite"/>
+    </rect><rect x="105.7" y="117.7" width="14.9" height="14.9" fill="#2244dd" opacity="0.2" rx="1">
+      <animate attributeName="opacity" values="0.2;0.8;0.2" dur="1.32s" begin="1.40s" repeatCount="indefinite"/>
+    </rect><rect x="122.6" y="117.7" width="14.9" height="14.9" fill="#1133aa" opacity="0.2" rx="1">
+      <animate attributeName="opacity" values="0.2;0.8;0.2" dur="2.44s" begin="0.71s" repeatCount="indefinite"/>
+    </rect><rect x="139.5" y="117.7" width="14.9" height="14.9" fill="rgba(255,255,255,0.15)" opacity="0.2" rx="1">
+      <animate attributeName="opacity" values="0.2;0.8;0.2" dur="1.72s" begin="1.17s" repeatCount="indefinite"/>
+    </rect><rect x="156.4" y="117.7" width="14.9" height="14.9" fill="#4466ff" opacity="0.2" rx="1">
+      <animate attributeName="opacity" values="0.2;0.8;0.2" dur="2.84s" begin="0.90s" repeatCount="indefinite"/>
+    </rect><rect x="173.3" y="117.7" width="14.9" height="14.9" fill="#2244dd" opacity="0.2" rx="1">
+      <animate attributeName="opacity" values="0.2;0.8;0.2" dur="2.64s" begin="0.83s" repeatCount="indefinite"/>
+    </rect><rect x="190.2" y="117.7" width="14.9" height="14.9" fill="#1133aa" opacity="0.2" rx="1">
+      <animate attributeName="opacity" values="0.2;0.8;0.2" dur="2.72s" begin="1.70s" repeatCount="indefinite"/>
+    </rect><rect x="207.0" y="117.7" width="14.9" height="14.9" fill="rgba(255,255,255,0.15)" opacity="0.2" rx="1">
+      <animate attributeName="opacity" values="0.2;0.8;0.2" dur="3.00s" begin="1.13s" repeatCount="indefinite"/>
+    </rect></g>
 
-  <rect width="280" height="130" fill="url(#tfpixel-drift)"/>
-  <rect width="280" height="130" fill="url(#bfpixel-drift)"/>
+<rect width="280" height="130" fill="url(#tpixeldrift)"/>
 
-  <text x="12" y="96"
-    font-family="Inter, system-ui, sans-serif"
-    font-size="21" font-weight="800" fill="white"
-    paint-order="stroke" stroke="rgba(0,0,0,0.6)" stroke-width="3" stroke-linejoin="round"
-  >Pixel Drift</text>
-  
+<text x="140" y="106"
+  font-family="Inter,system-ui,sans-serif" font-size="20" font-weight="800"
+  fill="white" text-anchor="middle"
+  paint-order="stroke" stroke="rgba(0,0,0,0.7)" stroke-width="4" stroke-linejoin="round"
+>Pixel Drift</text>
 
-  <rect x="12" y="113" width="59" height="14" fill="#1133aa" opacity="0.92" rx="2.5"/>
-  <text x="19" y="123.5"
-    font-family="Inter, system-ui, sans-serif"
-    font-size="8" font-weight="700" letter-spacing="1" fill="white"
-  >ACTION</text>
 
-  <rect y="128" width="280" height="2.5" fill="url(#alpixel-drift)"/>
+<rect x="110.6" y="116" width="58.8" height="13" fill="#1133aa" opacity="0.92" rx="3"/>
+<text x="140" y="125.5"
+  font-family="Inter,system-ui,sans-serif" font-size="7.5" font-weight="700"
+  letter-spacing="1.2" fill="white" text-anchor="middle"
+>ACTION</text>
+
+<rect y="127.5" width="280" height="2.5" fill="url(#lpixeldrift)"/>
 </svg>

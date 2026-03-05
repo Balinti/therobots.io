@@ -1,89 +1,56 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 130" width="280" height="130">
-  <defs>
-    <linearGradient id="bgcactus-glide" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#1e0e00"/>
-      <stop offset="100%" stop-color="#0a0500"/>
-    </linearGradient>
-    <radialGradient id="glcactus-glide" cx="76%" cy="38%" r="44%">
-      <stop offset="0%" stop-color="#ffaa00" stop-opacity="0.2"/>
-      <stop offset="100%" stop-color="#ffaa00" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="tfcactus-glide" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="rgba(0,0,0,0.78)"/>
-      <stop offset="52%" stop-color="rgba(0,0,0,0.45)"/>
-      <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
-    </linearGradient>
-    <linearGradient id="bfcactus-glide" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="rgba(0,0,0,0)"/>
-      <stop offset="100%" stop-color="rgba(0,0,0,0.82)"/>
-    </linearGradient>
-    <linearGradient id="alcactus-glide" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#ffaa00"/>
-      <stop offset="60%" stop-color="#ffaa00" stop-opacity="0.5"/>
-      <stop offset="100%" stop-color="#ffaa00" stop-opacity="0"/>
-    </linearGradient>
-  </defs>
+<defs>
+  <linearGradient id="bcactusglide" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0%" stop-color="#1e0e00"/>
+    <stop offset="100%" stop-color="#0a0500"/>
+  </linearGradient>
+  <radialGradient id="gcactusglide" cx="50%" cy="45%" r="55%">
+    <stop offset="0%" stop-color="#ffaa00" stop-opacity="0.18"/>
+    <stop offset="100%" stop-color="#ffaa00" stop-opacity="0"/>
+  </radialGradient>
+  <linearGradient id="tcactusglide" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="40%" stop-color="rgba(0,0,0,0)"/>
+    <stop offset="100%" stop-color="rgba(0,0,0,0.88)"/>
+  </linearGradient>
+  <linearGradient id="lcactusglide" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0%" stop-color="#ffaa00"/>
+    <stop offset="65%" stop-color="#ff8800" stop-opacity="0.5"/>
+    <stop offset="100%" stop-color="#ffaa00" stop-opacity="0"/>
+  </linearGradient>
+  <clipPath id="clipcactusglide"><rect width="280" height="130"/></clipPath>
+</defs>
 
-  <rect width="280" height="130" fill="url(#bgcactus-glide)"/>
-  <rect width="280" height="130" fill="url(#glcactus-glide)"/>
+<rect width="280" height="130" fill="url(#bcactusglide)"/>
+<rect width="280" height="130" fill="url(#gcactusglide)"/>
 
-  
-  <g>
-    <!-- Rotating sun -->
-    <g>
-      <animateTransform attributeName="transform" type="rotate"
-        values="0 233 38;360 233 38" dur="14s" repeatCount="indefinite"/>
-      <line x1="249.0" y1="38.0" x2="263.0" y2="38.0" stroke="#ffaa00" stroke-width="2.5" opacity="0.45"/><line x1="244.3" y1="49.3" x2="254.2" y2="59.2" stroke="#ffaa00" stroke-width="2.5" opacity="0.45"/><line x1="233.0" y1="54.0" x2="233.0" y2="68.0" stroke="#ffaa00" stroke-width="2.5" opacity="0.45"/><line x1="221.7" y1="49.3" x2="211.8" y2="59.2" stroke="#ffaa00" stroke-width="2.5" opacity="0.45"/><line x1="217.0" y1="38.0" x2="203.0" y2="38.0" stroke="#ffaa00" stroke-width="2.5" opacity="0.45"/><line x1="221.7" y1="26.7" x2="211.8" y2="16.8" stroke="#ffaa00" stroke-width="2.5" opacity="0.45"/><line x1="233.0" y1="22.0" x2="233.0" y2="8.0" stroke="#ffaa00" stroke-width="2.5" opacity="0.45"/><line x1="244.3" y1="26.7" x2="254.2" y2="16.8" stroke="#ffaa00" stroke-width="2.5" opacity="0.45"/>
-    </g>
-    <circle cx="233" cy="38" r="15" fill="#ffaa00" opacity="0.3">
-      <animate attributeName="opacity" values="0.3;0.48;0.3" dur="2.5s" repeatCount="indefinite"/>
-    </circle>
-    <circle cx="233" cy="38" r="10" fill="#ffaa00" opacity="0.48"/>
-    <!-- Animated dunes -->
-    <path fill="#ffaa00" opacity="0.28">
-      <animate attributeName="d"
-        values="M148,94 Q172,74 200,90 Q228,108 256,90 Q268,84 280,88 L280,130 L148,130 Z;
-                M148,98 Q172,78 200,94 Q228,112 256,94 Q268,88 280,92 L280,130 L148,130 Z;
-                M148,94 Q172,74 200,90 Q228,108 256,90 Q268,84 280,88 L280,130 L148,130 Z"
-        dur="3s" repeatCount="indefinite"/>
-    </path>
-    <!-- Drifting sand -->
-    <circle cx="150" cy="78" r="1.8" fill="#ffaa00" opacity="0">
-      <animate attributeName="opacity" values="0;0.45;0.45;0" dur="1.8s" begin="0s" repeatCount="indefinite"/>
-      <animateTransform attributeName="transform" type="translate" values="0,0;130,0" dur="1.8s" begin="0s" repeatCount="indefinite"/>
-    </circle><circle cx="150" cy="85" r="1.8" fill="#ffaa00" opacity="0">
-      <animate attributeName="opacity" values="0;0.45;0.45;0" dur="2.1s" begin="0.5s" repeatCount="indefinite"/>
-      <animateTransform attributeName="transform" type="translate" values="0,0;130,0" dur="2.1s" begin="0.5s" repeatCount="indefinite"/>
-    </circle><circle cx="150" cy="92" r="1.8" fill="#ffaa00" opacity="0">
-      <animate attributeName="opacity" values="0;0.45;0.45;0" dur="2.5s" begin="1s" repeatCount="indefinite"/>
-      <animateTransform attributeName="transform" type="translate" values="0,0;130,0" dur="2.5s" begin="1s" repeatCount="indefinite"/>
-    </circle><circle cx="150" cy="99" r="1.8" fill="#ffaa00" opacity="0">
-      <animate attributeName="opacity" values="0;0.45;0.45;0" dur="2.8s" begin="1.5s" repeatCount="indefinite"/>
-      <animateTransform attributeName="transform" type="translate" values="0,0;130,0" dur="2.8s" begin="1.5s" repeatCount="indefinite"/>
-    </circle><circle cx="150" cy="106" r="1.8" fill="#ffaa00" opacity="0">
-      <animate attributeName="opacity" values="0;0.45;0.45;0" dur="3.2s" begin="2s" repeatCount="indefinite"/>
-      <animateTransform attributeName="transform" type="translate" values="0,0;130,0" dur="3.2s" begin="2s" repeatCount="indefinite"/>
-    </circle><circle cx="150" cy="113" r="1.8" fill="#ffaa00" opacity="0">
-      <animate attributeName="opacity" values="0;0.45;0.45;0" dur="3.5s" begin="2.5s" repeatCount="indefinite"/>
-      <animateTransform attributeName="transform" type="translate" values="0,0;130,0" dur="3.5s" begin="2.5s" repeatCount="indefinite"/>
-    </circle>
-  </g>
+<g clip-path="url(#clipcactusglide)"><circle cx="98.1" cy="135" r="17.3"
+      fill="#ffaa00" stroke="#ffaa00" stroke-width="0" opacity="0">
+      <animate attributeName="cy" values="135;-17.25666740263269" dur="3.20s" begin="1.10s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.6;0.4;0" dur="3.20s" begin="1.10s" repeatCount="indefinite"/>
+    </circle><circle cx="188.3" cy="135" r="23.6"
+      fill="#ffaa00" stroke="#ffaa00" stroke-width="0" opacity="0">
+      <animate attributeName="cy" values="135;-23.63607681324614" dur="1.85s" begin="1.30s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.6;0.4;0" dur="1.85s" begin="1.30s" repeatCount="indefinite"/>
+    </circle><circle cx="206.1" cy="135" r="9.1"
+      fill="none" stroke="#ffaa00" stroke-width="1.8" opacity="0">
+      <animate attributeName="cy" values="135;-9.11363957545572" dur="1.86s" begin="0.14s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.6;0.4;0" dur="1.86s" begin="0.14s" repeatCount="indefinite"/>
+    </circle></g>
 
-  <rect width="280" height="130" fill="url(#tfcactus-glide)"/>
-  <rect width="280" height="130" fill="url(#bfcactus-glide)"/>
+<rect width="280" height="130" fill="url(#tcactusglide)"/>
 
-  <text x="12" y="96"
-    font-family="Inter, system-ui, sans-serif"
-    font-size="21" font-weight="800" fill="white"
-    paint-order="stroke" stroke="rgba(0,0,0,0.6)" stroke-width="3" stroke-linejoin="round"
-  >Cactus Glide</text>
-  
+<text x="140" y="106"
+  font-family="Inter,system-ui,sans-serif" font-size="20" font-weight="800"
+  fill="white" text-anchor="middle"
+  paint-order="stroke" stroke="rgba(0,0,0,0.7)" stroke-width="4" stroke-linejoin="round"
+>Cactus Glide</text>
 
-  <rect x="12" y="113" width="59" height="14" fill="#aa5500" opacity="0.92" rx="2.5"/>
-  <text x="19" y="123.5"
-    font-family="Inter, system-ui, sans-serif"
-    font-size="8" font-weight="700" letter-spacing="1" fill="white"
-  >ACTION</text>
 
-  <rect y="128" width="280" height="2.5" fill="url(#alcactus-glide)"/>
+<rect x="110.6" y="116" width="58.8" height="13" fill="#aa5500" opacity="0.92" rx="3"/>
+<text x="140" y="125.5"
+  font-family="Inter,system-ui,sans-serif" font-size="7.5" font-weight="700"
+  letter-spacing="1.2" fill="white" text-anchor="middle"
+>ACTION</text>
+
+<rect y="127.5" width="280" height="2.5" fill="url(#lcactusglide)"/>
 </svg>

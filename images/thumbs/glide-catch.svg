@@ -1,77 +1,68 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 130" width="280" height="130">
-  <defs>
-    <linearGradient id="bgglide-catch" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#08060f"/>
-      <stop offset="100%" stop-color="#040408"/>
-    </linearGradient>
-    <radialGradient id="glglide-catch" cx="76%" cy="38%" r="44%">
-      <stop offset="0%" stop-color="#9d4edd" stop-opacity="0.2"/>
-      <stop offset="100%" stop-color="#9d4edd" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="tfglide-catch" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="rgba(0,0,0,0.78)"/>
-      <stop offset="52%" stop-color="rgba(0,0,0,0.45)"/>
-      <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
-    </linearGradient>
-    <linearGradient id="bfglide-catch" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="rgba(0,0,0,0)"/>
-      <stop offset="100%" stop-color="rgba(0,0,0,0.82)"/>
-    </linearGradient>
-    <linearGradient id="alglide-catch" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#9d4edd"/>
-      <stop offset="60%" stop-color="#9d4edd" stop-opacity="0.5"/>
-      <stop offset="100%" stop-color="#9d4edd" stop-opacity="0"/>
-    </linearGradient>
-  </defs>
+<defs>
+  <linearGradient id="bglidecatch" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0%" stop-color="#08060f"/>
+    <stop offset="100%" stop-color="#040408"/>
+  </linearGradient>
+  <radialGradient id="gglidecatch" cx="50%" cy="45%" r="55%">
+    <stop offset="0%" stop-color="#9d4edd" stop-opacity="0.18"/>
+    <stop offset="100%" stop-color="#9d4edd" stop-opacity="0"/>
+  </radialGradient>
+  <linearGradient id="tglidecatch" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="40%" stop-color="rgba(0,0,0,0)"/>
+    <stop offset="100%" stop-color="rgba(0,0,0,0.88)"/>
+  </linearGradient>
+  <linearGradient id="lglidecatch" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0%" stop-color="#9d4edd"/>
+    <stop offset="65%" stop-color="#7b2fbe" stop-opacity="0.5"/>
+    <stop offset="100%" stop-color="#9d4edd" stop-opacity="0"/>
+  </linearGradient>
+  <clipPath id="clipglidecatch"><rect width="280" height="130"/></clipPath>
+</defs>
 
-  <rect width="280" height="130" fill="url(#bgglide-catch)"/>
-  <rect width="280" height="130" fill="url(#glglide-catch)"/>
+<rect width="280" height="130" fill="url(#bglidecatch)"/>
+<rect width="280" height="130" fill="url(#gglidecatch)"/>
 
-  
-  <g>
-    <!-- Gear 1 - clockwise -->
-    <g>
-      <animateTransform attributeName="transform" type="rotate"
-        values="0 238 58;360 238 58" dur="5s" repeatCount="indefinite"/>
-      <circle cx="238" cy="58" r="23" fill="none" stroke="#9d4edd" stroke-width="2.5" opacity="0.45"/>
-      <circle cx="238" cy="58" r="10" fill="#9d4edd" opacity="0.15"/>
-      <circle cx="238" cy="58" r="5" fill="#9d4edd" opacity="0.55"/>
-      <rect x="258.0" y="54.0" width="6" height="8" fill="#9d4edd" opacity="0.45" rx="1" transform="rotate(0 261.0 58.0)"/><rect x="253.6" y="67.5" width="6" height="8" fill="#9d4edd" opacity="0.45" rx="1" transform="rotate(36 256.6 71.5)"/><rect x="242.1" y="75.9" width="6" height="8" fill="#9d4edd" opacity="0.45" rx="1" transform="rotate(72 245.1 79.9)"/><rect x="227.9" y="75.9" width="6" height="8" fill="#9d4edd" opacity="0.45" rx="1" transform="rotate(108 230.9 79.9)"/><rect x="216.4" y="67.5" width="6" height="8" fill="#9d4edd" opacity="0.45" rx="1" transform="rotate(144 219.4 71.5)"/><rect x="212.0" y="54.0" width="6" height="8" fill="#9d4edd" opacity="0.45" rx="1" transform="rotate(180 215.0 58.0)"/><rect x="216.4" y="40.5" width="6" height="8" fill="#9d4edd" opacity="0.45" rx="1" transform="rotate(216 219.4 44.5)"/><rect x="227.9" y="32.1" width="6" height="8" fill="#9d4edd" opacity="0.45" rx="1" transform="rotate(252 230.9 36.1)"/><rect x="242.1" y="32.1" width="6" height="8" fill="#9d4edd" opacity="0.45" rx="1" transform="rotate(288 245.1 36.1)"/><rect x="253.6" y="40.5" width="6" height="8" fill="#9d4edd" opacity="0.45" rx="1" transform="rotate(324 256.6 44.5)"/>
-    </g>
-    <!-- Gear 2 - counter-clockwise -->
-    <g>
-      <animateTransform attributeName="transform" type="rotate"
-        values="0 213 85;-360 213 85" dur="3.2s" repeatCount="indefinite"/>
-      <circle cx="213" cy="85" r="15" fill="none" stroke="#9d4edd" stroke-width="2" opacity="0.38"/>
-      <circle cx="213" cy="85" r="6" fill="#9d4edd" opacity="0.45"/>
-      <rect x="225.5" y="81.5" width="5" height="7" fill="#9d4edd" opacity="0.38" rx="1" transform="rotate(0 228.0 85.0)"/><rect x="221.1" y="92.1" width="5" height="7" fill="#9d4edd" opacity="0.38" rx="1" transform="rotate(45 223.6 95.6)"/><rect x="210.5" y="96.5" width="5" height="7" fill="#9d4edd" opacity="0.38" rx="1" transform="rotate(90 213.0 100.0)"/><rect x="199.9" y="92.1" width="5" height="7" fill="#9d4edd" opacity="0.38" rx="1" transform="rotate(135 202.4 95.6)"/><rect x="195.5" y="81.5" width="5" height="7" fill="#9d4edd" opacity="0.38" rx="1" transform="rotate(180 198.0 85.0)"/><rect x="199.9" y="70.9" width="5" height="7" fill="#9d4edd" opacity="0.38" rx="1" transform="rotate(225 202.4 74.4)"/><rect x="210.5" y="66.5" width="5" height="7" fill="#9d4edd" opacity="0.38" rx="1" transform="rotate(270 213.0 70.0)"/><rect x="221.1" y="70.9" width="5" height="7" fill="#9d4edd" opacity="0.38" rx="1" transform="rotate(315 223.6 74.4)"/>
-    </g>
-    <!-- Hexagon pulsing -->
-    <polygon points="172,38 188,29 204,38 204,56 188,65 172,56"
-      fill="none" stroke="#9d4edd" stroke-width="1.8" opacity="0.38">
-      <animate attributeName="opacity" values="0.38;0.7;0.38" dur="2.2s" repeatCount="indefinite"/>
-    </polygon>
-    <polygon points="172,38 188,29 204,38 204,56 188,65 172,56"
-      fill="#9d4edd" opacity="0.06">
-      <animate attributeName="opacity" values="0.06;0.16;0.06" dur="2.2s" repeatCount="indefinite"/>
-    </polygon>
-  </g>
+<g clip-path="url(#clipglidecatch)"><circle cx="152.2" cy="135" r="8.4"
+      fill="none" stroke="#9d4edd" stroke-width="1.8" opacity="0">
+      <animate attributeName="cy" values="135;-8.357496821171953" dur="2.01s" begin="1.43s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.6;0.4;0" dur="2.01s" begin="1.43s" repeatCount="indefinite"/>
+    </circle><circle cx="218.5" cy="135" r="8.4"
+      fill="#9d4edd" stroke="#9d4edd" stroke-width="0" opacity="0">
+      <animate attributeName="cy" values="135;-8.41256213919552" dur="3.77s" begin="1.39s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.6;0.4;0" dur="3.77s" begin="1.39s" repeatCount="indefinite"/>
+    </circle><circle cx="130.3" cy="135" r="11.0"
+      fill="#9d4edd" stroke="#9d4edd" stroke-width="0" opacity="0">
+      <animate attributeName="cy" values="135;-10.958439494939157" dur="3.42s" begin="0.17s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.6;0.4;0" dur="3.42s" begin="0.17s" repeatCount="indefinite"/>
+    </circle><circle cx="63.5" cy="135" r="14.5"
+      fill="#9d4edd" stroke="#9d4edd" stroke-width="0" opacity="0">
+      <animate attributeName="cy" values="135;-14.540285828881963" dur="2.70s" begin="0.08s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.6;0.4;0" dur="2.70s" begin="0.08s" repeatCount="indefinite"/>
+    </circle><circle cx="123.9" cy="135" r="8.2"
+      fill="none" stroke="#9d4edd" stroke-width="1.8" opacity="0">
+      <animate attributeName="cy" values="135;-8.169677835695836" dur="3.07s" begin="0.59s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.6;0.4;0" dur="3.07s" begin="0.59s" repeatCount="indefinite"/>
+    </circle><circle cx="148.1" cy="135" r="6.9"
+      fill="none" stroke="#9d4edd" stroke-width="1.8" opacity="0">
+      <animate attributeName="cy" values="135;-6.8750000702857506" dur="2.72s" begin="1.21s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.6;0.4;0" dur="2.72s" begin="1.21s" repeatCount="indefinite"/>
+    </circle></g>
 
-  <rect width="280" height="130" fill="url(#tfglide-catch)"/>
-  <rect width="280" height="130" fill="url(#bfglide-catch)"/>
+<rect width="280" height="130" fill="url(#tglidecatch)"/>
 
-  <text x="12" y="96"
-    font-family="Inter, system-ui, sans-serif"
-    font-size="21" font-weight="800" fill="white"
-    paint-order="stroke" stroke="rgba(0,0,0,0.6)" stroke-width="3" stroke-linejoin="round"
-  >Glide Catch</text>
-  
+<text x="140" y="106"
+  font-family="Inter,system-ui,sans-serif" font-size="20" font-weight="800"
+  fill="white" text-anchor="middle"
+  paint-order="stroke" stroke="rgba(0,0,0,0.7)" stroke-width="4" stroke-linejoin="round"
+>Glide Catch</text>
 
-  <rect x="12" y="113" width="59" height="14" fill="#5a189a" opacity="0.92" rx="2.5"/>
-  <text x="19" y="123.5"
-    font-family="Inter, system-ui, sans-serif"
-    font-size="8" font-weight="700" letter-spacing="1" fill="white"
-  >ARCADE</text>
 
-  <rect y="128" width="280" height="2.5" fill="url(#alglide-catch)"/>
+<rect x="110.6" y="116" width="58.8" height="13" fill="#5a189a" opacity="0.92" rx="3"/>
+<text x="140" y="125.5"
+  font-family="Inter,system-ui,sans-serif" font-size="7.5" font-weight="700"
+  letter-spacing="1.2" fill="white" text-anchor="middle"
+>ARCADE</text>
+
+<rect y="127.5" width="280" height="2.5" fill="url(#lglidecatch)"/>
 </svg>

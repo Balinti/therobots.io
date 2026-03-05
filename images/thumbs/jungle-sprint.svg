@@ -1,91 +1,76 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 130" width="280" height="130">
-  <defs>
-    <linearGradient id="bgjungle-sprint" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#041608"/>
-      <stop offset="100%" stop-color="#020804"/>
-    </linearGradient>
-    <radialGradient id="gljungle-sprint" cx="76%" cy="38%" r="44%">
-      <stop offset="0%" stop-color="#44cc44" stop-opacity="0.2"/>
-      <stop offset="100%" stop-color="#44cc44" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="tfjungle-sprint" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="rgba(0,0,0,0.78)"/>
-      <stop offset="52%" stop-color="rgba(0,0,0,0.45)"/>
-      <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
-    </linearGradient>
-    <linearGradient id="bfjungle-sprint" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="rgba(0,0,0,0)"/>
-      <stop offset="100%" stop-color="rgba(0,0,0,0.82)"/>
-    </linearGradient>
-    <linearGradient id="aljungle-sprint" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#44cc44"/>
-      <stop offset="60%" stop-color="#44cc44" stop-opacity="0.5"/>
-      <stop offset="100%" stop-color="#44cc44" stop-opacity="0"/>
-    </linearGradient>
-  </defs>
+<defs>
+  <linearGradient id="bjunglesprint" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0%" stop-color="#041608"/>
+    <stop offset="100%" stop-color="#020804"/>
+  </linearGradient>
+  <radialGradient id="gjunglesprint" cx="50%" cy="45%" r="55%">
+    <stop offset="0%" stop-color="#44cc44" stop-opacity="0.18"/>
+    <stop offset="100%" stop-color="#44cc44" stop-opacity="0"/>
+  </radialGradient>
+  <linearGradient id="tjunglesprint" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="40%" stop-color="rgba(0,0,0,0)"/>
+    <stop offset="100%" stop-color="rgba(0,0,0,0.88)"/>
+  </linearGradient>
+  <linearGradient id="ljunglesprint" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0%" stop-color="#44cc44"/>
+    <stop offset="65%" stop-color="#22aa22" stop-opacity="0.5"/>
+    <stop offset="100%" stop-color="#44cc44" stop-opacity="0"/>
+  </linearGradient>
+  <clipPath id="clipjunglesprint"><rect width="280" height="130"/></clipPath>
+</defs>
 
-  <rect width="280" height="130" fill="url(#bgjungle-sprint)"/>
-  <rect width="280" height="130" fill="url(#gljungle-sprint)"/>
+<rect width="280" height="130" fill="url(#bjunglesprint)"/>
+<rect width="280" height="130" fill="url(#gjunglesprint)"/>
 
-  
-  <g>
-    <!-- Tree 1 swaying -->
-    <g>
-      <animateTransform attributeName="transform" type="rotate"
-        values="0 214 130;2.5 214 130;-2.5 214 130;0 214 130" dur="3s" repeatCount="indefinite"/>
-      <polygon points="214,92 196,60 232,60" fill="#44cc44" opacity="0.55"/>
-      <polygon points="214,74 194,44 234,44" fill="#44cc44" opacity="0.48"/>
-      <rect x="211" y="92" width="7" height="22" fill="#44cc44" opacity="0.4"/>
-    </g>
-    <!-- Tree 2 swaying -->
-    <g>
-      <animateTransform attributeName="transform" type="rotate"
-        values="0 250 130;-2.5 250 130;2.5 250 130;0 250 130" dur="2.5s" begin="0.5s" repeatCount="indefinite"/>
-      <polygon points="250,100 235,72 265,72" fill="#44cc44" opacity="0.45"/>
-      <polygon points="250,82 233,54 267,54" fill="#44cc44" opacity="0.38"/>
-      <rect x="247" y="100" width="6" height="20" fill="#44cc44" opacity="0.35"/>
-    </g>
-    <!-- Falling leaf 1 -->
-    <path d="M0,0 Q4,-5 8,0 Q4,5 0,0" fill="#44cc44" opacity="0.65">
-      <animateMotion dur="3s" repeatCount="indefinite"
-        path="M215,5 C204,35 224,58 208,88 C198,110 218,122 212,130"/>
-      <animateTransform attributeName="transform" type="rotate" values="0;360" dur="3s" repeatCount="indefinite"/>
-    </path>
-    <!-- Falling leaf 2 -->
-    <path d="M0,0 Q3,-4 7,0 Q3,4 0,0" fill="#22aa22" opacity="0.5">
-      <animateMotion dur="2.6s" begin="1.1s" repeatCount="indefinite"
-        path="M244,4 C233,32 252,54 238,82 C228,104 248,116 242,130"/>
-      <animateTransform attributeName="transform" type="rotate" values="0;-360" dur="2.6s" begin="1.1s" repeatCount="indefinite"/>
-    </path>
-    <!-- Firefly 1 -->
-    <circle cx="168" cy="58" r="2.8" fill="#44cc44" opacity="0">
-      <animate attributeName="opacity" values="0;0.85;0" dur="1.3s" repeatCount="indefinite"/>
-      <animateTransform attributeName="transform" type="translate" values="0,0;9,-6;3,9;0,0" dur="3.2s" repeatCount="indefinite"/>
-    </circle>
-    <!-- Firefly 2 -->
-    <circle cx="267" cy="42" r="2.2" fill="#44cc44" opacity="0">
-      <animate attributeName="opacity" values="0;0.75;0" dur="1.6s" begin="0.7s" repeatCount="indefinite"/>
-      <animateTransform attributeName="transform" type="translate" values="0,0;-7,9;4,-4;0,0" dur="4s" begin="0.7s" repeatCount="indefinite"/>
-    </circle>
-    <!-- Ground -->
-    <rect x="148" y="116" width="132" height="14" fill="#44cc44" opacity="0.1"/>
-  </g>
+<g clip-path="url(#clipjunglesprint)"><line x1="280" y1="16.5" x2="352.4" y2="16.5"
+      stroke="#44cc44" stroke-width="2.4" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-357.3856509633795,0" dur="1.14s" begin="0.49s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.54;0.54;0" dur="1.14s" begin="0.49s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="35.1" x2="356.2" y2="35.1"
+      stroke="#22aa22" stroke-width="2.7" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-361.17206438239015,0" dur="1.14s" begin="1.44s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.52;0.52;0" dur="1.14s" begin="1.44s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="45.7" x2="312.3" y2="45.7"
+      stroke="#44cc44" stroke-width="1.1" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-317.26196030789566,0" dur="0.60s" begin="0.77s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.68;0.68;0" dur="0.60s" begin="0.77s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="59.2" x2="351.8" y2="59.2"
+      stroke="#22aa22" stroke-width="3.2" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-356.80595935015145,0" dur="0.54s" begin="0.22s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.56;0.56;0" dur="0.54s" begin="0.22s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="79.1" x2="309.8" y2="79.1"
+      stroke="#44cc44" stroke-width="3.7" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-314.76878326962907,0" dur="0.65s" begin="1.20s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.35;0.35;0" dur="0.65s" begin="1.20s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="89.6" x2="307.6" y2="89.6"
+      stroke="#22aa22" stroke-width="2.1" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-312.63940678505213,0" dur="1.12s" begin="0.98s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.48;0.48;0" dur="1.12s" begin="0.98s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="110.1" x2="337.0" y2="110.1"
+      stroke="#44cc44" stroke-width="1.9" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-342.01614811364936,0" dur="1.12s" begin="0.74s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.67;0.67;0" dur="1.12s" begin="0.74s" repeatCount="indefinite"/>
+    </line></g>
 
-  <rect width="280" height="130" fill="url(#tfjungle-sprint)"/>
-  <rect width="280" height="130" fill="url(#bfjungle-sprint)"/>
+<rect width="280" height="130" fill="url(#tjunglesprint)"/>
 
-  <text x="12" y="96"
-    font-family="Inter, system-ui, sans-serif"
-    font-size="21" font-weight="800" fill="white"
-    paint-order="stroke" stroke="rgba(0,0,0,0.6)" stroke-width="3" stroke-linejoin="round"
-  >Jungle Sprint</text>
-  
+<text x="140" y="100"
+  font-family="Inter,system-ui,sans-serif" font-size="18" font-weight="800"
+  fill="white" text-anchor="middle"
+  paint-order="stroke" stroke="rgba(0,0,0,0.7)" stroke-width="4" stroke-linejoin="round"
+>Jungle</text>
+<text x="140" y="123.4"
+  font-family="Inter,system-ui,sans-serif" font-size="18" font-weight="800"
+  fill="white" text-anchor="middle"
+  paint-order="stroke" stroke="rgba(0,0,0,0.7)" stroke-width="4" stroke-linejoin="round"
+>Sprint</text>
 
-  <rect x="12" y="113" width="59" height="14" fill="#156615" opacity="0.92" rx="2.5"/>
-  <text x="19" y="123.5"
-    font-family="Inter, system-ui, sans-serif"
-    font-size="8" font-weight="700" letter-spacing="1" fill="white"
-  >ACTION</text>
+<rect x="110.6" y="116" width="58.8" height="13" fill="#156615" opacity="0.92" rx="3"/>
+<text x="140" y="125.5"
+  font-family="Inter,system-ui,sans-serif" font-size="7.5" font-weight="700"
+  letter-spacing="1.2" fill="white" text-anchor="middle"
+>ACTION</text>
 
-  <rect y="128" width="280" height="2.5" fill="url(#aljungle-sprint)"/>
+<rect y="127.5" width="280" height="2.5" fill="url(#ljunglesprint)"/>
 </svg>

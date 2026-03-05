@@ -1,76 +1,80 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 130" width="280" height="130">
-  <defs>
-    <linearGradient id="bgbeam-sprint" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#020a1c"/>
-      <stop offset="100%" stop-color="#010510"/>
-    </linearGradient>
-    <radialGradient id="glbeam-sprint" cx="76%" cy="38%" r="44%">
-      <stop offset="0%" stop-color="#00e5ff" stop-opacity="0.2"/>
-      <stop offset="100%" stop-color="#00e5ff" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="tfbeam-sprint" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="rgba(0,0,0,0.78)"/>
-      <stop offset="52%" stop-color="rgba(0,0,0,0.45)"/>
-      <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
-    </linearGradient>
-    <linearGradient id="bfbeam-sprint" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="rgba(0,0,0,0)"/>
-      <stop offset="100%" stop-color="rgba(0,0,0,0.82)"/>
-    </linearGradient>
-    <linearGradient id="albeam-sprint" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#00e5ff"/>
-      <stop offset="60%" stop-color="#00e5ff" stop-opacity="0.5"/>
-      <stop offset="100%" stop-color="#00e5ff" stop-opacity="0"/>
-    </linearGradient>
-  </defs>
+<defs>
+  <linearGradient id="bbeamsprint" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0%" stop-color="#020a1c"/>
+    <stop offset="100%" stop-color="#010510"/>
+  </linearGradient>
+  <radialGradient id="gbeamsprint" cx="50%" cy="45%" r="55%">
+    <stop offset="0%" stop-color="#00e5ff" stop-opacity="0.18"/>
+    <stop offset="100%" stop-color="#00e5ff" stop-opacity="0"/>
+  </radialGradient>
+  <linearGradient id="tbeamsprint" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="40%" stop-color="rgba(0,0,0,0)"/>
+    <stop offset="100%" stop-color="rgba(0,0,0,0.88)"/>
+  </linearGradient>
+  <linearGradient id="lbeamsprint" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0%" stop-color="#00e5ff"/>
+    <stop offset="65%" stop-color="#00aacc" stop-opacity="0.5"/>
+    <stop offset="100%" stop-color="#00e5ff" stop-opacity="0"/>
+  </linearGradient>
+  <clipPath id="clipbeamsprint"><rect width="280" height="130"/></clipPath>
+</defs>
 
-  <rect width="280" height="130" fill="url(#bgbeam-sprint)"/>
-  <rect width="280" height="130" fill="url(#glbeam-sprint)"/>
+<rect width="280" height="130" fill="url(#bbeamsprint)"/>
+<rect width="280" height="130" fill="url(#gbeamsprint)"/>
 
-  
-  <g>
-    <line x1="148" y1="0" x2="148" y2="130" stroke="#00e5ff" stroke-width="0.5" opacity="0.2"/><line x1="168" y1="0" x2="168" y2="130" stroke="#00e5ff" stroke-width="0.5" opacity="0.2"/><line x1="188" y1="0" x2="188" y2="130" stroke="#00e5ff" stroke-width="0.5" opacity="0.2"/><line x1="208" y1="0" x2="208" y2="130" stroke="#00e5ff" stroke-width="0.5" opacity="0.2"/><line x1="228" y1="0" x2="228" y2="130" stroke="#00e5ff" stroke-width="0.5" opacity="0.2"/><line x1="248" y1="0" x2="248" y2="130" stroke="#00e5ff" stroke-width="0.5" opacity="0.2"/><line x1="268" y1="0" x2="268" y2="130" stroke="#00e5ff" stroke-width="0.5" opacity="0.2"/><line x1="148" y1="0" x2="280" y2="0" stroke="#00e5ff" stroke-width="0.5" opacity="0.2"/><line x1="148" y1="16" x2="280" y2="16" stroke="#00e5ff" stroke-width="0.5" opacity="0.2"/><line x1="148" y1="32" x2="280" y2="32" stroke="#00e5ff" stroke-width="0.5" opacity="0.2"/><line x1="148" y1="48" x2="280" y2="48" stroke="#00e5ff" stroke-width="0.5" opacity="0.2"/><line x1="148" y1="64" x2="280" y2="64" stroke="#00e5ff" stroke-width="0.5" opacity="0.2"/><line x1="148" y1="80" x2="280" y2="80" stroke="#00e5ff" stroke-width="0.5" opacity="0.2"/><line x1="148" y1="96" x2="280" y2="96" stroke="#00e5ff" stroke-width="0.5" opacity="0.2"/><line x1="148" y1="112" x2="280" y2="112" stroke="#00e5ff" stroke-width="0.5" opacity="0.2"/><line x1="148" y1="128" x2="280" y2="128" stroke="#00e5ff" stroke-width="0.5" opacity="0.2"/>
-    <!-- Nodes -->
-    <circle cx="173" cy="30" r="5.5" fill="#00e5ff" opacity="0.7">
-      <animate attributeName="r" values="5.5;8;5.5" dur="1.4s" repeatCount="indefinite"/>
-      <animate attributeName="opacity" values="0.7;1;0.7" dur="1.4s" repeatCount="indefinite"/>
-    </circle>
-    <circle cx="228" cy="68" r="5.5" fill="#00e5ff" opacity="0.7">
-      <animate attributeName="r" values="5.5;8;5.5" dur="1.1s" begin="0.4s" repeatCount="indefinite"/>
-      <animate attributeName="opacity" values="0.7;1;0.7" dur="1.1s" begin="0.4s" repeatCount="indefinite"/>
-    </circle>
-    <circle cx="262" cy="30" r="4.5" fill="#00e5ff" opacity="0.6">
-      <animate attributeName="r" values="4.5;7;4.5" dur="1.7s" begin="0.8s" repeatCount="indefinite"/>
-    </circle>
-    <!-- Circuit trace -->
-    <path d="M173,30 L228,30 L228,68 L262,68" fill="none" stroke="#00e5ff" stroke-width="2" opacity="0.45"/>
-    <!-- Travelling glow dot -->
-    <circle r="4.5" fill="#00e5ff" opacity="0.95">
-      <animateMotion dur="2s" repeatCount="indefinite"
-        path="M173,30 L228,30 L228,68 L262,68"/>
-      <animate attributeName="opacity" values="0.95;0.3;0.95" dur="2s" repeatCount="indefinite"/>
-    </circle>
-    <!-- Scanline -->
-    <rect x="148" y="-4" width="132" height="4" fill="#00e5ff" opacity="0.07">
-      <animateTransform attributeName="transform" type="translate" values="0,0;0,134" dur="2.8s" repeatCount="indefinite"/>
-    </rect>
-  </g>
+<g clip-path="url(#clipbeamsprint)"><line x1="280" y1="19.8" x2="330.2" y2="19.8"
+      stroke="#00e5ff" stroke-width="1.2" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-335.19371124105385,0" dur="0.69s" begin="0.76s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.36;0.36;0" dur="0.69s" begin="0.76s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="24.4" x2="331.7" y2="24.4"
+      stroke="#00aacc" stroke-width="1.6" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-336.6781788986824,0" dur="0.85s" begin="0.44s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.58;0.58;0" dur="0.85s" begin="0.44s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="36.8" x2="325.3" y2="36.8"
+      stroke="#00e5ff" stroke-width="2.9" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-330.3042196110599,0" dur="0.91s" begin="0.48s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.59;0.59;0" dur="0.91s" begin="0.48s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="51.7" x2="355.9" y2="51.7"
+      stroke="#00aacc" stroke-width="2.5" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-360.88967026930527,0" dur="1.00s" begin="0.66s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.79;0.79;0" dur="1.00s" begin="0.66s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="64.0" x2="330.9" y2="64.0"
+      stroke="#00e5ff" stroke-width="2.4" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-335.86503004791797,0" dur="0.54s" begin="0.50s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.73;0.73;0" dur="0.54s" begin="0.50s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="77.2" x2="332.3" y2="77.2"
+      stroke="#00aacc" stroke-width="3.5" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-337.3290100990164,0" dur="1.14s" begin="0.91s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.59;0.59;0" dur="1.14s" begin="0.91s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="83.6" x2="335.0" y2="83.6"
+      stroke="#00e5ff" stroke-width="3.9" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-340.00099472934403,0" dur="0.73s" begin="0.51s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.76;0.76;0" dur="0.73s" begin="0.51s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="99.4" x2="357.4" y2="99.4"
+      stroke="#00aacc" stroke-width="1.2" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-362.44590258049914,0" dur="1.08s" begin="1.22s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.65;0.65;0" dur="1.08s" begin="1.22s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="112.9" x2="322.3" y2="112.9"
+      stroke="#00e5ff" stroke-width="2.5" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-327.286779675001,0" dur="0.86s" begin="0.84s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.46;0.46;0" dur="0.86s" begin="0.84s" repeatCount="indefinite"/>
+    </line></g>
 
-  <rect width="280" height="130" fill="url(#tfbeam-sprint)"/>
-  <rect width="280" height="130" fill="url(#bfbeam-sprint)"/>
+<rect width="280" height="130" fill="url(#tbeamsprint)"/>
 
-  <text x="12" y="96"
-    font-family="Inter, system-ui, sans-serif"
-    font-size="21" font-weight="800" fill="white"
-    paint-order="stroke" stroke="rgba(0,0,0,0.6)" stroke-width="3" stroke-linejoin="round"
-  >Beam Sprint</text>
-  
+<text x="140" y="106"
+  font-family="Inter,system-ui,sans-serif" font-size="20" font-weight="800"
+  fill="white" text-anchor="middle"
+  paint-order="stroke" stroke="rgba(0,0,0,0.7)" stroke-width="4" stroke-linejoin="round"
+>Beam Sprint</text>
 
-  <rect x="12" y="113" width="59" height="14" fill="#006688" opacity="0.92" rx="2.5"/>
-  <text x="19" y="123.5"
-    font-family="Inter, system-ui, sans-serif"
-    font-size="8" font-weight="700" letter-spacing="1" fill="white"
-  >ACTION</text>
 
-  <rect y="128" width="280" height="2.5" fill="url(#albeam-sprint)"/>
+<rect x="110.6" y="116" width="58.8" height="13" fill="#006688" opacity="0.92" rx="3"/>
+<text x="140" y="125.5"
+  font-family="Inter,system-ui,sans-serif" font-size="7.5" font-weight="700"
+  letter-spacing="1.2" fill="white" text-anchor="middle"
+>ACTION</text>
+
+<rect y="127.5" width="280" height="2.5" fill="url(#lbeamsprint)"/>
 </svg>

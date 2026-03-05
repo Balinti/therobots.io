@@ -1,85 +1,93 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 130" width="280" height="130">
-  <defs>
-    <linearGradient id="bglava-splitter" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#2a0600"/>
-      <stop offset="100%" stop-color="#0a0200"/>
-    </linearGradient>
-    <radialGradient id="gllava-splitter" cx="76%" cy="38%" r="44%">
-      <stop offset="0%" stop-color="#ff5500" stop-opacity="0.2"/>
-      <stop offset="100%" stop-color="#ff5500" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="tflava-splitter" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="rgba(0,0,0,0.78)"/>
-      <stop offset="52%" stop-color="rgba(0,0,0,0.45)"/>
-      <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
-    </linearGradient>
-    <linearGradient id="bflava-splitter" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="rgba(0,0,0,0)"/>
-      <stop offset="100%" stop-color="rgba(0,0,0,0.82)"/>
-    </linearGradient>
-    <linearGradient id="allava-splitter" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#ff5500"/>
-      <stop offset="60%" stop-color="#ff5500" stop-opacity="0.5"/>
-      <stop offset="100%" stop-color="#ff5500" stop-opacity="0"/>
-    </linearGradient>
-  </defs>
+<defs>
+  <linearGradient id="blavasplitter" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0%" stop-color="#2a0600"/>
+    <stop offset="100%" stop-color="#0a0200"/>
+  </linearGradient>
+  <radialGradient id="glavasplitter" cx="50%" cy="45%" r="55%">
+    <stop offset="0%" stop-color="#ff5500" stop-opacity="0.18"/>
+    <stop offset="100%" stop-color="#ff5500" stop-opacity="0"/>
+  </radialGradient>
+  <linearGradient id="tlavasplitter" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="40%" stop-color="rgba(0,0,0,0)"/>
+    <stop offset="100%" stop-color="rgba(0,0,0,0.88)"/>
+  </linearGradient>
+  <linearGradient id="llavasplitter" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0%" stop-color="#ff5500"/>
+    <stop offset="65%" stop-color="#ff8c00" stop-opacity="0.5"/>
+    <stop offset="100%" stop-color="#ff5500" stop-opacity="0"/>
+  </linearGradient>
+  <clipPath id="cliplavasplitter"><rect width="280" height="130"/></clipPath>
+</defs>
 
-  <rect width="280" height="130" fill="url(#bglava-splitter)"/>
-  <rect width="280" height="130" fill="url(#gllava-splitter)"/>
+<rect width="280" height="130" fill="url(#blavasplitter)"/>
+<rect width="280" height="130" fill="url(#glavasplitter)"/>
 
-  
-  <g>
-    <!-- Large flame -->
-    <g transform="translate(220,130)">
-      <path d="M0,0 C-20,-38 -32,-72 -14,-100 C-7,-80 7,-76 11,-56 C15,-38 7,-20 0,0" fill="#ff5500" opacity="0.85">
-        <animateTransform attributeName="transform" type="scale" values="1,1;1.07,1.12;0.96,1.05;1,1" dur="1.1s" repeatCount="indefinite"/>
-        <animate attributeName="opacity" values="0.85;0.95;0.78;0.85" dur="1.1s" repeatCount="indefinite"/>
-      </path>
-      <path d="M0,0 C-10,-28 -15,-55 -6,-78 C-3,-62 6,-59 8,-44 C11,-30 4,-15 0,0" fill="#ff8c00" opacity="0.7">
-        <animateTransform attributeName="transform" type="scale" values="1,1;0.93,1.14;1.04,1.06;1,1" dur="0.85s" repeatCount="indefinite"/>
-      </path>
-    </g>
-    <!-- Small side flame -->
-    <g transform="translate(188,130)">
-      <path d="M0,0 C-10,-22 -17,-44 -7,-62 C-3,-48 4,-45 6,-32 C8,-21 2,-10 0,0" fill="#ff5500" opacity="0.6">
-        <animateTransform attributeName="transform" type="scale" values="1,1;1.1,1.06;0.94,1.1;1,1" dur="1.4s" repeatCount="indefinite"/>
-      </path>
-    </g>
-    <!-- Embers -->
-    <circle cx="200" cy="90" r="2.5" fill="#ff8c00" opacity="0">
-      <animate attributeName="opacity" values="0;0.9;0.5;0" dur="1.8s" repeatCount="indefinite"/>
-      <animateTransform attributeName="transform" type="translate" values="0,0;-6,-55;-10,-100" dur="1.8s" repeatCount="indefinite"/>
-    </circle>
-    <circle cx="218" cy="70" r="2" fill="#ff5500" opacity="0">
-      <animate attributeName="opacity" values="0;0.8;0.3;0" dur="2.2s" begin="0.5s" repeatCount="indefinite"/>
-      <animateTransform attributeName="transform" type="translate" values="0,0;8,-60;14,-105" dur="2.2s" begin="0.5s" repeatCount="indefinite"/>
-    </circle>
-    <circle cx="210" cy="55" r="1.5" fill="#ff8c00" opacity="0">
-      <animate attributeName="opacity" values="0;0.7;0;0" dur="1.5s" begin="1s" repeatCount="indefinite"/>
-      <animateTransform attributeName="transform" type="translate" values="0,0;4,-45;6,-80" dur="1.5s" begin="1s" repeatCount="indefinite"/>
-    </circle>
-    <!-- Base glow -->
-    <ellipse cx="212" cy="128" rx="48" ry="10" fill="#ff5500" opacity="0.18">
-      <animate attributeName="rx" values="48;56;48" dur="1.1s" repeatCount="indefinite"/>
-      <animate attributeName="opacity" values="0.18;0.32;0.18" dur="1.1s" repeatCount="indefinite"/>
-    </ellipse>
-  </g>
+<g clip-path="url(#cliplavasplitter)"><circle cx="125.10013692665382" cy="39.50357854238329" r="6.9" fill="#ff5500" opacity="0">
+      <animate attributeName="cx" values="125.10013692665382;185.7;185.7" dur="1.23s" begin="0.21s" repeatCount="indefinite"/>
+      <animate attributeName="cy" values="39.50357854238329;39.5;39.5" dur="1.23s" begin="0.20s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.8;0" dur="1.23s" begin="0.04s" repeatCount="indefinite"/>
+      <animate attributeName="r" values="6.9;2.8" dur="1.23s" begin="0.10s" repeatCount="indefinite"/>
+    </circle><circle cx="125.10013692665382" cy="39.50357854238329" r="4.3" fill="#ff8c00" opacity="0">
+      <animate attributeName="cx" values="125.10013692665382;171.5;171.5" dur="1.23s" begin="0.06s" repeatCount="indefinite"/>
+      <animate attributeName="cy" values="39.50357854238329;78.4;78.4" dur="1.23s" begin="0.15s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.8;0" dur="1.23s" begin="0.05s" repeatCount="indefinite"/>
+      <animate attributeName="r" values="4.3;1.7" dur="1.23s" begin="0.02s" repeatCount="indefinite"/>
+    </circle><circle cx="125.10013692665382" cy="39.50357854238329" r="6.8" fill="#ff5500" opacity="0">
+      <animate attributeName="cx" values="125.10013692665382;135.6;135.6" dur="1.23s" begin="0.12s" repeatCount="indefinite"/>
+      <animate attributeName="cy" values="39.50357854238329;99.2;99.2" dur="1.23s" begin="0.15s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.8;0" dur="1.23s" begin="0.30s" repeatCount="indefinite"/>
+      <animate attributeName="r" values="6.8;2.7" dur="1.23s" begin="0.21s" repeatCount="indefinite"/>
+    </circle><circle cx="125.10013692665382" cy="39.50357854238329" r="7.2" fill="#ff8c00" opacity="0">
+      <animate attributeName="cx" values="125.10013692665382;94.8;94.8" dur="1.23s" begin="0.03s" repeatCount="indefinite"/>
+      <animate attributeName="cy" values="39.50357854238329;92.0;92.0" dur="1.23s" begin="0.23s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.8;0" dur="1.23s" begin="0.01s" repeatCount="indefinite"/>
+      <animate attributeName="r" values="7.2;2.9" dur="1.23s" begin="0.30s" repeatCount="indefinite"/>
+    </circle><circle cx="125.10013692665382" cy="39.50357854238329" r="6.0" fill="#ff5500" opacity="0">
+      <animate attributeName="cx" values="125.10013692665382;68.2;68.2" dur="1.23s" begin="0.17s" repeatCount="indefinite"/>
+      <animate attributeName="cy" values="39.50357854238329;60.2;60.2" dur="1.23s" begin="0.13s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.8;0" dur="1.23s" begin="0.20s" repeatCount="indefinite"/>
+      <animate attributeName="r" values="6.0;2.4" dur="1.23s" begin="0.10s" repeatCount="indefinite"/>
+    </circle><circle cx="125.10013692665382" cy="39.50357854238329" r="4.0" fill="#ff8c00" opacity="0">
+      <animate attributeName="cx" values="125.10013692665382;68.2;68.2" dur="1.23s" begin="0.22s" repeatCount="indefinite"/>
+      <animate attributeName="cy" values="39.50357854238329;18.8;18.8" dur="1.23s" begin="0.16s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.8;0" dur="1.23s" begin="0.28s" repeatCount="indefinite"/>
+      <animate attributeName="r" values="4.0;1.6" dur="1.23s" begin="0.26s" repeatCount="indefinite"/>
+    </circle><circle cx="125.10013692665382" cy="39.50357854238329" r="4.2" fill="#ff5500" opacity="0">
+      <animate attributeName="cx" values="125.10013692665382;94.8;94.8" dur="1.23s" begin="0.14s" repeatCount="indefinite"/>
+      <animate attributeName="cy" values="39.50357854238329;-13.0;-13.0" dur="1.23s" begin="0.19s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.8;0" dur="1.23s" begin="0.23s" repeatCount="indefinite"/>
+      <animate attributeName="r" values="4.2;1.7" dur="1.23s" begin="0.28s" repeatCount="indefinite"/>
+    </circle><circle cx="125.10013692665382" cy="39.50357854238329" r="3.4" fill="#ff8c00" opacity="0">
+      <animate attributeName="cx" values="125.10013692665382;135.6;135.6" dur="1.23s" begin="0.09s" repeatCount="indefinite"/>
+      <animate attributeName="cy" values="39.50357854238329;-20.2;-20.2" dur="1.23s" begin="0.03s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.8;0" dur="1.23s" begin="0.13s" repeatCount="indefinite"/>
+      <animate attributeName="r" values="3.4;1.4" dur="1.23s" begin="0.05s" repeatCount="indefinite"/>
+    </circle><circle cx="125.10013692665382" cy="39.50357854238329" r="6.9" fill="#ff5500" opacity="0">
+      <animate attributeName="cx" values="125.10013692665382;171.5;171.5" dur="1.23s" begin="0.01s" repeatCount="indefinite"/>
+      <animate attributeName="cy" values="39.50357854238329;0.6;0.6" dur="1.23s" begin="0.01s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.8;0" dur="1.23s" begin="0.04s" repeatCount="indefinite"/>
+      <animate attributeName="r" values="6.9;2.8" dur="1.23s" begin="0.16s" repeatCount="indefinite"/>
+    </circle></g>
 
-  <rect width="280" height="130" fill="url(#tflava-splitter)"/>
-  <rect width="280" height="130" fill="url(#bflava-splitter)"/>
+<rect width="280" height="130" fill="url(#tlavasplitter)"/>
 
-  <text x="12" y="96"
-    font-family="Inter, system-ui, sans-serif"
-    font-size="21" font-weight="800" fill="white"
-    paint-order="stroke" stroke="rgba(0,0,0,0.6)" stroke-width="3" stroke-linejoin="round"
-  >Lava Splitter</text>
-  
+<text x="140" y="100"
+  font-family="Inter,system-ui,sans-serif" font-size="18" font-weight="800"
+  fill="white" text-anchor="middle"
+  paint-order="stroke" stroke="rgba(0,0,0,0.7)" stroke-width="4" stroke-linejoin="round"
+>Lava</text>
+<text x="140" y="123.4"
+  font-family="Inter,system-ui,sans-serif" font-size="18" font-weight="800"
+  fill="white" text-anchor="middle"
+  paint-order="stroke" stroke="rgba(0,0,0,0.7)" stroke-width="4" stroke-linejoin="round"
+>Splitter</text>
 
-  <rect x="12" y="113" width="59" height="14" fill="#cc2200" opacity="0.92" rx="2.5"/>
-  <text x="19" y="123.5"
-    font-family="Inter, system-ui, sans-serif"
-    font-size="8" font-weight="700" letter-spacing="1" fill="white"
-  >ACTION</text>
+<rect x="110.6" y="116" width="58.8" height="13" fill="#cc2200" opacity="0.92" rx="3"/>
+<text x="140" y="125.5"
+  font-family="Inter,system-ui,sans-serif" font-size="7.5" font-weight="700"
+  letter-spacing="1.2" fill="white" text-anchor="middle"
+>ACTION</text>
 
-  <rect y="128" width="280" height="2.5" fill="url(#allava-splitter)"/>
+<rect y="127.5" width="280" height="2.5" fill="url(#llavasplitter)"/>
 </svg>

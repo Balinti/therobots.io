@@ -1,89 +1,80 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 130" width="280" height="130">
-  <defs>
-    <linearGradient id="bgsand-surge" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#1e0e00"/>
-      <stop offset="100%" stop-color="#0a0500"/>
-    </linearGradient>
-    <radialGradient id="glsand-surge" cx="76%" cy="38%" r="44%">
-      <stop offset="0%" stop-color="#ffaa00" stop-opacity="0.2"/>
-      <stop offset="100%" stop-color="#ffaa00" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="tfsand-surge" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="rgba(0,0,0,0.78)"/>
-      <stop offset="52%" stop-color="rgba(0,0,0,0.45)"/>
-      <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
-    </linearGradient>
-    <linearGradient id="bfsand-surge" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="rgba(0,0,0,0)"/>
-      <stop offset="100%" stop-color="rgba(0,0,0,0.82)"/>
-    </linearGradient>
-    <linearGradient id="alsand-surge" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#ffaa00"/>
-      <stop offset="60%" stop-color="#ffaa00" stop-opacity="0.5"/>
-      <stop offset="100%" stop-color="#ffaa00" stop-opacity="0"/>
-    </linearGradient>
-  </defs>
+<defs>
+  <linearGradient id="bsandsurge" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0%" stop-color="#1e0e00"/>
+    <stop offset="100%" stop-color="#0a0500"/>
+  </linearGradient>
+  <radialGradient id="gsandsurge" cx="50%" cy="45%" r="55%">
+    <stop offset="0%" stop-color="#ffaa00" stop-opacity="0.18"/>
+    <stop offset="100%" stop-color="#ffaa00" stop-opacity="0"/>
+  </radialGradient>
+  <linearGradient id="tsandsurge" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="40%" stop-color="rgba(0,0,0,0)"/>
+    <stop offset="100%" stop-color="rgba(0,0,0,0.88)"/>
+  </linearGradient>
+  <linearGradient id="lsandsurge" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0%" stop-color="#ffaa00"/>
+    <stop offset="65%" stop-color="#ff8800" stop-opacity="0.5"/>
+    <stop offset="100%" stop-color="#ffaa00" stop-opacity="0"/>
+  </linearGradient>
+  <clipPath id="clipsandsurge"><rect width="280" height="130"/></clipPath>
+</defs>
 
-  <rect width="280" height="130" fill="url(#bgsand-surge)"/>
-  <rect width="280" height="130" fill="url(#glsand-surge)"/>
+<rect width="280" height="130" fill="url(#bsandsurge)"/>
+<rect width="280" height="130" fill="url(#gsandsurge)"/>
 
-  
-  <g>
-    <!-- Rotating sun -->
-    <g>
-      <animateTransform attributeName="transform" type="rotate"
-        values="0 233 38;360 233 38" dur="14s" repeatCount="indefinite"/>
-      <line x1="249.0" y1="38.0" x2="263.0" y2="38.0" stroke="#ffaa00" stroke-width="2.5" opacity="0.45"/><line x1="244.3" y1="49.3" x2="254.2" y2="59.2" stroke="#ffaa00" stroke-width="2.5" opacity="0.45"/><line x1="233.0" y1="54.0" x2="233.0" y2="68.0" stroke="#ffaa00" stroke-width="2.5" opacity="0.45"/><line x1="221.7" y1="49.3" x2="211.8" y2="59.2" stroke="#ffaa00" stroke-width="2.5" opacity="0.45"/><line x1="217.0" y1="38.0" x2="203.0" y2="38.0" stroke="#ffaa00" stroke-width="2.5" opacity="0.45"/><line x1="221.7" y1="26.7" x2="211.8" y2="16.8" stroke="#ffaa00" stroke-width="2.5" opacity="0.45"/><line x1="233.0" y1="22.0" x2="233.0" y2="8.0" stroke="#ffaa00" stroke-width="2.5" opacity="0.45"/><line x1="244.3" y1="26.7" x2="254.2" y2="16.8" stroke="#ffaa00" stroke-width="2.5" opacity="0.45"/>
-    </g>
-    <circle cx="233" cy="38" r="15" fill="#ffaa00" opacity="0.3">
-      <animate attributeName="opacity" values="0.3;0.48;0.3" dur="2.5s" repeatCount="indefinite"/>
-    </circle>
-    <circle cx="233" cy="38" r="10" fill="#ffaa00" opacity="0.48"/>
-    <!-- Animated dunes -->
-    <path fill="#ffaa00" opacity="0.28">
-      <animate attributeName="d"
-        values="M148,94 Q172,74 200,90 Q228,108 256,90 Q268,84 280,88 L280,130 L148,130 Z;
-                M148,98 Q172,78 200,94 Q228,112 256,94 Q268,88 280,92 L280,130 L148,130 Z;
-                M148,94 Q172,74 200,90 Q228,108 256,90 Q268,84 280,88 L280,130 L148,130 Z"
-        dur="3s" repeatCount="indefinite"/>
-    </path>
-    <!-- Drifting sand -->
-    <circle cx="150" cy="78" r="1.8" fill="#ffaa00" opacity="0">
-      <animate attributeName="opacity" values="0;0.45;0.45;0" dur="1.8s" begin="0s" repeatCount="indefinite"/>
-      <animateTransform attributeName="transform" type="translate" values="0,0;130,0" dur="1.8s" begin="0s" repeatCount="indefinite"/>
-    </circle><circle cx="150" cy="85" r="1.8" fill="#ffaa00" opacity="0">
-      <animate attributeName="opacity" values="0;0.45;0.45;0" dur="2.1s" begin="0.5s" repeatCount="indefinite"/>
-      <animateTransform attributeName="transform" type="translate" values="0,0;130,0" dur="2.1s" begin="0.5s" repeatCount="indefinite"/>
-    </circle><circle cx="150" cy="92" r="1.8" fill="#ffaa00" opacity="0">
-      <animate attributeName="opacity" values="0;0.45;0.45;0" dur="2.5s" begin="1s" repeatCount="indefinite"/>
-      <animateTransform attributeName="transform" type="translate" values="0,0;130,0" dur="2.5s" begin="1s" repeatCount="indefinite"/>
-    </circle><circle cx="150" cy="99" r="1.8" fill="#ffaa00" opacity="0">
-      <animate attributeName="opacity" values="0;0.45;0.45;0" dur="2.8s" begin="1.5s" repeatCount="indefinite"/>
-      <animateTransform attributeName="transform" type="translate" values="0,0;130,0" dur="2.8s" begin="1.5s" repeatCount="indefinite"/>
-    </circle><circle cx="150" cy="106" r="1.8" fill="#ffaa00" opacity="0">
-      <animate attributeName="opacity" values="0;0.45;0.45;0" dur="3.2s" begin="2s" repeatCount="indefinite"/>
-      <animateTransform attributeName="transform" type="translate" values="0,0;130,0" dur="3.2s" begin="2s" repeatCount="indefinite"/>
-    </circle><circle cx="150" cy="113" r="1.8" fill="#ffaa00" opacity="0">
-      <animate attributeName="opacity" values="0;0.45;0.45;0" dur="3.5s" begin="2.5s" repeatCount="indefinite"/>
-      <animateTransform attributeName="transform" type="translate" values="0,0;130,0" dur="3.5s" begin="2.5s" repeatCount="indefinite"/>
-    </circle>
-  </g>
+<g clip-path="url(#clipsandsurge)"><line x1="280" y1="13.1" x2="347.4" y2="13.1"
+      stroke="#ffaa00" stroke-width="1.5" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-352.43973117378533,0" dur="1.06s" begin="1.16s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.44;0.44;0" dur="1.06s" begin="1.16s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="26.3" x2="363.0" y2="26.3"
+      stroke="#ff8800" stroke-width="2.4" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-367.9980042339298,0" dur="0.99s" begin="0.29s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.31;0.31;0" dur="0.99s" begin="0.29s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="40.9" x2="346.3" y2="40.9"
+      stroke="#ffaa00" stroke-width="2.0" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-351.3162708844329,0" dur="0.97s" begin="1.33s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.60;0.60;0" dur="0.97s" begin="1.33s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="54.9" x2="364.8" y2="54.9"
+      stroke="#ff8800" stroke-width="3.3" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-369.81873370237156,0" dur="0.87s" begin="0.33s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.32;0.32;0" dur="0.87s" begin="0.33s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="62.8" x2="327.5" y2="62.8"
+      stroke="#ffaa00" stroke-width="3.6" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-332.548357244243,0" dur="0.95s" begin="1.36s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.75;0.75;0" dur="0.95s" begin="1.36s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="77.8" x2="338.5" y2="77.8"
+      stroke="#ff8800" stroke-width="1.7" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-343.4756220955112,0" dur="1.01s" begin="0.95s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.58;0.58;0" dur="1.01s" begin="0.95s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="89.7" x2="361.4" y2="89.7"
+      stroke="#ffaa00" stroke-width="1.6" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-366.3719149903329,0" dur="0.92s" begin="1.12s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.77;0.77;0" dur="0.92s" begin="1.12s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="101.9" x2="320.9" y2="101.9"
+      stroke="#ff8800" stroke-width="3.4" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-325.85937166955773,0" dur="0.67s" begin="0.45s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.71;0.71;0" dur="0.67s" begin="0.45s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="110.8" x2="309.1" y2="110.8"
+      stroke="#ffaa00" stroke-width="3.5" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-314.0732075562871,0" dur="0.85s" begin="0.06s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.80;0.80;0" dur="0.85s" begin="0.06s" repeatCount="indefinite"/>
+    </line></g>
 
-  <rect width="280" height="130" fill="url(#tfsand-surge)"/>
-  <rect width="280" height="130" fill="url(#bfsand-surge)"/>
+<rect width="280" height="130" fill="url(#tsandsurge)"/>
 
-  <text x="12" y="96"
-    font-family="Inter, system-ui, sans-serif"
-    font-size="21" font-weight="800" fill="white"
-    paint-order="stroke" stroke="rgba(0,0,0,0.6)" stroke-width="3" stroke-linejoin="round"
-  >Sand Surge</text>
-  
+<text x="140" y="106"
+  font-family="Inter,system-ui,sans-serif" font-size="20" font-weight="800"
+  fill="white" text-anchor="middle"
+  paint-order="stroke" stroke="rgba(0,0,0,0.7)" stroke-width="4" stroke-linejoin="round"
+>Sand Surge</text>
 
-  <rect x="12" y="113" width="59" height="14" fill="#aa5500" opacity="0.92" rx="2.5"/>
-  <text x="19" y="123.5"
-    font-family="Inter, system-ui, sans-serif"
-    font-size="8" font-weight="700" letter-spacing="1" fill="white"
-  >ACTION</text>
 
-  <rect y="128" width="280" height="2.5" fill="url(#alsand-surge)"/>
+<rect x="110.6" y="116" width="58.8" height="13" fill="#aa5500" opacity="0.92" rx="3"/>
+<text x="140" y="125.5"
+  font-family="Inter,system-ui,sans-serif" font-size="7.5" font-weight="700"
+  letter-spacing="1.2" fill="white" text-anchor="middle"
+>ACTION</text>
+
+<rect y="127.5" width="280" height="2.5" fill="url(#lsandsurge)"/>
 </svg>

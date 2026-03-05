@@ -1,94 +1,68 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 130" width="280" height="130">
-  <defs>
-    <linearGradient id="bgpixel-soar" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#050520"/>
-      <stop offset="100%" stop-color="#020210"/>
-    </linearGradient>
-    <radialGradient id="glpixel-soar" cx="76%" cy="38%" r="44%">
-      <stop offset="0%" stop-color="#4466ff" stop-opacity="0.2"/>
-      <stop offset="100%" stop-color="#4466ff" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="tfpixel-soar" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="rgba(0,0,0,0.78)"/>
-      <stop offset="52%" stop-color="rgba(0,0,0,0.45)"/>
-      <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
-    </linearGradient>
-    <linearGradient id="bfpixel-soar" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="rgba(0,0,0,0)"/>
-      <stop offset="100%" stop-color="rgba(0,0,0,0.82)"/>
-    </linearGradient>
-    <linearGradient id="alpixel-soar" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#4466ff"/>
-      <stop offset="60%" stop-color="#4466ff" stop-opacity="0.5"/>
-      <stop offset="100%" stop-color="#4466ff" stop-opacity="0"/>
-    </linearGradient>
-  </defs>
+<defs>
+  <linearGradient id="bpixelsoar" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0%" stop-color="#050520"/>
+    <stop offset="100%" stop-color="#020210"/>
+  </linearGradient>
+  <radialGradient id="gpixelsoar" cx="50%" cy="45%" r="55%">
+    <stop offset="0%" stop-color="#4466ff" stop-opacity="0.18"/>
+    <stop offset="100%" stop-color="#4466ff" stop-opacity="0"/>
+  </radialGradient>
+  <linearGradient id="tpixelsoar" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="40%" stop-color="rgba(0,0,0,0)"/>
+    <stop offset="100%" stop-color="rgba(0,0,0,0.88)"/>
+  </linearGradient>
+  <linearGradient id="lpixelsoar" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0%" stop-color="#4466ff"/>
+    <stop offset="65%" stop-color="#2244dd" stop-opacity="0.5"/>
+    <stop offset="100%" stop-color="#4466ff" stop-opacity="0"/>
+  </linearGradient>
+  <clipPath id="clippixelsoar"><rect width="280" height="130"/></clipPath>
+</defs>
 
-  <rect width="280" height="130" fill="url(#bgpixel-soar)"/>
-  <rect width="280" height="130" fill="url(#glpixel-soar)"/>
+<rect width="280" height="130" fill="url(#bpixelsoar)"/>
+<rect width="280" height="130" fill="url(#gpixelsoar)"/>
 
-  
-  <g>
-    <rect x="152" y="0" width="10" height="10" fill="#4466ff" opacity="0.07" rx="1"/><rect x="152" y="28" width="10" height="10" fill="#4466ff" opacity="0.07" rx="1"/><rect x="152" y="56" width="10" height="10" fill="#4466ff" opacity="0.07" rx="1"/><rect x="152" y="84" width="10" height="10" fill="#4466ff" opacity="0.07" rx="1"/><rect x="178" y="0" width="10" height="10" fill="#4466ff" opacity="0.07" rx="1"/><rect x="178" y="28" width="10" height="10" fill="#4466ff" opacity="0.07" rx="1"/><rect x="178" y="56" width="10" height="10" fill="#4466ff" opacity="0.07" rx="1"/><rect x="178" y="84" width="10" height="10" fill="#4466ff" opacity="0.07" rx="1"/><rect x="204" y="0" width="10" height="10" fill="#4466ff" opacity="0.07" rx="1"/><rect x="204" y="28" width="10" height="10" fill="#4466ff" opacity="0.07" rx="1"/><rect x="204" y="56" width="10" height="10" fill="#4466ff" opacity="0.07" rx="1"/><rect x="204" y="84" width="10" height="10" fill="#4466ff" opacity="0.07" rx="1"/><rect x="230" y="0" width="10" height="10" fill="#4466ff" opacity="0.07" rx="1"/><rect x="230" y="28" width="10" height="10" fill="#4466ff" opacity="0.07" rx="1"/><rect x="230" y="56" width="10" height="10" fill="#4466ff" opacity="0.07" rx="1"/><rect x="230" y="84" width="10" height="10" fill="#4466ff" opacity="0.07" rx="1"/><rect x="256" y="0" width="10" height="10" fill="#4466ff" opacity="0.07" rx="1"/><rect x="256" y="28" width="10" height="10" fill="#4466ff" opacity="0.07" rx="1"/><rect x="256" y="56" width="10" height="10" fill="#4466ff" opacity="0.07" rx="1"/><rect x="256" y="84" width="10" height="10" fill="#4466ff" opacity="0.07" rx="1"/>
-    <!-- Robot walking left-to-right then back -->
-    <g>
-      <animateTransform attributeName="transform" type="translate"
-        values="148,28;272,44;148,28" dur="4s" repeatCount="indefinite"/>
-      <!-- Body -->
-      <rect x="-13" y="0" width="26" height="24" fill="#4466ff" opacity="0.55" rx="2"/>
-      <!-- Head -->
-      <rect x="-11" y="-20" width="22" height="17" fill="#4466ff" opacity="0.6" rx="1"/>
-      <!-- Eyes: left blinks -->
-      <rect x="-7" y="-16" width="6" height="7" fill="#2244dd" opacity="0.9"/>
-      <rect x="2" y="-16" width="6" height="7" fill="#2244dd" opacity="0.9">
-        <animate attributeName="height" values="7;1;7" dur="0.18s" begin="1.5s" repeatCount="indefinite"/>
-        <animate attributeName="y" values="-16;-13;-16" dur="0.18s" begin="1.5s" repeatCount="indefinite"/>
-      </rect>
-      <!-- Left leg alternates -->
-      <rect x="-9" y="24" width="9" height="14" fill="#4466ff" opacity="0.5" rx="1">
-        <animate attributeName="height" values="14;6;14" dur="0.42s" repeatCount="indefinite"/>
-        <animate attributeName="y" values="24;32;24" dur="0.42s" repeatCount="indefinite"/>
-      </rect>
-      <!-- Right leg alternates -->
-      <rect x="2" y="24" width="9" height="14" fill="#4466ff" opacity="0.5" rx="1">
-        <animate attributeName="height" values="6;14;6" dur="0.42s" repeatCount="indefinite"/>
-        <animate attributeName="y" values="32;24;32" dur="0.42s" repeatCount="indefinite"/>
-      </rect>
-      <!-- Arms swing -->
-      <rect x="-20" y="2" width="9" height="7" fill="#4466ff" opacity="0.45" rx="1">
-        <animate attributeName="y" values="2;6;2" dur="0.42s" repeatCount="indefinite"/>
-      </rect>
-      <rect x="13" y="6" width="9" height="7" fill="#4466ff" opacity="0.45" rx="1">
-        <animate attributeName="y" values="6;2;6" dur="0.42s" repeatCount="indefinite"/>
-      </rect>
-    </g>
-    <!-- Pixel score dots -->
-    <rect x="152" y="8" width="8" height="8" fill="#4466ff" opacity="0.45" rx="1">
-      <animate attributeName="opacity" values="0.45;0.9;0.45" dur="1s" repeatCount="indefinite"/>
-    </rect>
-    <rect x="165" y="8" width="8" height="8" fill="#2244dd" opacity="0.35" rx="1">
-      <animate attributeName="opacity" values="0.35;0.8;0.35" dur="1.3s" begin="0.3s" repeatCount="indefinite"/>
-    </rect>
-    <rect x="178" y="8" width="8" height="8" fill="#4466ff" opacity="0.3" rx="1">
-      <animate attributeName="opacity" values="0.3;0.7;0.3" dur="0.9s" begin="0.6s" repeatCount="indefinite"/>
-    </rect>
-  </g>
+<g clip-path="url(#clippixelsoar)"><line x1="280" y1="14.1" x2="359.7" y2="14.1"
+      stroke="#4466ff" stroke-width="4.0" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-364.66030274393506,0" dur="1.14s" begin="0.17s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.61;0.61;0" dur="1.14s" begin="0.17s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="33.1" x2="341.3" y2="33.1"
+      stroke="#2244dd" stroke-width="3.7" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-346.2705873083953,0" dur="1.12s" begin="0.28s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.71;0.71;0" dur="1.12s" begin="0.28s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="48.3" x2="314.4" y2="48.3"
+      stroke="#4466ff" stroke-width="3.0" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-319.35157438492206,0" dur="0.77s" begin="0.26s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.63;0.63;0" dur="0.77s" begin="0.26s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="72.8" x2="356.5" y2="72.8"
+      stroke="#2244dd" stroke-width="3.7" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-361.519324367754,0" dur="0.94s" begin="0.69s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.44;0.44;0" dur="0.94s" begin="0.69s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="88.2" x2="348.6" y2="88.2"
+      stroke="#4466ff" stroke-width="2.2" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-353.5543940271145,0" dur="1.11s" begin="0.63s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.35;0.35;0" dur="1.11s" begin="0.63s" repeatCount="indefinite"/>
+    </line><line x1="280" y1="107.4" x2="350.4" y2="107.4"
+      stroke="#2244dd" stroke-width="2.0" stroke-linecap="round" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0,0;-355.37767430426965,0" dur="0.82s" begin="0.62s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.35;0.35;0" dur="0.82s" begin="0.62s" repeatCount="indefinite"/>
+    </line></g>
 
-  <rect width="280" height="130" fill="url(#tfpixel-soar)"/>
-  <rect width="280" height="130" fill="url(#bfpixel-soar)"/>
+<rect width="280" height="130" fill="url(#tpixelsoar)"/>
 
-  <text x="12" y="96"
-    font-family="Inter, system-ui, sans-serif"
-    font-size="21" font-weight="800" fill="white"
-    paint-order="stroke" stroke="rgba(0,0,0,0.6)" stroke-width="3" stroke-linejoin="round"
-  >Pixel Soar</text>
-  
+<text x="140" y="106"
+  font-family="Inter,system-ui,sans-serif" font-size="20" font-weight="800"
+  fill="white" text-anchor="middle"
+  paint-order="stroke" stroke="rgba(0,0,0,0.7)" stroke-width="4" stroke-linejoin="round"
+>Pixel Soar</text>
 
-  <rect x="12" y="113" width="59" height="14" fill="#1133aa" opacity="0.92" rx="2.5"/>
-  <text x="19" y="123.5"
-    font-family="Inter, system-ui, sans-serif"
-    font-size="8" font-weight="700" letter-spacing="1" fill="white"
-  >ACTION</text>
 
-  <rect y="128" width="280" height="2.5" fill="url(#alpixel-soar)"/>
+<rect x="110.6" y="116" width="58.8" height="13" fill="#1133aa" opacity="0.92" rx="3"/>
+<text x="140" y="125.5"
+  font-family="Inter,system-ui,sans-serif" font-size="7.5" font-weight="700"
+  letter-spacing="1.2" fill="white" text-anchor="middle"
+>ACTION</text>
+
+<rect y="127.5" width="280" height="2.5" fill="url(#lpixelsoar)"/>
 </svg>
