@@ -1,5 +1,5 @@
 import { renderStill, selectComposition } from '@remotion/renderer';
-import { createServer } from 'remotion';
+import { bundle } from '@remotion/bundler';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
@@ -17,12 +17,12 @@ async function main() {
   console.log(`Rendering ${GAMES.length} thumbnails to images/thumbs/...\n`);
 
   // Bundle once
-  const { port, close } = await createServer({
+  console.log('Bundling compositions...');
+  const serveUrl = await bundle({
     entryPoint: ENTRY_POINT,
-    port: 0,
+    webpackOverride: (config) => config,
   });
-
-  const serveUrl = `http://localhost:${port}`;
+  console.log('Bundle ready.\n');
 
   let done = 0;
   const errors = [];
@@ -43,7 +43,6 @@ async function main() {
         output,
         inputProps: { slug, name, desc, cat, theme },
         imageFormat: 'webp',
-        jpegQuality: 85,
         frame: RENDER_FRAME,
       });
 
@@ -54,8 +53,6 @@ async function main() {
       process.stdout.write(`\r✗ ${slug}: ${err.message}\n`);
     }
   }
-
-  await close();
 
   console.log(`\n\nDone! ${done} thumbnails rendered to images/thumbs/`);
   if (errors.length > 0) {
