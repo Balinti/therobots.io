@@ -754,6 +754,115 @@
     }
     .btn-secondary:hover { background: rgba(255,255,255,0.05); color: var(--text); }
 
+    /* ── SCROLL INTRO (replaces hero) ── */
+    .scroll-intro {
+      height: 400vh;
+      position: relative;
+    }
+    .intro-sticky {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow: hidden;
+    }
+    #frame-img {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+      background: radial-gradient(ellipse at 55% 42%, #160a2a 0%, var(--bg) 70%);
+      display: none;
+    }
+    .intro-no-frames {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      text-align: center;
+      padding: calc(var(--nav-h) + 2rem) 1.5rem 4rem;
+      background: radial-gradient(ellipse at 50% 40%, #120820 0%, var(--bg) 70%);
+    }
+    .intro-grad-bottom {
+      position: absolute; inset: 0; pointer-events: none;
+      background: linear-gradient(to top, rgba(7,7,15,0.95) 0%, rgba(7,7,15,0.5) 30%, transparent 62%);
+    }
+    .intro-grad-left {
+      position: absolute; inset: 0; pointer-events: none;
+      background: linear-gradient(to right, rgba(7,7,15,0.55) 0%, transparent 52%);
+    }
+    .intro-panel {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      padding: 2.5rem clamp(1.5rem, 5vw, 4rem) 4rem;
+      opacity: 0;
+      transform: translateY(16px);
+      transition: opacity 0.5s ease, transform 0.5s ease;
+      pointer-events: none;
+      max-width: 680px;
+    }
+    .intro-panel.active { opacity: 1; transform: none; pointer-events: auto; }
+    .intro-eyebrow {
+      font-size: 0.72rem; font-weight: 600; letter-spacing: 0.2em;
+      text-transform: uppercase; color: var(--cyan); margin-bottom: 1rem;
+    }
+    .intro-title {
+      font-family: 'Orbitron', monospace; font-weight: 900;
+      font-size: clamp(2rem, 5vw, 3.8rem);
+      line-height: 1.05; letter-spacing: -0.01em;
+      margin-bottom: 1rem; color: #fff;
+    }
+    .intro-title .grad {
+      background: linear-gradient(90deg, var(--purple), var(--cyan) 60%, var(--purple-lt));
+      background-size: 200% auto;
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .intro-body {
+      font-size: 1rem; line-height: 1.65; color: var(--text-dim);
+      max-width: 440px; margin-bottom: 1.5rem;
+    }
+    .intro-tags { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1.5rem; }
+    .intro-tag {
+      font-size: 0.85rem; font-weight: 600; color: var(--text);
+      border: 1px solid var(--border-h); padding: 5px 14px;
+      border-radius: 20px; background: rgba(157,78,221,0.08);
+    }
+    .intro-stat-row { display: flex; gap: 2rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
+    .intro-stat-num {
+      font-family: 'Orbitron', monospace; font-size: 1.8rem; font-weight: 900;
+      color: var(--purple-lt); line-height: 1; letter-spacing: -0.02em;
+    }
+    .intro-stat-lbl {
+      font-size: 0.68rem; letter-spacing: 0.15em;
+      text-transform: uppercase; color: var(--text-dim); margin-top: 2px;
+    }
+    .intro-cta {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      background: linear-gradient(135deg, var(--purple), #5a189a);
+      color: #fff; font-size: 1rem; font-weight: 600;
+      padding: 14px 28px; border-radius: 50px; text-decoration: none;
+      box-shadow: 0 0 30px rgba(157,78,221,0.35);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .intro-cta:hover { transform: translateY(-2px); box-shadow: 0 0 50px rgba(157,78,221,0.5); }
+    .intro-progress {
+      position: absolute; bottom: 0; left: 0;
+      height: 2px; background: var(--purple);
+      width: 0%; transition: width 0.05s linear; z-index: 10;
+    }
+    .intro-scroll-hint {
+      position: absolute; bottom: 2.5rem; right: 2rem;
+      display: flex; flex-direction: column; align-items: center; gap: 6px;
+      opacity: 0.5; transition: opacity 0.3s;
+    }
+    .intro-scroll-hint.hidden { opacity: 0; pointer-events: none; }
+    .intro-scroll-hint span { font-size: 0.62rem; letter-spacing: 0.15em; text-transform: uppercase; color: var(--text-dim); }
+    .intro-sh-arrow {
+      width: 16px; height: 16px;
+      border-right: 2px solid var(--text-dim);
+      border-bottom: 2px solid var(--text-dim);
+      transform: rotate(45deg);
+      animation: bounce 1.5s ease-in-out infinite;
+    }
+    @keyframes bounce { 0%,100% { transform: rotate(45deg) translateY(0); } 50% { transform: rotate(45deg) translateY(4px); } }
+
     /* ── RESPONSIVE ── */
     @media (max-width: 600px) {
       .hero-stats { gap: 1.2rem; }
@@ -784,40 +893,102 @@
     <span class="nav-badge">200+ Free Games</span>
   </nav>
 
-  <!-- HERO -->
-  <section class="hero">
-    <p class="hero-eyebrow">&#9679; Browser Games — No Download Required</p>
-    <h1 class="hero-title">
-      <span class="line1">Play Instantly.</span>
-      <span class="line2">No Install Needed.</span>
-    </h1>
-    <p class="hero-sub">Over 200 free games — action, arcade, puzzle, rhythm and more. Open a game and start playing in seconds.</p>
+  <!-- SCROLL INTRO -->
+  <section class="scroll-intro" id="scroll-intro">
+    <div class="intro-sticky">
 
-    <div class="hero-stats">
-      <div class="stat">
-        <div class="stat-num" id="stat-games">0<span>+</span></div>
-        <div class="stat-label">Games</div>
-      </div>
-      <div class="stat-divider"></div>
-      <div class="stat">
-        <div class="stat-num">5<span>+</span></div>
-        <div class="stat-label">Categories</div>
-      </div>
-      <div class="stat-divider"></div>
-      <div class="stat">
-        <div class="stat-num">0<span>MB</span></div>
-        <div class="stat-label">Download</div>
-      </div>
-    </div>
+      <img id="frame-img" src="" alt="TheRobots.io gameplay">
 
-    <a href="#games" class="hero-cta">
-      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-      Browse All Games
-    </a>
+      <!-- No-frames fallback: shows the classic hero layout -->
+      <div class="intro-no-frames" id="intro-no-frames">
+        <p class="hero-eyebrow">&#9679; Browser Games — No Download Required</p>
+        <h1 class="hero-title">
+          <span class="line1">Play Instantly.</span>
+          <span class="line2">No Install Needed.</span>
+        </h1>
+        <p class="hero-sub">217 free games — action, arcade, puzzle, rhythm and more.</p>
+        <a href="#games" class="hero-cta" style="margin-top:1.5rem;">
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Browse All Games
+        </a>
+      </div>
 
-    <div class="hero-scroll-hint">
-      <span>Scroll</span>
-      <div class="scroll-arrow"></div>
+      <div class="intro-grad-bottom"></div>
+      <div class="intro-grad-left"></div>
+
+      <!-- Panel 0: Hero -->
+      <div class="intro-panel active" id="intro-panel-0">
+        <p class="intro-eyebrow">&#9679; 217 Free Browser Games</p>
+        <h1 class="intro-title">
+          <span>Play Instantly.</span><br>
+          <span class="grad">No Install Needed.</span>
+        </h1>
+        <p class="intro-body">Open a game and start playing in seconds. No downloads, no accounts, no limits.</p>
+      </div>
+
+      <!-- Panel 1: Categories -->
+      <div class="intro-panel" id="intro-panel-1">
+        <p class="intro-eyebrow">Something for everyone</p>
+        <h2 class="intro-title">
+          <span class="grad">Action. Arcade.</span><br>
+          <span>Puzzle. Rhythm.</span>
+        </h2>
+        <div class="intro-tags">
+          <span class="intro-tag">&#9889; Action</span>
+          <span class="intro-tag">&#128377; Arcade</span>
+          <span class="intro-tag">&#129513; Puzzle</span>
+          <span class="intro-tag">&#127925; Rhythm</span>
+        </div>
+      </div>
+
+      <!-- Panel 2: Zero friction -->
+      <div class="intro-panel" id="intro-panel-2">
+        <p class="intro-eyebrow">Zero friction</p>
+        <h2 class="intro-title">
+          <span>Open. Tap.</span><br>
+          <span class="grad">Play.</span>
+        </h2>
+        <p class="intro-body">Every game loads instantly in your browser. No app store. No install. Just click and go.</p>
+      </div>
+
+      <!-- Panel 3: Scale -->
+      <div class="intro-panel" id="intro-panel-3">
+        <p class="intro-eyebrow">By the numbers</p>
+        <h2 class="intro-title"><span class="grad">Always free.</span><br>Always instant.</h2>
+        <div class="intro-stat-row">
+          <div>
+            <div class="intro-stat-num">217<span style="color:var(--cyan);font-size:1rem">+</span></div>
+            <div class="intro-stat-lbl">Games</div>
+          </div>
+          <div>
+            <div class="intro-stat-num">0<span style="color:var(--cyan);font-size:1rem">MB</span></div>
+            <div class="intro-stat-lbl">Download</div>
+          </div>
+          <div>
+            <div class="intro-stat-num" style="color:var(--cyan)">Free</div>
+            <div class="intro-stat-lbl">Forever</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel 4: CTA -->
+      <div class="intro-panel" id="intro-panel-4">
+        <p class="intro-eyebrow">Ready to play?</p>
+        <h2 class="intro-title"><span class="grad">217 games.</span><br>Start now.</h2>
+        <p class="intro-body" style="margin-bottom:1.5rem;">All free. All instant. Scroll down and pick your game.</p>
+        <a href="#games" class="intro-cta">
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Browse All Games
+        </a>
+      </div>
+
+      <div class="intro-progress" id="intro-progress"></div>
+
+      <div class="intro-scroll-hint" id="intro-scroll-hint">
+        <span>Scroll</span>
+        <div class="intro-sh-arrow"></div>
+      </div>
+
     </div>
   </section>
 
@@ -946,17 +1117,124 @@
       document.getElementById('navbar').classList.toggle('scrolled', window.scrollY > 20);
     });
 
-    // ── STAT COUNTER ──
+    // ── SCROLL INTRO (frame-driven) ──
     (function() {
-      const el = document.getElementById('stat-games');
-      let cur = 0;
-      const target = 217;
-      const step = Math.ceil(target / 40);
-      const timer = setInterval(() => {
-        cur = Math.min(cur + step, target);
-        el.innerHTML = cur + '<span>+</span>';
-        if (cur >= target) clearInterval(timer);
-      }, 30);
+      const FRAME_DIR  = 'therobots/frames/';
+      const FRAME_EXT  = '.jpg';
+      const FRAME_PAD  = 4;
+      const PRELOAD_N  = 20;
+      const NUM_PANELS = 5;
+
+      let TOTAL_FRAMES = 0;
+      let frameCache   = {};
+      let lastFrameIdx = -1;
+      let lastPanel    = 0;
+      let ticking      = false;
+
+      const img        = document.getElementById('frame-img');
+      const noFrames   = document.getElementById('intro-no-frames');
+      const progressEl = document.getElementById('intro-progress');
+      const introWrap  = document.getElementById('scroll-intro');
+      const scrollHint = document.getElementById('intro-scroll-hint');
+      const panels     = Array.from(document.querySelectorAll('.intro-panel'));
+
+      function frameUrl(i) {
+        return FRAME_DIR + 'f' + String(i + 1).padStart(FRAME_PAD, '0') + FRAME_EXT;
+      }
+
+      async function detectFrameCount() {
+        const probe = new Image();
+        const exists = await new Promise(r => {
+          probe.onload  = () => r(true);
+          probe.onerror = () => r(false);
+          probe.src = frameUrl(0);
+        });
+        if (!exists) return 0;
+        let lo = 1, hi = 1;
+        while (true) {
+          const p = new Image();
+          const ok = await new Promise(r => {
+            p.onload  = () => r(true);
+            p.onerror = () => r(false);
+            p.src = frameUrl(hi - 1);
+          });
+          if (!ok) break;
+          hi *= 2;
+          if (hi > 2000) { hi = 2000; break; }
+        }
+        while (lo < hi) {
+          const mid = (lo + hi) >> 1;
+          const p = new Image();
+          const ok = await new Promise(r => {
+            p.onload  = () => r(true);
+            p.onerror = () => r(false);
+            p.src = frameUrl(mid);
+          });
+          if (ok) lo = mid + 1; else hi = mid;
+        }
+        return lo;
+      }
+
+      function preloadFrames(start, count) {
+        for (let i = start; i < Math.min(start + count, TOTAL_FRAMES); i++) {
+          if (!frameCache[i]) {
+            const im = new Image();
+            im.src = frameUrl(i);
+            frameCache[i] = im;
+          }
+        }
+      }
+
+      function getLocalProgress() {
+        const wrapTop   = introWrap.getBoundingClientRect().top + window.scrollY;
+        const maxScroll = introWrap.offsetHeight - window.innerHeight;
+        const scrolled  = window.scrollY - wrapTop;
+        return maxScroll > 0 ? Math.min(Math.max(scrolled / maxScroll, 0), 1) : 0;
+      }
+
+      function setPanel(index) {
+        if (index === lastPanel) return;
+        panels[lastPanel].classList.remove('active');
+        panels[index].classList.add('active');
+        if (index > 0) scrollHint.classList.add('hidden');
+        else            scrollHint.classList.remove('hidden');
+        lastPanel = index;
+      }
+
+      function updateIntro() {
+        ticking = false;
+        const progress = getLocalProgress();
+        progressEl.style.width = (progress * 100) + '%';
+        const panelIndex = Math.min(Math.floor(progress * NUM_PANELS), NUM_PANELS - 1);
+        setPanel(panelIndex);
+        if (TOTAL_FRAMES > 0) {
+          const frameIdx = Math.min(Math.floor(progress * TOTAL_FRAMES), TOTAL_FRAMES - 1);
+          if (frameIdx !== lastFrameIdx) {
+            lastFrameIdx = frameIdx;
+            if (frameCache[frameIdx] && frameCache[frameIdx].complete) {
+              img.src = frameCache[frameIdx].src;
+            } else {
+              img.src = frameUrl(frameIdx);
+            }
+            preloadFrames(frameIdx + 1, 15);
+          }
+        }
+      }
+
+      window.addEventListener('scroll', () => {
+        if (!ticking) { requestAnimationFrame(updateIntro); ticking = true; }
+      }, { passive: true });
+
+      (async () => {
+        TOTAL_FRAMES = await detectFrameCount();
+        if (TOTAL_FRAMES > 0) {
+          noFrames.style.display  = 'none';
+          img.style.display       = 'block';
+          img.src = frameUrl(0);
+          preloadFrames(0, PRELOAD_N);
+        }
+        updateIntro();
+      })();
     })();
 
     // ── GAME DATA ──

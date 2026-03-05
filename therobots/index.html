@@ -3,131 +3,34 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>The Robots — Play Free on iOS & Android</title>
-  <meta name="description" content="The Robots is a one-tap arcade game with endless levels, satisfying combos, and offline play. Free on iOS and Android.">
-  <meta property="og:title" content="The Robots — Free Mobile Game">
-  <meta property="og:description" content="One-tap controls. Endless levels. Satisfying combos. Play free on iOS & Android.">
+  <title>The Robots — Play Free in Your Browser</title>
+  <meta name="description" content="The Robots is a free arcade game. One-tap controls, endless levels, satisfying combos. Play instantly in your browser — no download required.">
+  <meta property="og:title" content="The Robots — Free Browser Arcade Game">
+  <meta property="og:description" content="One-tap controls. Endless levels. Satisfying combos. Play free in your browser.">
   <meta property="og:type" content="website">
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 
   <style>
     :root {
-      --bg:         #050508;
-      --bg2:        #0a0a14;
-      --accent:     #ff6b35;
-      --accent2:    #ff9a5c;
-      --text:       #f0f0f5;
-      --text-dim:   #888899;
-      --border:     rgba(255,107,53,0.15);
-      --font-title: 'Inter', 'SF Pro Display', system-ui, sans-serif;
-      --section-gap: 100vh;
+      --bg:      #050508;
+      --accent:  #ff6b35;
+      --accent2: #ff9a5c;
+      --text:    #f0f0f5;
+      --dim:     #888899;
+      --border:  rgba(255,107,53,0.18);
     }
 
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
     html { scroll-behavior: auto; }
-
     body {
-      font-family: var(--font-title);
+      font-family: 'Inter', system-ui, sans-serif;
       background: var(--bg);
       color: var(--text);
       overflow-x: hidden;
     }
-
-    /* ── LAYOUT ── */
-    .page-wrapper {
-      position: relative;
-    }
-
-    /* Desktop: side-by-side */
-    .scroll-container {
-      display: flex;
-      align-items: flex-start;
-    }
-
-    .text-col {
-      width: 33.333%;
-      min-height: 100%;
-      padding: 0 2rem 4rem 3rem;
-      position: relative;
-      z-index: 10;
-    }
-
-    .frame-col {
-      width: 66.666%;
-      position: sticky;
-      top: 0;
-      height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: var(--bg);
-    }
-
-    /* Mobile: stacked */
-    @media (max-width: 767px) {
-      .scroll-container { flex-direction: column; }
-      .text-col { width: 100%; padding: 2rem 1.5rem 4rem; order: 2; }
-      .frame-col {
-        width: 100%;
-        height: 50vh;
-        position: sticky;
-        top: 0;
-        order: 1;
-        z-index: 20;
-      }
-    }
-
-    /* ── FRAME ANIMATION ── */
-    .frame-wrap {
-      width: 100%;
-      height: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      overflow: hidden;
-      will-change: contents;
-    }
-
-    #frame-img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      display: block;
-      will-change: contents;
-      /* Show placeholder gradient until frames load */
-      background: radial-gradient(ellipse at 60% 50%, #1a0e08 0%, #050508 70%);
-    }
-
-    /* No frames: show a centered message */
-    .frame-placeholder {
-      position: absolute;
-      inset: 0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 1rem;
-      text-align: center;
-      padding: 2rem;
-      background: radial-gradient(ellipse at 60% 50%, #1a0e08 0%, #050508 70%);
-    }
-    .frame-placeholder h2 {
-      font-size: clamp(2rem, 5vw, 4rem);
-      font-weight: 800;
-      letter-spacing: -0.02em;
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-    .frame-placeholder p {
-      color: var(--text-dim);
-      font-size: 0.9rem;
-    }
-    #frame-img.loaded ~ .frame-placeholder { display: none; }
 
     /* ── NAV ── */
     .top-nav {
@@ -137,445 +40,350 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 1rem 2rem;
+      padding: 0.9rem 2rem;
       background: rgba(5,5,8,0.6);
-      backdrop-filter: blur(16px) saturate(160%);
-      -webkit-backdrop-filter: blur(16px) saturate(160%);
+      backdrop-filter: blur(18px) saturate(160%);
+      -webkit-backdrop-filter: blur(18px) saturate(160%);
       border-bottom: 1px solid var(--border);
     }
     .nav-back {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      color: var(--text-dim);
-      text-decoration: none;
-      font-size: 0.85rem;
-      font-weight: 500;
-      letter-spacing: 0.02em;
+      display: flex; align-items: center; gap: 0.5rem;
+      color: var(--dim); text-decoration: none;
+      font-size: 0.85rem; font-weight: 500; letter-spacing: 0.02em;
       transition: color 0.2s;
     }
     .nav-back:hover { color: var(--text); }
-    .nav-back svg { width: 16px; height: 16px; }
-
     .nav-title {
-      font-size: 0.9rem;
-      font-weight: 700;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
+      font-size: 0.9rem; font-weight: 700;
+      letter-spacing: 0.1em; text-transform: uppercase;
       color: var(--accent);
     }
-
-    .nav-cta {
-      display: flex;
-      gap: 0.5rem;
-    }
-
-    /* ── SECTIONS ── */
-    .section {
-      min-height: var(--section-gap);
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      padding: 6rem 0 2rem;
-    }
-
-    .section:first-child { padding-top: 8rem; }
-
-    /* Section: Hero */
-    .hero-eyebrow {
-      font-size: 0.75rem;
-      font-weight: 600;
-      letter-spacing: 0.2em;
-      text-transform: uppercase;
-      color: var(--accent);
-      margin-bottom: 1rem;
-    }
-
-    .hero-title {
-      font-size: clamp(2.2rem, 4vw, 3.5rem);
-      font-weight: 800;
-      line-height: 1.05;
-      letter-spacing: -0.03em;
-      margin-bottom: 1.2rem;
-    }
-
-    .hero-title .brand {
-      background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-
-    .hero-hook {
-      font-size: 1.05rem;
-      font-weight: 400;
-      color: var(--text-dim);
-      line-height: 1.6;
-      margin-bottom: 2rem;
-      max-width: 320px;
-    }
-
-    /* Store buttons */
-    .store-btns {
-      display: flex;
-      flex-direction: column;
-      gap: 0.75rem;
-    }
-
-    .store-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.75rem;
-      padding: 0.75rem 1.25rem;
-      background: var(--accent);
-      color: #fff;
-      text-decoration: none;
-      border-radius: 10px;
-      font-weight: 600;
-      font-size: 0.9rem;
-      letter-spacing: 0.01em;
+    .nav-play {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      padding: 0.5rem 1.1rem;
+      background: var(--accent); color: #fff;
+      text-decoration: none; border-radius: 8px;
+      font-weight: 600; font-size: 0.85rem;
       transition: background 0.2s, transform 0.15s;
-      width: fit-content;
     }
-    .store-btn:hover {
-      background: var(--accent2);
-      transform: translateY(-1px);
-    }
-    .store-btn.secondary {
-      background: transparent;
-      border: 1px solid var(--accent);
-      color: var(--accent);
-    }
-    .store-btn.secondary:hover {
-      background: rgba(255,107,53,0.08);
-    }
-    .store-btn svg { width: 20px; height: 20px; flex-shrink: 0; }
+    .nav-play:hover { background: var(--accent2); transform: translateY(-1px); }
 
-    /* ── SECTION LABELS ── */
-    .section-label {
-      font-size: 0.7rem;
-      font-weight: 700;
-      letter-spacing: 0.22em;
-      text-transform: uppercase;
-      color: var(--accent);
-      opacity: 0.7;
-      margin-bottom: 0.75rem;
+    /* ── SCROLL INTRO ── */
+    .intro-wrap {
+      height: 500vh;
+      position: relative;
     }
 
-    .section-heading {
-      font-size: clamp(1.4rem, 2.5vw, 2rem);
-      font-weight: 700;
-      line-height: 1.2;
-      letter-spacing: -0.02em;
-      margin-bottom: 1rem;
+    .intro-sticky {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow: hidden;
     }
 
-    .section-body {
-      font-size: 0.95rem;
-      line-height: 1.7;
-      color: var(--text-dim);
-      max-width: 320px;
+    #frame-img {
+      position: absolute;
+      inset: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+      background: radial-gradient(ellipse at 62% 50%, #200e05 0%, var(--bg) 70%);
     }
 
-    /* Features list */
-    .features-list {
-      list-style: none;
-      margin-top: 1.5rem;
-      display: flex;
-      flex-direction: column;
-      gap: 0.85rem;
+    /* No-frames placeholder */
+    .frame-placeholder {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 1rem; text-align: center; padding: 2rem;
+      background: radial-gradient(ellipse at 60% 50%, #1a0e08 0%, var(--bg) 70%);
     }
-    .features-list li {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      font-size: 0.95rem;
-      font-weight: 500;
-      color: var(--text);
+    .frame-placeholder h2 {
+      font-size: clamp(2rem, 5vw, 4rem); font-weight: 800;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
     }
-    .features-list li::before {
-      content: '';
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: var(--accent);
-      flex-shrink: 0;
+    .frame-placeholder p { color: var(--dim); font-size: 0.9rem; max-width: 500px; }
+
+    /* Gradient overlays for text readability */
+    .grad-bottom {
+      position: absolute; inset: 0; pointer-events: none;
+      background: linear-gradient(
+        to top,
+        rgba(5,5,8,0.94) 0%,
+        rgba(5,5,8,0.55) 28%,
+        transparent 58%
+      );
+    }
+    .grad-left {
+      position: absolute; inset: 0; pointer-events: none;
+      background: linear-gradient(to right, rgba(5,5,8,0.5) 0%, transparent 52%);
     }
 
-    /* Stats grid */
-    .stats-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 1rem;
-      margin-top: 1.5rem;
+    /* ── PANELS ── */
+    .panel {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      padding: 2.5rem clamp(1.5rem, 5vw, 4rem) 3.5rem;
+      opacity: 0;
+      transform: translateY(18px);
+      transition: opacity 0.45s ease, transform 0.45s ease;
+      pointer-events: none;
+      max-width: 640px;
     }
-    .stat-card {
-      background: var(--bg2);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 1rem;
-    }
-    .stat-number {
-      font-size: 1.6rem;
-      font-weight: 800;
-      letter-spacing: -0.03em;
-      color: var(--accent);
-      line-height: 1;
-    }
-    .stat-label {
-      font-size: 0.75rem;
-      color: var(--text-dim);
-      margin-top: 0.3rem;
+    .panel.active {
+      opacity: 1;
+      transform: none;
+      pointer-events: auto;
     }
 
-    /* Final CTA section */
-    .final-cta {
-      padding-top: 4rem;
-      padding-bottom: 6rem;
-      min-height: 60vh;
+    .panel-eyebrow {
+      font-size: 0.7rem; font-weight: 600;
+      letter-spacing: 0.22em; text-transform: uppercase;
+      color: var(--accent); margin-bottom: 0.8rem;
     }
+    .panel-title {
+      font-size: clamp(2rem, 6vw, 4rem);
+      font-weight: 800; line-height: 1.0;
+      letter-spacing: -0.03em; margin-bottom: 1rem;
+    }
+    .panel-title .brand {
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .panel-body {
+      font-size: 1rem; line-height: 1.65;
+      color: var(--dim); max-width: 420px; margin-bottom: 1.5rem;
+    }
+
+    .feat-list {
+      list-style: none; display: flex; flex-direction: column;
+      gap: 0.6rem; margin-bottom: 1.5rem;
+    }
+    .feat-list li {
+      display: flex; align-items: center; gap: 0.65rem;
+      font-size: 0.95rem; font-weight: 500; color: var(--text);
+    }
+    .feat-list li::before {
+      content: ''; width: 5px; height: 5px; border-radius: 50%;
+      background: var(--accent); flex-shrink: 0;
+    }
+
+    .stats-row {
+      display: flex; gap: 2rem; flex-wrap: wrap; margin-bottom: 1.5rem;
+    }
+    .stat-num  { font-size: 2rem; font-weight: 800; color: var(--accent); line-height: 1; letter-spacing: -0.02em; }
+    .stat-lbl  { font-size: 0.68rem; color: var(--dim); text-transform: uppercase; letter-spacing: 0.12em; margin-top: 3px; }
+
+    .cta-row { display: flex; gap: 1rem; flex-wrap: wrap; }
+
+    .cta-btn {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      padding: 0.85rem 1.75rem;
+      background: var(--accent); color: #fff;
+      text-decoration: none; border-radius: 10px;
+      font-weight: 700; font-size: 1rem;
+      box-shadow: 0 0 32px rgba(255,107,53,0.35);
+      transition: background 0.2s, transform 0.15s;
+    }
+    .cta-btn:hover { background: var(--accent2); transform: translateY(-2px); }
+    .cta-btn.ghost {
+      background: transparent; border: 1px solid var(--accent);
+      color: var(--accent); box-shadow: none;
+    }
+    .cta-btn.ghost:hover { background: rgba(255,107,53,0.08); }
 
     /* Progress bar */
     .scroll-progress {
-      position: fixed;
-      top: 0;
-      left: 0;
-      height: 2px;
-      background: var(--accent);
-      z-index: 200;
-      width: 0%;
-      transition: width 0.05s linear;
+      position: absolute; bottom: 0; left: 0;
+      height: 2px; background: var(--accent);
+      width: 0%; transition: width 0.05s linear; z-index: 10;
     }
 
-    /* Divider */
-    .section-divider {
-      width: 32px;
-      height: 2px;
-      background: var(--accent);
-      opacity: 0.4;
-      margin: 2rem 0;
+    /* Scroll hint */
+    .scroll-hint {
+      position: absolute; bottom: 2.8rem; right: 2rem;
+      display: flex; flex-direction: column; align-items: center; gap: 6px;
+      opacity: 0.45; transition: opacity 0.35s;
+    }
+    .scroll-hint.hidden { opacity: 0; pointer-events: none; }
+    .scroll-hint span { font-size: 0.6rem; letter-spacing: 0.15em; text-transform: uppercase; color: var(--dim); }
+    .sh-arrow {
+      width: 16px; height: 16px;
+      border-right: 2px solid var(--dim);
+      border-bottom: 2px solid var(--dim);
+      transform: rotate(45deg);
+      animation: bounce 1.6s ease-in-out infinite;
+    }
+    @keyframes bounce {
+      0%,100% { transform: rotate(45deg) translateY(0); }
+      50%      { transform: rotate(45deg) translateY(5px); }
     }
 
-    /* ── FADE-IN ANIMATION ── */
-    .fade-section {
-      opacity: 0;
-      transform: translateY(24px);
-      transition: opacity 0.7s ease, transform 0.7s ease;
-    }
-    .fade-section.visible {
-      opacity: 1;
-      transform: translateY(0);
+    @media (max-width: 767px) {
+      .panel { padding-bottom: 2rem; }
+      .panel-title { font-size: clamp(1.8rem, 8vw, 3rem); }
     }
   </style>
 </head>
 <body>
 
-  <!-- Scroll progress indicator -->
-  <div class="scroll-progress" id="scroll-progress"></div>
-
-  <!-- Nav -->
+  <!-- NAV -->
   <nav class="top-nav">
     <a href="/" class="nav-back">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M15 18l-6-6 6-6"/>
-      </svg>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><path d="M15 18l-6-6 6-6"/></svg>
       TheRobots.io
     </a>
     <span class="nav-title">The Robots</span>
-    <div class="nav-cta">
-      <a href="#" class="store-btn" style="padding:0.5rem 0.9rem;font-size:0.8rem;" aria-label="Download on App Store">
-        <svg viewBox="0 0 24 24" fill="currentColor" style="width:16px;height:16px;"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
-        iOS
-      </a>
-      <a href="#" class="store-btn secondary" style="padding:0.5rem 0.9rem;font-size:0.8rem;" aria-label="Get on Google Play">
-        <svg viewBox="0 0 24 24" fill="currentColor" style="width:16px;height:16px;"><path d="M3 20.5v-17c0-.83.94-1.3 1.6-.8l14 8.5c.6.36.6 1.24 0 1.6l-14 8.5c-.66.5-1.6.03-1.6-.8z"/></svg>
-        Android
-      </a>
-    </div>
+    <a href="/games/the-robots/" class="nav-play">
+      <svg viewBox="0 0 24 24" fill="currentColor" style="width:14px;height:14px;"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      Play Now
+    </a>
   </nav>
 
-  <div class="page-wrapper">
-    <div class="scroll-container" id="scroll-container">
+  <!-- SCROLL INTRO -->
+  <div class="intro-wrap" id="intro-wrap">
+    <div class="intro-sticky">
 
-      <!-- TEXT COLUMN -->
-      <div class="text-col" id="text-col">
+      <img id="frame-img" src="" alt="The Robots gameplay">
 
-        <!-- Section 1: Hero -->
-        <section class="section fade-section" id="sec-hero">
-          <div class="hero-eyebrow">Free Mobile Game</div>
-          <h1 class="hero-title">
-            <span class="brand">THE ROBOTS</span><br>
-            Want<br>To Play
-          </h1>
-          <p class="hero-hook">One tap. Infinite chaos. The robots are coming and they won't stop until you do.</p>
-          <div class="store-btns">
-            <a href="#" class="store-btn" aria-label="Download on App Store">
-              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
-              Download on the App Store
-            </a>
-            <a href="#" class="store-btn secondary" aria-label="Get on Google Play">
-              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 20.5v-17c0-.83.94-1.3 1.6-.8l14 8.5c.6.36.6 1.24 0 1.6l-14 8.5c-.66.5-1.6.03-1.6-.8z"/></svg>
-              Get it on Google Play
-            </a>
-          </div>
-        </section>
-
-        <div class="section-divider"></div>
-
-        <!-- Section 2: Core Mechanic -->
-        <section class="section fade-section" id="sec-mechanic">
-          <div class="section-label">How it works</div>
-          <h2 class="section-heading">One tap.<br>Endless survival.</h2>
-          <p class="section-body">Tap to control your robot's every move — dodge obstacles, collect power-ups, and chain combos to multiply your score. The robots never stop coming, and neither will you.</p>
-        </section>
-
-        <div class="section-divider"></div>
-
-        <!-- Section 3: Features -->
-        <section class="section fade-section" id="sec-features">
-          <div class="section-label">Features</div>
-          <h2 class="section-heading">Built for<br>pure fun.</h2>
-          <ul class="features-list">
-            <li>One-tap controls — pick up in seconds</li>
-            <li>Endless levels — always a new challenge</li>
-            <li>Satisfying combos — chain reactions feel incredible</li>
-            <li>Offline play — no connection required</li>
-          </ul>
-        </section>
-
-        <div class="section-divider"></div>
-
-        <!-- Section 4: Social Proof -->
-        <section class="section fade-section" id="sec-stats">
-          <div class="section-label">By the numbers</div>
-          <h2 class="section-heading">Played by<br>millions.</h2>
-          <div class="stats-grid">
-            <div class="stat-card">
-              <div class="stat-number">1M+</div>
-              <div class="stat-label">Downloads</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-number">50M+</div>
-              <div class="stat-label">Levels Completed</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-number">4.8★</div>
-              <div class="stat-label">App Store Rating</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-number">Free</div>
-              <div class="stat-label">Always & Forever</div>
-            </div>
-          </div>
-        </section>
-
-        <div class="section-divider"></div>
-
-        <!-- Section 5: Final CTA -->
-        <section class="section final-cta fade-section" id="sec-cta">
-          <div class="section-label">Ready?</div>
-          <h2 class="section-heading">The robots<br>are waiting.</h2>
-          <p class="section-body" style="margin-bottom:2rem;">Join millions of players and survive as long as you can. Free download, no in-app purchases required to enjoy the full game.</p>
-          <div class="store-btns">
-            <a href="#" class="store-btn" aria-label="Download on App Store">
-              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
-              Download on the App Store
-            </a>
-            <a href="#" class="store-btn secondary" aria-label="Get on Google Play">
-              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 20.5v-17c0-.83.94-1.3 1.6-.8l14 8.5c.6.36.6 1.24 0 1.6l-14 8.5c-.66.5-1.6.03-1.6-.8z"/></svg>
-              Get it on Google Play
-            </a>
-          </div>
-        </section>
-
+      <div class="frame-placeholder" id="frame-placeholder">
+        <h2>THE ROBOTS</h2>
+        <p>Add game frames to <code>therobots/frames/</code> to enable scroll animation.</p>
+        <p style="font-size:0.78rem;margin-top:0.4rem;opacity:0.55;">
+          Run: <code>ffmpeg -i therobots.mp4 -vf "fps=15,scale=720:-2" therobots/frames/f%04d.jpg</code>
+        </p>
       </div>
-      <!-- /text-col -->
 
-      <!-- FRAME COLUMN -->
-      <div class="frame-col" id="frame-col">
-        <div class="frame-wrap" id="frame-wrap">
-          <img id="frame-img" src="" alt="The Robots gameplay" aria-hidden="true">
-          <div class="frame-placeholder" id="frame-placeholder">
-            <h2>THE ROBOTS</h2>
-            <p>Add game frames to <code>therobots/frames/</code> to enable scroll animation.</p>
-            <p style="font-size:0.8rem;margin-top:0.5rem;opacity:0.6;">Run: <code>ffmpeg -i therobots.mp4 -vf "fps=15,scale=720:-2" therobots/frames/f%04d.webp</code></p>
-          </div>
+      <div class="grad-left"></div>
+      <div class="grad-bottom"></div>
+
+      <!-- Panel 0: Hero -->
+      <div class="panel active" id="panel-0">
+        <p class="panel-eyebrow">Free Browser Game</p>
+        <h1 class="panel-title">
+          <span class="brand">THE ROBOTS</span><br>
+          Want To Play
+        </h1>
+        <p class="panel-body">One tap. Infinite chaos. The robots are coming and they won't stop until you do.</p>
+        <a href="/games/the-robots/" class="cta-btn">
+          <svg viewBox="0 0 24 24" fill="currentColor" style="width:16px;height:16px;"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Play Now — Free
+        </a>
+      </div>
+
+      <!-- Panel 1: Mechanic -->
+      <div class="panel" id="panel-1">
+        <p class="panel-eyebrow">How it works</p>
+        <h2 class="panel-title">One tap.<br>Endless survival.</h2>
+        <p class="panel-body">Tap to control your robot's every move — dodge obstacles, collect power-ups, and chain combos to multiply your score. The robots never stop coming, and neither will you.</p>
+      </div>
+
+      <!-- Panel 2: Features -->
+      <div class="panel" id="panel-2">
+        <p class="panel-eyebrow">Features</p>
+        <h2 class="panel-title">Built for<br>pure fun.</h2>
+        <ul class="feat-list">
+          <li>One-tap controls — pick up in seconds</li>
+          <li>Endless levels — always a new challenge</li>
+          <li>Satisfying combos — chain reactions feel incredible</li>
+          <li>Plays in your browser — zero downloads</li>
+        </ul>
+      </div>
+
+      <!-- Panel 3: Stats -->
+      <div class="panel" id="panel-3">
+        <p class="panel-eyebrow">By the numbers</p>
+        <h2 class="panel-title">Just you<br>vs the robots.</h2>
+        <div class="stats-row">
+          <div><div class="stat-num">&#8734;</div><div class="stat-lbl">Levels</div></div>
+          <div><div class="stat-num">1</div><div class="stat-lbl">Tap to play</div></div>
+          <div><div class="stat-num">0MB</div><div class="stat-lbl">Download</div></div>
+          <div><div class="stat-num">Free</div><div class="stat-lbl">Forever</div></div>
         </div>
       </div>
-      <!-- /frame-col -->
+
+      <!-- Panel 4: CTA -->
+      <div class="panel" id="panel-4">
+        <p class="panel-eyebrow">Ready?</p>
+        <h2 class="panel-title">The robots<br>are waiting.</h2>
+        <p class="panel-body" style="margin-bottom:1.5rem;">Open your browser. No install. Just tap and play.</p>
+        <div class="cta-row">
+          <a href="/games/the-robots/" class="cta-btn">
+            <svg viewBox="0 0 24 24" fill="currentColor" style="width:16px;height:16px;"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            Play Now — Free
+          </a>
+          <a href="/" class="cta-btn ghost">Browse All Games</a>
+        </div>
+      </div>
+
+      <div class="scroll-progress" id="scroll-progress"></div>
+
+      <div class="scroll-hint" id="scroll-hint">
+        <span>Scroll</span>
+        <div class="sh-arrow"></div>
+      </div>
 
     </div>
-    <!-- /scroll-container -->
   </div>
-  <!-- /page-wrapper -->
 
   <script>
-    // ── CONFIG ──
-    const FRAME_DIR   = 'frames/';
-    const FRAME_EXT   = '.jpg';
-    const FRAME_PAD   = 4;         // f0001.webp
-    const PRELOAD_N   = 20;        // frames to preload eagerly
-    const FPS_HINT    = 15;        // matches ffmpeg extraction fps
+    const FRAME_DIR  = 'frames/';
+    const FRAME_EXT  = '.jpg';
+    const FRAME_PAD  = 4;
+    const PRELOAD_N  = 20;
+    const NUM_PANELS = 5;
 
-    // ── STATE ──
-    let TOTAL_FRAMES  = 0;
-    let framesLoaded  = false;
-    let frameCache    = {};        // index → Image object
-    let lastFrameIdx  = -1;
-    let ticking       = false;
+    let TOTAL_FRAMES = 0;
+    let frameCache   = {};
+    let lastFrameIdx = -1;
+    let lastPanel    = 0;
+    let ticking      = false;
 
     const img         = document.getElementById('frame-img');
     const placeholder = document.getElementById('frame-placeholder');
     const progressBar = document.getElementById('scroll-progress');
+    const introWrap   = document.getElementById('intro-wrap');
+    const scrollHint  = document.getElementById('scroll-hint');
+    const panels      = Array.from(document.querySelectorAll('.panel'));
 
-    // ── FRAME URL HELPER ──
     function frameUrl(i) {
       return FRAME_DIR + 'f' + String(i + 1).padStart(FRAME_PAD, '0') + FRAME_EXT;
     }
 
-    // ── DETECT TOTAL FRAMES ──
-    // Binary-search for the last valid frame (avoids hardcoding count)
     async function detectFrameCount() {
-      // Quick check: does frame 1 exist?
       const probe = new Image();
-      const exists = await new Promise(resolve => {
-        probe.onload  = () => resolve(true);
-        probe.onerror = () => resolve(false);
+      const exists = await new Promise(r => {
+        probe.onload  = () => r(true);
+        probe.onerror = () => r(false);
         probe.src = frameUrl(0);
       });
-
       if (!exists) return 0;
 
-      // Binary search upper bound
       let lo = 1, hi = 1;
       while (true) {
-        const probeHi = new Image();
-        const hiExists = await new Promise(resolve => {
-          probeHi.onload  = () => resolve(true);
-          probeHi.onerror = () => resolve(false);
-          probeHi.src = frameUrl(hi - 1);
+        const p = new Image();
+        const ok = await new Promise(r => {
+          p.onload  = () => r(true);
+          p.onerror = () => r(false);
+          p.src = frameUrl(hi - 1);
         });
-        if (!hiExists) break;
+        if (!ok) break;
         hi *= 2;
         if (hi > 2000) { hi = 2000; break; }
       }
-
-      // Binary search exact count
       while (lo < hi) {
-        const mid = Math.floor((lo + hi) / 2);
-        const midImg = new Image();
-        const midExists = await new Promise(resolve => {
-          midImg.onload  = () => resolve(true);
-          midImg.onerror = () => resolve(false);
-          midImg.src = frameUrl(mid);
+        const mid = (lo + hi) >> 1;
+        const p = new Image();
+        const ok = await new Promise(r => {
+          p.onload  = () => r(true);
+          p.onerror = () => r(false);
+          p.src = frameUrl(mid);
         });
-        if (midExists) lo = mid + 1;
-        else           hi = mid;
+        if (ok) lo = mid + 1; else hi = mid;
       }
       return lo;
     }
 
-    // ── PRELOAD FRAMES ──
     function preloadFrames(start, count) {
       for (let i = start; i < Math.min(start + count, TOTAL_FRAMES); i++) {
         if (!frameCache[i]) {
@@ -586,83 +394,56 @@
       }
     }
 
-    // ── SCROLL HANDLER ──
-    function onScroll() {
-      if (!ticking) {
-        requestAnimationFrame(updateFrame);
-        ticking = true;
-      }
+    function getLocalProgress() {
+      const wrapTop   = introWrap.getBoundingClientRect().top + window.scrollY;
+      const maxScroll = introWrap.offsetHeight - window.innerHeight;
+      const scrolled  = window.scrollY - wrapTop;
+      return maxScroll > 0 ? Math.min(Math.max(scrolled / maxScroll, 0), 1) : 0;
+    }
+
+    function setPanel(index) {
+      if (index === lastPanel) return;
+      panels[lastPanel].classList.remove('active');
+      panels[index].classList.add('active');
+      if (index > 0) scrollHint.classList.add('hidden');
+      else            scrollHint.classList.remove('hidden');
+      lastPanel = index;
     }
 
     function updateFrame() {
       ticking = false;
-      if (TOTAL_FRAMES === 0) return;
-
-      const scrollY  = window.scrollY;
-      const maxScroll = document.body.scrollHeight - window.innerHeight;
-      const progress  = maxScroll > 0 ? Math.min(scrollY / maxScroll, 1) : 0;
-
-      // Update progress bar
+      const progress = getLocalProgress();
       progressBar.style.width = (progress * 100) + '%';
 
-      // Map progress to frame
-      const frameIdx = Math.min(
-        Math.floor(progress * TOTAL_FRAMES),
-        TOTAL_FRAMES - 1
-      );
+      const panelIndex = Math.min(Math.floor(progress * NUM_PANELS), NUM_PANELS - 1);
+      setPanel(panelIndex);
 
-      if (frameIdx !== lastFrameIdx) {
-        lastFrameIdx = frameIdx;
-
-        // Use cached image if available
-        if (frameCache[frameIdx] && frameCache[frameIdx].complete) {
-          img.src = frameCache[frameIdx].src;
-        } else {
-          img.src = frameUrl(frameIdx);
+      if (TOTAL_FRAMES > 0) {
+        const frameIdx = Math.min(Math.floor(progress * TOTAL_FRAMES), TOTAL_FRAMES - 1);
+        if (frameIdx !== lastFrameIdx) {
+          lastFrameIdx = frameIdx;
+          if (frameCache[frameIdx] && frameCache[frameIdx].complete) {
+            img.src = frameCache[frameIdx].src;
+          } else {
+            img.src = frameUrl(frameIdx);
+          }
+          preloadFrames(frameIdx + 1, 15);
         }
-
-        // Preload ahead
-        preloadFrames(frameIdx + 1, 15);
       }
     }
 
-    // ── INTERSECTION OBSERVER FOR FADE SECTIONS ──
-    const fadeObs = new IntersectionObserver((entries) => {
-      entries.forEach(e => {
-        if (e.isIntersecting) {
-          e.target.classList.add('visible');
-          fadeObs.unobserve(e.target);
-        }
-      });
-    }, { rootMargin: '0px 0px -80px 0px', threshold: 0.1 });
+    window.addEventListener('scroll', () => {
+      if (!ticking) { requestAnimationFrame(updateFrame); ticking = true; }
+    }, { passive: true });
 
-    document.querySelectorAll('.fade-section').forEach(el => fadeObs.observe(el));
-
-    // ── NAV SCROLL CLASS ──
-    // (not needed for nav here, but included for future use)
-
-    // ── INIT ──
     (async () => {
       TOTAL_FRAMES = await detectFrameCount();
-
       if (TOTAL_FRAMES > 0) {
-        // Hide placeholder
         placeholder.style.display = 'none';
-        img.classList.add('loaded');
-
-        // Show first frame immediately
         img.src = frameUrl(0);
-
-        // Preload first batch
         preloadFrames(0, PRELOAD_N);
-
-        // Attach scroll listener
-        window.addEventListener('scroll', onScroll, { passive: true });
-
-        // Trigger once in case page is not at top
-        updateFrame();
       }
-      // else: placeholder remains visible
+      updateFrame();
     })();
   </script>
 </body>
