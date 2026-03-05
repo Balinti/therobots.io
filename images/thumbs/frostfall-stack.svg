@@ -1,0 +1,118 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 130" width="280" height="130">
+  <defs>
+    <linearGradient id="bgfrostfall-stack" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#061c28"/>
+      <stop offset="100%" stop-color="#030e16"/>
+    </linearGradient>
+    <radialGradient id="glfrostfall-stack" cx="76%" cy="38%" r="44%">
+      <stop offset="0%" stop-color="#88ddff" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#88ddff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="tffrostfall-stack" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="rgba(0,0,0,0.78)"/>
+      <stop offset="52%" stop-color="rgba(0,0,0,0.45)"/>
+      <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
+    </linearGradient>
+    <linearGradient id="bffrostfall-stack" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="rgba(0,0,0,0)"/>
+      <stop offset="100%" stop-color="rgba(0,0,0,0.82)"/>
+    </linearGradient>
+    <linearGradient id="alfrostfall-stack" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#88ddff"/>
+      <stop offset="60%" stop-color="#88ddff" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#88ddff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="280" height="130" fill="url(#bgfrostfall-stack)"/>
+  <rect width="280" height="130" fill="url(#glfrostfall-stack)"/>
+
+  
+  <g>
+    <!-- Rotating snowflake -->
+    <g>
+      <animateTransform attributeName="transform" type="rotate"
+        values="0 230 52;360 230 52" dur="8s" repeatCount="indefinite"/>
+      <line x1="230" y1="52" x2="260.0" y2="52.0" stroke="#88ddff" stroke-width="2.5" opacity="0.7"/>
+    <circle cx="248.0" cy="52.0" r="3" fill="#88ddff" opacity="0.5"/>
+    <circle cx="260.0" cy="52.0" r="2.2" fill="#55bbdd" opacity="0.65"/><line x1="230" y1="52" x2="256.0" y2="67.0" stroke="#88ddff" stroke-width="2.5" opacity="0.7"/>
+    <circle cx="245.6" cy="61.0" r="3" fill="#88ddff" opacity="0.5"/>
+    <circle cx="256.0" cy="67.0" r="2.2" fill="#55bbdd" opacity="0.65"/><line x1="230" y1="52" x2="245.0" y2="78.0" stroke="#88ddff" stroke-width="2.5" opacity="0.7"/>
+    <circle cx="239.0" cy="67.6" r="3" fill="#88ddff" opacity="0.5"/>
+    <circle cx="245.0" cy="78.0" r="2.2" fill="#55bbdd" opacity="0.65"/><line x1="230" y1="52" x2="230.0" y2="82.0" stroke="#88ddff" stroke-width="2.5" opacity="0.7"/>
+    <circle cx="230.0" cy="70.0" r="3" fill="#88ddff" opacity="0.5"/>
+    <circle cx="230.0" cy="82.0" r="2.2" fill="#55bbdd" opacity="0.65"/><line x1="230" y1="52" x2="215.0" y2="78.0" stroke="#88ddff" stroke-width="2.5" opacity="0.7"/>
+    <circle cx="221.0" cy="67.6" r="3" fill="#88ddff" opacity="0.5"/>
+    <circle cx="215.0" cy="78.0" r="2.2" fill="#55bbdd" opacity="0.65"/><line x1="230" y1="52" x2="204.0" y2="67.0" stroke="#88ddff" stroke-width="2.5" opacity="0.7"/>
+    <circle cx="214.4" cy="61.0" r="3" fill="#88ddff" opacity="0.5"/>
+    <circle cx="204.0" cy="67.0" r="2.2" fill="#55bbdd" opacity="0.65"/>
+      <circle cx="230" cy="52" r="7" fill="#88ddff" opacity="0.85"/>
+      <circle cx="230" cy="52" r="3.5" fill="white" opacity="0.55"/>
+    </g>
+    <!-- Pulse ring -->
+    <circle cx="230" cy="52" r="34" fill="none" stroke="#88ddff" stroke-width="1.2" opacity="0.18">
+      <animate attributeName="r" values="34;40;34" dur="2.2s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.18;0.42;0.18" dur="2.2s" repeatCount="indefinite"/>
+    </circle>
+    <!-- Falling snow -->
+    <circle cx="152" cy="0" r="2" fill="white" opacity="0.45">
+      <animateTransform attributeName="transform" type="translate"
+        values="0,0;4,130" dur="1.6s" begin="0.0s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.45;0.15" dur="1.6s" begin="0.0s" repeatCount="indefinite"/>
+    </circle><circle cx="167" cy="0" r="1.5" fill="white" opacity="0.45">
+      <animateTransform attributeName="transform" type="translate"
+        values="0,0;-4,130" dur="1.9s" begin="0.3s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.45;0.15" dur="1.9s" begin="0.3s" repeatCount="indefinite"/>
+    </circle><circle cx="182" cy="0" r="2" fill="white" opacity="0.45">
+      <animateTransform attributeName="transform" type="translate"
+        values="0,0;4,130" dur="2.2s" begin="0.7s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.45;0.15" dur="2.2s" begin="0.7s" repeatCount="indefinite"/>
+    </circle><circle cx="197" cy="0" r="1.5" fill="white" opacity="0.45">
+      <animateTransform attributeName="transform" type="translate"
+        values="0,0;-4,130" dur="2.4s" begin="1.0s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.45;0.15" dur="2.4s" begin="1.0s" repeatCount="indefinite"/>
+    </circle><circle cx="212" cy="0" r="2" fill="white" opacity="0.45">
+      <animateTransform attributeName="transform" type="translate"
+        values="0,0;4,130" dur="2.7s" begin="1.4s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.45;0.15" dur="2.7s" begin="1.4s" repeatCount="indefinite"/>
+    </circle><circle cx="227" cy="0" r="1.5" fill="white" opacity="0.45">
+      <animateTransform attributeName="transform" type="translate"
+        values="0,0;-4,130" dur="3.0s" begin="1.8s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.45;0.15" dur="3.0s" begin="1.8s" repeatCount="indefinite"/>
+    </circle><circle cx="242" cy="0" r="2" fill="white" opacity="0.45">
+      <animateTransform attributeName="transform" type="translate"
+        values="0,0;4,130" dur="3.3s" begin="2.1s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.45;0.15" dur="3.3s" begin="2.1s" repeatCount="indefinite"/>
+    </circle><circle cx="257" cy="0" r="1.5" fill="white" opacity="0.45">
+      <animateTransform attributeName="transform" type="translate"
+        values="0,0;-4,130" dur="3.6s" begin="2.4s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.45;0.15" dur="3.6s" begin="2.4s" repeatCount="indefinite"/>
+    </circle><circle cx="272" cy="0" r="2" fill="white" opacity="0.45">
+      <animateTransform attributeName="transform" type="translate"
+        values="0,0;4,130" dur="3.8s" begin="2.8s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.45;0.15" dur="3.8s" begin="2.8s" repeatCount="indefinite"/>
+    </circle>
+  </g>
+
+  <rect width="280" height="130" fill="url(#tffrostfall-stack)"/>
+  <rect width="280" height="130" fill="url(#bffrostfall-stack)"/>
+
+  <text x="12" y="88"
+    font-family="Inter, system-ui, sans-serif"
+    font-size="20" font-weight="800" fill="white"
+    paint-order="stroke" stroke="rgba(0,0,0,0.6)" stroke-width="3" stroke-linejoin="round"
+  >Frostfall</text>
+  <text x="12" y="113"
+    font-family="Inter, system-ui, sans-serif"
+    font-size="20" font-weight="800" fill="white"
+    paint-order="stroke" stroke="rgba(0,0,0,0.6)" stroke-width="3" stroke-linejoin="round"
+  >Stack</text>
+
+  <rect x="12" y="113" width="59" height="14" fill="#2288aa" opacity="0.92" rx="2.5"/>
+  <text x="19" y="123.5"
+    font-family="Inter, system-ui, sans-serif"
+    font-size="8" font-weight="700" letter-spacing="1" fill="white"
+  >ARCADE</text>
+
+  <rect y="128" width="280" height="2.5" fill="url(#alfrostfall-stack)"/>
+</svg>

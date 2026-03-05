@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 130" width="280" height="130">
+  <defs>
+    <linearGradient id="bgoasis-hop" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1e0e00"/>
+      <stop offset="100%" stop-color="#0a0500"/>
+    </linearGradient>
+    <radialGradient id="gloasis-hop" cx="76%" cy="38%" r="44%">
+      <stop offset="0%" stop-color="#ffaa00" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#ffaa00" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="tfoasis-hop" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="rgba(0,0,0,0.78)"/>
+      <stop offset="52%" stop-color="rgba(0,0,0,0.45)"/>
+      <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
+    </linearGradient>
+    <linearGradient id="bfoasis-hop" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="rgba(0,0,0,0)"/>
+      <stop offset="100%" stop-color="rgba(0,0,0,0.82)"/>
+    </linearGradient>
+    <linearGradient id="aloasis-hop" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#ffaa00"/>
+      <stop offset="60%" stop-color="#ffaa00" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#ffaa00" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="280" height="130" fill="url(#bgoasis-hop)"/>
+  <rect width="280" height="130" fill="url(#gloasis-hop)"/>
+
+  
+  <g>
+    <!-- Rotating sun -->
+    <g>
+      <animateTransform attributeName="transform" type="rotate"
+        values="0 233 38;360 233 38" dur="14s" repeatCount="indefinite"/>
+      <line x1="249.0" y1="38.0" x2="263.0" y2="38.0" stroke="#ffaa00" stroke-width="2.5" opacity="0.45"/><line x1="244.3" y1="49.3" x2="254.2" y2="59.2" stroke="#ffaa00" stroke-width="2.5" opacity="0.45"/><line x1="233.0" y1="54.0" x2="233.0" y2="68.0" stroke="#ffaa00" stroke-width="2.5" opacity="0.45"/><line x1="221.7" y1="49.3" x2="211.8" y2="59.2" stroke="#ffaa00" stroke-width="2.5" opacity="0.45"/><line x1="217.0" y1="38.0" x2="203.0" y2="38.0" stroke="#ffaa00" stroke-width="2.5" opacity="0.45"/><line x1="221.7" y1="26.7" x2="211.8" y2="16.8" stroke="#ffaa00" stroke-width="2.5" opacity="0.45"/><line x1="233.0" y1="22.0" x2="233.0" y2="8.0" stroke="#ffaa00" stroke-width="2.5" opacity="0.45"/><line x1="244.3" y1="26.7" x2="254.2" y2="16.8" stroke="#ffaa00" stroke-width="2.5" opacity="0.45"/>
+    </g>
+    <circle cx="233" cy="38" r="15" fill="#ffaa00" opacity="0.3">
+      <animate attributeName="opacity" values="0.3;0.48;0.3" dur="2.5s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="233" cy="38" r="10" fill="#ffaa00" opacity="0.48"/>
+    <!-- Animated dunes -->
+    <path fill="#ffaa00" opacity="0.28">
+      <animate attributeName="d"
+        values="M148,94 Q172,74 200,90 Q228,108 256,90 Q268,84 280,88 L280,130 L148,130 Z;
+                M148,98 Q172,78 200,94 Q228,112 256,94 Q268,88 280,92 L280,130 L148,130 Z;
+                M148,94 Q172,74 200,90 Q228,108 256,90 Q268,84 280,88 L280,130 L148,130 Z"
+        dur="3s" repeatCount="indefinite"/>
+    </path>
+    <!-- Drifting sand -->
+    <circle cx="150" cy="78" r="1.8" fill="#ffaa00" opacity="0">
+      <animate attributeName="opacity" values="0;0.45;0.45;0" dur="1.8s" begin="0s" repeatCount="indefinite"/>
+      <animateTransform attributeName="transform" type="translate" values="0,0;130,0" dur="1.8s" begin="0s" repeatCount="indefinite"/>
+    </circle><circle cx="150" cy="85" r="1.8" fill="#ffaa00" opacity="0">
+      <animate attributeName="opacity" values="0;0.45;0.45;0" dur="2.1s" begin="0.5s" repeatCount="indefinite"/>
+      <animateTransform attributeName="transform" type="translate" values="0,0;130,0" dur="2.1s" begin="0.5s" repeatCount="indefinite"/>
+    </circle><circle cx="150" cy="92" r="1.8" fill="#ffaa00" opacity="0">
+      <animate attributeName="opacity" values="0;0.45;0.45;0" dur="2.5s" begin="1s" repeatCount="indefinite"/>
+      <animateTransform attributeName="transform" type="translate" values="0,0;130,0" dur="2.5s" begin="1s" repeatCount="indefinite"/>
+    </circle><circle cx="150" cy="99" r="1.8" fill="#ffaa00" opacity="0">
+      <animate attributeName="opacity" values="0;0.45;0.45;0" dur="2.8s" begin="1.5s" repeatCount="indefinite"/>
+      <animateTransform attributeName="transform" type="translate" values="0,0;130,0" dur="2.8s" begin="1.5s" repeatCount="indefinite"/>
+    </circle><circle cx="150" cy="106" r="1.8" fill="#ffaa00" opacity="0">
+      <animate attributeName="opacity" values="0;0.45;0.45;0" dur="3.2s" begin="2s" repeatCount="indefinite"/>
+      <animateTransform attributeName="transform" type="translate" values="0,0;130,0" dur="3.2s" begin="2s" repeatCount="indefinite"/>
+    </circle><circle cx="150" cy="113" r="1.8" fill="#ffaa00" opacity="0">
+      <animate attributeName="opacity" values="0;0.45;0.45;0" dur="3.5s" begin="2.5s" repeatCount="indefinite"/>
+      <animateTransform attributeName="transform" type="translate" values="0,0;130,0" dur="3.5s" begin="2.5s" repeatCount="indefinite"/>
+    </circle>
+  </g>
+
+  <rect width="280" height="130" fill="url(#tfoasis-hop)"/>
+  <rect width="280" height="130" fill="url(#bfoasis-hop)"/>
+
+  <text x="12" y="96"
+    font-family="Inter, system-ui, sans-serif"
+    font-size="21" font-weight="800" fill="white"
+    paint-order="stroke" stroke="rgba(0,0,0,0.6)" stroke-width="3" stroke-linejoin="round"
+  >Oasis Hop</text>
+  
+
+  <rect x="12" y="113" width="59" height="14" fill="#aa5500" opacity="0.92" rx="2.5"/>
+  <text x="19" y="123.5"
+    font-family="Inter, system-ui, sans-serif"
+    font-size="8" font-weight="700" letter-spacing="1" fill="white"
+  >ACTION</text>
+
+  <rect y="128" width="280" height="2.5" fill="url(#aloasis-hop)"/>
+</svg>

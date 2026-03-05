@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 130" width="280" height="130">
+  <defs>
+    <linearGradient id="bgshrinking-vines" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#041608"/>
+      <stop offset="100%" stop-color="#020804"/>
+    </linearGradient>
+    <radialGradient id="glshrinking-vines" cx="76%" cy="38%" r="44%">
+      <stop offset="0%" stop-color="#44cc44" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#44cc44" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="tfshrinking-vines" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="rgba(0,0,0,0.78)"/>
+      <stop offset="52%" stop-color="rgba(0,0,0,0.45)"/>
+      <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
+    </linearGradient>
+    <linearGradient id="bfshrinking-vines" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="rgba(0,0,0,0)"/>
+      <stop offset="100%" stop-color="rgba(0,0,0,0.82)"/>
+    </linearGradient>
+    <linearGradient id="alshrinking-vines" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#44cc44"/>
+      <stop offset="60%" stop-color="#44cc44" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#44cc44" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="280" height="130" fill="url(#bgshrinking-vines)"/>
+  <rect width="280" height="130" fill="url(#glshrinking-vines)"/>
+
+  
+  <g>
+    <!-- Tree 1 swaying -->
+    <g>
+      <animateTransform attributeName="transform" type="rotate"
+        values="0 214 130;2.5 214 130;-2.5 214 130;0 214 130" dur="3s" repeatCount="indefinite"/>
+      <polygon points="214,92 196,60 232,60" fill="#44cc44" opacity="0.55"/>
+      <polygon points="214,74 194,44 234,44" fill="#44cc44" opacity="0.48"/>
+      <rect x="211" y="92" width="7" height="22" fill="#44cc44" opacity="0.4"/>
+    </g>
+    <!-- Tree 2 swaying -->
+    <g>
+      <animateTransform attributeName="transform" type="rotate"
+        values="0 250 130;-2.5 250 130;2.5 250 130;0 250 130" dur="2.5s" begin="0.5s" repeatCount="indefinite"/>
+      <polygon points="250,100 235,72 265,72" fill="#44cc44" opacity="0.45"/>
+      <polygon points="250,82 233,54 267,54" fill="#44cc44" opacity="0.38"/>
+      <rect x="247" y="100" width="6" height="20" fill="#44cc44" opacity="0.35"/>
+    </g>
+    <!-- Falling leaf 1 -->
+    <path d="M0,0 Q4,-5 8,0 Q4,5 0,0" fill="#44cc44" opacity="0.65">
+      <animateMotion dur="3s" repeatCount="indefinite"
+        path="M215,5 C204,35 224,58 208,88 C198,110 218,122 212,130"/>
+      <animateTransform attributeName="transform" type="rotate" values="0;360" dur="3s" repeatCount="indefinite"/>
+    </path>
+    <!-- Falling leaf 2 -->
+    <path d="M0,0 Q3,-4 7,0 Q3,4 0,0" fill="#22aa22" opacity="0.5">
+      <animateMotion dur="2.6s" begin="1.1s" repeatCount="indefinite"
+        path="M244,4 C233,32 252,54 238,82 C228,104 248,116 242,130"/>
+      <animateTransform attributeName="transform" type="rotate" values="0;-360" dur="2.6s" begin="1.1s" repeatCount="indefinite"/>
+    </path>
+    <!-- Firefly 1 -->
+    <circle cx="168" cy="58" r="2.8" fill="#44cc44" opacity="0">
+      <animate attributeName="opacity" values="0;0.85;0" dur="1.3s" repeatCount="indefinite"/>
+      <animateTransform attributeName="transform" type="translate" values="0,0;9,-6;3,9;0,0" dur="3.2s" repeatCount="indefinite"/>
+    </circle>
+    <!-- Firefly 2 -->
+    <circle cx="267" cy="42" r="2.2" fill="#44cc44" opacity="0">
+      <animate attributeName="opacity" values="0;0.75;0" dur="1.6s" begin="0.7s" repeatCount="indefinite"/>
+      <animateTransform attributeName="transform" type="translate" values="0,0;-7,9;4,-4;0,0" dur="4s" begin="0.7s" repeatCount="indefinite"/>
+    </circle>
+    <!-- Ground -->
+    <rect x="148" y="116" width="132" height="14" fill="#44cc44" opacity="0.1"/>
+  </g>
+
+  <rect width="280" height="130" fill="url(#tfshrinking-vines)"/>
+  <rect width="280" height="130" fill="url(#bfshrinking-vines)"/>
+
+  <text x="12" y="88"
+    font-family="Inter, system-ui, sans-serif"
+    font-size="20" font-weight="800" fill="white"
+    paint-order="stroke" stroke="rgba(0,0,0,0.6)" stroke-width="3" stroke-linejoin="round"
+  >Shrinking</text>
+  <text x="12" y="113"
+    font-family="Inter, system-ui, sans-serif"
+    font-size="20" font-weight="800" fill="white"
+    paint-order="stroke" stroke="rgba(0,0,0,0.6)" stroke-width="3" stroke-linejoin="round"
+  >Vines</text>
+
+  <rect x="12" y="113" width="59" height="14" fill="#156615" opacity="0.92" rx="2.5"/>
+  <text x="19" y="123.5"
+    font-family="Inter, system-ui, sans-serif"
+    font-size="8" font-weight="700" letter-spacing="1" fill="white"
+  >ACTION</text>
+
+  <rect y="128" width="280" height="2.5" fill="url(#alshrinking-vines)"/>
+</svg>
